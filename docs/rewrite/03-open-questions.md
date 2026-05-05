@@ -163,7 +163,7 @@ Who manages Auth0 tenant configuration? Does it require a Terraform change or ma
 
 ---
 
-### OQ-10: Mentorship → CF direct HTTP calls — will they work post-cutover?
+### OQ-9: Mentorship → CF direct HTTP calls — will they work post-cutover?
 
 **Question:** Mentorship (Lambda) calls the CF API directly via `FUNDING_API_URL` for five endpoints (slug sync, funding status, title-check, addbeneficiary, removebeneficiary). Today that URL points at the Lambda API Gateway. After cutover it must point at the new K8s Ingress.
 
@@ -179,7 +179,7 @@ Two sub-questions:
 
 ## Design
 
-### OQ-9: UI prototype — final design or rough reference?
+### OQ-10: UI prototype — final design or rough reference?
 
 **Question:** The prototype at `https://github.com/jonathimer/lfx-crowdfunding-prototype` — how closely should the new UI match it? Is it:
 - A final design that should be followed pixel-for-pixel?

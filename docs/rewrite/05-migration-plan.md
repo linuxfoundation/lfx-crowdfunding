@@ -223,7 +223,7 @@ DynamoDB uses string IDs (e.g., `projectId: "abc-123"`). Postgres uses UUIDs. Th
 ```sql
 CREATE TABLE crowdfunding._id_migration_map (
   old_id      text NOT NULL,
-  entity_type text NOT NULL,  -- project|entity|organization
+  entity_type text NOT NULL,  -- project|fund|organization
   new_id      uuid NOT NULL,
   PRIMARY KEY (old_id, entity_type)
 );
@@ -249,10 +249,10 @@ Run tables in this order (respect FK dependencies):
 
 1. `organizations`
 2. `projects`
-3. `entities`
+3. `funds`
 4. `users`
-5. `subscriptions` (project + entity, merged)
-6. `donations` (project + entity, merged)
+5. `subscriptions` (project + fund, merged)
+6. `donations` (project + fund, merged)
 7. Drop `_id_migration_map` after validation
 
 ---
@@ -324,7 +324,7 @@ Migration record counts to verify after execute:
 | Table | Expected rows |
 |---|---|
 | `crowdfunding.projects` | 1,832 |
-| `crowdfunding.entities` | 181 |
+| `crowdfunding.funds` | 181 |
 | `crowdfunding.organizations` | TBD (query DynamoDB) |
 | `crowdfunding.subscriptions` | TBD (query DynamoDB) |
 | `crowdfunding.donations` | TBD (query DynamoDB) |
@@ -335,7 +335,7 @@ Migration record counts to verify after execute:
 
 - **`community` entity type:** 3 entity rows have type `community`, which does not appear in the Go codebase entity type enum (`project`, `initiative`, `general-fund`). Must decide: add `community` to the enum, or map to `general-fund`. Needs clarification from product owner before migration code is written.
 - **`other (travel)` entity type:** 26 rows. Likely `general-fund` subtype used for travel funds. Confirm exact DynamoDB type value before migration.
-- **Mentorship projects (1,476 rows):** These have a `jobspring_id` linking them to the Mentorship service. The SQS consumer must keep working post-migration so new Mentorship projects continue arriving. The `jobspring_id` column is how the new system will match incoming SQS update events to existing Postgres rows (instead of the old DynamoDB `projectId` string). Migration must populate `jobspring_id` from the DynamoDB `projectId` for all mentorship-type projects.
+- **Mentorship projects (1,476 rows):** These have a `mentorship_program_id` linking them to the Mentorship service. The SQS consumer must keep working post-migration so new Mentorship projects continue arriving. The `mentorship_program_id` column is how the new system will match incoming SQS update events to existing Postgres rows (instead of the old DynamoDB `projectId` string). Migration must populate `mentorship_program_id` from the DynamoDB `projectId` for all mentorship-type projects.
 - **Old project IDs and Ledger:** Ledger records use `project_id` as plain text (the old DynamoDB string ID). The Ledger Service is not migrated in the initial release. The `_id_migration_map` table (or a `legacy_id` column on projects) bridges old string IDs to new Postgres UUIDs when calling `GET /balance/{projectID}` on the Ledger API. Recommended: add a `legacy_id text` column to `projects` and `entities` tables, populated during migration, never exposed in the public API.
 - **Stripe subscription continuity:** Active Stripe subscriptions must not be cancelled or recreated. The migration preserves `stripe_subscription_id` — Stripe continues charging the same plan. No Stripe API calls needed during migration.
 - **Non-published records:** 639 rows are not published (submitted, declined, hidden). All must be migrated — active subscriptions or pending approvals may reference them. Never filter to published-only during migration.
