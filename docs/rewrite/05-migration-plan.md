@@ -190,6 +190,7 @@ Status normalization applies here too: `'hide'` → `'hidden'`.
 | `userId` | `user_id` | Direct (Auth0 subject) |
 | `frequency` | `frequency` | Direct (`monthly` \| `annual`) |
 | `amountInCents` | `amount_in_cents` | Direct |
+| `paymentMethod` | `payment_method` | Direct (`card` \| `invoice`); default `card` if missing |
 | `status` | `status` | Direct |
 | `createdOn` | `created_at` | Parse timestamp |
 | `updatedOn` | `updated_at` | Parse timestamp |
@@ -315,7 +316,7 @@ Steps:
 
 ## Production Data Size (as of May 2026)
 
-2,013 total rows: 1,832 projects + 181 entities. At this volume, a full DynamoDB scan is fast
+2,013 total rows: 1,832 projects + 181 funds. At this volume, a full DynamoDB scan is fast
 (seconds, not minutes) and a full Postgres load is trivial. No need for chunked/streaming
 migration — a single-pass load is fine.
 
@@ -333,9 +334,9 @@ Migration record counts to verify after execute:
 
 ## Outstanding Migration Questions
 
-- **`community` entity type:** 3 entity rows have type `community`, which does not appear in the Go codebase entity type enum (`project`, `initiative`, `general-fund`). Must decide: add `community` to the enum, or map to `general-fund`. Needs clarification from product owner before migration code is written.
+- **`community` fund type:** ~~Open question~~ **Resolved** — 3 rows with type `community` are all declined/submitted 2019 with no active users. Migration discards them (see Funds type mapping table above). No action needed.
 - **`other (travel)` entity type:** 26 rows. Likely `general-fund` subtype used for travel funds. Confirm exact DynamoDB type value before migration.
-- **Mentorship projects (1,476 rows):** These have a `mentorship_program_id` linking them to the Mentorship service. The SQS consumer must keep working post-migration so new Mentorship projects continue arriving. The `mentorship_program_id` column is how the new system will match incoming SQS update events to existing Postgres rows (instead of the old DynamoDB `projectId` string). Migration must populate `mentorship_program_id` from the DynamoDB `projectId` for all mentorship-type projects.
-- **Old project IDs and Ledger:** Ledger records use `project_id` as plain text (the old DynamoDB string ID). The Ledger Service is not migrated in the initial release. The `_id_migration_map` table (or a `legacy_id` column on projects) bridges old string IDs to new Postgres UUIDs when calling `GET /balance/{projectID}` on the Ledger API. Recommended: add a `legacy_id text` column to `projects` and `entities` tables, populated during migration, never exposed in the public API.
+- **Mentorship projects (1,476 rows):** These have a `mentorship_program_id` linking them to the Mentorship service. The SQS consumer must keep working post-migration so new Mentorship projects continue arriving. The `mentorship_program_id` column is how the new system will match incoming SQS update events to existing Postgres rows. Migration must populate `mentorship_program_id` from the DynamoDB `jobspringProjectID` field (see Projects field mapping above — `jobspringProjectID` → `mentorship_program_id`).
+- **Old project IDs and Ledger:** Ledger records use `project_id` as plain text (the old DynamoDB string ID). The Ledger Service is not migrated in the initial release. The `_id_migration_map` table (or a `legacy_id` column on projects) bridges old string IDs to new Postgres UUIDs when calling `GET /balance/{projectID}` on the Ledger API. Recommended: add a `legacy_id text` column to `projects` and `funds` tables, populated during migration, never exposed in the public API.
 - **Stripe subscription continuity:** Active Stripe subscriptions must not be cancelled or recreated. The migration preserves `stripe_subscription_id` — Stripe continues charging the same plan. No Stripe API calls needed during migration.
 - **Non-published records:** 639 rows are not published (submitted, declined, hidden). All must be migrated — active subscriptions or pending approvals may reference them. Never filter to published-only during migration.

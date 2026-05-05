@@ -78,7 +78,7 @@ Rationale: co-locating Ledger DB now requires migrating Ledger's Postgres data, 
 
 ### Budget categories → JSONB
 
-Budget categories (Development, Marketing, Meetups, Travel, BugBounty, Documentation, Mentee, Other, Diversity) stored as `JSONB` on the `projects` and `entities` tables.
+Budget categories (Development, Marketing, Meetups, Travel, BugBounty, Documentation, Mentee, Other, Diversity) stored as `JSONB` on the `projects` and `funds` tables.
 
 Rationale: categories are always read/written as a unit alongside the project record. No queries filter by individual category values (e.g., "find all projects with Development budget > $X"). A normalized `project_budgets` table would add joins with zero query benefit. JSONB is simpler and faster for this access pattern.
 

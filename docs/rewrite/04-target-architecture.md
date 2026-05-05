@@ -295,10 +295,10 @@ Mentorship calls these endpoints directly against the CF API URL. Missing any on
 | `GET` | `/v1/projects/{id}/{slug}/sync` | Slug sync after rename | public |
 | `GET` | `/v1/projects/{id}/funding` | Funding status | public |
 | `POST` | `/v1/projects/title-check` | Title uniqueness validation | public |
-| `POST` | `/v1/funds/{id}/addbeneficiary` | Add beneficiary | `x-beneficiary-auth` header |
-| `POST` | `/v1/funds/{id}/removebeneficiary` | Remove beneficiary | `x-beneficiary-auth` header |
+| `POST` | `/v1/entities/{id}/addbeneficiary` | Add beneficiary | `x-beneficiary-auth` header |
+| `POST` | `/v1/entities/{id}/removebeneficiary` | Remove beneficiary | `x-beneficiary-auth` header |
 
-Note: beneficiary endpoints use the fund ID (old entity ID). The new path uses `/v1/funds/` but the old path was `/v1/entities/`. Since Mentorship calls these, the new service must either keep the old `/v1/entities/` path or Mentorship must be updated. **Keep old path `/v1/entities/{id}/addbeneficiary` for compatibility until Mentorship is updated.** Add this to OQ-3 discussion.
+Note: beneficiary endpoints use the fund ID (old entity ID). Mentorship currently calls `/v1/entities/{id}/...` — the new service **must keep this path** for compatibility. The `/v1/funds/{id}/...` path is the new canonical path and both routes will be supported. Mentorship can migrate to the new path in a follow-up update.
 
 ---
 
@@ -440,6 +440,10 @@ It is activated as part of the Ledger DB migration (post-initial-release).
 Note: `ledger.ledger.project_id` stores the old DynamoDB string ID — match via `legacy_id`, not `id`.
 
 ```sql
+-- Assumption: l.amount is always stored as a positive integer regardless of txn_type.
+-- CREDIT rows increase the balance; DEBIT rows decrease it.
+-- If Ledger stores DEBIT amounts as negative, replace balance_cents with SUM(l.amount).
+-- Verify against Ledger DB before activating this view.
 CREATE VIEW crowdfunding.project_funding_summary AS
 SELECT
   p.id                                                                  AS project_id,
