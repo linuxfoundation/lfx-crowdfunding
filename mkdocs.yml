@@ -1,0 +1,6 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+---
+site_name: Lfx Crowdfunding
+site_description: Crowdfunding monorepo (UI + backend)
+plugins:
+  - techdocs-core
