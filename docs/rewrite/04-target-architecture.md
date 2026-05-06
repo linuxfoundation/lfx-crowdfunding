@@ -506,7 +506,7 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 |---|---|---|
 | Nuxt 3 frontend | `Deployment` + `Service` + `Ingress` | TLS termination at Ingress |
 | Go HTTP API | `Deployment` + `Service` + `Ingress` | Chi router, long-running |
-| Crowdfunding Postgres | AWS RDS (managed) | LFX standard — DevOps creates the RDS instance; connection string injected via ESO |
+| Crowdfunding Postgres | Shared AWS RDS instance | LFX standard — DevOps adds `crowdfunding` DB + role to existing `lfx-v2` RDS in `lfx-v2-opentofu/postgres.tf`; app connects via `rds-postgres.lfx:5432` |
 | mentorship-sync job | `CronJob` | Daily or a few times/day; Snowflake → CF Postgres |
 | GitHub stats job | `CronJob` | Every 6 hours |
 | Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
