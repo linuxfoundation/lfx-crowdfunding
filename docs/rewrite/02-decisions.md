@@ -10,7 +10,7 @@ Update this file when decisions change — note what changed and why.
 ### What is IN scope
 
 - Project CRUD (create, edit, publish, hide) — campaign_type: `project`
-- Mentorship campaign display and SQS-driven sync — campaign_type: `mentorship`
+- Mentorship campaign display and Snowflake-driven sync — campaign_type: `mentorship`
 - Fund CRUD (general_fund, event, ostif) — replaces "entities"
 - Organization CRUD
 - Donations (one-time, card and invoice)
@@ -36,6 +36,7 @@ Update this file when decisions change — note what changed and why.
 - Intercom
 - Ledger Service changes (kept unchanged on Lambda)
 - Mentorship backend changes
+- Mentorship UI changes (Mentorship is not rewritten until it moves to Kubernetes)
 - RS Category 2 Postgres migration (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) — scheduled CF release + 2 weeks
 - OpenSearch decommission — scheduled CF release + 2 weeks (see OQ-7)
 - CII badge validation (not in initial release UI)
@@ -304,6 +305,22 @@ CF is the financial custodian of donated funds. It collects money from donors an
 CF does not use beneficiary data for payment routing (Stripe charges are donor→program, not donor→beneficiary). The 24h sync delay is acceptable — mentees do not access funds until mid-term, months after approval.
 
 A 24h delay on beneficiary sync is acceptable by the same logic as program sync — mentees don't draw funds until mid-term, months after being approved.
+
+### Mentorship UI — "available funds" display removed
+
+The Mentorship UI currently shows an "available funds" balance for each mentorship program, sourced from the CF API (which proxies Ledger). This display is removed and not carried into any future Mentorship rewrite.
+
+Rationale: CF is the authoritative UI for financial data. Duplicating the balance in Mentorship blurs the product boundary and creates an integration dependency with no clear owner. Users who need the funding balance (finance team, CF admins, donors) are already in CF. Mentees care about receiving their stipend — handled downstream by Expensify/NetSuite — not the raw balance figure.
+
+When Mentorship moves to Kubernetes and gets a new UI design, a "View funding on LFX Crowdfunding" link on the program page is sufficient to surface the information without an integration dependency.
+
+### CF → Snowflake sync via Fivetran
+
+CF Postgres must be synced to Snowflake via Fivetran so that CF data (projects, funds, donations, subscriptions, organizations) is available for analytics and reporting alongside data from other LFX products.
+
+This is required before or shortly after CF goes live in production. It is independent of the Mentorship→K8s migration.
+
+Note: the `mentorship-sync` CronJob reads **Mentorship data from Snowflake into CF** — this is the Mentorship team's Fivetran responsibility, not CF's. CF→Snowflake is a separate Fivetran connector that CF DevOps owns.
 
 ### Expensify sync — keep on old Lambda for initial release
 
