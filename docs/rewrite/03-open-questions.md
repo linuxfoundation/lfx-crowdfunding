@@ -181,14 +181,10 @@ Two sub-questions:
 
 ### OQ-10: UI prototype — final design or rough reference?
 
-**Question:** The prototype at `https://github.com/jonathimer/lfx-crowdfunding-prototype` — how closely should the new UI match it? Is it:
-- A final design that should be followed pixel-for-pixel?
-- A starting-point reference that can be adapted?
-- A rough mock that needs UX review before implementation?
-
+**Status:** Resolved
 **Owner:** Michal / Design
-**Status:** Open
-**Notes:** Affects how much time is spent on pixel-perfect implementation vs. functional implementation using PrimeVue components.
+
+**Resolution:** The prototype is a rough reference only. The UI designer is still finalizing the design. Implement functionally using PrimeVue components — do not spend time on pixel-perfect matching against the prototype. UI will be updated once final designs are delivered.
 
 ---
 
@@ -197,6 +193,10 @@ Two sub-questions:
 | # | Question | Resolution |
 |---|---|---|
 | R-1 | Does LFF write directly to Ledger DB? | No — LFF calls Ledger HTTP API read-only. Ledger writes come from its own Stripe/Expensify webhooks. |
+| OQ-1 | Can K8s reach Lambda API Gateway endpoints? | Yes — both Ledger and Reimbursement Service APIs are reachable over public HTTPS from K8s. |
+| OQ-4 | GitHub repo created? | Yes — `linuxfoundation/lfx-crowdfunding` created (private, going public soon). |
+| OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
+| OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |
 | R-2 | Does Reimbursement Service query Crowdfunding OpenSearch? | Yes — reads `projects`, `entities`, `lff-users`, `spring-projects`, `spring-users`, `beneficiary-actions`, `travel-funds-tickets`. Writes `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`. Migration plan in OQ-7. |
 | R-3 | Who owns the Mentorship SNS topic? | Mentorship (jobspring) owns it. CF is a subscriber. Topic: `lfx-topic-{stage}-project`. CF queue: `fundspring-lfx-queues-{stage}-project`. |
 | R-4 | Is there a separate admin UI for project approvals? | No. Approvals are done via JWT links in emails sent to admin (Sriji). |
