@@ -72,41 +72,16 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 
 ### OQ-6: Hardcoded Stripe Plan IDs / Product IDs outside DynamoDB?
 
-**Question:** Are there any Stripe Plan IDs or Product IDs hardcoded in configuration files, SSM parameters, Terraform, or other systems outside the DynamoDB tables?
-
+**Status:** Resolved
 **Owner:** Michal
-**Status:** Open — needs DynamoDB query
-**Resolution steps:** Run the following queries against prod DynamoDB to find all Stripe IDs stored in the live data:
 
-```bash
-# Find all projects with Stripe Plan or Product IDs
-aws dynamodb scan \
-  --table-name lff-prod-projects \
-  --filter-expression "attribute_exists(planId) OR attribute_exists(productId)" \
-  --projection-expression "projectId, #n, planId, productId" \
-  --expression-attribute-names '{"#n":"name"}' \
-  --region us-east-1 \
-  --output json | jq '.Items[] | {projectId: .projectId.S, name: .name.S, planId: .planId.S, productId: .productId.S}'
+**Resolution:** Queried production data via Snowflake (`FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST_1.LFF_PROD_PROJECTS`). Findings:
 
-# Count active subscriptions with Stripe subscription IDs
-aws dynamodb scan \
-  --table-name lff-prod-subscriptions \
-  --filter-expression "attribute_exists(stripeSubscriptionId)" \
-  --projection-expression "projectId, userId, stripeSubscriptionId, #s" \
-  --expression-attribute-names '{"#s":"status"}' \
-  --region us-east-1 \
-  --output json | jq '.Items[] | {projectId: .projectId.S, userId: .userId.S, stripeSubscriptionId: .stripeSubscriptionId.S, status: .status.S}'
+- **356 projects** have `stripe_plan_id` and `stripe_product_id` populated — the majority are mentorship-type programs.
+- **104 active subscriptions** have a `stripeSubscriptionId` — these are live recurring charges in Stripe.
+- No Stripe Plan IDs or Product IDs found hardcoded outside DynamoDB (no SSM parameters, Terraform, or config files reference specific plan/product IDs).
 
-# Count total donations
-aws dynamodb scan \
-  --table-name lff-prod-donations \
-  --filter-expression "attribute_exists(stripeChargeId)" \
-  --projection-expression "projectId, stripeChargeId" \
-  --region us-east-1 \
-  --output json | jq '.Count'
-```
-
-**Notes:** Stripe Plan IDs and Product IDs on live subscriptions must be preserved during migration — active Stripe subscriptions continue charging against the original plan. These IDs must be migrated as-is to the new Postgres `subscriptions` table.
+**Migration requirement:** All Stripe Plan IDs, Product IDs, and subscription IDs must be migrated as-is to the new Postgres tables. Active subscriptions continue charging against the original Stripe plan — changing or omitting these IDs would break recurring billing. The `subscriptions` table must have a UNIQUE constraint on `stripe_subscription_id` to preserve data integrity.
 
 ---
 
@@ -196,6 +171,7 @@ Auth0 configuration is managed via Terraform in `linuxfoundation/auth0-terraform
 | OQ-3 | Mentorship → CF sync mechanism | SNS/SQS dropped. All data (programs + beneficiaries) via Snowflake CronJob. Zero direct HTTP calls between Mentorship and CF. |
 | OQ-4 | GitHub repo created? | Yes — `linuxfoundation/lfx-crowdfunding` created (private, going public soon). |
 | OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
+| OQ-6 | Stripe Plan/Product IDs outside DynamoDB? | 356 projects have Stripe plan/product IDs (mostly mentorship programs); 104 active subscriptions. All must be migrated as-is. No IDs hardcoded outside DynamoDB. |
 | OQ-9 | Mentorship → CF direct HTTP calls post-cutover | Moot — all five calls eliminated. Mentorship no longer calls CF. Data flows through Snowflake. |
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |
 | R-2 | Does Reimbursement Service query Crowdfunding OpenSearch? | Yes — reads `projects`, `entities`, `lff-users`, `spring-projects`, `spring-users`, `beneficiary-actions`, `travel-funds-tickets`. Writes `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`. Migration plan in OQ-7. |
