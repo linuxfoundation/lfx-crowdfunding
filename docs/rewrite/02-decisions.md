@@ -281,23 +281,20 @@ Keep Chi. No reason to change.
 
 The new Go service calls the Ledger HTTP API (read-only GET calls) exactly as LFF does today. LFF has never written to Ledger directly — Ledger gets its data from its own Stripe/Expensify webhooks. No change to this contract.
 
-### SNS/SQS integration with Mentorship — bidirectional
+### Mentorship sync — Snowflake pull, not SNS/SQS
 
-Both CF and Mentorship publish to the same SNS topic `lfx-topic-{stage}-project` and each subscribes via their own SQS queue. **This is bidirectional.**
+CF syncs Mentorship program data from Snowflake via a periodic K8s CronJob (`mentorship-sync`). SNS/SQS is not used in the new system.
 
-**CF consumes** from `fundspring-lfx-queues-{stage}-project` (or new queue — see OQ-3). Processes `projectCreated`, `projectUpdated`, `projectUpdateStatus` events from Mentorship. `selfSync` events are ignored.
+Rationale: Mentorship and CF run in separate AWS accounts, making cross-account SNS/SQS subscription complex and requiring Mentorship team involvement. Mentorship is also moving to Kubernetes in the coming months, making Lambda-era SQS infrastructure a poor long-term investment. Both services already mirror data into Snowflake. A 24h sync delay is acceptable — new mentorship programs are not immediately donation-ready, and beneficiaries don't access funds until mid-term (months after program creation).
 
-On `projectCreated`: insert row with `campaign_type = mentorship`, populate `mentorship_program_id` from the event's `projectId`, populate `budgets.mentee` from `data.projectDetails.mentee` (nested path — not top-level `data.mentee`).
+The `mentorship-sync` CronJob:
+- Queries Snowflake for mentorship programs
+- Creates `campaign_type = mentorship` project rows in CF Postgres for new programs
+- Updates Mentorship-owned fields (name, status, budgets.mentee) for existing rows
+- Never overwrites CF-owned fields (logo_url, color, description, website, beneficiaries)
+- Normalizes `'hide'` → `'hidden'` on status
 
-On `projectUpdated`: match existing row by `mentorship_program_id`, update only Mentorship-owned fields (name, status, budgets.mentee skills/terms/mentors/custom_term). Do not overwrite CF-owned fields (logo_url, color, description, website, beneficiaries).
-
-On `projectUpdateStatus`: match by `mentorship_program_id`, update `status` only. Normalize `'hide'` → `'hidden'`.
-
-**CF publishes** to the same SNS topic when CF-side changes occur (Mentorship consumes from `jobspring-lfx-queues-{stage}-project`):
-- `projectUpdated` — when a CF project record is updated
-- `projectUpdateStatus` — when project status changes (approval flow)
-
-The new CF Go service must implement both the consumer (SQS polling) and the publisher (SNS publish). IAM permissions needed for both — see OQ-3.
+Mentorship continues calling CF API endpoints directly (slug sync, funding status, title-check, add/remove beneficiary). CF returns 404 when a program is not yet synced — Mentorship must handle 404 gracefully on those endpoints. CF no longer publishes SNS events back to Mentorship.
 
 ### Expensify sync — keep on old Lambda for initial release
 

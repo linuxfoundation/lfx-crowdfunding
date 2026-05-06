@@ -26,22 +26,26 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 
 ---
 
-### OQ-3: SQS queue for Mentorship events — reuse existing or create new? + IAM permissions
+### OQ-3: Mentorship → CF data sync mechanism
 
-**Question:** The current Crowdfunding Lambda consumes from SQS queue `fundspring-lfx-queues-{stage}-project` which is subscribed to the Mentorship SNS topic `lfx-topic-{stage}-project`. For the new K8s service:
+**Status:** Resolved
+**Owner:** Michal / Architect
 
-Option A: Reuse the existing queue. The new service takes over consumption from the same queue. (Only works if both old and new systems don't run simultaneously.)
+**Resolution:** SNS/SQS is dropped entirely. CF syncs Mentorship program data from Snowflake via a periodic K8s CronJob.
 
-Option B: Create a new queue `crowdfunding-lfx-queues-{stage}-project`, subscribe it to the same SNS topic. Both old and new services consume independently during parallel running.
+**Rationale:**
+- Mentorship and CF run in separate AWS accounts. Cross-account SNS/SQS subscriptions require coordination with the Mentorship team and their AWS account — not something CF can do unilaterally.
+- Mentorship is moving to Kubernetes in the coming months, making Lambda-era SNS/SQS infrastructure a poor long-term investment.
+- Both Mentorship and CF mirror their data into Snowflake. CF can pull mentorship program data from Snowflake directly.
+- A 24h sync delay is acceptable: new mentorship programs are not immediately donation-ready by business requirement, and mentees/beneficiaries don't access funds until mid-term (months after program creation).
 
-**Owner:** DevOps / Architect
-**Status:** Open
-**Notes:** Option B is safer for parallel running. Option A is simpler if there's no overlap period.
+**How it works:**
+- CF runs a K8s CronJob (`mentorship-sync`) that queries Snowflake for mentorship programs and creates/updates `campaign_type = mentorship` rows in the CF Postgres DB.
+- Mentorship continues calling CF API endpoints directly (slug sync, funding status, title-check, add/remove beneficiary). CF returns 404 gracefully when a program is not yet synced — Mentorship must handle this gracefully.
+- CF no longer publishes SNS events back to Mentorship (those were only needed to keep the old bidirectional sync working).
 
-**Additional requirement — IAM permissions for K8s pod:**
-SQS is a pull model — the CF K8s pod polls SQS over HTTPS. Two things must be confirmed:
-1. **Outbound network access:** K8s cluster pods must be able to reach `sqs.us-east-1.amazonaws.com` over HTTPS. Likely already true but must be confirmed with DevOps.
-2. **IAM policy:** The K8s pod's IAM role (via IRSA or instance profile) must be granted `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on the queue. The queue is owned by the Mentorship team — they must grant CF's K8s service account access. This must be arranged before the SQS consumer can be tested in dev/staging.
+**Mentorship changes required:**
+- Handle 404 responses gracefully on: `GET /v1/projects/{id}/funding`, `POST /v1/entities/{id}/addbeneficiary`, `POST /v1/entities/{id}/removebeneficiary`. Treat 404 as "not synced yet" — retry or queue for later rather than failing hard.
 
 ---
 
@@ -191,6 +195,7 @@ Two sub-questions:
 |---|---|---|
 | R-1 | Does LFF write directly to Ledger DB? | No — LFF calls Ledger HTTP API read-only. Ledger writes come from its own Stripe/Expensify webhooks. |
 | OQ-1 | Can K8s reach Lambda API Gateway endpoints? | Yes — both reachable over public HTTPS. CF only calls RS for expense approval/rejection; project sync stays on old Lambda. |
+| OQ-3 | Mentorship → CF sync mechanism | SNS/SQS dropped. CF pulls from Snowflake via CronJob (24h delay acceptable). Mentorship handles CF 404s gracefully. |
 | OQ-4 | GitHub repo created? | Yes — `linuxfoundation/lfx-crowdfunding` created (private, going public soon). |
 | OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |

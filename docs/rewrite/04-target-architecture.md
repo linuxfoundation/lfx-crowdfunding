@@ -21,10 +21,10 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
   └────────┬──────────┘
            │ $fetch HTTPS
   ┌────────▼──────────┐        ┌─────────────────────────────┐
-  │  Go HTTP API      │◄──────►│  SNS/SQS (Mentorship events)│
+  │  Go HTTP API      │◄──────►│  Mentorship (direct HTTP)   │
   │  (Chi router)     │        └─────────────────────────────┘
   │  K8s Deployment   │        ┌─────────────────────────────┐
-  │  + Ingress        │◄──────►│  Mentorship (direct HTTP)   │
+  │  + Ingress        │◄──────►│  Snowflake (mentorship sync)│
   └──┬────────────────┘        └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
      │                    ────►│  Stripe (payments)          │
@@ -47,11 +47,11 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
   │  reimbursement.*  │  reimbursement.* (RS-owned, RW for RS; not accessible by CF)
   └───────────────────┘
 
-  Background workers (same Go binary, K8s):
-  ┌──────────────────────────────────────────┐
-  │  sqs-consumer  K8s Deployment            │
-  │  github-stats  K8s CronJob (6-hourly)    │
-  └──────────────────────────────────────────┘
+  Background workers (K8s CronJobs):
+  ┌──────────────────────────────────────────────────────┐
+  │  mentorship-sync  K8s CronJob (daily or few x/day)   │
+  │  github-stats     K8s CronJob (6-hourly)             │
+  └──────────────────────────────────────────────────────┘
 
 ━━━━━━━━━━━━━━━━━━━ UNCHANGED (Lambda / external) ━━━━━━━━━━━━━━━━━━
 
@@ -62,8 +62,8 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
          ▼
   Expensify ──► NetSuite ──► Finance Team
 
-  Mentorship (jobspring Lambda) ──► SNS/SQS ──► CF APIs
-                                └──────────────► CF APIs (direct HTTP)
+  Mentorship (jobspring Lambda) ──► CF APIs (direct HTTP, CF returns 404 gracefully if not synced yet)
+  Mentorship data ──► Snowflake ──► CF mentorship-sync CronJob ──► CF Postgres
 
   Old LFF Lambda + DynamoDB + OpenSearch  (parallel, until cutover)
 
@@ -248,8 +248,8 @@ When `EMAIL_DRY_RUN=true`:
 
 | Job | K8s resource | Schedule | What it does |
 |---|---|---|---|
+| `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `campaign_type = mentorship` rows in CF Postgres |
 | `github-stats` | CronJob | Every 6 hours | Fetches GitHub repo stats, updates project records |
-| `sqs-consumer` | Deployment | Continuous | Polls SQS queue for Mentorship events |
 
 Jobs removed from old system (not ported):
 - `amountraised` / `amountraised-entities` → replaced by Ledger HTTP API calls (same as today); will be replaced by `project_funding_summary` view once Ledger DB is co-located (post-initial-release)
@@ -257,6 +257,7 @@ Jobs removed from old system (not ported):
 - `ledger-viewmodel` → no longer needed
 - `expensify-sync` → stays on old Lambda, not ported for initial release
 - `cii-badge` → deferred
+- `sqs-consumer` → dropped; replaced by `mentorship-sync` Snowflake CronJob
 
 ### Stripe Webhook
 
@@ -264,27 +265,17 @@ Jobs removed from old system (not ported):
 
 `invoice.payment_succeeded` is handled by the Ledger Service's own Stripe webhook. This does not change.
 
-### SNS/SQS — bidirectional via shared topic
+### Mentorship sync — Snowflake CronJob
 
-Both CF and Mentorship publish to the same SNS topic `lfx-topic-{stage}-project` and each subscribes via their own queue. **The communication is bidirectional.**
+CF syncs Mentorship program data from Snowflake via the `mentorship-sync` K8s CronJob. SNS/SQS is not used.
 
-**CF consumes** from `fundspring-lfx-queues-{stage}-project` (or new queue — see OQ-3):
+The CronJob:
+- Queries Snowflake for all mentorship programs
+- For each program not yet in CF Postgres: inserts a row with `campaign_type = 'mentorship'`, populates `mentorship_program_id`, and reads budgets from the `mentee` field (skills, terms, mentors, custom_term)
+- For each program already in CF Postgres: updates Mentorship-owned fields only (name, status, budgets.mentee); never overwrites CF-owned fields (logo_url, color, description, website, beneficiaries)
+- Normalizes `'hide'` → `'hidden'` on status
 
-| Event | Action |
-|---|---|
-| `projectCreated` | Insert `projects` row with `campaign_type = 'mentorship'`; set `mentorship_program_id` from event `projectId`; read budgets from `data.projectDetails.mentee` (**nested — not `data.mentee`**) |
-| `projectUpdated` | Match by `mentorship_program_id`; update Mentorship-owned fields only; never overwrite `logo_url`, `color`, `description`, `website`, `beneficiaries` |
-| `projectUpdateStatus` | Match by `mentorship_program_id`; update `status` only; normalize `'hide'` → `'hidden'` |
-| `selfSync` | Ignore |
-
-**CF publishes** to the same SNS topic (Mentorship consumes from `jobspring-lfx-queues-{stage}-project`):
-
-| Event | When |
-|---|---|
-| `projectUpdated` | When a CF project record is updated |
-| `projectUpdateStatus` | When project status changes (approval flow) |
-
-The new CF Go service must implement both the consumer (polling) and the publisher (SNS publish on update/status change). IAM permissions required for both — see OQ-3.
+A 24h sync window is acceptable: new mentorship programs are not immediately donation-ready, and beneficiaries don't access funds until mid-term.
 
 ### Mentorship → CF direct HTTP calls (must exist before DNS cutover)
 
@@ -534,6 +525,7 @@ Rollback: revert Ingress. Old Lambda stack stays live until explicitly decommiss
 - Serverless Framework — replaced by K8s manifests + ArgoCD
 - CloudWatch Events — replaced by K8s CronJobs
 - DynamoDB Streams — stream-triggered logic moved to jobs or eliminated
+- SNS/SQS — replaced by Snowflake CronJob for Mentorship sync
 - `entities` table name — replaced by `funds`
 - `initiative` and `travel_fund` fund types — merged into `general_fund`
 - `community` entity type — 3 dead rows discarded
