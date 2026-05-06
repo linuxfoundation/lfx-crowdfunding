@@ -10,15 +10,12 @@ Format: **Question** | Owner | Status | Resolution
 
 ### OQ-1: Can K8s cluster reach Lambda API Gateway endpoints?
 
-**Question:** The new Crowdfunding Go service runs on Kubernetes and needs to call:
-- Ledger Service API (Lambda-backed API Gateway)
-- Reimbursement Service API (Lambda-backed API Gateway)
-
-Can the K8s cluster reach these endpoints over HTTPS?
-
+**Status:** Resolved
 **Owner:** Architect
-**Status:** Partially resolved
-**Notes:** Ledger API is confirmed public HTTPS (OQ-2 resolved by Lewis). Reimbursement Service API URL and visibility still unconfirmed — verify before implementing RS HTTP calls.
+
+**Resolution:** Both Ledger and Reimbursement Service APIs are reachable over public HTTPS from K8s.
+
+The new CF service only calls the Reimbursement Service for one purpose: expense approval/rejection (`POST /expense/{action}/{reportID}`) triggered via JWT email links. Project/entity sync to Expensify (create/update policy) stays on the old Lambda for the initial release and is not ported.
 
 ---
 
@@ -193,7 +190,7 @@ Two sub-questions:
 | # | Question | Resolution |
 |---|---|---|
 | R-1 | Does LFF write directly to Ledger DB? | No — LFF calls Ledger HTTP API read-only. Ledger writes come from its own Stripe/Expensify webhooks. |
-| OQ-1 | Can K8s reach Lambda API Gateway endpoints? | Yes — both Ledger and Reimbursement Service APIs are reachable over public HTTPS from K8s. |
+| OQ-1 | Can K8s reach Lambda API Gateway endpoints? | Yes — both reachable over public HTTPS. CF only calls RS for expense approval/rejection; project sync stays on old Lambda. |
 | OQ-4 | GitHub repo created? | Yes — `linuxfoundation/lfx-crowdfunding` created (private, going public soon). |
 | OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |
