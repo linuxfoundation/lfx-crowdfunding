@@ -124,10 +124,10 @@ frontend/
 4. All API calls use `credentials: 'include'` — token sent automatically
 5. `composables/useAuth.ts` provides reactive auth state client-side
 
-Auth0 tenants (unchanged from current system):
-- Dev: `linuxfoundation-dev.auth0.com` / `lzClGRsDYnfgMmio8J9vYXwTkFm51na2`
-- Staging: `linuxfoundation-staging.auth0.com` / `DnO2mm4jbiKO3HaFIo2TOwY3fkcKV5O3`
-- Prod: `sso.linuxfoundation.org` / `1sgQmtwRIKwMrCFoFSu6iAm8RtJGvPmf`
+Auth0 tenants — **new Auth0 application required** (see OQ-8). Tenants are unchanged but a new app must be created in each via `linuxfoundation/auth0-terraform`. Client IDs below are for the old system and must not be reused:
+- Dev: `linuxfoundation-dev.auth0.com`
+- Staging: `linuxfoundation-staging.auth0.com`
+- Prod: `sso.linuxfoundation.org`
 
 ### Pages / Routes (Nuxt file-based)
 

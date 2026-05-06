@@ -148,18 +148,22 @@ OpenSearch decommissions on CF release + 2 weeks. Not "when we get to it."
 
 ---
 
-### OQ-8: Auth0 allowed origins/callbacks for new service URLs
+### OQ-8: New Auth0 application for rewritten Crowdfunding
 
-**Question:** The new Crowdfunding Nuxt frontend and Go API will have new internal/staging URLs before cutover to the production domain. Auth0 must be configured with:
-- New allowed callback URLs (for PKCE flow)
-- New allowed CORS origins
-- New allowed logout URLs
+**Question:** The rewritten CF requires a new Auth0 application (not a reconfiguration of the existing one). The new app needs to be created in each tenant (dev, staging, prod) with:
+- New client ID and secret
+- Allowed callback URLs for the new K8s Ingress URLs (dev/staging) and production domain
+- Allowed CORS origins
+- Allowed logout URLs
+- PKCE flow enabled (Nuxt frontend uses OAuth2 PKCE with HTTP-only cookies, server-side token exchange)
 
-Who manages Auth0 tenant configuration? Does it require a Terraform change or manual update?
+The old Auth0 app (`lzClGRsDYnfgMmio8J9vYXwTkFm51na2` dev, `1sgQmtwRIKwMrCFoFSu6iAm8RtJGvPmf` prod) stays active until the old Lambda stack is decommissioned.
+
+Auth0 configuration is managed via Terraform in `linuxfoundation/auth0-terraform`. A PR is needed there to add the new application.
 
 **Owner:** DevOps / Auth0 owner
 **Status:** Open
-**Notes:** Must be resolved before the frontend can authenticate in dev/staging environments.
+**Notes:** Must be resolved before the frontend can authenticate in dev/staging environments. New client IDs must be set in `NUXT_PUBLIC_AUTH0_CLIENT_ID` env vars for each environment.
 
 ---
 
