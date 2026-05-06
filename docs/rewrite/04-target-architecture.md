@@ -21,11 +21,11 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
   └────────┬──────────┘
            │ $fetch HTTPS
   ┌────────▼──────────┐        ┌─────────────────────────────┐
-  │  Go HTTP API      │◄──────►│  Mentorship (direct HTTP)   │
-  │  (Chi router)     │        └─────────────────────────────┘
-  │  K8s Deployment   │        ┌─────────────────────────────┐
-  │  + Ingress        │◄──────►│  Snowflake (mentorship sync)│
-  └──┬────────────────┘        └─────────────────────────────┘
+  │  Go HTTP API      │        │  Snowflake (mentorship sync)│
+  │  (Chi router)     │◄──────►│  programs + beneficiaries   │
+  │  K8s Deployment   │        └─────────────────────────────┘
+  │  + Ingress        │
+  └──┬────────────────┘
      │                         ┌─────────────────────────────┐
      │                    ────►│  Stripe (payments)          │
      │                         └─────────────────────────────┘
@@ -62,8 +62,8 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
          ▼
   Expensify ──► NetSuite ──► Finance Team
 
-  Mentorship (jobspring Lambda) ──► CF APIs (direct HTTP, CF returns 404 gracefully if not synced yet)
   Mentorship data ──► Snowflake ──► CF mentorship-sync CronJob ──► CF Postgres
+  (no direct HTTP calls between Mentorship and CF)
 
   Old LFF Lambda + DynamoDB + OpenSearch  (parallel, until cutover)
 
@@ -270,26 +270,30 @@ Jobs removed from old system (not ported):
 CF syncs Mentorship program data from Snowflake via the `mentorship-sync` K8s CronJob. SNS/SQS is not used.
 
 The CronJob:
-- Queries Snowflake for all mentorship programs
-- For each program not yet in CF Postgres: inserts a row with `campaign_type = 'mentorship'`, populates `mentorship_program_id`, and reads budgets from the `mentee` field (skills, terms, mentors, custom_term)
-- For each program already in CF Postgres: updates Mentorship-owned fields only (name, status, budgets.mentee); never overwrites CF-owned fields (logo_url, color, description, website, beneficiaries)
+- Queries Snowflake for all mentorship programs and their approved beneficiaries
+- For each program not yet in CF Postgres: inserts a row with `campaign_type = 'mentorship'`, populates `mentorship_program_id`, budgets from the `mentee` field (skills, terms, mentors, custom_term), and approved beneficiary list
+- For each program already in CF Postgres: updates Mentorship-owned fields only (name, status, budgets.mentee, beneficiaries); never overwrites CF-owned fields (logo_url, color, description, website)
 - Normalizes `'hide'` → `'hidden'` on status
 
-A 24h sync window is acceptable: new mentorship programs are not immediately donation-ready, and beneficiaries don't access funds until mid-term.
+A 24h sync window is acceptable: new mentorship programs are not immediately donation-ready, and beneficiaries don't draw funds until mid-term (months after approval).
 
-### Mentorship → CF direct HTTP calls (must exist before DNS cutover)
+CF keeps beneficiary data for two reasons: financial governance (CF is the custodian of donated funds and must know who is approved to draw them) and Reimbursement Service reads (RS reads beneficiaries directly from CF Postgres to manage Expensify policies).
 
-Mentorship calls these endpoints directly against the CF API URL. Missing any one breaks Mentorship silently at cutover.
+### Mentorship → CF: no direct HTTP calls
 
-| Method | Path | Purpose | Auth |
-|---|---|---|---|
-| `GET` | `/v1/projects/{id}/{slug}/sync` | Slug sync after rename | public |
-| `GET` | `/v1/projects/{id}/funding` | Funding status | public |
-| `POST` | `/v1/projects/title-check` | Title uniqueness validation | public |
-| `POST` | `/v1/entities/{id}/addbeneficiary` | Add beneficiary | `x-beneficiary-auth` header |
-| `POST` | `/v1/entities/{id}/removebeneficiary` | Remove beneficiary | `x-beneficiary-auth` header |
+All Mentorship data (programs, statuses, beneficiaries) flows to CF via the `mentorship-sync` Snowflake CronJob. There are no direct HTTP calls from Mentorship to CF in the new system.
 
-Note: beneficiary endpoints use the fund ID (old entity ID). Mentorship currently calls `/v1/entities/{id}/...` — the new service **must keep this path** for compatibility. The `/v1/funds/{id}/...` path is the new canonical path and both routes will be supported. Mentorship can migrate to the new path in a follow-up update.
+**Eliminated calls (previously in old system):**
+
+| Method | Path | Why eliminated |
+|---|---|---|
+| `GET` | `/v1/projects/{id}/{slug}/sync` | CF slug is CF-internal; Mentorship doesn't need it |
+| `GET` | `/v1/projects/{id}/funding` | Ledger data is in Snowflake — Mentorship queries directly |
+| `POST` | `/v1/projects/title-check` | No user-initiated creation from Mentorship into CF |
+| `POST` | `/v1/entities/{id}/addbeneficiary` | Beneficiaries synced via Snowflake CronJob |
+| `POST` | `/v1/entities/{id}/removebeneficiary` | Beneficiaries synced via Snowflake CronJob |
+
+These endpoints do not need to exist in the new CF service. The old Lambda kept them alive for the old integration — they are not ported.
 
 ---
 

@@ -44,8 +44,7 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 - Mentorship continues calling CF API endpoints directly (slug sync, funding status, title-check, add/remove beneficiary). CF returns 404 gracefully when a program is not yet synced — Mentorship must handle this gracefully.
 - CF no longer publishes SNS events back to Mentorship (those were only needed to keep the old bidirectional sync working).
 
-**Mentorship changes required:**
-- Handle 404 responses gracefully on: `GET /v1/projects/{id}/funding`, `POST /v1/entities/{id}/addbeneficiary`, `POST /v1/entities/{id}/removebeneficiary`. Treat 404 as "not synced yet" — retry or queue for later rather than failing hard.
+**No Mentorship code changes required for the integration.** All data flows through Snowflake. Mentorship does not call CF APIs directly in the new system. The five direct HTTP calls from the old system (slug sync, funding status, title-check, addbeneficiary, removebeneficiary) are all eliminated — either because the data is available in Snowflake or because the use case no longer applies.
 
 ---
 
@@ -195,7 +194,7 @@ Two sub-questions:
 |---|---|---|
 | R-1 | Does LFF write directly to Ledger DB? | No — LFF calls Ledger HTTP API read-only. Ledger writes come from its own Stripe/Expensify webhooks. |
 | OQ-1 | Can K8s reach Lambda API Gateway endpoints? | Yes — both reachable over public HTTPS. CF only calls RS for expense approval/rejection; project sync stays on old Lambda. |
-| OQ-3 | Mentorship → CF sync mechanism | SNS/SQS dropped. CF pulls from Snowflake via CronJob (24h delay acceptable). Mentorship handles CF 404s gracefully. |
+| OQ-3 | Mentorship → CF sync mechanism | SNS/SQS dropped. All data (programs + beneficiaries) via Snowflake CronJob. Zero direct HTTP calls between Mentorship and CF. |
 | OQ-4 | GitHub repo created? | Yes — `linuxfoundation/lfx-crowdfunding` created (private, going public soon). |
 | OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |

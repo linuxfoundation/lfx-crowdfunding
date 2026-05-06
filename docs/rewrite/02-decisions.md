@@ -288,13 +288,22 @@ CF syncs Mentorship program data from Snowflake via a periodic K8s CronJob (`men
 Rationale: Mentorship and CF run in separate AWS accounts, making cross-account SNS/SQS subscription complex and requiring Mentorship team involvement. Mentorship is also moving to Kubernetes in the coming months, making Lambda-era SQS infrastructure a poor long-term investment. Both services already mirror data into Snowflake. A 24h sync delay is acceptable — new mentorship programs are not immediately donation-ready, and beneficiaries don't access funds until mid-term (months after program creation).
 
 The `mentorship-sync` CronJob:
-- Queries Snowflake for mentorship programs
+- Queries Snowflake for mentorship programs and their approved beneficiaries
 - Creates `campaign_type = mentorship` project rows in CF Postgres for new programs
 - Updates Mentorship-owned fields (name, status, budgets.mentee) for existing rows
-- Never overwrites CF-owned fields (logo_url, color, description, website, beneficiaries)
+- Syncs approved beneficiary list onto each project record
 - Normalizes `'hide'` → `'hidden'` on status
 
-Mentorship continues calling CF API endpoints directly (slug sync, funding status, title-check, add/remove beneficiary). CF returns 404 when a program is not yet synced — Mentorship must handle 404 gracefully on those endpoints. CF no longer publishes SNS events back to Mentorship.
+**There are no direct HTTP calls between Mentorship and CF.** All data flows through Snowflake. This is a clean separation — Mentorship owns program and beneficiary data; CF reads it from Snowflake on a scheduled basis.
+
+**Why CF keeps beneficiary data despite the Snowflake sync:**
+CF is the financial custodian of donated funds. It collects money from donors and must maintain visibility into who is approved to draw those funds via Expensify. Beneficiary records in CF serve two purposes:
+1. **Financial governance** — CF can reconcile money collected against approved disbursement recipients
+2. **Reimbursement Service** — RS reads beneficiaries directly from CF Postgres (per OQ-7 resolution) to manage Expensify policies
+
+CF does not use beneficiary data for payment routing (Stripe charges are donor→program, not donor→beneficiary). The 24h sync delay is acceptable — mentees do not access funds until mid-term, months after approval.
+
+A 24h delay on beneficiary sync is acceptable by the same logic as program sync — mentees don't draw funds until mid-term, months after being approved.
 
 ### Expensify sync — keep on old Lambda for initial release
 
