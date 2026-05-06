@@ -165,15 +165,10 @@ Who manages Auth0 tenant configuration? Does it require a Terraform change or ma
 
 ### OQ-9: Mentorship → CF direct HTTP calls — will they work post-cutover?
 
-**Question:** Mentorship (Lambda) calls the CF API directly via `FUNDING_API_URL` for five endpoints (slug sync, funding status, title-check, addbeneficiary, removebeneficiary). Today that URL points at the Lambda API Gateway. After cutover it must point at the new K8s Ingress.
-
-Two sub-questions:
-1. **DNS cutover is sufficient:** The plan is to keep the same public URLs (`https://api.crowdfunding.lfx.linuxfoundation.org/`) and flip DNS from Lambda API Gateway to K8s Ingress. If Mentorship uses this URL, no config change is needed on their side. **Confirm Mentorship's `FUNDING_API_URL` uses the production domain, not a Lambda-specific URL.**
-2. **Network path:** Can a Mentorship Lambda reach the K8s Ingress over public HTTPS? If the K8s Ingress is public (same as the frontend URL), this should work. If it is internal-only, Mentorship Lambda cannot reach it and a separate public endpoint or VPC peering is needed.
-
+**Status:** Resolved — moot
 **Owner:** Architect / Mentorship team
-**Status:** Open
-**Notes:** If both above are confirmed (Mentorship uses prod domain URL + K8s Ingress is publicly reachable), this question resolves itself at DNS cutover with no extra work. If not, it must be resolved before cutover or Mentorship's addbeneficiary, removebeneficiary, and funding status calls will break silently.
+
+**Resolution:** All five direct HTTP calls from Mentorship to CF have been eliminated. Mentorship no longer calls CF APIs directly — all data flows through Snowflake. The `FUNDING_API_URL` config in Mentorship can be removed when Mentorship moves to Kubernetes. No DNS or network path coordination needed.
 
 ---
 
@@ -197,6 +192,7 @@ Two sub-questions:
 | OQ-3 | Mentorship → CF sync mechanism | SNS/SQS dropped. All data (programs + beneficiaries) via Snowflake CronJob. Zero direct HTTP calls between Mentorship and CF. |
 | OQ-4 | GitHub repo created? | Yes — `linuxfoundation/lfx-crowdfunding` created (private, going public soon). |
 | OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
+| OQ-9 | Mentorship → CF direct HTTP calls post-cutover | Moot — all five calls eliminated. Mentorship no longer calls CF. Data flows through Snowflake. |
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |
 | R-2 | Does Reimbursement Service query Crowdfunding OpenSearch? | Yes — reads `projects`, `entities`, `lff-users`, `spring-projects`, `spring-users`, `beneficiary-actions`, `travel-funds-tickets`. Writes `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`. Migration plan in OQ-7. |
 | R-3 | Who owns the Mentorship SNS topic? | Mentorship (jobspring) owns it. CF is a subscriber. Topic: `lfx-topic-{stage}-project`. CF queue: `fundspring-lfx-queues-{stage}-project`. |
