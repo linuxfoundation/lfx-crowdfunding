@@ -205,7 +205,7 @@ Public (accessible client-side):
 ```
 cmd/
 ├── api/         # HTTP server entrypoint
-├── worker/      # SQS consumer entrypoint
+├── mentorship-sync/  # Snowflake CronJob entrypoint
 └── migrate/     # DB migration runner (golang-migrate)
 
 internal/
@@ -230,7 +230,7 @@ services/
 ├── github/           # GitHub API wrapper
 ├── ledger/           # Ledger API HTTP client (read-only)
 ├── reimbursement/    # Reimbursement API HTTP client
-└── sqs/              # SQS consumer for Mentorship events
+└── snowflake/        # Snowflake client (mentorship-sync CronJob)
 
 db/
 └── migrations/       # golang-migrate SQL files (001_initial.up.sql, etc.)
@@ -506,11 +506,11 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 |---|---|---|
 | Nuxt 3 frontend | `Deployment` + `Service` + `Ingress` | TLS termination at Ingress |
 | Go HTTP API | `Deployment` + `Service` + `Ingress` | Chi router, long-running |
-| Crowdfunding Postgres | `StatefulSet` or managed Postgres | Confirm with DevOps — RDS vs in-cluster |
-| SQS consumer | `Deployment` | Long-running poll loop, not a CronJob |
+| Crowdfunding Postgres | AWS RDS (managed) | LFX standard — DevOps creates the RDS instance; connection string injected via ESO |
+| mentorship-sync job | `CronJob` | Daily or a few times/day; Snowflake → CF Postgres |
 | GitHub stats job | `CronJob` | Every 6 hours |
-| Secrets | K8s `Secret` or external secrets operator | Confirm LFX standard with DevOps |
-| ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | See OQ-5 |
+| Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
+| ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
 
 URLs (unchanged — DNS cutover at go-live):
 - Dev: `https://funding.dev.platform.linuxfoundation.org/`

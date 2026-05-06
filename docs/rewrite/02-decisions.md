@@ -24,7 +24,6 @@ Update this file when decisions change — note what changed and why.
 - GitHub stats on projects
 - Auth0 authentication
 - Email approval flows (project, entity, expense via JWT links)
-- SQS consumer for Mentorship events
 - Admin email dry-run mode (`EMAIL_DRY_RUN=true`)
 - ArgoCD deployment to Kubernetes
 
@@ -388,11 +387,23 @@ Rationale: `lfx-v1-sync-helper` is purpose-built for project/committee metadata 
 Everything inside the "NEW" purple box in the architecture diagram is deployed to Kubernetes:
 - Crowdfunding Nuxt frontend — K8s Deployment + Service + Ingress
 - Crowdfunding Go API — K8s Deployment + Service + Ingress
-- Crowdfunding Postgres DB — K8s (or managed Postgres — confirm with DevOps)
-- SQS consumer — K8s Deployment (long-running, not a CronJob)
+- Crowdfunding Postgres DB — AWS RDS (managed); DevOps creates the instance
+- `mentorship-sync` — K8s CronJob (daily or a few times/day)
 - GitHub stats job — K8s CronJob
 
 Nothing in the initial release runs on Lambda or Serverless Framework.
+
+### Database — AWS RDS (managed Postgres)
+
+Crowdfunding Postgres runs on AWS RDS, not an in-cluster StatefulSet. This is the LFX platform standard — all existing LFX services with a database use managed RDS (confirmed by reviewing `lfx-v2-argocd` values for changelog, lens, member-onboarding, and platform services).
+
+DevOps creates the RDS instance. The connection string is stored in AWS Secrets Manager and injected into the service via External Secrets Operator (same pattern as other LFX services).
+
+### Secrets — External Secrets Operator + AWS Secrets Manager
+
+All secrets (DB credentials, Auth0 client secret, Stripe keys, GitHub OAuth secret, JWT secret, Mandrill key, Snowflake credentials) are stored in AWS Secrets Manager and synced into K8s Secrets by the External Secrets Operator. The service account uses IRSA (IAM Roles for Service Accounts) to authenticate to AWS Secrets Manager. This is the LFX platform standard — confirmed by reviewing ESO config in `lfx-v2-argocd` for existing services.
+
+AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-secrets/crowdfunding/{env}/...` — confirm exact path with DevOps.
 
 ### Old Lambda stack runs in parallel during initial release
 
