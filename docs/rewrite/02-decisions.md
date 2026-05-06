@@ -397,7 +397,7 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 
 Crowdfunding Postgres runs on the shared LFX v2 RDS instance (`aws_db_instance.lfv_v2`, Postgres 17.4), defined in `linuxfoundation/lfx-v2-opentofu`. This is the LFX platform standard — every service (changelog, lens, member-onboarding, sanctions-screening, litellm, openfga) uses the same shared RDS instance with per-service databases and roles. No per-service RDS instance, no in-cluster StatefulSet.
 
-To add CF: DevOps adds a `crowdfunding` database and a `crowdfunding` role with limited permissions to `lfx-v2-opentofu/postgres.tf`. Credentials are auto-rotated every 30 days via AWS Secrets Manager and injected by ESO.
+To add CF: a `crowdfunding` entry is added to the `databases` map in `lfx-v2-opentofu/postgres.tf` — PR already open at `linuxfoundation/lfx-v2-opentofu#181`. Credentials are auto-rotated every 30 days via AWS Secrets Manager and injected by ESO.
 
 From the app's perspective the connection string is `rds-postgres.lfx:5432` — an in-cluster ExternalName service with a socat proxy defined in `lfx-v2-opentofu/k8s-database-proxy.tf`.
 
