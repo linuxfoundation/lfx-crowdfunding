@@ -143,28 +143,21 @@ pages/
 ├── email/
 │   ├── approve.vue                    # Approve expense (JWT link)
 │   ├── reject.vue                     # Reject expense (JWT link)
-│   ├── approve-project.vue            # Approve project (JWT link)
-│   └── approve-fund.vue               # Approve fund (JWT link)
-├── projects/
-│   ├── create/
-│   │   ├── connect.vue                # GitHub OAuth step
-│   │   ├── select-repo.vue            # Repository picker
-│   │   └── details.vue                # Project details form
-│   └── [slug]/
-│       ├── index.vue                  # Project dashboard
-│       ├── financial.vue              # Financial tab
-│       ├── edit.vue                   # Edit project (CF-owned fields only for mentorship)
-│       └── payments.vue               # Donation/subscription form
-└── funds/
+│   └── approve-campaign.vue           # Approve campaign (JWT link)
+└── campaigns/
     ├── create/
+    │   ├── project/
+    │   │   ├── connect.vue            # GitHub OAuth step
+    │   │   ├── select-repo.vue        # Repository picker
+    │   │   └── details.vue            # Project details form
     │   ├── general.vue                # General fund form
     │   ├── event.vue                  # Event form
     │   └── ostif.vue                  # OSTIF form
     └── [slug]/
-        ├── index.vue                  # Fund dashboard
+        ├── index.vue                  # Campaign dashboard
         ├── financial.vue              # Financial tab
-        ├── edit.vue                   # Edit fund
-        └── payments.vue               # Fund donation form
+        ├── edit.vue                   # Edit campaign (CF-owned fields only for mentorship)
+        └── payments.vue               # Donation/subscription form
 ```
 
 ### Environment Config
@@ -209,14 +202,10 @@ cmd/
 └── migrate/     # DB migration runner (golang-migrate)
 
 internal/
-├── projects/
-│   ├── domain/       # Domain structs (Project, CampaignType)
+├── campaigns/
+│   ├── domain/       # Domain structs (Campaign, CampaignType)
 │   ├── usecases/     # Business logic (enforces field ownership by campaign_type)
 │   └── repository/   # sqlc-generated SQL queries
-├── funds/            # Formerly "entities"
-│   ├── domain/       # Domain structs (Fund, FundType)
-│   ├── usecases/
-│   └── repository/
 ├── subscriptions/
 ├── donations/
 ├── organizations/
@@ -304,114 +293,123 @@ These endpoints do not need to exist in the new CF service. The old Lambda kept 
 All monetary values `bigint` (cents). All primary keys `uuid`. All timestamps `timestamptz`.
 
 **Terminology:**
-- `projects` — CF projects (`campaign_type = 'project'`) and Mentorship campaigns (`campaign_type = 'mentorship'`)
-- `funds` — fundraising funds, formerly "entities" (`fund_type`: `general_fund` | `event` | `ostif`)
-- `campaign_type` values: `project` | `mentorship`
-- `fund_type` values: `general_fund` | `event` | `ostif`
+- `campaigns` — unified table for all fundable things; formerly split into `projects` and `funds`
+- `campaign_type` values: `project` | `mentorship` | `general_fund` | `event` | `ostif`
 - `status` values: `draft` | `submitted` | `approved` | `published` | `hidden` | `declined`
 
 ```sql
--- Projects (CF projects + Mentorship campaigns)
-CREATE TABLE crowdfunding.projects (
+-- Campaigns (unified: CF projects, Mentorship campaigns, General Funds, Events, Security Audits)
+CREATE TABLE crowdfunding.campaigns (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  campaign_type         text NOT NULL,                -- 'project' | 'mentorship'
+  campaign_type         text NOT NULL,                -- 'project' | 'mentorship' | 'general_fund' | 'event' | 'ostif'
   owner_id              text NOT NULL,                -- Auth0 subject
   name                  text NOT NULL,
   slug                  text NOT NULL UNIQUE,
-  status                text NOT NULL,
+  status                text NOT NULL,                -- 'draft' | 'submitted' | 'approved' | 'published' | 'hidden' | 'declined'
   website               text,
   description           text,
   color                 text,
   logo_url              text,
+  industry              text,                         -- comma-separated topic tags
+  legacy_id             text UNIQUE,                  -- original DynamoDB projectId/entityId; for Ledger API calls
+  stripe_plan_id        text,                         -- preserved from migration; mentorship type only
+  stripe_product_id     text,                         -- preserved from migration; mentorship type only
+
+  -- project/mentorship only
   code_of_conduct       text,
-  cii_project_id        text,                         -- project type only
-  stacks_id             text,                         -- project type only; deferred feature
-  mentorship_program_id text UNIQUE,                  -- mentorship type only; Mentorship program ID from Snowflake
-  legacy_id             text UNIQUE,                  -- original DynamoDB projectId; for Ledger API calls
-  stripe_plan_id        text,                         -- preserved from migration
-  stripe_product_id     text,                         -- preserved from migration
-  budgets               jsonb NOT NULL DEFAULT '{}',  -- shape differs by campaign_type (see decisions doc)
+  cii_project_id        text,
+  stacks_id             text,                         -- deferred feature
+  mentorship_program_id text UNIQUE,                  -- mentorship only; Mentorship program ID from Snowflake; upsert key for mentorship-sync
+
+  -- general_fund/event/ostif only
+  city                  text,
+  country               text,
+  is_online             boolean NOT NULL DEFAULT false,
+  accept_funding        boolean NOT NULL DEFAULT true,
+  application_url       text,                         -- scholarship application URL
+  event_start_date      date,                         -- event type only
+  event_end_date        date,                         -- event type only
+  eventbrite_url        text,                         -- event type only
+
+  -- JSONB columns
+  budgets               jsonb NOT NULL DEFAULT '{}',  -- keyed by category name; see decisions doc for shape
   github_stats          jsonb NOT NULL DEFAULT '{}',  -- project type only; cached from GitHub API
   beneficiaries         jsonb NOT NULL DEFAULT '[]',
   contributors          jsonb NOT NULL DEFAULT '[]',  -- project type only
   custom_websites       jsonb NOT NULL DEFAULT '[]',  -- project type only
+  sponsors              jsonb NOT NULL DEFAULT '[]',  -- project type only
+
+  -- workflow timestamps
+  submitted_at          timestamptz,                  -- set when status → submitted
+  approved_at           timestamptz,                  -- set when status → approved; migration sets to created_at for existing approved/published rows
+  published_at          timestamptz,                  -- set when status → published
+
   created_at            timestamptz NOT NULL DEFAULT now(),
-  updated_at            timestamptz NOT NULL DEFAULT now()
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT budgets_is_object CHECK (jsonb_typeof(budgets) = 'object')
 );
 
--- Funds (formerly "entities": general_fund, event, ostif)
-CREATE TABLE crowdfunding.funds (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  fund_type     text NOT NULL,                        -- 'general_fund' | 'event' | 'ostif'
-  owner_id      text NOT NULL,                        -- Auth0 subject
-  name          text NOT NULL,
-  slug          text NOT NULL UNIQUE,
-  status        text NOT NULL,
-  legacy_id     text UNIQUE,                          -- original DynamoDB entityId; for Ledger API calls
-  description   text,
-  website       text,
-  logo_url      text,
-  budgets       jsonb NOT NULL DEFAULT '{}',
-  beneficiaries jsonb NOT NULL DEFAULT '[]',
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  updated_at    timestamptz NOT NULL DEFAULT now()
-);
+CREATE INDEX ON crowdfunding.campaigns (owner_id);
+CREATE INDEX ON crowdfunding.campaigns (campaign_type);
+CREATE INDEX ON crowdfunding.campaigns (status);
 
 -- Organizations
 CREATE TABLE crowdfunding.organizations (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id    text NOT NULL,
+  id          uuid PRIMARY KEY,                     -- migrated directly from DynamoDB organizationId (already UUID)
+  owner_id    text NOT NULL,                        -- Auth0 subject
   name        text NOT NULL,
-  status      text NOT NULL,
-  description text,
-  website     text,
-  logo_url    text,
-  approved_at timestamptz,
-  rejected_at timestamptz,
+  status      text NOT NULL,                        -- 'approved' on all migrated rows
+  avatar_url  text,                                 -- DynamoDB field: avatarUrl
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
--- Subscriptions (recurring — projects and funds in one table)
+-- Subscriptions (recurring)
 CREATE TABLE crowdfunding.subscriptions (
-  id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  stripe_subscription_id text NOT NULL UNIQUE,       -- dedup key; preserved from migration
-  project_id             uuid REFERENCES crowdfunding.projects(id),
-  fund_id                uuid REFERENCES crowdfunding.funds(id),
-  user_id                text NOT NULL,              -- Auth0 subject
-  org_id                 uuid REFERENCES crowdfunding.organizations(id),
-  frequency              text NOT NULL,              -- 'monthly' | 'annual'
-  amount_in_cents        bigint NOT NULL,
-  category               text,
-  payment_method         text NOT NULL,              -- 'card' | 'invoice'
-  status                 text NOT NULL,              -- 'active' | 'cancelled' | 'past_due'
-  created_at             timestamptz NOT NULL DEFAULT now(),
-  updated_at             timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT project_or_fund CHECK (
-    (project_id IS NOT NULL) != (fund_id IS NOT NULL)
-  )
+  id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  stripe_subscription_id      text NOT NULL UNIQUE,  -- dedup key; preserved from migration
+  stripe_subscription_item_id text,                  -- needed for Stripe price/quantity updates
+  campaign_id                 uuid NOT NULL REFERENCES crowdfunding.campaigns(id),
+  user_id                     text NOT NULL,          -- Auth0 subject
+  org_id                      uuid REFERENCES crowdfunding.organizations(id),
+  frequency                   text NOT NULL,          -- 'monthly' | 'annual'
+  amount_in_cents             bigint NOT NULL,
+  category                    text CHECK (category IN (
+                                'development','marketing','meetups','travel',
+                                'bug_bounty','documentation','mentee','other','diversity'
+                              )),
+  payment_method              text,                   -- nullable; absent from DynamoDB subscription records
+  status                      text NOT NULL,          -- 'active' | 'inactive'
+  created_at                  timestamptz NOT NULL DEFAULT now(),
+  updated_at                  timestamptz NOT NULL DEFAULT now()
 );
 
--- Donations (one-time — projects and funds in one table)
+CREATE INDEX ON crowdfunding.subscriptions (campaign_id);
+CREATE INDEX ON crowdfunding.subscriptions (user_id);
+CREATE INDEX ON crowdfunding.subscriptions (org_id);
+
+-- Donations (one-time)
 CREATE TABLE crowdfunding.donations (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  stripe_charge_id text NOT NULL UNIQUE,             -- dedup key; preserved from migration
-  project_id       uuid REFERENCES crowdfunding.projects(id),
-  fund_id          uuid REFERENCES crowdfunding.funds(id),
-  user_id          text NOT NULL,
+  stripe_charge_id text UNIQUE,                      -- dedup key; NULL for invoice payments (Postgres UNIQUE allows multiple NULLs)
+  campaign_id      uuid NOT NULL REFERENCES crowdfunding.campaigns(id),
+  user_id          text NOT NULL,                    -- Auth0 subject
   org_id           uuid REFERENCES crowdfunding.organizations(id),
-  name             text,                             -- display name at time of donation
-  avatar_url       text,
+  name             text,                             -- donor display name at time of donation; may differ from Auth0 profile for org/invoice donations
   amount_in_cents  bigint NOT NULL,
-  category         text,
-  payment_method   text NOT NULL,                   -- 'card' | 'invoice'
+  category         text CHECK (category IN (
+                     'development','marketing','meetups','travel',
+                     'bug_bounty','documentation','mentee','other','diversity'
+                   )),
+  payment_method   text,                             -- nullable; null for invoice payments
   po_number        text,
-  status           text NOT NULL,
-  created_at       timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT project_or_fund CHECK (
-    (project_id IS NOT NULL) != (fund_id IS NOT NULL)
-  )
+  status           text,                             -- null on all migrated rows; populated by new system
+  created_at       timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE INDEX ON crowdfunding.donations (campaign_id);
+CREATE INDEX ON crowdfunding.donations (user_id);
 
 -- Users (minimal — auth in Auth0, payment account in Stripe)
 CREATE TABLE crowdfunding.users (
@@ -423,7 +421,7 @@ CREATE TABLE crowdfunding.users (
 );
 ```
 
-### View: `project_funding_summary`
+### View: `campaign_funding_summary`
 
 **Not active in initial release.** Ledger DB is a separate Postgres instance.
 Until Ledger DB is co-located, `amount_raised` and balance data are fetched via
@@ -439,45 +437,32 @@ Note: `ledger.ledger.project_id` stores the old DynamoDB string ID — match via
 -- CREDIT rows increase the balance; DEBIT rows decrease it.
 -- If Ledger stores DEBIT amounts as negative, replace balance_cents with SUM(l.amount).
 -- Verify against Ledger DB before activating this view.
-CREATE VIEW crowdfunding.project_funding_summary AS
+CREATE VIEW crowdfunding.campaign_funding_summary AS
 SELECT
-  p.id                                                                  AS project_id,
+  c.id                                                                  AS campaign_id,
   SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE 0 END)        AS amount_raised_cents,
   SUM(CASE WHEN l.txn_type = 'DEBIT'  THEN l.amount ELSE 0 END)        AS amount_disbursed_cents,
   SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE -l.amount END) AS balance_cents
-FROM crowdfunding.projects p
-JOIN ledger.ledger l ON l.project_id = p.legacy_id
-GROUP BY p.id;
+FROM crowdfunding.campaigns c
+JOIN ledger.ledger l ON l.project_id = c.legacy_id
+GROUP BY c.id;
 ```
 
 ### Indexes
 
 ```sql
--- Projects
-CREATE INDEX ON crowdfunding.projects (campaign_type);
-CREATE INDEX ON crowdfunding.projects (owner_id);
-CREATE INDEX ON crowdfunding.projects (status);
-CREATE INDEX ON crowdfunding.projects (mentorship_program_id); -- Snowflake sync matching
-CREATE INDEX ON crowdfunding.projects (legacy_id);             -- Ledger API lookups
+-- Campaigns
+CREATE INDEX ON crowdfunding.campaigns (campaign_type);
+CREATE INDEX ON crowdfunding.campaigns (owner_id);
+CREATE INDEX ON crowdfunding.campaigns (status);
+CREATE INDEX ON crowdfunding.campaigns (mentorship_program_id); -- Snowflake sync upsert key
+CREATE INDEX ON crowdfunding.campaigns (legacy_id);             -- Ledger API lookups
 
--- Funds
-CREATE INDEX ON crowdfunding.funds (fund_type);
-CREATE INDEX ON crowdfunding.funds (owner_id);
-CREATE INDEX ON crowdfunding.funds (status);
-CREATE INDEX ON crowdfunding.funds (legacy_id);
-
--- Subscriptions / Donations
-CREATE INDEX ON crowdfunding.subscriptions (user_id);
-CREATE INDEX ON crowdfunding.subscriptions (project_id);
-CREATE INDEX ON crowdfunding.subscriptions (fund_id);
-CREATE INDEX ON crowdfunding.donations (user_id);
-CREATE INDEX ON crowdfunding.donations (project_id);
-CREATE INDEX ON crowdfunding.donations (fund_id);
+-- Subscriptions / Donations (campaign_id, user_id, org_id already indexed in DDL above)
+-- No additional indexes needed beyond those defined in the CREATE TABLE block.
 
 -- Full-text search (replaces OpenSearch for discovery)
-CREATE INDEX ON crowdfunding.projects
-  USING gin(to_tsvector('english', name || ' ' || coalesce(description, '')));
-CREATE INDEX ON crowdfunding.funds
+CREATE INDEX ON crowdfunding.campaigns
   USING gin(to_tsvector('english', name || ' ' || coalesce(description, '')));
 ```
 

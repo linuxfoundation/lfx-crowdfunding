@@ -57,12 +57,12 @@ Target database is PostgreSQL. DynamoDB is decommissioned after successful migra
 
 One Postgres instance, two schemas:
 
-- `crowdfunding` — owned by CF Go API (projects, funds, orgs, subscriptions, donations, users)
+- `crowdfunding` — owned by CF Go API (campaigns, orgs, subscriptions, donations, users)
 - `reimbursement` — owned by Reimbursement Service (expense_log, beneficiary_actions, travel_fund_tickets)
 
 Reimbursement Service connects directly to this Postgres instance:
 - Read-write on `reimbursement.*` (its own tables)
-- Read-only on `crowdfunding.projects` and `crowdfunding.funds` (replaces OpenSearch `projects`/`entities`/`lff-users` index reads)
+- Read-only on `crowdfunding.campaigns` (replaces OpenSearch `projects`/`entities`/`lff-users` index reads)
 
 Enforced at the DB level: RS gets a read-only Postgres role for `crowdfunding` schema. Not by convention.
 
@@ -76,19 +76,75 @@ Future (post-initial-release): Ledger DB merges into Crowdfunding DB as a `ledge
 
 Rationale: co-locating Ledger DB now requires migrating Ledger's Postgres data, reconfiguring Ledger Service (a change we want to avoid), and coordinating two cutover windows simultaneously. The tech debt of keeping one HTTP call is minimal and localized. Deliver CF first, migrate Ledger after.
 
-### Budget categories → JSONB
+### `projects` + `funds` → unified `campaigns` table
 
-Budget categories (Development, Marketing, Meetups, Travel, BugBounty, Documentation, Mentee, Other, Diversity) stored as `JSONB` on the `projects` and `funds` tables.
+The old `projects` and `funds` tables are merged into a single `crowdfunding.campaigns` table with a `campaign_type` discriminator column.
 
-Rationale: categories are always read/written as a unit alongside the project record. No queries filter by individual category values (e.g., "find all projects with Development budget > $X"). A normalized `project_budgets` table would add joins with zero query benefit. JSONB is simpler and faster for this access pattern.
+`campaign_type` values: `project` | `mentorship` | `general_fund` | `event` | `ostif`
 
-Example structure:
+Rationale: all campaign types share the same donor/subscription FK, the same Ledger balance lookup via `legacy_id`, the same status workflow, and the same discovery/search surface. Two tables required a polymorphic FK (`project_id OR fund_id`) with a CHECK constraint and no hard FK enforcement. One table gives a clean `campaign_id` FK on subscriptions and donations, simpler queries, and a unified search/discovery endpoint.
+
+Type-specific sparse columns (e.g. `event_start_date`, `mentorship_program_id`, `city`) are nullable and only populated for the relevant `campaign_type`. This is the standard discriminated-union pattern for a sparse table — preferable to two tables with a UNION when the shared columns dominate, which they do here.
+
+### Budget categories → JSONB keyed object
+
+Budget categories (development, marketing, meetups, travel, bug_bounty, documentation, mentee, other, diversity) stored as a JSONB keyed object on `crowdfunding.campaigns`.
+
+Rationale: new budget categories may be added in future — columns would require a migration per new category. JSONB allows adding new categories without schema changes. Categories are always read/written as a unit. No queries filter by individual category amounts at the DB level.
+
+**Shape:** keyed by category name (not an array). The keyed object enforces category uniqueness by structure and allows O(1) lookup by key. A `CHECK (jsonb_typeof(budgets) = 'object')` constraint enforces the shape at the DB level.
+
 ```json
 {
   "development": {"amount_in_cents": 100000, "description": "...", "goals": "...", "is_active": true},
-  "marketing":   {"amount_in_cents": 50000,  "description": "...", "goals": "...", "is_active": true}
+  "marketing":   {"amount_in_cents": 50000,  "description": "...", "goals": "...", "is_active": false}
 }
 ```
+
+Mentorship campaigns extend the `mentee` key with additional fields:
+```json
+{
+  "mentee": {
+    "amount_in_cents": 600000,
+    "is_active": true,
+    "skills": ["Go", "Kubernetes"],
+    "terms": ["Spring 2026"],
+    "mentors": [{"name": "...", "email": "...", "introduction": "...", "avatar_url": "..."}],
+    "custom_term": {"start_month": "March", "end_month": "August", "term_name": "Spring", "year": 2026}
+  }
+}
+```
+
+**Migration:** fund `goals` arrays from DynamoDB are converted to keyed objects during migration. Project budgets are already keyed objects — no conversion needed.
+
+### Campaign workflow timestamps
+
+Three nullable timestamps track the approval workflow: `submitted_at`, `approved_at`, `published_at`. Set by the API on status transitions. Never updated once set.
+
+Migration sets `approved_at = created_at` for all existing rows with `status IN ('approved', 'published')` as a safe approximation — no historical data exists for the actual approval moment.
+
+Rationale: enables audit trails, SLA measurement ("how long does approval take"), and donor-facing "approved on" display. Zero schema cost.
+
+### `category` validation on subscriptions and donations
+
+The `category` column on `subscriptions` and `donations` references a budget category on the target campaign. Validated at two levels:
+
+1. **DB level:** CHECK constraint against the fixed known set (`development`, `marketing`, `meetups`, `travel`, `bug_bounty`, `documentation`, `mentee`, `other`, `diversity`). Catches garbage values at insert time.
+2. **API level:** validates that the category exists and `is_active = true` on the target campaign's `budgets` JSONB before accepting a payment.
+
+If a new budget category is added, the CHECK constraint is updated via migration at the same time.
+
+### `stripe_charge_id` nullable on donations
+
+`stripe_charge_id` is nullable. Invoice-based donations have no Stripe charge ID at creation time. The UNIQUE constraint still applies — Postgres UNIQUE allows multiple NULLs, so invoice donations without a charge ID do not conflict.
+
+### Donor name snapshot on donations
+
+`donations.name` stores the donor display name at time of donation. This differs from the Auth0 profile for org/invoice donations where the payer is an individual but the displayed donor is the company name. `avatar_url` is not stored — always fetched from Auth0 at render time to avoid stale cache.
+
+### Campaign workflow timestamps — `submitted_at`, `approved_at`, `published_at`
+
+Covered above under "Campaign workflow timestamps."
 
 ### `amount_in_cents` → `bigint`
 
@@ -134,30 +190,33 @@ Rationale: simpler than Atlas, battle-tested, widely used in LFX ecosystem. Atla
 
 ## Domain Model
 
-### `projects` table — two campaign types, not one
+### `campaigns` table — unified campaign type
 
-The `projects` table carries a `campaign_type` column with two values:
+All fundable things live in one `crowdfunding.campaigns` table with `campaign_type` as the discriminator.
 
+`campaign_type` values:
 - `project` — created by users via the CF web UI; GitHub-linked; has budget categories; owned and editable by CF
-- `mentorship` — created and managed by the Mentorship service (jobspring); synced into CF via Snowflake CronJob; 91% of published rows; partially read-only in CF UI
+- `mentorship` — created and managed by the Mentorship service; synced into CF via Snowflake CronJob; 91% of published rows; partially read-only in CF UI
+- `general_fund` — fundraising fund (formerly `initiative`, `general-fund`, `travel_fund`)
+- `event` — calendar/meetup-based fund
+- `ostif` — security audit fund
 
-Rationale: 1,249 of 1,374 published rows are mentorship campaigns. Treating `mentorship` as a flag or a budget category (as the old system did via `jobspringProjectID` presence) misrepresents the actual data distribution and makes queries unnecessarily awkward.
-
-`campaign_type` is set on creation and never changed. Mentorship campaigns are created by the `mentorship-sync` CronJob (upserted from Snowflake); project campaigns are created via the API.
+`campaign_type` is set on creation and never changed.
 
 ### `mentorship_program_id` — canonical Mentorship link
 
-Rename `jobspringProjectID` → `mentorship_program_id` in the Postgres schema. This is the string ID used by the Mentorship service to identify a program. It is:
+Rename `jobspringProjectID` → `mentorship_program_id`. This is the string ID used by the Mentorship service to identify a program. It is:
 - Populated during migration from the `jobspringProjectID` DynamoDB attribute on existing rows
 - Used by the `mentorship-sync` CronJob to match Snowflake program records to existing Postgres rows (upsert key)
 - Used as the `legacy_id` equivalent for Ledger API calls (same value — see migration notes)
 - Never exposed in the public API response
+- NULL on all non-mentorship campaigns
 
 ### Mentorship campaigns — partially editable in CF UI
 
 Current system: fully editable — no restrictions on any field. This is a latent bug; Mentorship sync overwrites CF edits silently.
 
-New system: field ownership split enforced at the API layer (`PATCH /v1/me/projects/:id` rejects Mentorship-owned fields when `campaign_type = mentorship`).
+New system: field ownership split enforced at the API layer (`PATCH /v1/me/campaigns/:id` rejects Mentorship-owned fields when `campaign_type = mentorship`).
 
 | Field group | Owner | Editable via CF UI |
 |---|---|---|
@@ -169,22 +228,17 @@ New system: field ownership split enforced at the API layer (`PATCH /v1/me/proje
 | Budget goal amounts (per category) | CF | Yes |
 | `beneficiaries` | Shared | Yes — CF manages who can draw funds |
 
-### `funds` table — replaces `entities`
-
-The `entities` table is renamed `funds`. "Entity" is a DDD implementation term that leaked into the schema. These are fundraising funds — the correct domain term.
-
-`fund_type` enum:
-- `general_fund` — formerly `initiative`, `general-fund`, and `travel_fund` (all merged; see below)
-- `event` — calendar/meetup-based
-- `ostif` — security audit funds
-
 ### Type consolidations (applied during migration)
 
-| Old type | New type | Rationale |
+| Old DynamoDB type | New `campaign_type` | Rationale |
 |---|---|---|
+| `project` (with `jobspringProjectID`) | `mentorship` | Explicit type; was previously inferred from field presence |
+| `project` (without `jobspringProjectID`) | `project` | Unchanged |
 | `initiative` | `general_fund` | UI already labeled these "General Fund"; backend type was an alias |
 | `general-fund` | `general_fund` | Normalize hyphen, same concept |
-| `travel_fund` / `other` | `general_fund` | UI option commented out; 26 rows function identically to general funds; no special mechanics |
+| `travel_fund` / `other` | `general_fund` | UI option commented out; 26 rows function identically to general funds |
+| `event` | `event` | Unchanged |
+| `ostif` | `ostif` | Unchanged |
 | `community` | ~~discarded~~ | 3 rows from 2019, all declined/submitted, no UI, no active users |
 
 Confirm with PM before migration: the 8 published `travel_fund` rows will display as "General Fund" after reclassification.

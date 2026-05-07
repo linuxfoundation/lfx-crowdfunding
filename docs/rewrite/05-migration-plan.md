@@ -82,7 +82,7 @@ Always run `--validate` first against prod data. Fix any issues. Then run `--exe
 The migration tool MUST detect the type and branch accordingly.
 
 **Detecting campaign_type:**
-- If `jobspringProjectID` field is present and non-empty → `campaign_type = 'mentorship'`
+- If `jobspringProjectId` field is present and non-empty → `campaign_type = 'mentorship'`
 - Otherwise → `campaign_type = 'project'`
 
 **Status normalization (apply to all rows):**
@@ -97,19 +97,21 @@ The migration tool MUST detect the type and branch accordingly.
 | `name` | `name` | Direct |
 | `slug` | `slug` | Direct |
 | `status` | `status` | Normalize: `'hide'` → `'hidden'` |
-| `website` | `website` | From `details.Website` (nested) |
-| `description` | `description` | From `details.Description` (nested) |
-| `color` | `color` | Direct |
-| `logoUrl` | `logo_url` | Direct |
-| `details.CodeOfConduct` | `code_of_conduct` | Direct |
-| `details.CIIProjectID` | `cii_project_id` | Direct |
-| `details.StacksIdentifier` | `stacks_id` | Direct |
-| `jobspringProjectID` | `mentorship_program_id` | Direct (renamed column) |
+| `projectDetails.website` | `website` | Nested under `projectDetails` |
+| `projectDetails.description` | `description` | Nested under `projectDetails` |
+| `projectDetails.color` | `color` | Nested under `projectDetails` |
+| `logoUrl` | `logo_url` | Direct (top-level) |
+| `projectDetails.codeOfConduct.link` | `code_of_conduct` | Nested; extract `.link` string |
+| `projectDetails.ciiProjectID` | `cii_project_id` | Nested under `projectDetails` |
+| `projectDetails.stacksIdentifier` | `stacks_id` | Nested under `projectDetails` |
+| `projectDetails.industry` | `industry` | Nested under `projectDetails`; comma-separated topic tags string |
+| `jobspringProjectId` | `mentorship_program_id` | Direct (renamed column); field name uses lowercase `d` |
 | `planId` | `stripe_plan_id` | **Critical — must be preserved exactly** |
 | `productId` | `stripe_product_id` | **Critical — must be preserved exactly** |
-| `details.Contributors` | `contributors` | Marshal to JSONB array |
-| `details.Beneficiaries` | `beneficiaries` | Marshal to JSONB array |
-| `details.CustomWebsites` | `custom_websites` | Marshal to JSONB array |
+| `projectDetails.contributors` | `contributors` | Marshal to JSONB array |
+| `projectDetails.beneficiaries` | `beneficiaries` | Marshal to JSONB array |
+| `projectDetails.customWebsites` | `custom_websites` | Marshal to JSONB array |
+| `projectDetails.sponsors` | `sponsors` | Marshal to JSONB array |
 | `cachedDetails.GithubStats` | `github_stats` | Marshal to JSONB |
 | `amountRaised` | — | **Drop** — replaced by Ledger view |
 | `createdOn` | `created_at` | Parse timestamp |
@@ -142,7 +144,6 @@ data.projectDetails.mentee.customTerm           → budgets.mentee.custom_term
 **⚠️ Do NOT read `data.mentee` (top-level).** The actual data is always nested under `data.projectDetails.mentee`. Reading from the wrong path silently drops all mentorship metadata — this was the bug that caused the first SQL pass to miss 1,249 of 1,476 rows.
 
 **Drop from migration:**
-- `industry` — not in target schema
 - `amountRaised` — computed from Ledger
 - `cachedDetails.ProjectStats` — recomputed
 - `details.Diversity` — deferred feature
@@ -171,14 +172,24 @@ Status normalization applies here too: `'hide'` → `'hidden'`.
 | `ownerId` | `owner_id` | Direct |
 | `name` | `name` | Direct |
 | `slug` | `slug` | Direct |
-| `type` | `fund_type` | Reclassify per table above |
+| `entityType` | `fund_type` | Reclassify per table above (DynamoDB field is `entityType`, not `type`) |
 | `status` | `status` | Normalize `'hide'` → `'hidden'` |
 | `description` | `description` | Direct |
-| `website` | `website` | Direct |
+| `websiteURL` | `website` | Direct (DynamoDB field is `websiteURL`) |
 | `logoUrl` | `logo_url` | Direct |
+| `city` | `city` | Direct; nullable |
+| `country` | `country` | Direct; nullable |
+| `isOnline` | `is_online` | Direct boolean; default false if missing |
+| `acceptFunding` | `accept_funding` | Direct boolean; default true if missing |
+| `applicationURL` | `application_url` | Direct; present on travel fund / scholarship types |
+| `eventStartDate` | `event_start_date` | Parse date; event type only |
+| `eventEndDate` | `event_end_date` | Parse date; event type only |
+| `eventbriteId` | `eventbrite_url` | Direct (despite the name, contains a URL); event type only |
+| `industry` | `industry` | Direct; comma-separated topic tags string |
 | `details.Beneficiaries` | `beneficiaries` | Marshal to JSONB array |
-| `details.Goals` | `budgets` | Marshal to JSONB |
+| `goals` | `budgets` | Marshal to JSONB array (DynamoDB field is `goals`, a top-level array — not `details.Goals`) |
 | `amountRaised` | — | **Drop** — computed from Ledger |
+| `approvedOn` | `approved_at` | Parse timestamp; nullable. Note: not observed in any production sample — may be absent on all entity rows. Migrate if present, leave null otherwise. |
 | `createdOn` | `created_at` | Parse timestamp |
 | `updatedOn` | `updated_at` | Parse timestamp |
 
@@ -187,14 +198,15 @@ Status normalization applies here too: `'hide'` → `'hidden'`.
 | DynamoDB attribute | Postgres column | Notes |
 |---|---|---|
 | `stripeSubscriptionId` | `stripe_subscription_id` | **Critical unique constraint** |
+| `stripeSubscriptionItemId` | `stripe_subscription_item_id` | Nullable; needed for Stripe price/quantity updates |
 | `projectId` | `project_id` | Resolve to Postgres UUID via `_id_migration_map` |
 | `userId` | `user_id` | Direct (Auth0 subject) |
 | `frequency` | `frequency` | Direct (`monthly` \| `annual`) |
-| `amountInCents` | `amount_in_cents` | Direct |
-| `paymentMethod` | `payment_method` | Direct (`card` \| `invoice`); default `card` if missing |
-| `status` | `status` | Direct |
-| `createdOn` | `created_at` | Parse timestamp |
-| `updatedOn` | `updated_at` | Parse timestamp |
+| `currentAmountInCents` | `amount_in_cents` | Same field name as donations (`currentAmountInCents`, not `amountInCents`) |
+| *(absent)* | `payment_method` | Field does not exist in DynamoDB subscriptions — column is nullable; set `NULL` on migration |
+| `status` | `status` | Actual prod values: `"active"` \| `"inactive"` (not `"cancelled"` or `"past_due"`) |
+| `createdOn` | `created_at` | ISO 8601 `T`-separator format (e.g. `2020-01-22T12:51:06Z`) |
+| *(absent)* | `updated_at` | Field does not exist in DynamoDB subscriptions — default to `created_at` value on migration |
 
 For `lff-prod-entity-subscriptions`: same mapping with `fund_id` instead of `project_id`.
 Resolve old `entityId` to Postgres `funds.id` via `_id_migration_map`.
@@ -203,20 +215,34 @@ Resolve old `entityId` to Postgres `funds.id` via `_id_migration_map`.
 
 | DynamoDB attribute | Postgres column | Notes |
 |---|---|---|
-| `stripeChargeId` | `stripe_charge_id` | **Critical unique constraint** |
+| `stripeChargeId` | `stripe_charge_id` | **Critical unique constraint**; null for invoice payments — Postgres UNIQUE allows multiple NULLs |
 | `projectId` | `project_id` | Resolve to Postgres UUID via `_id_migration_map` |
 | `userId` | `user_id` | Direct |
 | `orgId` | `org_id` | Resolve to Postgres UUID via `_id_migration_map` if set |
-| `name` | `name` | Direct |
-| `avatarUrl` | `avatar_url` | Direct |
-| `amountInCents` | `amount_in_cents` | Direct |
+| `cachedDetails.backerDetails.name` | `name` | Nested path |
+| `cachedDetails.backerDetails.avatarURL` | `avatar_url` | Nested path; DynamoDB key is `avatarURL` (uppercase URL) |
+| `currentAmountInCents` | `amount_in_cents` | DynamoDB field is `currentAmountInCents`, not `amountInCents` |
 | `category` | `category` | Direct |
-| `paymentMethod` | `payment_method` | Direct |
-| `poNumber` | `po_number` | Direct |
-| `status` | `status` | Direct |
+| `paymentmethod` | `payment_method` | DynamoDB field is `paymentmethod` (all lowercase) |
+| `ponumber` | `po_number` | DynamoDB field is `ponumber` (all lowercase) |
+| `status` | `status` | Direct; null on all production rows — migrate as null |
 | `createdOn` | `created_at` | Parse timestamp |
 
 For `lff-prod-entity-donations`: same mapping with `fund_id` instead of `project_id`.
+
+### Field Mapping: Organizations
+
+Organization IDs in DynamoDB are already UUIDs — migrate `organizationId` directly to `id` (no new UUID needed, no `_id_migration_map` entry required).
+
+All production rows have `status = "approved"`. No `description`, `website`, `approved_at`, or `rejected_at` fields exist in DynamoDB — those columns were dropped from the schema.
+
+| DynamoDB attribute | Postgres column | Notes |
+|---|---|---|
+| `organizationId` | `id` | Already UUID — preserve as-is |
+| `ownerId` | `owner_id` | Direct (Auth0 subject) |
+| `name` | `name` | Direct |
+| `status` | `status` | Direct; all prod rows are `"approved"` |
+| `avatarUrl` | `avatar_url` | DynamoDB field is `avatarUrl` (capital U, lowercase rl) |
 
 ### ID Mapping Problem
 
@@ -225,7 +251,7 @@ DynamoDB uses string IDs (e.g., `projectId: "abc-123"`). Postgres uses UUIDs. Th
 ```sql
 CREATE TABLE crowdfunding._id_migration_map (
   old_id      text NOT NULL,
-  entity_type text NOT NULL,  -- project|fund|organization
+  entity_type text NOT NULL,  -- 'project' | 'fund' (organizations are already UUIDs — not needed)
   new_id      uuid NOT NULL,
   PRIMARY KEY (old_id, entity_type)
 );
@@ -337,7 +363,7 @@ Migration record counts to verify after execute:
 
 - **`community` fund type:** ~~Open question~~ **Resolved** — 3 rows with type `community` are all declined/submitted 2019 with no active users. Migration discards them (see Funds type mapping table above). No action needed.
 - **`other (travel)` entity type:** 26 rows. Likely `general-fund` subtype used for travel funds. Confirm exact DynamoDB type value before migration.
-- **Mentorship projects (1,476 rows):** These have a `mentorship_program_id` linking them to the Mentorship service. New mentorship programs arrive via the `mentorship-sync` Snowflake CronJob post-migration (SNS/SQS is not used). Migration must populate `mentorship_program_id` from the DynamoDB `jobspringProjectID` field (see Projects field mapping above — `jobspringProjectID` → `mentorship_program_id`).
+- **Mentorship projects (1,476 rows):** These have a `mentorship_program_id` linking them to the Mentorship service. New mentorship programs arrive via the `mentorship-sync` Snowflake CronJob post-migration (SNS/SQS is not used). Migration must populate `mentorship_program_id` from the DynamoDB `jobspringProjectId` field (see Projects field mapping above — `jobspringProjectId` → `mentorship_program_id`).
 - **Old project IDs and Ledger:** Ledger records use `project_id` as plain text (the old DynamoDB string ID). The Ledger Service is not migrated in the initial release. The `_id_migration_map` table (or a `legacy_id` column on projects) bridges old string IDs to new Postgres UUIDs when calling `GET /balance/{projectID}` on the Ledger API. Recommended: add a `legacy_id text` column to `projects` and `funds` tables, populated during migration, never exposed in the public API.
 - **Stripe subscription continuity:** Active Stripe subscriptions must not be cancelled or recreated. The migration preserves `stripe_subscription_id` — Stripe continues charging the same plan. No Stripe API calls needed during migration.
 - **Non-published records:** 639 rows are not published (submitted, declined, hidden). All must be migrated — active subscriptions or pending approvals may reference them. Never filter to published-only during migration.
