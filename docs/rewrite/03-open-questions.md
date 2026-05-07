@@ -121,6 +121,23 @@ OpenSearch decommissions on CF release + 2 weeks. Not "when we get to it."
 
 ---
 
+### OQ-12: Can Reimbursement Service Lambda reach CF Postgres on K8s?
+
+**Status:** Open
+**Owner:** DevOps / Architect (raised by Eric Searcy, May 2026)
+
+**Question:** The Reimbursement Service runs as a Lambda function inside its own AWS VPC. The CF Postgres instance is on the shared LFX v2 RDS, reachable from K8s via an in-cluster ExternalName service (`rds-postgres.lfx:5432`). These are in separate AWS accounts / VPCs.
+
+For OQ-7 Phase 1 and Phase 2 to work (RS reading `crowdfunding` schema and owning `reimbursement` schema via direct Postgres connection), RS Lambda must be able to reach the RDS endpoint.
+
+**Options to investigate:**
+- Is the shared LFX v2 RDS instance publicly accessible (like the Ledger API)? If yes, RS Lambda can connect directly with credentials.
+- If RDS is private, VPC peering or an AWS PrivateLink between the RS VPC and the LFX v2 VPC is required — needs DevOps coordination.
+
+**Blocking:** OQ-7 Phase 1 (CF release day). Must be resolved before RS can switch off OpenSearch for CF data reads.
+
+---
+
 ### OQ-8: New Auth0 application for rewritten Crowdfunding
 
 **Status:** Open — pending implementation start
@@ -193,3 +210,4 @@ The old Auth0 app stays active until the old Lambda stack is decommissioned. New
 | R-4 | Is there a separate admin UI for project approvals? | No. Approvals are done via JWT links in emails sent to admin (Sriji). |
 | R-5 | Should Expensify sync be rewritten for initial release? | No. Keep old Lambda running it. Not end-user visible. Reimbursement Service unchanged. |
 | R-6 | Is lfx-v1-sync-helper useful for CF DB migration? | No. It syncs project/committee metadata via NATS KV. Does not touch CF donations, subscriptions, or Ledger data. |
+| OQ-12 | Can RS Lambda reach CF Postgres on K8s? | Open — must confirm RDS is publicly accessible or arrange VPC peering. Blocks OQ-7 Phase 1. |
