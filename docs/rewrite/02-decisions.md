@@ -74,7 +74,7 @@ Ledger Service keeps its own separate Postgres DB (Ledger DB). It is not migrate
 
 Future (post-initial-release): Ledger DB merges into Crowdfunding DB as a `ledger` schema on the same Postgres instance. At that point `project_funding_summary` view becomes active and the Ledger HTTP API call for balance data is replaced by a direct SQL query. This is a separate tracked project, not part of the initial release.
 
-Rationale: co-locating Ledger DB now requires migrating Ledger's Postgres data, reconfiguring Ledger Service (a change we want to avoid), solving the Reimbursement Service → K8s Postgres network path (OQ-2, unresolved), and coordinating two cutover windows simultaneously. The tech debt of keeping one HTTP call is minimal and localized. Deliver CF first, migrate Ledger after.
+Rationale: co-locating Ledger DB now requires migrating Ledger's Postgres data, reconfiguring Ledger Service (a change we want to avoid), and coordinating two cutover windows simultaneously. The tech debt of keeping one HTTP call is minimal and localized. Deliver CF first, migrate Ledger after.
 
 ### Budget categories → JSONB
 
@@ -139,32 +139,30 @@ Rationale: simpler than Atlas, battle-tested, widely used in LFX ecosystem. Atla
 The `projects` table carries a `campaign_type` column with two values:
 
 - `project` — created by users via the CF web UI; GitHub-linked; has budget categories; owned and editable by CF
-- `mentorship` — created and managed by the Mentorship service (jobspring) via SQS events; 91% of published rows; partially read-only in CF UI
+- `mentorship` — created and managed by the Mentorship service (jobspring); synced into CF via Snowflake CronJob; 91% of published rows; partially read-only in CF UI
 
 Rationale: 1,249 of 1,374 published rows are mentorship campaigns. Treating `mentorship` as a flag or a budget category (as the old system did via `jobspringProjectID` presence) misrepresents the actual data distribution and makes queries unnecessarily awkward.
 
-`campaign_type` is set on creation and never changed. Mentorship campaigns are created by the SQS consumer; project campaigns are created via the API.
+`campaign_type` is set on creation and never changed. Mentorship campaigns are created by the `mentorship-sync` CronJob (upserted from Snowflake); project campaigns are created via the API.
 
 ### `mentorship_program_id` — canonical Mentorship link
 
-Rename `jobspringProjectID` → `mentorship_program_id` in the Postgres schema. This is the DynamoDB string ID used by the Mentorship service to identify a project. It is:
-- Set by the SQS consumer on `projectCreated` events
-- Used to match subsequent `projectUpdated` / `projectUpdateStatus` events to the correct Postgres row
+Rename `jobspringProjectID` → `mentorship_program_id` in the Postgres schema. This is the string ID used by the Mentorship service to identify a program. It is:
+- Populated during migration from the `jobspringProjectID` DynamoDB attribute on existing rows
+- Used by the `mentorship-sync` CronJob to match Snowflake program records to existing Postgres rows (upsert key)
 - Used as the `legacy_id` equivalent for Ledger API calls (same value — see migration notes)
 - Never exposed in the public API response
 
-The Go SQS handler code continues to reference `jobspringProjectId` from the event payload (the Mentorship event schema does not change). Only the Postgres column name changes.
-
 ### Mentorship campaigns — partially editable in CF UI
 
-Current system: fully editable — no restrictions on any field. This is a latent bug; Mentorship SQS events overwrite CF edits silently.
+Current system: fully editable — no restrictions on any field. This is a latent bug; Mentorship sync overwrites CF edits silently.
 
 New system: field ownership split enforced at the API layer (`PATCH /v1/me/projects/:id` rejects Mentorship-owned fields when `campaign_type = mentorship`).
 
 | Field group | Owner | Editable via CF UI |
 |---|---|---|
-| `name` | Mentorship | No — set by SQS, read-only in CF |
-| `status` | Mentorship | No — controlled by `projectUpdateStatus` SQS event |
+| `name` | Mentorship | No — set by `mentorship-sync`, read-only in CF |
+| `status` | Mentorship | No — controlled by `mentorship-sync` (mirrors Mentorship status) |
 | `mentorship_program_id` | Mentorship | No — internal, never exposed |
 | Skills, terms, mentors, custom term (inside `budgets.mentee`) | Mentorship | No |
 | `logo_url`, `color`, `description`, `website` | CF | Yes |
@@ -265,6 +263,18 @@ DNS cutover at go-live. Old and new systems must not run concurrently on the sam
 
 ## Backend
 
+### Architecture — separate Go API, not embedded in Nuxt
+
+The backend is a **standalone Go HTTP service**, separate from the Nuxt frontend. Business logic (DB queries, Stripe, webhooks, email) lives in Go. Nuxt's server layer handles auth (PKCE, HTTP-only cookies, session) and calls the Go API to build pages.
+
+This was explicitly considered and rejected: embedding all backend logic inside Nuxt's server routes (as suggested during architecture review) would couple the UI framework to payment processing, Stripe webhook handling, and LFX One integration in ways that are fragile and hard to reverse. Specifically:
+
+- **Stripe webhooks** must be handled by a stable, dedicated HTTPS endpoint — not a Nuxt server route subject to SSR configuration changes
+- **LFX One integration** — LFX One's Express BFF may call the CF API directly (see LFX One integration decision); this requires an independently addressable service, not a Nuxt route
+- **Go is the team's existing language** — the codebase, migration tooling, and team knowledge are all Go; a TypeScript rewrite of business logic adds risk with no benefit
+
+Nuxt is the BFF for the CF frontend. The Go API is the resource service for all transactional logic.
+
 ### Go — same language, same patterns
 
 New backend is Go, same DDD pattern as LFF (domain/, usecases/, interfaces/repository/). Not a framework change.
@@ -272,6 +282,18 @@ New backend is Go, same DDD pattern as LFF (domain/, usecases/, interfaces/repos
 ### Kubernetes, not Lambda
 
 Deployed as a long-running Go HTTP service on Kubernetes, not Lambda. Background jobs become Kubernetes CronJobs (not CloudWatch Events).
+
+### Background jobs — monorepo, separate binaries, separate container images
+
+All code lives in one repository (monorepo). Each entrypoint under `cmd/` builds to a **separate container image** via its own Dockerfile:
+
+| Entrypoint | Dockerfile | K8s resource |
+|---|---|---|
+| `cmd/api/` | `Dockerfile.api` | `Deployment` |
+| `cmd/mentorship-sync/` | `Dockerfile.mentorship-sync` | `CronJob` |
+| `cmd/migrate/` | `Dockerfile.migrate` | one-off `Job` |
+
+Rationale: a single container serving both HTTP requests and being invoked as a CronJob (via a flag) conflates two distinct runtime responsibilities. Separate images are minimal, contain only the code they need, and make it obvious what each K8s resource is doing. Shared business logic in `internal/` is compiled into each binary — no duplication of source, no runtime coupling.
 
 ### Chi router (same as today)
 
@@ -317,9 +339,24 @@ When Mentorship moves to Kubernetes and gets a new UI design, a "View funding on
 
 CF Postgres must be synced to Snowflake via Fivetran so that CF data (projects, funds, donations, subscriptions, organizations) is available for analytics and reporting alongside data from other LFX products.
 
-This is required before or shortly after CF goes live in production. It is independent of the Mentorship→K8s migration.
+This is **required for the initial release** — not "shortly after". A Jira ticket to configure the Fivetran connector must be created once the CF DB is up and populated with production data. Owner: DevOps. This is a release-blocking task.
 
 Note: the `mentorship-sync` CronJob reads **Mentorship data from Snowflake into CF** — this is the Mentorship team's Fivetran responsibility, not CF's. CF→Snowflake is a separate Fivetran connector that CF DevOps owns.
+
+### LFX One integration — Snowflake (Option B) for initial release
+
+The PM has requested CF data surfaces in LFX One ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). For the initial release, LFX One will read CF data from **Snowflake** (the same pattern used for My Trainings, My Meetings, etc.).
+
+Rationale: the Snowflake pattern already exists in LFX One and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX One. This approach has no runtime dependency between LFX One and the CF API service.
+
+Option A (LFX One calls CF Go API directly) was raised during the architecture review (Eric Searcy, May 2026) as a valid alternative once design is confirmed. This decision will be revisited once the LFX One UI design for CF widgets is delivered — see OQ-11.
+
+**No LFX One integration code will be written until:**
+1. The PM provides a UI design for the LFX One CF widgets (what data, what layout)
+2. The full list of CF data needed in LFX One is confirmed (see OQ-11)
+3. The Fivetran CF→Snowflake connector is live with production data
+
+**Future path (Option C):** Full platform stack integration (Traefik ingress, OpenFGA authorization, platform indexer, Query Service) is the long-term correct architecture for CF as an LFX v2 citizen. This is deferred post-initial-release and must be tracked as a separate Jira epic. It is not "later maybe" — it is a scheduled follow-on project.
 
 ### Expensify sync — keep on old Lambda for initial release
 
@@ -329,9 +366,32 @@ The `expensify-sync` cron job (SyncExpensifyHandler) pushes project/entity metad
 
 Add `EMAIL_DRY_RUN=true` environment variable. When set, email service logs the would-be email payload instead of calling Mandrill. Used when testing with production data to prevent accidental emails.
 
+### LFX v2 platform stack — standalone for initial release
+
+CF does **not** integrate with the LFX v2 platform stack (Traefik gateway, Heimdall, OpenFGA, platform indexer, Query Service) for the initial release. CF uses a standalone Kubernetes Ingress and handles auth internally via its own Auth0 JWT middleware — the same approach as `lfx-v2-ui` and `lfx-changelog`.
+
+This was reviewed with Eric Searcy (chief architect, May 2026). His position: participating in the access control graph is architecturally correct long-term but will slow down delivery significantly. Given the end-of-May deadline, standalone is the right call for initial release.
+
+**Tech debt created is bounded and intentional:**
+- CF's own JWT middleware → replaceable with Heimdall when Option C is implemented
+- CF's own Ingress → replaceable with Traefik HTTPRoute
+- Postgres FTS for search → stays; Query Service is additive, not a replacement
+- No OpenFGA types defined → must be designed and implemented as part of Option C
+
+**To keep Option C achievable:** access control intent must be documented now — who can do what to which resource — even though it is not implemented via OpenFGA yet. This is captured in the OpenFGA design notes below.
+
+**Access control intent (for future OpenFGA model):**
+- `project`: owner (creator) has writer; donors have no elevated access; CF admin has writer for approval flow
+- `fund`: same as project
+- `organization`: owner has writer; members TBD
+- `subscription` / `donation`: owned by the creating user; read-only to CF admin
+- Anonymous users: read-only access to published projects and funds
+
+**Option C** (full platform stack integration) is a post-initial-release tracked project — not "later maybe." File a Jira epic when initial release ships.
+
 ### Reimbursement and Ledger on Lambda — network path
 
-Both services remain on Lambda (API Gateway endpoints). The new CF Go service on K8s calls them over HTTPS. Network path assumed to be reachable (public HTTPS API Gateway). Architect to confirm (see open questions).
+Both services remain on Lambda (API Gateway endpoints). The new CF Go service on K8s calls them over public HTTPS (both are API Gateway endpoints). Network path confirmed reachable — see OQ-1 and OQ-2.
 
 ---
 

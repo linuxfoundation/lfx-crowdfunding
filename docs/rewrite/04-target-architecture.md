@@ -326,7 +326,7 @@ CREATE TABLE crowdfunding.projects (
   code_of_conduct       text,
   cii_project_id        text,                         -- project type only
   stacks_id             text,                         -- project type only; deferred feature
-  mentorship_program_id text UNIQUE,                  -- mentorship type only; DynamoDB projectId from SQS
+  mentorship_program_id text UNIQUE,                  -- mentorship type only; Mentorship program ID from Snowflake
   legacy_id             text UNIQUE,                  -- original DynamoDB projectId; for Ledger API calls
   stripe_plan_id        text,                         -- preserved from migration
   stripe_product_id     text,                         -- preserved from migration
@@ -457,7 +457,7 @@ GROUP BY p.id;
 CREATE INDEX ON crowdfunding.projects (campaign_type);
 CREATE INDEX ON crowdfunding.projects (owner_id);
 CREATE INDEX ON crowdfunding.projects (status);
-CREATE INDEX ON crowdfunding.projects (mentorship_program_id); -- SQS event matching
+CREATE INDEX ON crowdfunding.projects (mentorship_program_id); -- Snowflake sync matching
 CREATE INDEX ON crowdfunding.projects (legacy_id);             -- Ledger API lookups
 
 -- Funds
@@ -490,7 +490,7 @@ CREATE INDEX ON crowdfunding.funds
 | Ledger Service | AWS Lambda | Unchanged. Own Postgres (Ledger DB). CF calls it read-only via HTTP. |
 | Ledger DB | AWS RDS / Postgres | Separate from Crowdfunding DB. Migrated post-initial-release. |
 | Reimbursement Service | AWS Lambda | On CF release: switches CF data reads to CF Postgres (read-only). Own tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) migrate to `reimbursement` schema on CF Postgres within 2 weeks of CF release. |
-| Mentorship (jobspring) | AWS Lambda | Unchanged. Publishes to SNS. Calls CF API directly. |
+| Mentorship (jobspring) | AWS Lambda | Unchanged. Publishes data to Snowflake. No direct calls to CF in new system. |
 | Old LFF Lambda | AWS Lambda | Runs in parallel until cutover. Keeps OpenSearch fed for Reimbursement Service. |
 | DynamoDB tables | AWS DynamoDB | Read during migration. Kept until decommission is confirmed safe. |
 | OpenSearch | AWS OpenSearch | Kept alive until RS Category 2 migration completes (CF release + 2 weeks). Decommissioned at that point. |

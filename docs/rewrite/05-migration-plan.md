@@ -178,6 +178,7 @@ Status normalization applies here too: `'hide'` → `'hidden'`.
 | `logoUrl` | `logo_url` | Direct |
 | `details.Beneficiaries` | `beneficiaries` | Marshal to JSONB array |
 | `details.Goals` | `budgets` | Marshal to JSONB |
+| `amountRaised` | — | **Drop** — computed from Ledger |
 | `createdOn` | `created_at` | Parse timestamp |
 | `updatedOn` | `updated_at` | Parse timestamp |
 

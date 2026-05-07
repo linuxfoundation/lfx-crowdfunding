@@ -41,30 +41,28 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 
 **How it works:**
 - CF runs a K8s CronJob (`mentorship-sync`) that queries Snowflake for mentorship programs and creates/updates `campaign_type = mentorship` rows in the CF Postgres DB.
-- Mentorship continues calling CF API endpoints directly (slug sync, funding status, title-check, add/remove beneficiary). CF returns 404 gracefully when a program is not yet synced — Mentorship must handle this gracefully.
-- CF no longer publishes SNS events back to Mentorship (those were only needed to keep the old bidirectional sync working).
+- CF no longer publishes SNS events back to Mentorship — those were only needed for the old bidirectional sync.
+- The five direct HTTP calls from the old system (slug sync, funding status, title-check, addbeneficiary, removebeneficiary) are all eliminated — either because the data is available in Snowflake or because the use case no longer applies.
 
-**No Mentorship code changes required for the integration.** All data flows through Snowflake. Mentorship does not call CF APIs directly in the new system. The five direct HTTP calls from the old system (slug sync, funding status, title-check, addbeneficiary, removebeneficiary) are all eliminated — either because the data is available in Snowflake or because the use case no longer applies.
+**No Mentorship code changes required for the integration.** All data flows through Snowflake. Mentorship does not call CF APIs directly in the new system.
 
 ---
 
 ### OQ-4: GitHub repo `linuxfoundation/lfx-crowdfunding` — created and visibility confirmed?
 
-**Question:** Jira task MENV2-1622 was to create the GitHub repo. Has it been created? Is visibility public or private?
-
+**Status:** Resolved
 **Owner:** DevOps
-**Status:** Open (as of May 2026)
-**Notes:** Repo is needed before any code can be pushed. Branch protection on `main` is expected — first PR will need to be from a feature branch.
+
+**Resolution:** Repo was created and subsequently renamed to `linuxfoundation/lfx-v2-crowdfunding`. This is the repo where implementation lives.
 
 ---
 
 ### OQ-5: ArgoCD app for Crowdfunding K8s deployment
 
-**Question:** A new ArgoCD application needs to be created in `linuxfoundation/lfx-v2-argocd` for the Crowdfunding K8s service. What namespace, cluster, and values structure should be used? Who creates it?
-
+**Status:** Resolved
 **Owner:** DevOps
-**Status:** Open
-**Notes:** Check existing ArgoCD apps (e.g., Insights) for the expected structure. The `lfx-v2-argocd/apps/dev`, `apps/staging`, `apps/prod` directories are the target.
+
+**Resolution:** Namespace is `crowdfunding` — consistent with the LFX ArgoCD pattern (logical service name, no `lfx-v2-` prefix; e.g. `query-service`, `committee-service`, `ui`). ArgoCD entry goes in `lfx-v2-applications.yaml`; Helm chart at `charts/lfx-v2-crowdfunding/` in this repo.
 
 ---
 
@@ -125,10 +123,10 @@ OpenSearch decommissions on CF release + 2 weeks. Not "when we get to it."
 
 ### OQ-8: New Auth0 application for rewritten Crowdfunding
 
-**Status:** Resolved
+**Status:** Open — pending implementation start
 **Owner:** Michal
 
-**Resolution:** Michal will open a PR to `linuxfoundation/auth0-terraform` when implementation begins. DevOps will review. The new app must be created in all three tenants (dev, staging, prod) with:
+**Plan:** Michal opens a PR to `linuxfoundation/auth0-terraform` when implementation begins. DevOps reviews. The new app must be created in all three tenants (dev, staging, prod) with:
 - New client ID and secret
 - Allowed callback URLs for the new K8s Ingress URLs (dev/staging) and production domain
 - Allowed CORS origins and logout URLs
@@ -158,6 +156,24 @@ The old Auth0 app stays active until the old Lambda stack is decommissioned. New
 
 ---
 
+### OQ-11: Full scope of CF data needed in LFX One
+
+**Status:** Open — blocked on PM + design
+**Owner:** Michal / PM
+
+**Question:** The PM has requested "My Donations" and "My Initiatives" in LFX One, but the full list of CF data surfaces is not confirmed. Before any LFX One integration code is written, this must be clarified:
+
+- What exactly is shown per widget — count, amount total, list of items, grouped by project?
+- Which data types: donations only, or also subscriptions, owned projects, owned funds?
+- Is there an empty state design?
+- Are cancelled subscriptions / declined projects shown or hidden?
+
+**Blocked on:** UI design for the LFX One CF widgets. No implementation until design is delivered and the full data list is confirmed.
+
+**Integration approach:** Snowflake (Option B) via Fivetran CF→Snowflake sync. See decision in `02-decisions.md`.
+
+---
+
 ## Resolved Questions (for reference)
 
 | # | Question | Resolution |
@@ -165,8 +181,8 @@ The old Auth0 app stays active until the old Lambda stack is decommissioned. New
 | R-1 | Does LFF write directly to Ledger DB? | No — LFF calls Ledger HTTP API read-only. Ledger writes come from its own Stripe/Expensify webhooks. |
 | OQ-1 | Can K8s reach Lambda API Gateway endpoints? | Yes — both reachable over public HTTPS. CF only calls RS for expense approval/rejection; project sync stays on old Lambda. |
 | OQ-3 | Mentorship → CF sync mechanism | SNS/SQS dropped. All data (programs + beneficiaries) via Snowflake CronJob. Zero direct HTTP calls between Mentorship and CF. |
-| OQ-4 | GitHub repo created? | Yes — `linuxfoundation/lfx-crowdfunding` created (private, going public soon). |
-| OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
+| OQ-4 | GitHub repo created? | Yes — created as `linuxfoundation/lfx-crowdfunding`, renamed to `linuxfoundation/lfx-v2-crowdfunding`. |
+| OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-v2-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
 | OQ-6 | Stripe Plan/Product IDs outside DynamoDB? | 356 projects have Stripe plan/product IDs (mostly mentorship programs); 104 active subscriptions. All must be migrated as-is. No IDs hardcoded outside DynamoDB. |
 | OQ-7 | RS OpenSearch migration plan | Two-phase migration. CF release day: RS reads CF data from Postgres. CF release + 2 weeks (hard deadline): RS migrates its own indices to `reimbursement` schema on CF Postgres. |
 | OQ-8 | New Auth0 app for rewritten CF | Michal opens PR to `auth0-terraform` when implementation begins; DevOps reviews. New app in all 3 tenants with PKCE; old app stays active until Lambda decommission. |

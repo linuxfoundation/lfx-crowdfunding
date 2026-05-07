@@ -22,7 +22,7 @@ Total: **2,013 rows** across projects and entities tables. **1,374 published** (
 
 ### Key observations
 
-- **Mentorship projects dominate** — 1,476 of 1,832 project rows (80%) are mentorship-type. These come from the Mentorship service via SNS/SQS, not from Crowdfunding users directly. They require the SQS consumer to keep working post-migration.
+- **Mentorship projects dominate** — 1,476 of 1,832 project rows (80%) are mentorship-type. These come from the Mentorship service, not from Crowdfunding users directly. In the new system they are synced from Snowflake via a K8s CronJob (SNS/SQS is not used).
 - **"community" entity type** — 3 rows with type `community` not seen in the Go code's entity type enum (`project`, `initiative`, `general-fund`). Must be handled in migration (map to a known type or add `community` to the enum). **Needs clarification.**
 - **"other (travel)" entity type** — likely `general-fund` subtype used for travel funds. Confirm the exact DynamoDB type value.
 - **Non-published records matter** — 639 non-published rows (submitted, declined, hidden). Migration must include all statuses, not just published. Active subscriptions may exist against non-published projects.
@@ -415,7 +415,7 @@ Mentorship calls these CF API endpoints directly (against `FUNDING_API_URL`):
 - `POST /v1/entities/{entityId}/removebeneficiary` — remove beneficiary
 - `POST /v1/projects/title-check` — check title uniqueness before creating a project
 
-**These endpoints must exist in the new CF service before DNS cutover or Mentorship breaks.**
+**These endpoints existed in the old system. In the new CF service, all five are eliminated — Mentorship no longer calls CF directly. See `04-target-architecture.md` for details.**
 
 **Channel 3: CF → Mentorship via direct HTTP call (fallback only)**
 - `GET https://{JOBSPRING_API_URL}/users/external/{lfid}` — fetches user profile from Mentorship when a user is not found in the CF database
