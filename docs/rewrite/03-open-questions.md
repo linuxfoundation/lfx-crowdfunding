@@ -121,6 +121,24 @@ OpenSearch decommissions on CF release + 2 weeks. Not "when we get to it."
 
 ---
 
+### OQ-13: Reimbursement Service expense approval — how does auth work?
+
+**Status:** Open
+**Owner:** Lewis / Michal
+
+**Question:** When the Reimbursement Service sends an expense approval email to a project admin, the link in that email eventually hits the CF UI. The UI then calls the CF API, which calls the RS to approve/reject. This was discussed in the May 5 architecture review but the exact auth mechanism was not resolved.
+
+Specifically:
+- Does the link in the email go directly to the RS endpoint, or to the CF UI (which then calls the RS)?
+- Lewis confirmed the link goes to the UI first, which authenticates the user and then calls the RS. But: how does the CF API authenticate to the RS when forwarding the approval? API key? Signed token?
+- In the current system, RS uses an API key for backend-to-backend calls. Is this the same key the new CF Go service will use?
+
+**Blocking:** RS approval forwarding (`POST /expense/{action}/{reportID}`) in the new Go API. Must be resolved before implementing that endpoint.
+
+**Action:** Lewis to confirm the RS endpoint auth mechanism and provide the API key config name used in the current system.
+
+---
+
 ### OQ-12: Can Reimbursement Service Lambda reach CF Postgres on K8s?
 
 **Status:** Open
@@ -207,7 +225,7 @@ The old Auth0 app stays active until the old Lambda stack is decommissioned. New
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |
 | R-2 | Does Reimbursement Service query Crowdfunding OpenSearch? | Yes — reads `projects`, `entities`, `lff-users`, `spring-projects`, `spring-users`, `beneficiary-actions`, `travel-funds-tickets`. Writes `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`. Migration plan in OQ-7. |
 | R-3 | Who owns the Mentorship SNS topic? | Mentorship (jobspring) owns it. CF is a subscriber. Topic: `lfx-topic-{stage}-project`. CF queue: `fundspring-lfx-queues-{stage}-project`. |
-| R-4 | Is there a separate admin UI for project approvals? | No. Approvals are done via JWT links in emails sent to admin (Sriji). |
+| R-4 | Is there a separate admin UI for project approvals? | No. Approvals are done via HMAC-signed token links in emails sent to the CF approver (Sriji, LFID: `shubhrakar`). The token encodes the campaign ID and action — no Auth0 login required to click the link. |
 | R-5 | Should Expensify sync be rewritten for initial release? | No. Keep old Lambda running it. Not end-user visible. Reimbursement Service unchanged. |
 | R-6 | Is lfx-v1-sync-helper useful for CF DB migration? | No. It syncs project/committee metadata via NATS KV. Does not touch CF donations, subscriptions, or Ledger data. |
 | OQ-12 | Can RS Lambda reach CF Postgres on K8s? | Open — must confirm RDS is publicly accessible or arrange VPC peering. Blocks OQ-7 Phase 1. |

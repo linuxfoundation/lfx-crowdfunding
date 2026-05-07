@@ -435,13 +435,52 @@ This was reviewed with Eric Searcy (chief architect, May 2026). His position: pa
 **To keep Option C achievable:** access control intent must be documented now — who can do what to which resource — even though it is not implemented via OpenFGA yet. This is captured in the OpenFGA design notes below.
 
 **Access control intent (for future OpenFGA model):**
-- `project`: owner (creator) has writer; donors have no elevated access; CF admin has writer for approval flow
-- `fund`: same as project
-- `organization`: owner has writer; members TBD
+- `campaign` (project/mentorship/general_fund/event/ostif): owner (creator) has writer; donors have no elevated access; CF admin has writer for approval flow
+- `organization`: owner has writer; members have no elevated access beyond the owner (org membership is used for donation attribution only, not access control)
 - `subscription` / `donation`: owned by the creating user; read-only to CF admin
-- Anonymous users: read-only access to published projects and funds
+- Anonymous users: read-only access to published campaigns
+
+**Campaigns are decoupled from LFX project entities.** There is no FK or relationship linking a CF campaign to an LFX project in the permissions graph. Access is determined solely by `owner_id` (Auth0 subject) and `campaign_type`. Role inheritance from LFX project roles (e.g., project auditor → campaign writer) is not possible without adding a `project_id` FK — this is a design decision deferred to Option C.
+
+Consequence for non-LF projects (future): since campaigns are decoupled, supporting non-LF projects is a per-campaign policy decision, not a structural schema change.
+
+**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/campaigns`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when Option C is implemented.
+
+**LFX One integration auth:** For the initial release, LFX One reads CF data from Snowflake (Option B) — there are no live API calls from LFX One to the CF Go API. The question of how LFX One authenticates to the CF API (ID tokens, API key, M2M, Auth0 resource server) only arises if Option A or C is chosen. Deferred to OQ-11.
 
 **Option C** (full platform stack integration) is a post-initial-release tracked project — not "later maybe." File a Jira epic when initial release ships.
+
+### Authorization model — initial release
+
+The initial release uses the same authorization model as the current LFF system. There is no RBAC — authorization is purely ownership-based, enforced at the usecase layer.
+
+**Three mechanisms:**
+
+**1. Ownership check (campaign/org CRUD)**
+Any authenticated user can create a campaign. The creator's Auth0 subject (`jwt.sub`) is stored as `owner_id` at creation time. All mutating operations check `campaign.owner_id == jwt.sub` inline in the usecase. There is no "owner role" stored anywhere — ownership is structural.
+
+```go
+// enforced inline in usecases, same pattern as current LFF
+if campaign.OwnerID != currentUser.ID {
+    return ErrNotAuthorized
+}
+```
+
+**2. CF admin / campaign approver — `CF_APPROVERS` env var**
+The person who approves or rejects campaign submissions is identified by their LFID, stored in a `CF_APPROVERS` environment variable (comma- or pipe-separated). This is not an Auth0 role — it is a config value injected at deploy time.
+
+Production value: `shubhrakar` (Sriji). Confirmed as the approver for the new system.
+Dev/staging value: `*` (any authenticated user can approve — allows testing).
+
+Stored in AWS Secrets Manager, injected via ESO. The approval check at the API layer:
+```go
+authorized := strings.Contains(os.Getenv("CF_APPROVERS"), user.LFID)
+```
+
+**3. Email approval links — HMAC-signed token, no Auth0**
+Campaign and expense approval email links use HMAC HS256-signed tokens (not Auth0). The token encodes `{ campaignID, action: "approve"|"reject" }` and has an expiry. The `POST /v1/campaigns/approvals` endpoint verifies the HMAC signature — the signed token is the sole authorization mechanism for this flow. No Auth0 JWT is required or checked.
+
+This is intentional: the approver clicks a link in email without needing to be logged in to CF. The HMAC secret is stored in AWS Secrets Manager (`CF_APPROVAL_SIGNING_SECRET`).
 
 ### Reimbursement and Ledger on Lambda — network path
 
