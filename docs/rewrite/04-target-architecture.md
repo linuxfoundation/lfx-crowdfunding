@@ -143,8 +143,8 @@ pages/
 ├── email/
 │   ├── approve.vue                    # Approve expense (JWT link)
 │   ├── reject.vue                     # Reject expense (JWT link)
-│   └── approve-campaign.vue           # Approve campaign (JWT link)
-└── campaigns/
+│   └── approve-initiative.vue           # Approve initiative (JWT link)
+└── initiatives/
     ├── create/
     │   ├── project/
     │   │   ├── connect.vue            # GitHub OAuth step
@@ -154,9 +154,9 @@ pages/
     │   ├── event.vue                  # Event form
     │   └── ostif.vue                  # OSTIF form
     └── [slug]/
-        ├── index.vue                  # Campaign dashboard
+        ├── index.vue                  # Initiative dashboard
         ├── financial.vue              # Financial tab
-        ├── edit.vue                   # Edit campaign (CF-owned fields only for mentorship)
+        ├── edit.vue                   # Edit initiative (CF-owned fields only for mentorship)
         └── payments.vue               # Donation/subscription form
 ```
 
@@ -202,9 +202,9 @@ cmd/
 └── migrate/     # DB migration runner (golang-migrate)
 
 internal/
-├── campaigns/
-│   ├── domain/       # Domain structs (Campaign, CampaignType)
-│   ├── usecases/     # Business logic (enforces field ownership by campaign_type)
+├── initiatives/
+│   ├── domain/       # Domain structs (Initiative, InitiativeType)
+│   ├── usecases/     # Business logic (enforces field ownership by initiative_type)
 │   └── repository/   # sqlc-generated SQL queries
 ├── subscriptions/
 ├── donations/
@@ -237,7 +237,7 @@ When `EMAIL_DRY_RUN=true`:
 
 | Job | K8s resource | Schedule | What it does |
 |---|---|---|---|
-| `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `campaign_type = mentorship` rows in CF Postgres |
+| `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
 | `github-stats` | CronJob | Every 6 hours | Fetches GitHub repo stats, updates project records |
 
 Jobs removed from old system (not ported):
@@ -260,7 +260,7 @@ CF syncs Mentorship program data from Snowflake via the `mentorship-sync` K8s Cr
 
 The CronJob:
 - Queries Snowflake for all mentorship programs and their approved beneficiaries
-- For each program not yet in CF Postgres: inserts a row with `campaign_type = 'mentorship'`, populates `mentorship_program_id`, budgets from the `mentee` field (skills, terms, mentors, custom_term), and approved beneficiary list
+- For each program not yet in CF Postgres: inserts a row with `initiative_type = 'mentorship'`, populates `mentorship_program_id`, budgets from the `mentee` field (skills, terms, mentors, custom_term), and approved beneficiary list
 - For each program already in CF Postgres: updates Mentorship-owned fields only (name, status, budgets.mentee, beneficiaries); never overwrites CF-owned fields (logo_url, color, description, website)
 - Normalizes `'hide'` → `'hidden'` on status
 
@@ -293,15 +293,15 @@ These endpoints do not need to exist in the new CF service. The old Lambda kept 
 All monetary values `bigint` (cents). All primary keys `uuid`. All timestamps `timestamptz`.
 
 **Terminology:**
-- `campaigns` — unified table for all fundable things; formerly split into `projects` and `funds`
-- `campaign_type` values: `project` | `mentorship` | `general_fund` | `event` | `ostif`
+- `initiatives` — unified table for all fundable things; formerly split into `projects` and `funds`
+- `initiative_type` values: `project` | `mentorship` | `general_fund` | `event` | `ostif`
 - `status` values: `draft` | `submitted` | `approved` | `published` | `hidden` | `declined`
 
 ```sql
--- Campaigns (unified: CF projects, Mentorship campaigns, General Funds, Events, Security Audits)
-CREATE TABLE crowdfunding.campaigns (
+-- Initiatives (unified: CF projects, Mentorship initiatives, General Funds, Events, Security Audits)
+CREATE TABLE crowdfunding.initiatives (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  campaign_type         text NOT NULL,                -- 'project' | 'mentorship' | 'general_fund' | 'event' | 'ostif'
+  initiative_type       text NOT NULL,                -- 'project' | 'mentorship' | 'general_fund' | 'event' | 'ostif'
   owner_id              text NOT NULL,                -- Auth0 subject
   name                  text NOT NULL,
   slug                  text NOT NULL UNIQUE,
@@ -350,9 +350,9 @@ CREATE TABLE crowdfunding.campaigns (
   CONSTRAINT budgets_is_object CHECK (jsonb_typeof(budgets) = 'object')
 );
 
-CREATE INDEX ON crowdfunding.campaigns (owner_id);
-CREATE INDEX ON crowdfunding.campaigns (campaign_type);
-CREATE INDEX ON crowdfunding.campaigns (status);
+CREATE INDEX ON crowdfunding.initiatives (owner_id);
+CREATE INDEX ON crowdfunding.initiatives (initiative_type);
+CREATE INDEX ON crowdfunding.initiatives (status);
 
 -- Organizations
 CREATE TABLE crowdfunding.organizations (
@@ -370,7 +370,7 @@ CREATE TABLE crowdfunding.subscriptions (
   id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   stripe_subscription_id      text NOT NULL UNIQUE,  -- dedup key; preserved from migration
   stripe_subscription_item_id text,                  -- needed for Stripe price/quantity updates
-  campaign_id                 uuid NOT NULL REFERENCES crowdfunding.campaigns(id),
+  initiative_id                 uuid NOT NULL REFERENCES crowdfunding.initiatives(id),
   user_id                     text NOT NULL,          -- Auth0 subject
   org_id                      uuid REFERENCES crowdfunding.organizations(id),
   frequency                   text NOT NULL,          -- 'monthly' | 'annual'
@@ -385,7 +385,7 @@ CREATE TABLE crowdfunding.subscriptions (
   updated_at                  timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON crowdfunding.subscriptions (campaign_id);
+CREATE INDEX ON crowdfunding.subscriptions (initiative_id);
 CREATE INDEX ON crowdfunding.subscriptions (user_id);
 CREATE INDEX ON crowdfunding.subscriptions (org_id);
 
@@ -393,7 +393,7 @@ CREATE INDEX ON crowdfunding.subscriptions (org_id);
 CREATE TABLE crowdfunding.donations (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   stripe_charge_id text UNIQUE,                      -- dedup key; NULL for invoice payments (Postgres UNIQUE allows multiple NULLs)
-  campaign_id      uuid NOT NULL REFERENCES crowdfunding.campaigns(id),
+  initiative_id      uuid NOT NULL REFERENCES crowdfunding.initiatives(id),
   user_id          text NOT NULL,                    -- Auth0 subject
   org_id           uuid REFERENCES crowdfunding.organizations(id),
   name             text,                             -- donor display name at time of donation; may differ from Auth0 profile for org/invoice donations
@@ -408,7 +408,7 @@ CREATE TABLE crowdfunding.donations (
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON crowdfunding.donations (campaign_id);
+CREATE INDEX ON crowdfunding.donations (initiative_id);
 CREATE INDEX ON crowdfunding.donations (user_id);
 
 -- Users (minimal — auth in Auth0, payment account in Stripe)
@@ -421,7 +421,7 @@ CREATE TABLE crowdfunding.users (
 );
 ```
 
-### View: `campaign_funding_summary`
+### View: `initiative_funding_summary`
 
 **Not active in initial release.** Ledger DB is a separate Postgres instance.
 Until Ledger DB is co-located, `amount_raised` and balance data are fetched via
@@ -437,13 +437,13 @@ Note: `ledger.ledger.project_id` stores the old DynamoDB string ID — match via
 -- CREDIT rows increase the balance; DEBIT rows decrease it.
 -- If Ledger stores DEBIT amounts as negative, replace balance_cents with SUM(l.amount).
 -- Verify against Ledger DB before activating this view.
-CREATE VIEW crowdfunding.campaign_funding_summary AS
+CREATE VIEW crowdfunding.initiative_funding_summary AS
 SELECT
-  c.id                                                                  AS campaign_id,
+  c.id                                                                  AS initiative_id,
   SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE 0 END)        AS amount_raised_cents,
   SUM(CASE WHEN l.txn_type = 'DEBIT'  THEN l.amount ELSE 0 END)        AS amount_disbursed_cents,
   SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE -l.amount END) AS balance_cents
-FROM crowdfunding.campaigns c
+FROM crowdfunding.initiatives c
 JOIN ledger.ledger l ON l.project_id = c.legacy_id
 GROUP BY c.id;
 ```
@@ -451,18 +451,18 @@ GROUP BY c.id;
 ### Indexes
 
 ```sql
--- Campaigns
-CREATE INDEX ON crowdfunding.campaigns (campaign_type);
-CREATE INDEX ON crowdfunding.campaigns (owner_id);
-CREATE INDEX ON crowdfunding.campaigns (status);
-CREATE INDEX ON crowdfunding.campaigns (mentorship_program_id); -- Snowflake sync upsert key
-CREATE INDEX ON crowdfunding.campaigns (legacy_id);             -- Ledger API lookups
+-- Initiatives
+CREATE INDEX ON crowdfunding.initiatives (initiative_type);
+CREATE INDEX ON crowdfunding.initiatives (owner_id);
+CREATE INDEX ON crowdfunding.initiatives (status);
+CREATE INDEX ON crowdfunding.initiatives (mentorship_program_id); -- Snowflake sync upsert key
+CREATE INDEX ON crowdfunding.initiatives (legacy_id);             -- Ledger API lookups
 
--- Subscriptions / Donations (campaign_id, user_id, org_id already indexed in DDL above)
+-- Subscriptions / Donations (initiative_id, user_id, org_id already indexed in DDL above)
 -- No additional indexes needed beyond those defined in the CREATE TABLE block.
 
 -- Full-text search (replaces OpenSearch for discovery)
-CREATE INDEX ON crowdfunding.campaigns
+CREATE INDEX ON crowdfunding.initiatives
   USING gin(to_tsvector('english', name || ' ' || coalesce(description, '')));
 ```
 

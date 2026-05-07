@@ -65,7 +65,7 @@ Always run `--validate` first against prod data. Fix any issues. Then run `--exe
 
 | DynamoDB Table | Target Postgres Table | Notes |
 |---|---|---|
-| `lff-prod-projects` | `crowdfunding.projects` | Set `campaign_type`; branch budget path by type |
+| `lff-prod-projects` | `crowdfunding.initiatives` | Set `initiative_type`; branch budget path by type |
 | `lff-prod-entities` | `crowdfunding.funds` | Reclassify types; rename column `entity_type` → `fund_type` |
 | `lff-prod-organizations` | `crowdfunding.organizations` | Straightforward |
 | `lff-prod-subscriptions` | `crowdfunding.subscriptions` | Preserve `stripe_subscription_id`; FK to `project_id` |
@@ -81,9 +81,9 @@ Always run `--validate` first against prod data. Fix any issues. Then run `--exe
 **Critical:** DynamoDB project rows contain two distinct data shapes depending on origin.
 The migration tool MUST detect the type and branch accordingly.
 
-**Detecting campaign_type:**
-- If `jobspringProjectId` field is present and non-empty → `campaign_type = 'mentorship'`
-- Otherwise → `campaign_type = 'project'`
+**Detecting initiative_type:**
+- If `jobspringProjectId` field is present and non-empty → `initiative_type = 'mentorship'`
+- Otherwise → `initiative_type = 'project'`
 
 **Status normalization (apply to all rows):**
 - `'hide'` → `'hidden'` (13 rows in prod have this dirty value)
@@ -117,9 +117,9 @@ The migration tool MUST detect the type and branch accordingly.
 | `createdOn` | `created_at` | Parse timestamp |
 | `updatedOn` | `updated_at` | Parse timestamp |
 
-**Budget mapping — branches by campaign_type:**
+**Budget mapping — branches by initiative_type:**
 
-For `campaign_type = 'project'` (read from `data.projectDetails.*`):
+For `initiative_type = 'project'` (read from `data.projectDetails.*`):
 ```
 data.projectDetails.development  → budgets.development  {amount_in_cents, description, goals, is_active}
 data.projectDetails.marketing    → budgets.marketing
@@ -131,7 +131,7 @@ data.projectDetails.mentee       → budgets.mentee       (simple: amount + desc
 data.projectDetails.other        → budgets.other
 ```
 
-For `campaign_type = 'mentorship'` (read from `data.projectDetails.mentee`):
+For `initiative_type = 'mentorship'` (read from `data.projectDetails.mentee`):
 ```
 data.projectDetails.mentee.budget.amountInCents → budgets.mentee.amount_in_cents
 data.projectDetails.mentee.isActive             → budgets.mentee.is_active

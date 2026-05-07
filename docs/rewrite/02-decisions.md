@@ -9,8 +9,8 @@ Update this file when decisions change — note what changed and why.
 
 ### What is IN scope
 
-- Project CRUD (create, edit, publish, hide) — campaign_type: `project`
-- Mentorship campaign display and Snowflake-driven sync — campaign_type: `mentorship`
+- Project CRUD (create, edit, publish, hide) — initiative_type: `project`
+- Mentorship initiative display and Snowflake-driven sync — initiative_type: `mentorship`
 - Fund CRUD (general_fund, event, ostif) — replaces "entities"
 - Organization CRUD
 - Donations (one-time, card and invoice)
@@ -57,12 +57,12 @@ Target database is PostgreSQL. DynamoDB is decommissioned after successful migra
 
 One Postgres instance, two schemas:
 
-- `crowdfunding` — owned by CF Go API (campaigns, orgs, subscriptions, donations, users)
+- `crowdfunding` — owned by CF Go API (initiatives, orgs, subscriptions, donations, users)
 - `reimbursement` — owned by Reimbursement Service (expense_log, beneficiary_actions, travel_fund_tickets)
 
 Reimbursement Service connects directly to this Postgres instance:
 - Read-write on `reimbursement.*` (its own tables)
-- Read-only on `crowdfunding.campaigns` (replaces OpenSearch `projects`/`entities`/`lff-users` index reads)
+- Read-only on `crowdfunding.initiatives` (replaces OpenSearch `projects`/`entities`/`lff-users` index reads)
 
 Enforced at the DB level: RS gets a read-only Postgres role for `crowdfunding` schema. Not by convention.
 
@@ -76,19 +76,19 @@ Future (post-initial-release): Ledger DB merges into Crowdfunding DB as a `ledge
 
 Rationale: co-locating Ledger DB now requires migrating Ledger's Postgres data, reconfiguring Ledger Service (a change we want to avoid), and coordinating two cutover windows simultaneously. The tech debt of keeping one HTTP call is minimal and localized. Deliver CF first, migrate Ledger after.
 
-### `projects` + `funds` → unified `campaigns` table
+### `projects` + `funds` → unified `initiatives` table
 
-The old `projects` and `funds` tables are merged into a single `crowdfunding.campaigns` table with a `campaign_type` discriminator column.
+The old `projects` and `funds` tables are merged into a single `crowdfunding.initiatives` table with an `initiative_type` discriminator column.
 
-`campaign_type` values: `project` | `mentorship` | `general_fund` | `event` | `ostif`
+`initiative_type` values: `project` | `mentorship` | `general_fund` | `event` | `ostif`
 
-Rationale: all campaign types share the same donor/subscription FK, the same Ledger balance lookup via `legacy_id`, the same status workflow, and the same discovery/search surface. Two tables required a polymorphic FK (`project_id OR fund_id`) with a CHECK constraint and no hard FK enforcement. One table gives a clean `campaign_id` FK on subscriptions and donations, simpler queries, and a unified search/discovery endpoint.
+Rationale: all initiative types share the same donor/subscription FK, the same Ledger balance lookup via `legacy_id`, the same status workflow, and the same discovery/search surface. Two tables required a polymorphic FK (`project_id OR fund_id`) with a CHECK constraint and no hard FK enforcement. One table gives a clean `initiative_id` FK on subscriptions and donations, simpler queries, and a unified search/discovery endpoint.
 
-Type-specific sparse columns (e.g. `event_start_date`, `mentorship_program_id`, `city`) are nullable and only populated for the relevant `campaign_type`. This is the standard discriminated-union pattern for a sparse table — preferable to two tables with a UNION when the shared columns dominate, which they do here.
+Type-specific sparse columns (e.g. `event_start_date`, `mentorship_program_id`, `city`) are nullable and only populated for the relevant `initiative_type`. This is the standard discriminated-union pattern for a sparse table — preferable to two tables with a UNION when the shared columns dominate, which they do here.
 
 ### Budget categories → JSONB keyed object
 
-Budget categories (development, marketing, meetups, travel, bug_bounty, documentation, mentee, other, diversity) stored as a JSONB keyed object on `crowdfunding.campaigns`.
+Budget categories (development, marketing, meetups, travel, bug_bounty, documentation, mentee, other, diversity) stored as a JSONB keyed object on `crowdfunding.initiatives`.
 
 Rationale: new budget categories may be added in future — columns would require a migration per new category. JSONB allows adding new categories without schema changes. Categories are always read/written as a unit. No queries filter by individual category amounts at the DB level.
 
@@ -101,7 +101,7 @@ Rationale: new budget categories may be added in future — columns would requir
 }
 ```
 
-Mentorship campaigns extend the `mentee` key with additional fields:
+Mentorship initiatives extend the `mentee` key with additional fields:
 ```json
 {
   "mentee": {
@@ -117,7 +117,7 @@ Mentorship campaigns extend the `mentee` key with additional fields:
 
 **Migration:** fund `goals` arrays from DynamoDB are converted to keyed objects during migration. Project budgets are already keyed objects — no conversion needed.
 
-### Campaign workflow timestamps
+### Initiative workflow timestamps
 
 Three nullable timestamps track the approval workflow: `submitted_at`, `approved_at`, `published_at`. Set by the API on status transitions. Never updated once set.
 
@@ -127,10 +127,10 @@ Rationale: enables audit trails, SLA measurement ("how long does approval take")
 
 ### `category` validation on subscriptions and donations
 
-The `category` column on `subscriptions` and `donations` references a budget category on the target campaign. Validated at two levels:
+The `category` column on `subscriptions` and `donations` references a budget category on the target initiative. Validated at two levels:
 
 1. **DB level:** CHECK constraint against the fixed known set (`development`, `marketing`, `meetups`, `travel`, `bug_bounty`, `documentation`, `mentee`, `other`, `diversity`). Catches garbage values at insert time.
-2. **API level:** validates that the category exists and `is_active = true` on the target campaign's `budgets` JSONB before accepting a payment.
+2. **API level:** validates that the category exists and `is_active = true` on the target initiative's `budgets` JSONB before accepting a payment.
 
 If a new budget category is added, the CHECK constraint is updated via migration at the same time.
 
@@ -142,9 +142,9 @@ If a new budget category is added, the CHECK constraint is updated via migration
 
 `donations.name` stores the donor display name at time of donation. This differs from the Auth0 profile for org/invoice donations where the payer is an individual but the displayed donor is the company name. `avatar_url` is not stored — always fetched from Auth0 at render time to avoid stale cache.
 
-### Campaign workflow timestamps — `submitted_at`, `approved_at`, `published_at`
+### Initiative workflow timestamps — `submitted_at`, `approved_at`, `published_at`
 
-Covered above under "Campaign workflow timestamps."
+Covered above under "Initiative workflow timestamps."
 
 ### `amount_in_cents` → `bigint`
 
@@ -163,16 +163,16 @@ Rationale: they represent different Stripe object types (`Subscription` vs `Char
 Replace the `amountraised` cron job (which wrote a denormalized `amountRaised` field back to the DynamoDB project record) with a Postgres view:
 
 ```sql
-CREATE VIEW crowdfunding.project_funding_summary AS
-SELECT project_id, SUM(amount) AS amount_raised_cents
+CREATE VIEW crowdfunding.initiative_funding_summary AS
+SELECT initiative_id, SUM(amount) AS amount_raised_cents
 FROM ledger.ledger
 WHERE txn_type = 'CREDIT'
-GROUP BY project_id;
+GROUP BY initiative_id;
 ```
 
 Rationale: always fresh, no job to maintain, no staleness. If query performance becomes an issue at scale, materialize it then. Start simple.
 
-Note: this view requires the `ledger` schema to be accessible from the `crowdfunding` schema. Until Ledger is on the same Postgres instance, `amount_raised` will need to be fetched via the Ledger API (`GET /balance/{projectID}`) as today, and optionally cached on the project record. Revisit when Ledger is co-located.
+Note: this view requires the `ledger` schema to be accessible from the `crowdfunding` schema. Until Ledger is on the same Postgres instance, `amount_raised` will need to be fetched via the Ledger API (`GET /balance/{legacy_id}`) as today, and optionally cached on the initiative record. Revisit when Ledger is co-located.
 
 ### No ORM — sqlc for type-safe queries
 
@@ -190,18 +190,18 @@ Rationale: simpler than Atlas, battle-tested, widely used in LFX ecosystem. Atla
 
 ## Domain Model
 
-### `campaigns` table — unified campaign type
+### `initiatives` table — unified initiative type
 
-All fundable things live in one `crowdfunding.campaigns` table with `campaign_type` as the discriminator.
+All fundable things live in one `crowdfunding.initiatives` table with `initiative_type` as the discriminator.
 
-`campaign_type` values:
+`initiative_type` values:
 - `project` — created by users via the CF web UI; GitHub-linked; has budget categories; owned and editable by CF
 - `mentorship` — created and managed by the Mentorship service; synced into CF via Snowflake CronJob; 91% of published rows; partially read-only in CF UI
 - `general_fund` — fundraising fund (formerly `initiative`, `general-fund`, `travel_fund`)
 - `event` — calendar/meetup-based fund
 - `ostif` — security audit fund
 
-`campaign_type` is set on creation and never changed.
+`initiative_type` is set on creation and never changed.
 
 ### `mentorship_program_id` — canonical Mentorship link
 
@@ -210,13 +210,13 @@ Rename `jobspringProjectID` → `mentorship_program_id`. This is the string ID u
 - Used by the `mentorship-sync` CronJob to match Snowflake program records to existing Postgres rows (upsert key)
 - Used as the `legacy_id` equivalent for Ledger API calls (same value — see migration notes)
 - Never exposed in the public API response
-- NULL on all non-mentorship campaigns
+- NULL on all non-mentorship initiatives
 
-### Mentorship campaigns — partially editable in CF UI
+### Mentorship initiatives — partially editable in CF UI
 
 Current system: fully editable — no restrictions on any field. This is a latent bug; Mentorship sync overwrites CF edits silently.
 
-New system: field ownership split enforced at the API layer (`PATCH /v1/me/campaigns/:id` rejects Mentorship-owned fields when `campaign_type = mentorship`).
+New system: field ownership split enforced at the API layer (`PATCH /v1/me/initiatives/:id` rejects Mentorship-owned fields when `initiative_type = mentorship`).
 
 | Field group | Owner | Editable via CF UI |
 |---|---|---|
@@ -230,7 +230,7 @@ New system: field ownership split enforced at the API layer (`PATCH /v1/me/campa
 
 ### Type consolidations (applied during migration)
 
-| Old DynamoDB type | New `campaign_type` | Rationale |
+| Old DynamoDB type | New `initiative_type` | Rationale |
 |---|---|---|
 | `project` (with `jobspringProjectID`) | `mentorship` | Explicit type; was previously inferred from field presence |
 | `project` (without `jobspringProjectID`) | `project` | Unchanged |
@@ -243,15 +243,15 @@ New system: field ownership split enforced at the API layer (`PATCH /v1/me/campa
 
 Confirm with PM before migration: the 8 published `travel_fund` rows will display as "General Fund" after reclassification.
 
-### `general_fund` vs `initiative` — same thing
+### `general_fund` vs `initiative` (old type) — same thing
 
-In the old system: `initiative` was the backend type string; "General Fund" was the UI label; the subscription service explicitly mapped `'general fund'` → `ExpenseCategory.INITIATIVE`. They were always the same concept. The new schema uses `general_fund` everywhere and drops the alias.
+In the old system: `initiative` was the backend type string; "General Fund" was the UI label; the subscription service explicitly mapped `'general fund'` → `ExpenseCategory.INITIATIVE`. They were always the same concept. The new schema uses `general_fund` everywhere and drops the alias. Note: `initiative` as an `initiative_type` value does NOT exist — the table is named `initiatives` but the type values are `project`, `mentorship`, `general_fund`, `event`, `ostif`.
 
-### Budget JSONB schema — two shapes by campaign_type
+### Budget JSONB schema — two shapes by initiative_type
 
-The `budgets` JSONB column on `projects` has different internal structure depending on `campaign_type`:
+The `budgets` JSONB column on `initiatives` has different internal structure depending on `initiative_type`:
 
-**`campaign_type = project`** (CF-created):
+**`initiative_type = project`** (CF-created):
 ```json
 {
   "development":  {"amount_in_cents": 100000, "description": "...", "goals": "...", "is_active": true},
@@ -265,7 +265,7 @@ The `budgets` JSONB column on `projects` has different internal structure depend
 }
 ```
 
-**`campaign_type = mentorship`** (Mentorship-managed):
+**`initiative_type = mentorship`** (Mentorship-managed):
 ```json
 {
   "mentee": {
@@ -281,7 +281,7 @@ The `budgets` JSONB column on `projects` has different internal structure depend
 
 **Migration implication:** the `migrate-cf` tool must read `data.projectDetails.mentee` (nested) for mentorship projects — NOT `data.mentee` at the top level. Reading from the wrong path silently drops all mentorship metadata. This was the bug that caused the first SQL pass to miss 1,249 of 1,476 project rows.
 
-**Application implication:** Go code that reads `budgets` must branch on `campaign_type`. The `mentee` budget category for a `project`-type campaign is just an amount + description. For a `mentorship`-type campaign, it contains the full mentorship program structure.
+**Application implication:** Go code that reads `budgets` must branch on `initiative_type`. The `mentee` budget category for a `project`-type initiative is just an amount + description. For a `mentorship`-type initiative, it contains the full mentorship program structure.
 
 ### `status` normalization
 
@@ -365,7 +365,7 @@ Rationale: Mentorship and CF run in separate AWS accounts, making cross-account 
 
 The `mentorship-sync` CronJob:
 - Queries Snowflake for mentorship programs and their approved beneficiaries
-- Creates `campaign_type = mentorship` project rows in CF Postgres for new programs
+- Creates `initiative_type = mentorship` project rows in CF Postgres for new programs
 - Updates Mentorship-owned fields (name, status, budgets.mentee) for existing rows
 - Syncs approved beneficiary list onto each project record
 - Normalizes `'hide'` → `'hidden'` on status
@@ -435,16 +435,16 @@ This was reviewed with Eric Searcy (chief architect, May 2026). His position: pa
 **To keep Option C achievable:** access control intent must be documented now — who can do what to which resource — even though it is not implemented via OpenFGA yet. This is captured in the OpenFGA design notes below.
 
 **Access control intent (for future OpenFGA model):**
-- `campaign` (project/mentorship/general_fund/event/ostif): owner (creator) has writer; donors have no elevated access; CF admin has writer for approval flow
+- `initiative` (project/mentorship/general_fund/event/ostif): owner (creator) has writer; donors have no elevated access; CF admin has writer for approval flow
 - `organization`: owner has writer; members have no elevated access beyond the owner (org membership is used for donation attribution only, not access control)
 - `subscription` / `donation`: owned by the creating user; read-only to CF admin
-- Anonymous users: read-only access to published campaigns
+- Anonymous users: read-only access to published initiatives
 
-**Campaigns are decoupled from LFX project entities.** There is no FK or relationship linking a CF campaign to an LFX project in the permissions graph. Access is determined solely by `owner_id` (Auth0 subject) and `campaign_type`. Role inheritance from LFX project roles (e.g., project auditor → campaign writer) is not possible without adding a `project_id` FK — this is a design decision deferred to Option C.
+**Initiatives are decoupled from LFX project entities.** There is no FK or relationship linking a CF initiative to an LFX project in the permissions graph. Access is determined solely by `owner_id` (Auth0 subject) and `initiative_type`. Role inheritance from LFX project roles (e.g., project auditor → initiative writer) is not possible without adding a `project_id` FK — this is a design decision deferred to Option C.
 
-Consequence for non-LF projects (future): since campaigns are decoupled, supporting non-LF projects is a per-campaign policy decision, not a structural schema change.
+Consequence for non-LF projects (future): since initiatives are decoupled, supporting non-LF projects is a per-initiative policy decision, not a structural schema change.
 
-**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/campaigns`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when Option C is implemented.
+**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/initiatives`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when Option C is implemented.
 
 **LFX One integration auth:** For the initial release, LFX One reads CF data from Snowflake (Option B) — there are no live API calls from LFX One to the CF Go API. The question of how LFX One authenticates to the CF API (ID tokens, API key, M2M, Auth0 resource server) only arises if Option A or C is chosen. Deferred to OQ-11.
 
@@ -456,18 +456,18 @@ The initial release uses the same authorization model as the current LFF system.
 
 **Three mechanisms:**
 
-**1. Ownership check (campaign/org CRUD)**
-Any authenticated user can create a campaign. The creator's Auth0 subject (`jwt.sub`) is stored as `owner_id` at creation time. All mutating operations check `campaign.owner_id == jwt.sub` inline in the usecase. There is no "owner role" stored anywhere — ownership is structural.
+**1. Ownership check (initiative/org CRUD)**
+Any authenticated user can create an initiative. The creator's Auth0 subject (`jwt.sub`) is stored as `owner_id` at creation time. All mutating operations check `initiative.owner_id == jwt.sub` inline in the usecase. There is no "owner role" stored anywhere — ownership is structural.
 
 ```go
 // enforced inline in usecases, same pattern as current LFF
-if campaign.OwnerID != currentUser.ID {
+if initiative.OwnerID != currentUser.ID {
     return ErrNotAuthorized
 }
 ```
 
-**2. CF admin / campaign approver — `CF_APPROVERS` env var**
-The person who approves or rejects campaign submissions is identified by their LFID, stored in a `CF_APPROVERS` environment variable (comma- or pipe-separated). This is not an Auth0 role — it is a config value injected at deploy time.
+**2. CF admin / initiative approver — `CF_APPROVERS` env var**
+The person who approves or rejects initiative submissions is identified by their LFID, stored in a `CF_APPROVERS` environment variable (comma- or pipe-separated). This is not an Auth0 role — it is a config value injected at deploy time.
 
 Production value: `shubhrakar` (Sriji). Confirmed as the approver for the new system.
 Dev/staging value: `*` (any authenticated user can approve — allows testing).
@@ -478,7 +478,7 @@ authorized := strings.Contains(os.Getenv("CF_APPROVERS"), user.LFID)
 ```
 
 **3. Email approval links — HMAC-signed token, no Auth0**
-Campaign and expense approval email links use HMAC HS256-signed tokens (not Auth0). The token encodes `{ campaignID, action: "approve"|"reject" }` and has an expiry. The `POST /v1/campaigns/approvals` endpoint verifies the HMAC signature — the signed token is the sole authorization mechanism for this flow. No Auth0 JWT is required or checked.
+Initiative and expense approval email links use HMAC HS256-signed tokens (not Auth0). The token encodes `{ initiativeID, action: "approve"|"reject" }` and has an expiry. The `POST /v1/initiatives/approvals` endpoint verifies the HMAC signature — the signed token is the sole authorization mechanism for this flow. No Auth0 JWT is required or checked.
 
 This is intentional: the approver clicks a link in email without needing to be logged in to CF. The HMAC secret is stored in AWS Secrets Manager (`CF_APPROVAL_SIGNING_SECRET`).
 

@@ -40,7 +40,7 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 - A 24h sync delay is acceptable: new mentorship programs are not immediately donation-ready by business requirement, and mentees/beneficiaries don't access funds until mid-term (months after program creation).
 
 **How it works:**
-- CF runs a K8s CronJob (`mentorship-sync`) that queries Snowflake for mentorship programs and creates/updates `campaign_type = mentorship` rows in the CF Postgres DB.
+- CF runs a K8s CronJob (`mentorship-sync`) that queries Snowflake for mentorship programs and creates/updates `initiative_type = mentorship` rows in the CF Postgres DB.
 - CF no longer publishes SNS events back to Mentorship — those were only needed for the old bidirectional sync.
 - The five direct HTTP calls from the old system (slug sync, funding status, title-check, addbeneficiary, removebeneficiary) are all eliminated — either because the data is available in Snowflake or because the use case no longer applies.
 
@@ -225,7 +225,7 @@ The old Auth0 app stays active until the old Lambda stack is decommissioned. New
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |
 | R-2 | Does Reimbursement Service query Crowdfunding OpenSearch? | Yes — reads `projects`, `entities`, `lff-users`, `spring-projects`, `spring-users`, `beneficiary-actions`, `travel-funds-tickets`. Writes `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`. Migration plan in OQ-7. |
 | R-3 | Who owns the Mentorship SNS topic? | Mentorship (jobspring) owns it. CF is a subscriber. Topic: `lfx-topic-{stage}-project`. CF queue: `fundspring-lfx-queues-{stage}-project`. |
-| R-4 | Is there a separate admin UI for project approvals? | No. Approvals are done via HMAC-signed token links in emails sent to the CF approver (Sriji, LFID: `shubhrakar`). The token encodes the campaign ID and action — no Auth0 login required to click the link. |
+| R-4 | Is there a separate admin UI for project approvals? | No. Approvals are done via HMAC-signed token links in emails sent to the CF approver (Sriji, LFID: `shubhrakar`). The token encodes the initiative ID and action — no Auth0 login required to click the link. |
 | R-5 | Should Expensify sync be rewritten for initial release? | No. Keep old Lambda running it. Not end-user visible. Reimbursement Service unchanged. |
 | R-6 | Is lfx-v1-sync-helper useful for CF DB migration? | No. It syncs project/committee metadata via NATS KV. Does not touch CF donations, subscriptions, or Ledger data. |
 | OQ-12 | Can RS Lambda reach CF Postgres on K8s? | Open — must confirm RDS is publicly accessible or arrange VPC peering. Blocks OQ-7 Phase 1. |
