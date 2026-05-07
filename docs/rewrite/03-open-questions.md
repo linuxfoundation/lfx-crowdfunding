@@ -94,8 +94,8 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 
 **Phase 1 — on CF release day:**
 RS switches Category 1 reads (CF-owned data) from OpenSearch to direct SQL on CF Postgres:
-- `projects` OpenSearch index → `SELECT id, name, owner_id FROM crowdfunding.projects WHERE status = 'published'`
-- `entities` OpenSearch index → `SELECT id, name, owner_id FROM crowdfunding.funds WHERE status = 'published'`
+- `projects` OpenSearch index → `SELECT id, name, owner_id FROM crowdfunding.initiatives WHERE initiative_type IN ('project', 'mentorship') AND status = 'published'`
+- `entities` OpenSearch index → `SELECT id, name, owner_id FROM crowdfunding.initiatives WHERE initiative_type IN ('general_fund', 'event', 'ostif') AND status = 'published'`
 - `lff-users` OpenSearch index → `SELECT owner_id, email FROM crowdfunding.users`
 
 RS gets a read-only Postgres role on `crowdfunding` schema. No HTTP API layer between RS and CF — direct DB connection. These are the reads used by `RefreshTags()` (Expensify GL code sync) and `getEmailBySlug()` (project owner email lookup).
@@ -158,16 +158,12 @@ For OQ-7 Phase 1 and Phase 2 to work (RS reading `crowdfunding` schema and ownin
 
 ### OQ-8: New Auth0 application for rewritten Crowdfunding
 
-**Status:** In review — PR open at [linuxfoundation/auth0-terraform#299](https://github.com/linuxfoundation/auth0-terraform/pull/299)
+**Status:** Resolved — PR merged at [linuxfoundation/auth0-terraform#299](https://github.com/linuxfoundation/auth0-terraform/pull/299)
 **Owner:** Michal
 
-**Plan:** Michal opens a PR to `linuxfoundation/auth0-terraform` when implementation begins. DevOps reviews. The new app must be created in all three tenants (dev, staging, prod) with:
-- New client ID and secret
-- Allowed callback URLs for the new K8s Ingress URLs (dev/staging) and production domain
-- Allowed CORS origins and logout URLs
-- PKCE flow enabled (Nuxt frontend uses OAuth2 PKCE with HTTP-only cookies, server-side token exchange)
+**Resolution:** `auth0_client.lfx_crowdfunding` created as `regular_web` app in all three tenants (dev, staging, prod) with `authorization_code` + `refresh_token` grants, RS256 JWT, rotating refresh tokens, and PKCE-compatible server-side token exchange. Callback path: `/api/auth/callback`.
 
-The old Auth0 app stays active until the old Lambda stack is decommissioned. New client IDs must be set in `NUXT_PUBLIC_AUTH0_CLIENT_ID` env vars for each environment.
+Pending: DevOps to share the new `client_id` values per tenant so they can be set in `NUXT_PUBLIC_AUTH0_CLIENT_ID` env vars (via AWS Secrets Manager / ESO). The old Auth0 app (`CB Funding`) stays active until the old Lambda stack is decommissioned.
 
 ---
 
@@ -220,7 +216,7 @@ The old Auth0 app stays active until the old Lambda stack is decommissioned. New
 | OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-v2-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
 | OQ-6 | Stripe Plan/Product IDs outside DynamoDB? | 356 projects have Stripe plan/product IDs (mostly mentorship programs); 104 active subscriptions. All must be migrated as-is. No IDs hardcoded outside DynamoDB. |
 | OQ-7 | RS OpenSearch migration plan | Two-phase migration. CF release day: RS reads CF data from Postgres. CF release + 2 weeks (hard deadline): RS migrates its own indices to `reimbursement` schema on CF Postgres. |
-| OQ-8 | New Auth0 app for rewritten CF | PR open at [auth0-terraform#299](https://github.com/linuxfoundation/auth0-terraform/pull/299). New app in all 3 tenants with PKCE; client IDs shared after merge. Old app stays active until Lambda decommission. |
+| OQ-8 | New Auth0 app for rewritten CF | Merged — `auth0_client.lfx_crowdfunding` created in all 3 tenants as `regular_web` with PKCE. Pending: DevOps to share new `client_id` values per tenant for ESO secrets. Old app stays active until Lambda decommission. |
 | OQ-9 | Mentorship → CF direct HTTP calls post-cutover | Moot — all five calls eliminated. Mentorship no longer calls CF. Data flows through Snowflake. |
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |
 | R-2 | Does Reimbursement Service query Crowdfunding OpenSearch? | Yes — reads `projects`, `entities`, `lff-users`, `spring-projects`, `spring-users`, `beneficiary-actions`, `travel-funds-tickets`. Writes `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`. Migration plan in OQ-7. |

@@ -197,9 +197,10 @@ Public (accessible client-side):
 
 ```
 cmd/
-├── api/         # HTTP server entrypoint
-├── mentorship-sync/  # Snowflake CronJob entrypoint
-└── migrate/     # DB migration runner (golang-migrate)
+├── api/          # HTTP server entrypoint
+├── mentorship-sync/   # Snowflake CronJob entrypoint
+├── migrate/      # DB schema migration runner (golang-migrate)
+└── migrate-cf/   # One-time DynamoDB → Postgres data migration CLI
 
 internal/
 ├── initiatives/
@@ -412,6 +413,8 @@ CREATE INDEX ON crowdfunding.donations (initiative_id);
 CREATE INDEX ON crowdfunding.donations (user_id);
 
 -- Users (minimal — auth in Auth0, payment account in Stripe)
+-- Tech debt: github_access_token stored as plain text, matching current LFF behavior.
+-- Should be encrypted at the application layer (KMS envelope encryption) post-initial-release.
 CREATE TABLE crowdfunding.users (
   id                  text PRIMARY KEY,              -- Auth0 subject
   stripe_customer_id  text,
@@ -451,12 +454,12 @@ GROUP BY c.id;
 ### Indexes
 
 ```sql
--- Initiatives
+-- Initiatives (non-unique lookup indexes)
 CREATE INDEX ON crowdfunding.initiatives (initiative_type);
 CREATE INDEX ON crowdfunding.initiatives (owner_id);
 CREATE INDEX ON crowdfunding.initiatives (status);
-CREATE INDEX ON crowdfunding.initiatives (mentorship_program_id); -- Snowflake sync upsert key
-CREATE INDEX ON crowdfunding.initiatives (legacy_id);             -- Ledger API lookups
+-- Note: mentorship_program_id and legacy_id are UNIQUE in the DDL above,
+-- which implicitly creates indexes. No separate CREATE INDEX needed.
 
 -- Subscriptions / Donations (initiative_id, user_id, org_id already indexed in DDL above)
 -- No additional indexes needed beyond those defined in the CREATE TABLE block.
@@ -515,7 +518,7 @@ Rollback: revert Ingress. Old Lambda stack stays live until explicitly decommiss
 - CloudWatch Events — replaced by K8s CronJobs
 - DynamoDB Streams — stream-triggered logic moved to jobs or eliminated
 - SNS/SQS — replaced by Snowflake CronJob for Mentorship sync
-- `entities` table name — replaced by `funds`
+- `entities` / `projects` split — merged into unified `crowdfunding.initiatives` table with `initiative_type` discriminator
 - `initiative` and `travel_fund` fund types — merged into `general_fund`
 - `community` entity type — 3 dead rows discarded
 - Datadog RUM — deferred
