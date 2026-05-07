@@ -1,11 +1,11 @@
 # Security Policy
 
-This is a private, internal repository only intended to contain documentation.
+If you discover a security vulnerability in this repository, please do not
+open a public GitHub issue. Instead, follow the Linux Foundation vulnerability
+reporting process:
 
-If you have a security concern, please direct-message one of the code-owners
-for this repository.
+[How to report vulnerabilities to LF projects and foundations](https://www.linuxfoundation.org/security)
 
-For more information, please read:
-[How to report vulnerabilities to LF projects and
-foundations](https://www.linuxfoundation.org/security).
-
+You may also contact the maintainers directly via GitHub:
+- [@mlehotskylf](https://github.com/mlehotskylf)
+- [@lewisojile](https://github.com/lewisojile)
