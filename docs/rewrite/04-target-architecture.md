@@ -30,8 +30,10 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
      │                    ────►│  Stripe (payments)          │
      │                         └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
-     │  Get Transactions Stats  │  Ledger Service (Lambda)   │
-     │────────────────────────►│  read-only HTTP API calls   │
+     │  GET /balance, /txns    │  Ledger Service (Lambda)   │
+     │────────────────────────►│                             │
+     │◄────────────────────────│  GET /v1/projects/{id}      │
+     │  (donation email data)  │  GET /v1/entities/{id}      │
      │                         └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
      │                         │  Mandrill (email)           │
@@ -41,10 +43,9 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
      │                         └─────────────────────────────┘
      ▼
   ┌───────────────────┐
-  │  Crowdfunding DB  │  K8s (or managed Postgres)
-  │  (PostgreSQL)     │  two schemas:
+  │  Crowdfunding DB  │  Shared LFX v2 RDS (private, K8s-only)
+  │  (PostgreSQL)     │  one schema:
   │  crowdfunding.*   │  crowdfunding.* (CF-owned, RW)
-  │  reimbursement.*  │  reimbursement.* (RS-owned, RW for RS; not accessible by CF)
   └───────────────────┘
 
   Background workers (K8s CronJobs):
@@ -249,6 +250,22 @@ Jobs removed from old system (not ported):
 - `cii-badge` → deferred
 - `sqs-consumer` → dropped; replaced by `mentorship-sync` Snowflake CronJob
 
+### Internal Endpoints (for Reimbursement Service)
+
+Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-owned data. Authenticated via `X-Internal-Token` shared secret (not Auth0). On the public HTTPS ingress — RS Lambda can reach them the same way it reaches any other public HTTPS service.
+
+| Method | Path | Returns | Replaces | Used by |
+|---|---|---|---|---|
+| `GET` | `/internal/v1/initiatives?slug={slug}` | `{legacy_id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
+| `GET` | `/internal/v1/initiatives?status=published` | `[{legacy_id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
+| `GET` | `/internal/v1/users/{owner_id}` | `{id, email}` | `lff-users` reads | `getEmailBySlug()` |
+
+`X-Internal-Token` secret stored in AWS Secrets Manager, injected via ESO into both CF and RS at deploy time.
+
+**The bulk endpoint is release-blocking.** Once CF DNS cuts over, OpenSearch receives no new CF writes and goes stale. `RefreshTags()` must switch to the bulk endpoint on cutover day or new projects will never appear as Expensify tags — beneficiaries cannot submit expenses against them. This is a silent financial failure.
+
+`legacy_id` (not the new Postgres UUID) is returned as the initiative identifier — RS stores legacy DynamoDB string IDs in Expensify as GL codes and must continue using them.
+
 ### Stripe Webhook
 
 `POST /v1/hooks/stripe` — handles `customer.subscription.deleted` → cancel subscription in Postgres. Stripe signature verification required.
@@ -267,7 +284,7 @@ The CronJob:
 
 A 24h sync window is acceptable: new mentorship programs are not immediately donation-ready, and beneficiaries don't draw funds until mid-term (months after approval).
 
-CF keeps beneficiary data for two reasons: financial governance (CF is the custodian of donated funds and must know who is approved to draw them) and Reimbursement Service reads (RS reads beneficiaries directly from CF Postgres to manage Expensify policies).
+CF keeps beneficiary data for two reasons: financial governance (CF is the custodian of donated funds and must know who is approved to draw them) and Reimbursement Service integration (CF pushes beneficiary add/remove actions to RS via the `beneficiary-actions` OpenSearch queue; RS cannot reach CF Postgres directly).
 
 ### Mentorship → CF: no direct HTTP calls
 
@@ -475,13 +492,13 @@ CREATE INDEX ON crowdfunding.initiatives
 
 | Service | Location | Notes |
 |---|---|---|
-| Ledger Service | AWS Lambda | Unchanged. Own Postgres (Ledger DB). CF calls it read-only via HTTP. |
+| Ledger Service | AWS Lambda | Unchanged. Own Postgres (Ledger DB). CF calls it read-only via HTTP. Ledger calls CF HTTP API (`GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}`) for donation notification emails — new CF API must support legacy ID lookups on these paths (see decisions doc). |
 | Ledger DB | AWS RDS / Postgres | Separate from Crowdfunding DB. Migrated post-initial-release. |
-| Reimbursement Service | AWS Lambda | On CF release: switches CF data reads to CF Postgres (read-only). Own tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) migrate to `reimbursement` schema on CF Postgres within 2 weeks of CF release. |
+| Reimbursement Service | AWS Lambda | On CF release: switches CF data reads (`projects`, `entities`, `lff-users` OpenSearch indices) to three internal HTTPS endpoints on the CF Go API. Own tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) stay on OpenSearch until RS moves to K8s. Cannot reach shared RDS directly (separate AWS account/VPC; RDS is private). |
 | Mentorship (jobspring) | AWS Lambda | Unchanged. Publishes data to Snowflake. No direct calls to CF in new system. |
 | Old LFF Lambda | AWS Lambda | Runs in parallel until cutover. Keeps OpenSearch fed for Reimbursement Service. |
 | DynamoDB tables | AWS DynamoDB | Read during migration. Kept until decommission is confirmed safe. |
-| OpenSearch | AWS OpenSearch | Kept alive until RS Category 2 migration completes (CF release + 2 weeks). Decommissioned at that point. |
+| OpenSearch | AWS OpenSearch | Kept alive until RS moves to K8s and migrates its three owned indices (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) to Postgres. Timeline TBD. Must NOT be decommissioned before that point. |
 
 ---
 

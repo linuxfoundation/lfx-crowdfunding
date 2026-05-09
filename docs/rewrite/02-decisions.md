@@ -36,8 +36,8 @@ Update this file when decisions change — note what changed and why.
 - Ledger Service changes (kept unchanged on Lambda)
 - Mentorship backend changes
 - Mentorship UI changes (Mentorship is not rewritten until it moves to Kubernetes)
-- RS Category 2 Postgres migration (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) — scheduled CF release + 2 weeks
-- OpenSearch decommission — scheduled CF release + 2 weeks (see OQ-7)
+- RS Category 2 Postgres migration (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) — deferred until RS moves to Kubernetes (timeline TBD, see OQ-7)
+- OpenSearch decommission — deferred until RS moves to Kubernetes (see OQ-7)
 - CII badge validation (not in initial release UI)
 - Diversity API integration
 - Vulnerability API integration
@@ -53,22 +53,17 @@ Update this file when decisions change — note what changed and why.
 
 Target database is PostgreSQL. DynamoDB is decommissioned after successful migration and cutover.
 
-### Schema separation — two schemas, one Postgres instance
+### Schema separation — one schema, one Postgres instance
 
-One Postgres instance, two schemas:
+The CF Postgres instance has one schema:
 
 - `crowdfunding` — owned by CF Go API (initiatives, orgs, subscriptions, donations, users)
-- `reimbursement` — owned by Reimbursement Service (expense_log, beneficiary_actions, travel_fund_tickets)
 
-Reimbursement Service connects directly to this Postgres instance:
-- Read-write on `reimbursement.*` (its own tables)
-- Read-only on `crowdfunding.initiatives` (replaces OpenSearch `projects`/`entities`/`lff-users` index reads)
+There is no `reimbursement` schema on the CF Postgres instance. The Reimbursement Service is a Lambda running in a separate AWS VPC and cannot reach the shared LFX v2 RDS (which is `publicly_accessible = false`, reachable only from within the K8s cluster VPC). Co-locating RS tables on CF Postgres would require making the shared RDS publicly accessible or establishing cross-account VPC peering — both unacceptable.
 
-Enforced at the DB level: RS gets a read-only Postgres role for `crowdfunding` schema. Not by convention.
+RS continues using OpenSearch for its own three tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) until it moves to Kubernetes. When RS moves to K8s it will get its own database on the shared RDS via the same `lfx-v2-opentofu` pattern as CF (one four-line entry in `postgres.tf`). At that point RS can also read CF data directly from the `crowdfunding` schema via a read-only Postgres role.
 
-No internal HTTP API endpoints between CF and RS — direct DB reads are simpler, faster, and remove an unnecessary layer given both services are on the same team and the same Postgres instance.
-
-Rationale: RS has no existing Postgres. Adding a separate RS Postgres instance for three tiny tables (~65 lines of SQL total) is unjustified operational overhead at this scale. The blast radius concern from schema co-location is theoretical at 2,013 rows and a small team. RS data is isolated in its own schema.
+For the initial CF release, RS reads CF-owned data (project/entity/user lookups) via three narrow internal HTTP endpoints on the CF Go API — the same network path RS uses today for other CF calls, over public HTTPS. See OQ-7 for the migration plan.
 
 Ledger Service keeps its own separate Postgres DB (Ledger DB). It is not migrated in the initial release. CF calls the Ledger HTTP API read-only for transaction stats and balance data — exactly as today.
 
@@ -141,10 +136,6 @@ If a new budget category is added, the CHECK constraint is updated via migration
 ### Donor name snapshot on donations
 
 `donations.name` stores the donor display name at time of donation. This differs from the Auth0 profile for org/invoice donations where the payer is an individual but the displayed donor is the company name. `avatar_url` is not stored — always fetched from Auth0 at render time to avoid stale cache.
-
-### Initiative workflow timestamps — `submitted_at`, `approved_at`, `published_at`
-
-Covered above under "Initiative workflow timestamps."
 
 ### `amount_in_cents` → `bigint`
 
@@ -357,6 +348,16 @@ Keep Chi. No reason to change.
 
 The new Go service calls the Ledger HTTP API (read-only GET calls) exactly as LFF does today. LFF has never written to Ledger directly — Ledger gets its data from its own Stripe/Expensify webhooks. No change to this contract.
 
+**Ledger calls CF HTTP API for notification emails — legacy ID constraint:**
+Ledger's `SendNotifications()` function calls the CF API to resolve project name, user name, and org name for donation confirmation emails. It calls `GET /v1/projects/{id}` and `GET /v1/entities/{id}` using the `project_id` value stored in the Ledger DB — which is the old DynamoDB string ID. After DNS cutover these requests hit the new CF Go API.
+
+The new CF Go API must support legacy ID lookups on these paths — either by keeping the old route shapes and resolving via `legacy_id`, or by accepting `legacy_id` as an alternative to the Postgres UUID on `GET /v1/initiatives/{id}`. If this is not implemented, donation confirmation emails silently fail for all transactions after cutover (Ledger logs a Slack error but posts the transaction anyway).
+
+**Stripe metadata must use `legacy_id` for new donations after cutover:**
+When a donor makes a new donation or subscription via the new CF UI after cutover, the new CF Go API creates the Stripe charge or subscription. It must put `legacy_id` (the old DynamoDB string ID, preserved in `crowdfunding.initiatives.legacy_id`) — not the new Postgres UUID — in the Stripe object metadata fields `projectID` / `entityID`. Ledger's Stripe webhook reads `ch.Metadata["projectID"]` and stores it as `project_id` in the Ledger DB. If the new UUID is stored instead, `GET /balance/{legacy_id}` will not find those transactions and the initiative balance will be wrong.
+
+This is an implementation constraint on the new CF Go API Stripe integration — must be enforced at code review.
+
 ### Mentorship sync — Snowflake pull, not SNS/SQS
 
 CF syncs Mentorship program data from Snowflake via a periodic K8s CronJob (`mentorship-sync`). SNS/SQS is not used in the new system.
@@ -375,7 +376,7 @@ The `mentorship-sync` CronJob:
 **Why CF keeps beneficiary data despite the Snowflake sync:**
 CF is the financial custodian of donated funds. It collects money from donors and must maintain visibility into who is approved to draw those funds via Expensify. Beneficiary records in CF serve two purposes:
 1. **Financial governance** — CF can reconcile money collected against approved disbursement recipients
-2. **Reimbursement Service** — RS reads beneficiaries directly from CF Postgres (per OQ-7 resolution) to manage Expensify policies
+2. **Reimbursement Service** — when CF adds or removes a beneficiary, it writes an action to the RS `beneficiary-actions` OpenSearch queue; RS processes that queue to manage Expensify policies. RS cannot reach CF Postgres directly (separate VPC/account).
 
 CF does not use beneficiary data for payment routing (Stripe charges are donor→program, not donor→beneficiary). The 24h sync delay is acceptable — mentees do not access funds until mid-term, months after approval.
 
@@ -415,6 +416,8 @@ Option A (LFX One calls CF Go API directly) was raised during the architecture r
 ### Expensify sync — keep on old Lambda for initial release
 
 The `expensify-sync` cron job (SyncExpensifyHandler) pushes project/entity metadata to the Reimbursement Service. This is NOT end-user visible and NOT part of the initial release. The old Lambda continues running this job unchanged until the Reimbursement Service is migrated.
+
+**Constraint for future expensify-sync port:** When expensify-sync is eventually ported to the new CF service, it must send `legacy_id` (the old DynamoDB string ID) as the project ID to RS — not the new Postgres UUID. RS stores the project ID in Expensify as a custom reporting field and uses it as the policy lookup key. The Reimbursement Service has two project IDs hardcoded in `chrisProjectList` (service.go:197) for special Expensify handling — these are DynamoDB string IDs and will continue to match as long as `legacy_id` is used. Sending the new Postgres UUID instead would silently break the `chrisProjectList` check and the Expensify policy lookup for all projects.
 
 ### EMAIL_DRY_RUN mode
 
@@ -564,7 +567,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 
 The old LFF Lambda + DynamoDB + OpenSearch stack continues running until:
 1. New system is fully validated in production
-2. Reimbursement Service OpenSearch dependency is resolved (OQ-7)
+2. RS Phase 1 internal endpoints are live on the CF Go API (RS switched off OpenSearch for CF-owned reads — see OQ-7)
 3. DNS cutover is executed
 
-Do not decommission the old stack before all three conditions are met.
+Do not decommission the old stack before all three conditions are met. OpenSearch itself is NOT decommissioned at this point — RS still owns three live indices there (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`). OpenSearch decommission is deferred until RS moves to Kubernetes (timeline TBD, see OQ-7).
