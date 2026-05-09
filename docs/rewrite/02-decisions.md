@@ -155,10 +155,11 @@ Replace the `amountraised` cron job (which wrote a denormalized `amountRaised` f
 
 ```sql
 CREATE VIEW crowdfunding.initiative_funding_summary AS
-SELECT initiative_id, SUM(amount) AS amount_raised_cents
-FROM ledger.ledger
-WHERE txn_type = 'CREDIT'
-GROUP BY initiative_id;
+SELECT c.id AS initiative_id, SUM(l.amount) AS amount_raised_cents
+FROM crowdfunding.initiatives c
+JOIN ledger.ledger l ON l.project_id = c.legacy_id
+WHERE l.txn_type = 'CREDIT'
+GROUP BY c.id;
 ```
 
 Rationale: always fresh, no job to maintain, no staleness. If query performance becomes an issue at scale, materialize it then. Start simple.
