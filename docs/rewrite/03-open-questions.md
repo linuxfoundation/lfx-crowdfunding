@@ -130,6 +130,26 @@ Once RS is on K8s in the same cluster, it can reach the shared RDS directly. At 
 
 ---
 
+### OQ-15: Ledger balance lookup for post-cutover initiatives (no `legacy_id`)
+
+**Status:** Open
+**Owner:** Michal / Lewis
+
+**Question:** The `amount_raised_cents` cache column is kept fresh by calling `GET /balance/{legacy_id}` on the Ledger API. `legacy_id` is the old DynamoDB string ID, preserved during migration for all existing initiatives.
+
+New initiatives created after DNS cutover have no DynamoDB origin and therefore no `legacy_id`. The Ledger API has no key to look up their balance. Additionally, when CF creates a Stripe charge or subscription for a new post-cutover initiative, it must put an ID in the Stripe object metadata fields `projectID` / `entityID` — Ledger reads this to associate transactions with initiatives. If the new Postgres UUID is used instead of `legacy_id`, `GET /balance/{legacy_id}` will not find those transactions and the balance will always be `0`.
+
+**Questions for Lewis:**
+- Should the new CF Go API register new initiatives with Ledger at creation time, receiving a Ledger-side ID to use as `legacy_id`?
+- Or should the new Postgres UUID be used as `legacy_id` for post-cutover initiatives, with the Ledger API updated to accept UUIDs?
+- Or is there another mechanism Ledger uses to associate transactions with initiatives?
+
+**Blocking:** Stripe webhook refresh and reconciliation CronJob for any initiative created after cutover. Also blocks correct Stripe metadata on new donations/subscriptions.
+
+**Action:** Lewis to confirm how Ledger should identify new CF initiatives that have no DynamoDB legacy ID.
+
+---
+
 ### OQ-14: Ledger Expensify fallback — OpenSearch dependency
 
 **Status:** Open

@@ -314,15 +314,17 @@ Document results of validation. Keep the validation report alongside migration l
 - [ ] `EMAIL_DRY_RUN=true` confirmed for prod migration testing
 - [ ] Reimbursement Service OpenSearch dependency acknowledged (old Lambda keeps running)
 - [ ] Rollback procedure tested in staging
+- [ ] OQ-15 resolved — Ledger balance lookup mechanism for post-cutover initiatives confirmed
 
 ### Cutover Steps
 
 1. Put old system in read-only mode (disable writes) — or accept brief dual-write window
 2. Run final incremental migration (any records created since the last full migration)
-3. Switch DNS / K8s ingress from old Lambda API Gateway to new K8s service
-4. Smoke test: login, view projects, make a test donation (test card), check subscription list
-5. Monitor for errors (Go service logs, Postgres errors)
-6. Keep old Lambda running for 2 weeks minimum (rollback window)
+3. **Run `amount_raised_cents` pre-population** — execute the reconciliation CronJob manually against prod Ledger API to populate `amount_raised_cents` for all migrated initiatives before DNS switches. This ensures no published initiative card shows `$0 raised` incorrectly on day one.
+4. Switch DNS / K8s ingress from old Lambda API Gateway to new K8s service
+5. Smoke test: login, view projects, make a test donation (test card), check subscription list
+6. Monitor for errors (Go service logs, Postgres errors)
+7. Keep old Lambda running for 2 weeks minimum (rollback window)
 
 ### Rollback
 
