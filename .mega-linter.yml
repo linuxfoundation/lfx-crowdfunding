@@ -1,7 +1,22 @@
 # Copyright The Linux Foundation and each contributor to LFX.
 # SPDX-License-Identifier: MIT
+---
+GITHUB_COMMENT_REPORTER: false
 
-# Disable linters that are not applicable to a docs-only repository
-DISABLE:
+DISABLE_LINTERS:
+  # No deployable code or IaC in this repo — vulnerability and IaC scanners
+  # produce only false positives against documentation files.
   - REPOSITORY_GRYPE
   - REPOSITORY_KICS
+  # v8r schema validation is not useful for this repo's JSON/YAML files.
+  - JSON_V8R
+  - YAML_V8R
+  # lychee link checker is redundant with markdown-link-check.
+  - SPELL_LYCHEE
+
+DISABLE_ERRORS_LINTERS:
+  # Informative but should not block builds.
+  - COPYPASTE_JSCPD
+
+# Prevent cspell from flagging filenames (e.g. CODEOWNERS, mkdocs) as words.
+SPELL_CSPELL_ANALYZE_FILE_NAMES: false
