@@ -454,3 +454,69 @@ All require `LEDGER_AUTHORIZATION_TOKEN` Bearer header.
 - Syncs: project metadata and committee data only
 - Does NOT sync: Crowdfunding donations, subscriptions, organizations, or Ledger transactions
 - Not useful for Crowdfunding DB migration — purpose-built for v1↔v2 platform metadata
+
+---
+
+## User-Facing Features (feature parity reference)
+
+The new system must replicate all of the following unless explicitly listed as out of scope in `02-decisions.md`.
+
+### Pages / Routes
+
+| Path | Purpose | Notes |
+|---|---|---|
+| `/` | Discovery — project + fund listing | Search, filter, browse all published initiatives |
+| `/projects/:slug` | Project detail | Dashboard / Financial / Stacks tabs |
+| `/details/:id` | Fund detail | Same tab structure as project detail |
+| `/events/:id` | Event detail | |
+| `/initiative/:id` | Initiative (general fund) detail | |
+| `/ostif/:id` | OSTIF detail | |
+| `/projects/:id/payments` | Donation/subscription form for project | |
+| `/details/:id/payments` | Donation/subscription form for fund | |
+| `/projects/:id/edit` | Edit project (owner only) | |
+| `/details/:id/edit` | Edit fund (owner only) | |
+| `/projects/create/connect` | GitHub OAuth step | Project creation wizard step 1 |
+| `/projects/create/select-repo` | Repository picker | Project creation wizard step 2 |
+| `/projects/create/details` | Basic project details form | Project creation wizard step 3–5 |
+| `/projects/create/entity` | General fund form | |
+| `/projects/create/event` | Event form | |
+| `/projects/create/ostif` | OSTIF form | |
+| `/projects/create/initiative` | Initiative (general fund) form | |
+| `/apply` | Onboarding landing page | |
+| `/auth` | Auth0 callback | |
+| `/github` | GitHub OAuth callback | |
+| `/email/approve` | Approve expense (JWT link, no login) | |
+| `/email/reject` | Reject expense (JWT link, no login) | |
+| `/email/approve-project` | Approve project submission (JWT link) | |
+| `/email/approve-entity` | Approve fund submission (JWT link) | |
+
+Note: `/stripe` callback route is **not ported** — was dead code in the old system. See `02-decisions.md`.
+
+In the new Nuxt frontend, all of the above map to unified `/initiatives/[slug]/` routes — the old per-type routes (`/projects/`, `/details/`, `/events/`, etc.) are consolidated. See `04-target-architecture.md` for the new page structure.
+
+### Donation / Subscription Flow
+
+1. Select amount — individual tiers: $5, $25, $100, $250, $500, $1000+; org tiers: $50, $500, $5000, $25000+; invoice minimum $5000
+2. Select category — Development, Marketing, Meetups, Travel, Mentee, Documentation, Diversity, Other
+3. Select frequency — monthly, annual, one-time
+4. Select identity — individual or organization
+5. Enter card (Stripe Elements) or select invoice
+6. Fee display: Stripe 2.9% + $0.30, PayPal 2.9% (display only), Credit 0%
+7. Submit → recurring payment or one-time donation
+
+### Project Creation Wizard
+
+1. Connect GitHub account (OAuth)
+2. Select repository
+3. Basic details — title, description, logo, license, website
+4. Budget — per-category goals and amounts
+5. Code of conduct (CII badge validation deferred — see `02-decisions.md`)
+
+### Approval Flows
+
+- **Initiative approval** — submitter creates initiative → CF admin (Sriji) receives email with HMAC-signed approve/reject link → clicks link, no login required → initiative status updated
+- **Expense approval** — Reimbursement Service emails project admin → admin clicks link → logs in → CF frontend calls CF API → CF API calls Reimbursement Service
+
+### Backer / Supporter List
+
+Public list of donors per initiative. Shows name, avatar, amount, date. Paginated.
