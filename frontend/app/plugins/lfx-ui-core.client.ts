@@ -1,4 +1,4 @@
-// Copyright (c) 2025 The Linux Foundation and each contributor.
+// Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
 // Register @linuxfoundation/lfx-ui-core custom elements (client-only).

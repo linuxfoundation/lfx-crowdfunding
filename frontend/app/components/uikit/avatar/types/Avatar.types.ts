@@ -1,4 +1,4 @@
-// Copyright (c) 2025 The Linux Foundation and each contributor.
+// Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 export const avatarSizes = ['xlarge', 'large', 'normal', 'small', 'xsmall'] as const;
 export const avatarTypes = ['member', 'organization', 'project'] as const;
