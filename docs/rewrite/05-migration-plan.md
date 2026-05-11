@@ -51,13 +51,13 @@ Steps:
 
 ### Tool: Dedicated Go CLI
 
-Location: `tools/migrate-cf/` in the new CF repo. (`cmd/` holds long-lived service entrypoints; `tools/` is for operational tooling with a bounded lifetime. `cmd/migrate/` is reserved for the golang-migrate schema runner — these are two distinct tools.)
+Location: `tools/migrate-cf/` in `linuxfoundation/lfx-crowdfunding` (this repo). (`cmd/` holds long-lived service entrypoints; `tools/` is for operational tooling with a bounded lifetime. `cmd/migrate/` is reserved for the golang-migrate schema runner — these are two distinct tools.)
 
 Not `lfx-v1-sync-helper`. Reason: lfx-v1-sync-helper is a NATS KV sync service with no knowledge of Crowdfunding data shapes. A purpose-built CLI is 200–300 lines, fully auditable, and disposable after the migration.
 
 ### Two modes
 
-```
+```text
 migrate-cf --mode=validate   # Read DynamoDB, report what would be written. No writes.
 migrate-cf --mode=execute    # Read DynamoDB, write to Postgres.
 ```
@@ -123,7 +123,7 @@ The migration tool MUST detect the type and branch accordingly.
 **Budget mapping — branches by initiative_type:**
 
 For `initiative_type = 'project'` (read from `projectDetails.*`):
-```
+```text
 projectDetails.development  → budgets.development  {amount_in_cents, description, goals, is_active}
 projectDetails.marketing    → budgets.marketing
 projectDetails.meetups      → budgets.meetups
@@ -135,7 +135,7 @@ projectDetails.other        → budgets.other
 ```
 
 For `initiative_type = 'mentorship'` (read from `projectDetails.mentee`):
-```
+```text
 projectDetails.mentee.budget.amountInCents → budgets.mentee.amount_in_cents
 projectDetails.mentee.isActive             → budgets.mentee.is_active
 projectDetails.mentee.skills               → budgets.mentee.skills
@@ -304,7 +304,7 @@ Document results of validation. Keep the validation report alongside migration l
 - [ ] Reimbursement Service OpenSearch dependency acknowledged (old Lambda keeps running)
 - [ ] Rollback procedure tested in staging
 - [ ] OQ-15 resolved — Ledger balance lookup mechanism for post-cutover initiatives confirmed
-- [ ] Ledger Service updated and deployed — `x-ledger-auth` replaced with `Authorization: Bearer` on all three CF API calls (`GetProject`, `GetUserName`, `GetOrganizationName` in `fundspring.go`); must be live before DNS cutover or donation confirmation emails break immediately
+- [ ] Ledger Service updated and deployed — auth headers fixed in `fundspring.go`: `x-ledger-auth` → `Authorization: Bearer` for `GetProject`/`GetUserName`; `Authorization: Bearer` added to `GetOrganizationName` (currently sends no auth — a Ledger bug); must be live before DNS cutover or donation confirmation emails break immediately
 
 ### Cutover Steps
 

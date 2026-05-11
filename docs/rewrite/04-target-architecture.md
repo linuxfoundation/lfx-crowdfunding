@@ -197,7 +197,7 @@ Public (accessible client-side):
 
 ### Architecture Pattern (same DDD as LFF)
 
-```
+```text
 cmd/
 ├── api/                # HTTP server entrypoint
 ├── mentorship-sync/    # Snowflake CronJob entrypoint

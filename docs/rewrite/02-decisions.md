@@ -155,7 +155,7 @@ Until Ledger DB is co-located, `amount_raised_cents` is stored as a cached colum
 
 **Sole mechanism: `amount-raised-sync` CronJob (hourly)**
 
-The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{legacy_id}` for all published initiatives, updating `amount_raised_cents`. It is the **only** mechanism for keeping `amount_raised_cents` current. It covers all balance change sources:
+The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{id}` for all published initiatives, updating `amount_raised_cents`. For migrated initiatives, `id` is `legacy_id` (old DynamoDB string ID). For post-cutover initiatives with no `legacy_id`, `id` is the Postgres UUID (pending OQ-15 confirmation). It is the **only** mechanism for keeping `amount_raised_cents` current. It covers all balance change sources:
 
 - **Expensify disbursements** — when beneficiaries draw funds, Ledger records a DEBIT. This produces no Stripe event. Without the cron, `amount_raised_cents` would only ever increase, never reflecting disbursements. This is a correctness requirement, not optional.
 - **Donations and subscription renewals** — Stripe charges are processed by Ledger's own webhook. The cron reads the authoritative balance from Ledger after Ledger has processed it.
