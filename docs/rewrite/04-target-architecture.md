@@ -30,8 +30,10 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
      │                    ────►│  Stripe (payments)          │
      │                         └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
-     │  Get Transactions Stats  │  Ledger Service (Lambda)   │
-     │────────────────────────►│  read-only HTTP API calls   │
+     │  GET /balance, /txns    │  Ledger Service (Lambda)   │
+     │────────────────────────►│                             │
+     │◄────────────────────────│  GET /v1/projects/{id}      │
+     │  (donation email data)  │  GET /v1/entities/{id}      │
      │                         └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
      │                         │  Mandrill (email)           │
@@ -41,10 +43,9 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
      │                         └─────────────────────────────┘
      ▼
   ┌───────────────────┐
-  │  Crowdfunding DB  │  K8s (or managed Postgres)
-  │  (PostgreSQL)     │  two schemas:
+  │  Crowdfunding DB  │  Shared LFX v2 RDS (private, K8s-only)
+  │  (PostgreSQL)     │  one schema:
   │  crowdfunding.*   │  crowdfunding.* (CF-owned, RW)
-  │  reimbursement.*  │  reimbursement.* (RS-owned, RW for RS; not accessible by CF)
   └───────────────────┘
 
   Background workers (K8s CronJobs):
@@ -143,8 +144,8 @@ pages/
 ├── email/
 │   ├── approve.vue                    # Approve expense (JWT link)
 │   ├── reject.vue                     # Reject expense (JWT link)
-│   └── approve-campaign.vue           # Approve campaign (JWT link)
-└── campaigns/
+│   └── approve-initiative.vue           # Approve initiative (JWT link)
+└── initiatives/
     ├── create/
     │   ├── project/
     │   │   ├── connect.vue            # GitHub OAuth step
@@ -154,9 +155,9 @@ pages/
     │   ├── event.vue                  # Event form
     │   └── ostif.vue                  # OSTIF form
     └── [slug]/
-        ├── index.vue                  # Campaign dashboard
+        ├── index.vue                  # Initiative dashboard
         ├── financial.vue              # Financial tab
-        ├── edit.vue                   # Edit campaign (CF-owned fields only for mentorship)
+        ├── edit.vue                   # Edit initiative (CF-owned fields only for mentorship)
         └── payments.vue               # Donation/subscription form
 ```
 
@@ -197,14 +198,15 @@ Public (accessible client-side):
 
 ```
 cmd/
-├── api/         # HTTP server entrypoint
-├── mentorship-sync/  # Snowflake CronJob entrypoint
-└── migrate/     # DB migration runner (golang-migrate)
+├── api/          # HTTP server entrypoint
+├── mentorship-sync/   # Snowflake CronJob entrypoint
+├── migrate/      # DB schema migration runner (golang-migrate)
+└── migrate-cf/   # One-time DynamoDB → Postgres data migration CLI
 
 internal/
-├── campaigns/
-│   ├── domain/       # Domain structs (Campaign, CampaignType)
-│   ├── usecases/     # Business logic (enforces field ownership by campaign_type)
+├── initiatives/
+│   ├── domain/       # Domain structs (Initiative, InitiativeType)
+│   ├── usecases/     # Business logic (enforces field ownership by initiative_type)
 │   └── repository/   # sqlc-generated SQL queries
 ├── subscriptions/
 ├── donations/
@@ -237,7 +239,7 @@ When `EMAIL_DRY_RUN=true`:
 
 | Job | K8s resource | Schedule | What it does |
 |---|---|---|---|
-| `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `campaign_type = mentorship` rows in CF Postgres |
+| `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
 | `github-stats` | CronJob | Every 6 hours | Fetches GitHub repo stats, updates project records |
 
 Jobs removed from old system (not ported):
@@ -247,6 +249,22 @@ Jobs removed from old system (not ported):
 - `expensify-sync` → stays on old Lambda, not ported for initial release
 - `cii-badge` → deferred
 - `sqs-consumer` → dropped; replaced by `mentorship-sync` Snowflake CronJob
+
+### Internal Endpoints (for Reimbursement Service)
+
+Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-owned data. Authenticated via `X-Internal-Token` shared secret (not Auth0). On the public HTTPS ingress — RS Lambda can reach them the same way it reaches any other public HTTPS service.
+
+| Method | Path | Returns | Replaces | Used by |
+|---|---|---|---|---|
+| `GET` | `/internal/v1/initiatives?slug={slug}` | `{legacy_id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
+| `GET` | `/internal/v1/initiatives?status=published` | `[{legacy_id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
+| `GET` | `/internal/v1/users/{owner_id}` | `{id, email}` | `lff-users` reads | `getEmailBySlug()` |
+
+`X-Internal-Token` secret stored in AWS Secrets Manager, injected via ESO into both CF and RS at deploy time.
+
+**The bulk endpoint is release-blocking.** Once CF DNS cuts over, OpenSearch receives no new CF writes and goes stale. `RefreshTags()` must switch to the bulk endpoint on cutover day or new projects will never appear as Expensify tags — beneficiaries cannot submit expenses against them. This is a silent financial failure.
+
+`legacy_id` (not the new Postgres UUID) is returned as the initiative identifier — RS stores legacy DynamoDB string IDs in Expensify as GL codes and must continue using them.
 
 ### Stripe Webhook
 
@@ -260,13 +278,13 @@ CF syncs Mentorship program data from Snowflake via the `mentorship-sync` K8s Cr
 
 The CronJob:
 - Queries Snowflake for all mentorship programs and their approved beneficiaries
-- For each program not yet in CF Postgres: inserts a row with `campaign_type = 'mentorship'`, populates `mentorship_program_id`, budgets from the `mentee` field (skills, terms, mentors, custom_term), and approved beneficiary list
+- For each program not yet in CF Postgres: inserts a row with `initiative_type = 'mentorship'`, populates `mentorship_program_id`, budgets from the `mentee` field (skills, terms, mentors, custom_term), and approved beneficiary list
 - For each program already in CF Postgres: updates Mentorship-owned fields only (name, status, budgets.mentee, beneficiaries); never overwrites CF-owned fields (logo_url, color, description, website)
 - Normalizes `'hide'` → `'hidden'` on status
 
 A 24h sync window is acceptable: new mentorship programs are not immediately donation-ready, and beneficiaries don't draw funds until mid-term (months after approval).
 
-CF keeps beneficiary data for two reasons: financial governance (CF is the custodian of donated funds and must know who is approved to draw them) and Reimbursement Service reads (RS reads beneficiaries directly from CF Postgres to manage Expensify policies).
+CF keeps beneficiary data for two reasons: financial governance (CF is the custodian of donated funds and must know who is approved to draw them) and Reimbursement Service integration (CF pushes beneficiary add/remove actions to RS via the `beneficiary-actions` OpenSearch queue; RS cannot reach CF Postgres directly).
 
 ### Mentorship → CF: no direct HTTP calls
 
@@ -293,15 +311,15 @@ These endpoints do not need to exist in the new CF service. The old Lambda kept 
 All monetary values `bigint` (cents). All primary keys `uuid`. All timestamps `timestamptz`.
 
 **Terminology:**
-- `campaigns` — unified table for all fundable things; formerly split into `projects` and `funds`
-- `campaign_type` values: `project` | `mentorship` | `general_fund` | `event` | `ostif`
+- `initiatives` — unified table for all fundable things; formerly split into `projects` and `funds`
+- `initiative_type` values: `project` | `mentorship` | `general_fund` | `event` | `ostif`
 - `status` values: `draft` | `submitted` | `approved` | `published` | `hidden` | `declined`
 
 ```sql
--- Campaigns (unified: CF projects, Mentorship campaigns, General Funds, Events, Security Audits)
-CREATE TABLE crowdfunding.campaigns (
+-- Initiatives (unified: CF projects, Mentorship initiatives, General Funds, Events, Security Audits)
+CREATE TABLE crowdfunding.initiatives (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  campaign_type         text NOT NULL,                -- 'project' | 'mentorship' | 'general_fund' | 'event' | 'ostif'
+  initiative_type       text NOT NULL,                -- 'project' | 'mentorship' | 'general_fund' | 'event' | 'ostif'
   owner_id              text NOT NULL,                -- Auth0 subject
   name                  text NOT NULL,
   slug                  text NOT NULL UNIQUE,
@@ -350,9 +368,9 @@ CREATE TABLE crowdfunding.campaigns (
   CONSTRAINT budgets_is_object CHECK (jsonb_typeof(budgets) = 'object')
 );
 
-CREATE INDEX ON crowdfunding.campaigns (owner_id);
-CREATE INDEX ON crowdfunding.campaigns (campaign_type);
-CREATE INDEX ON crowdfunding.campaigns (status);
+CREATE INDEX ON crowdfunding.initiatives (owner_id);
+CREATE INDEX ON crowdfunding.initiatives (initiative_type);
+CREATE INDEX ON crowdfunding.initiatives (status);
 
 -- Organizations
 CREATE TABLE crowdfunding.organizations (
@@ -370,7 +388,7 @@ CREATE TABLE crowdfunding.subscriptions (
   id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   stripe_subscription_id      text NOT NULL UNIQUE,  -- dedup key; preserved from migration
   stripe_subscription_item_id text,                  -- needed for Stripe price/quantity updates
-  campaign_id                 uuid NOT NULL REFERENCES crowdfunding.campaigns(id),
+  initiative_id                 uuid NOT NULL REFERENCES crowdfunding.initiatives(id),
   user_id                     text NOT NULL,          -- Auth0 subject
   org_id                      uuid REFERENCES crowdfunding.organizations(id),
   frequency                   text NOT NULL,          -- 'monthly' | 'annual'
@@ -385,7 +403,7 @@ CREATE TABLE crowdfunding.subscriptions (
   updated_at                  timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON crowdfunding.subscriptions (campaign_id);
+CREATE INDEX ON crowdfunding.subscriptions (initiative_id);
 CREATE INDEX ON crowdfunding.subscriptions (user_id);
 CREATE INDEX ON crowdfunding.subscriptions (org_id);
 
@@ -393,7 +411,7 @@ CREATE INDEX ON crowdfunding.subscriptions (org_id);
 CREATE TABLE crowdfunding.donations (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   stripe_charge_id text UNIQUE,                      -- dedup key; NULL for invoice payments (Postgres UNIQUE allows multiple NULLs)
-  campaign_id      uuid NOT NULL REFERENCES crowdfunding.campaigns(id),
+  initiative_id      uuid NOT NULL REFERENCES crowdfunding.initiatives(id),
   user_id          text NOT NULL,                    -- Auth0 subject
   org_id           uuid REFERENCES crowdfunding.organizations(id),
   name             text,                             -- donor display name at time of donation; may differ from Auth0 profile for org/invoice donations
@@ -408,10 +426,12 @@ CREATE TABLE crowdfunding.donations (
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON crowdfunding.donations (campaign_id);
+CREATE INDEX ON crowdfunding.donations (initiative_id);
 CREATE INDEX ON crowdfunding.donations (user_id);
 
 -- Users (minimal — auth in Auth0, payment account in Stripe)
+-- Tech debt: github_access_token stored as plain text, matching current LFF behavior.
+-- Should be encrypted at the application layer (KMS envelope encryption) post-initial-release.
 CREATE TABLE crowdfunding.users (
   id                  text PRIMARY KEY,              -- Auth0 subject
   stripe_customer_id  text,
@@ -421,7 +441,7 @@ CREATE TABLE crowdfunding.users (
 );
 ```
 
-### View: `campaign_funding_summary`
+### View: `initiative_funding_summary`
 
 **Not active in initial release.** Ledger DB is a separate Postgres instance.
 Until Ledger DB is co-located, `amount_raised` and balance data are fetched via
@@ -437,13 +457,13 @@ Note: `ledger.ledger.project_id` stores the old DynamoDB string ID — match via
 -- CREDIT rows increase the balance; DEBIT rows decrease it.
 -- If Ledger stores DEBIT amounts as negative, replace balance_cents with SUM(l.amount).
 -- Verify against Ledger DB before activating this view.
-CREATE VIEW crowdfunding.campaign_funding_summary AS
+CREATE VIEW crowdfunding.initiative_funding_summary AS
 SELECT
-  c.id                                                                  AS campaign_id,
+  c.id                                                                  AS initiative_id,
   SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE 0 END)        AS amount_raised_cents,
   SUM(CASE WHEN l.txn_type = 'DEBIT'  THEN l.amount ELSE 0 END)        AS amount_disbursed_cents,
   SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE -l.amount END) AS balance_cents
-FROM crowdfunding.campaigns c
+FROM crowdfunding.initiatives c
 JOIN ledger.ledger l ON l.project_id = c.legacy_id
 GROUP BY c.id;
 ```
@@ -451,18 +471,18 @@ GROUP BY c.id;
 ### Indexes
 
 ```sql
--- Campaigns
-CREATE INDEX ON crowdfunding.campaigns (campaign_type);
-CREATE INDEX ON crowdfunding.campaigns (owner_id);
-CREATE INDEX ON crowdfunding.campaigns (status);
-CREATE INDEX ON crowdfunding.campaigns (mentorship_program_id); -- Snowflake sync upsert key
-CREATE INDEX ON crowdfunding.campaigns (legacy_id);             -- Ledger API lookups
+-- Initiatives (non-unique lookup indexes)
+CREATE INDEX ON crowdfunding.initiatives (initiative_type);
+CREATE INDEX ON crowdfunding.initiatives (owner_id);
+CREATE INDEX ON crowdfunding.initiatives (status);
+-- Note: mentorship_program_id and legacy_id are UNIQUE in the DDL above,
+-- which implicitly creates indexes. No separate CREATE INDEX needed.
 
--- Subscriptions / Donations (campaign_id, user_id, org_id already indexed in DDL above)
+-- Subscriptions / Donations (initiative_id, user_id, org_id already indexed in DDL above)
 -- No additional indexes needed beyond those defined in the CREATE TABLE block.
 
 -- Full-text search (replaces OpenSearch for discovery)
-CREATE INDEX ON crowdfunding.campaigns
+CREATE INDEX ON crowdfunding.initiatives
   USING gin(to_tsvector('english', name || ' ' || coalesce(description, '')));
 ```
 
@@ -472,13 +492,13 @@ CREATE INDEX ON crowdfunding.campaigns
 
 | Service | Location | Notes |
 |---|---|---|
-| Ledger Service | AWS Lambda | Unchanged. Own Postgres (Ledger DB). CF calls it read-only via HTTP. |
+| Ledger Service | AWS Lambda | Unchanged. Own Postgres (Ledger DB). CF calls it read-only via HTTP. Ledger calls CF HTTP API (`GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}`) for donation notification emails — new CF API must support legacy ID lookups on these paths (see decisions doc). |
 | Ledger DB | AWS RDS / Postgres | Separate from Crowdfunding DB. Migrated post-initial-release. |
-| Reimbursement Service | AWS Lambda | On CF release: switches CF data reads to CF Postgres (read-only). Own tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) migrate to `reimbursement` schema on CF Postgres within 2 weeks of CF release. |
+| Reimbursement Service | AWS Lambda | On CF release: switches CF data reads (`projects`, `entities`, `lff-users` OpenSearch indices) to three internal HTTPS endpoints on the CF Go API. Own tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) stay on OpenSearch until RS moves to K8s. Cannot reach shared RDS directly (separate AWS account/VPC; RDS is private). |
 | Mentorship (jobspring) | AWS Lambda | Unchanged. Publishes data to Snowflake. No direct calls to CF in new system. |
 | Old LFF Lambda | AWS Lambda | Runs in parallel until cutover. Keeps OpenSearch fed for Reimbursement Service. |
 | DynamoDB tables | AWS DynamoDB | Read during migration. Kept until decommission is confirmed safe. |
-| OpenSearch | AWS OpenSearch | Kept alive until RS Category 2 migration completes (CF release + 2 weeks). Decommissioned at that point. |
+| OpenSearch | AWS OpenSearch | Kept alive until RS moves to K8s and migrates its three owned indices (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) to Postgres. Timeline TBD. Must NOT be decommissioned before that point. |
 
 ---
 
@@ -515,7 +535,7 @@ Rollback: revert Ingress. Old Lambda stack stays live until explicitly decommiss
 - CloudWatch Events — replaced by K8s CronJobs
 - DynamoDB Streams — stream-triggered logic moved to jobs or eliminated
 - SNS/SQS — replaced by Snowflake CronJob for Mentorship sync
-- `entities` table name — replaced by `funds`
+- `entities` / `projects` split — merged into unified `crowdfunding.initiatives` table with `initiative_type` discriminator
 - `initiative` and `travel_fund` fund types — merged into `general_fund`
 - `community` entity type — 3 dead rows discarded
 - Datadog RUM — deferred
