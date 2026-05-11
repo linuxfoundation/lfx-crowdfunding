@@ -50,8 +50,9 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
 
   Background workers (K8s CronJobs):
   ┌──────────────────────────────────────────────────────┐
-  │  mentorship-sync  K8s CronJob (daily or few x/day)   │
-  │  github-stats     K8s CronJob (6-hourly)             │
+  │  mentorship-sync   K8s CronJob (daily or few x/day)  │
+  │  github-stats      K8s CronJob (6-hourly)            │
+  │  amount-raised-sync K8s CronJob (every 24h)          │
   └──────────────────────────────────────────────────────┘
 
 ━━━━━━━━━━━━━━━━━━━ UNCHANGED (Lambda / external) ━━━━━━━━━━━━━━━━━━
@@ -137,14 +138,15 @@ pages/
 ├── index.vue                          # Discovery (project + fund listing)
 ├── auth/
 │   └── callback.vue                   # Auth0 callback redirect
-├── stripe/
-│   └── callback.vue                   # Stripe OAuth callback
 ├── github/
 │   └── callback.vue                   # GitHub OAuth callback
 ├── email/
-│   ├── approve.vue                    # Approve expense (JWT link)
-│   ├── reject.vue                     # Reject expense (JWT link)
-│   └── approve-initiative.vue           # Approve initiative (JWT link)
+│   └── approve-initiative.vue         # Approve/reject initiative (JWT link, no Auth0 required)
+├── expense-email/
+│   ├── approve/
+│   │   └── [reportId].vue             # Approve Expensify expense report (Auth0 required; calls POST /v1/projects/approvals/approve/{reportId})
+│   └── reject/
+│       └── [reportId].vue             # Reject Expensify expense report (Auth0 required; calls POST /v1/projects/approvals/reject/{reportId})
 └── initiatives/
     ├── create/
     │   ├── project/
@@ -198,10 +200,12 @@ Public (accessible client-side):
 
 ```
 cmd/
-├── api/          # HTTP server entrypoint
-├── mentorship-sync/   # Snowflake CronJob entrypoint
-├── migrate/      # DB schema migration runner (golang-migrate)
-└── migrate-cf/   # One-time DynamoDB → Postgres data migration CLI
+├── api/                # HTTP server entrypoint
+├── mentorship-sync/    # Snowflake CronJob entrypoint
+├── github-stats/       # GitHub stats CronJob entrypoint
+├── amount-raised-sync/ # amount_raised_cents reconciliation CronJob entrypoint
+├── migrate/            # DB schema migration runner (golang-migrate)
+└── migrate-cf/         # One-time DynamoDB → Postgres data migration CLI
 
 internal/
 ├── initiatives/
@@ -240,7 +244,8 @@ When `EMAIL_DRY_RUN=true`:
 | Job | K8s resource | Schedule | What it does |
 |---|---|---|---|
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
-| `github-stats` | CronJob | Every 6 hours | Fetches GitHub repo stats, updates project records |
+| `github-stats` | CronJob | Every 6 hours | Calls GitHub API for each project's linked repo; updates `github_stats` JSONB column (forks, stars, open issues). Required: the CF frontend displays these stats in the project card (`GithubStatsComponent`). No background job = stale zeros. |
+| `amount-raised-sync` | CronJob | Every 24 hours | Calls `GET /balance/{legacy_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). |
 
 Jobs removed from old system (not ported):
 - `amountraised` / `amountraised-entities` → replaced by Ledger HTTP API calls (same as today); will be replaced by `project_funding_summary` view once Ledger DB is co-located (post-initial-release)
@@ -513,7 +518,8 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 | Go HTTP API | `Deployment` + `Service` + `Ingress` | Chi router, long-running |
 | Crowdfunding Postgres | Shared AWS RDS instance | LFX standard — DevOps adds `crowdfunding` DB + role to existing `lfx-v2` RDS in `lfx-v2-opentofu/postgres.tf`; app connects via `rds-postgres.lfx:5432` |
 | mentorship-sync job | `CronJob` | Daily or a few times/day; Snowflake → CF Postgres |
-| GitHub stats job | `CronJob` | Every 6 hours |
+| github-stats job | `CronJob` | Every 6 hours; updates `github_stats` JSONB on project initiatives |
+| amount-raised-sync job | `CronJob` | Every 24 hours; reconciles `amount_raised_cents` from Ledger API |
 | Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
 | ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
 

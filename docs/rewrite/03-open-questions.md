@@ -53,7 +53,7 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 **Status:** Resolved
 **Owner:** DevOps
 
-**Resolution:** Repo was created and subsequently renamed to `linuxfoundation/lfx-v2-crowdfunding`. This is the repo where implementation lives.
+**Resolution:** Repo is `linuxfoundation/lfx-crowdfunding`. This is the repo where implementation lives and where these docs reside.
 
 ---
 
@@ -62,7 +62,7 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 **Status:** Resolved
 **Owner:** DevOps
 
-**Resolution:** Namespace is `crowdfunding` — consistent with the LFX ArgoCD pattern (logical service name, no `lfx-v2-` prefix; e.g. `query-service`, `committee-service`, `ui`). ArgoCD entry goes in `lfx-v2-applications.yaml`; Helm chart at `charts/lfx-v2-crowdfunding/` in this repo.
+**Resolution:** Namespace is `crowdfunding` — consistent with the LFX ArgoCD pattern (logical service name, no `lfx-v2-` prefix; e.g. `query-service`, `committee-service`, `ui`). ArgoCD entry goes in `lfx-v2-applications.yaml`; Helm chart at `charts/lfx-crowdfunding/` in this repo.
 
 ---
 
@@ -139,14 +139,37 @@ Once RS is on K8s in the same cluster, it can reach the shared RDS directly. At 
 
 New initiatives created after DNS cutover have no DynamoDB origin and therefore no `legacy_id`. The Ledger API has no key to look up their balance. Additionally, when CF creates a Stripe charge or subscription for a new post-cutover initiative, it must put an ID in the Stripe object metadata fields `projectID` / `entityID` — Ledger reads this to associate transactions with initiatives. If the new Postgres UUID is used instead of `legacy_id`, `GET /balance/{legacy_id}` will not find those transactions and the balance will always be `0`.
 
+**How Ledger stores and looks up `project_id`:**
+- Stripe webhook handler (`stripehook/hook.go:92`) reads `ch.Metadata["projectID"]` and stores it verbatim as `project_id text` in the `ledger` table — no validation, no transformation
+- `GET /balance/{projectID}` does a direct `WHERE project_id = $1` — returns `$0` for any ID not already in the table
+- Regex validation on the balance endpoint (`^[0-9a-zA-Z\_\-]+$`) **accepts UUIDs** — hyphens and hex chars all pass
+- There is no project registration mechanism in Ledger; it is purely passive
+
 **Questions for Lewis:**
-- Should the new CF Go API register new initiatives with Ledger at creation time, receiving a Ledger-side ID to use as `legacy_id`?
-- Or should the new Postgres UUID be used as `legacy_id` for post-cutover initiatives, with the Ledger API updated to accept UUIDs?
-- Or is there another mechanism Ledger uses to associate transactions with initiatives?
+- Should the new Postgres UUID be used directly as the project ID in Stripe metadata and `GET /balance/{id}` for post-cutover initiatives?
+- Or is there a different mechanism Lewis prefers?
 
-**Blocking:** Stripe webhook refresh and reconciliation CronJob for any initiative created after cutover. Also blocks correct Stripe metadata on new donations/subscriptions.
+**Blocking:** Stripe webhook refresh and reconciliation CronJob for any initiative created after cutover. Also blocks correct Stripe metadata on new donations/subscriptions. Also affects the backer list — `GET /v1/initiatives/{id}/backers` for org-only backers calls `GET /transactions/?projectId={id}` on the Ledger API using the same ID; same resolution applies.
 
-**Action:** Lewis to confirm how Ledger should identify new CF initiatives that have no DynamoDB legacy ID.
+**Action:** Lewis to confirm approach.
+
+---
+
+**AI Recommendation: use the Postgres UUID directly for post-cutover initiatives**
+
+No Ledger code changes are required. Here is why this works end-to-end:
+
+1. **Stripe metadata:** CF puts the Postgres UUID in `ch.Metadata["projectID"]` at charge-creation time for new initiatives. Ledger stores it verbatim as `project_id`.
+
+2. **Balance lookup:** CF calls `GET /balance/{uuid}` for post-cutover initiatives. Ledger's regex (`^[0-9a-zA-Z\_\-]+$`) accepts UUIDs. The query `WHERE project_id = $1` finds the rows because CF put the UUID in Stripe metadata in step 1. This works correctly with no Ledger changes.
+
+3. **`SendNotifications()` calls CF:** Ledger calls `GET /v1/projects/{project_id}` using the stored `project_id`. For post-cutover rows that value is a UUID. The new CF Go API already needs to support UUID lookups on these endpoints for its own use — so this costs nothing extra.
+
+4. **`legacy_id` column:** For migrated initiatives, `legacy_id` holds the old DynamoDB string ID and CF uses that in Stripe metadata (as today). For post-cutover initiatives, `legacy_id` is `NULL`. CF branches on `legacy_id IS NULL` to decide which ID to put in Stripe metadata: `legacy_id` if set, Postgres UUID otherwise.
+
+5. **Reconciliation CronJob:** Calls `GET /balance/{id}` for all published initiatives. For migrated rows: uses `legacy_id`. For post-cutover rows: uses `id` (UUID). Same logic as step 4.
+
+**The only risk:** If any other Ledger code path assumes `project_id` is in a non-UUID format (e.g. a slug or a DynamoDB-style opaque string), it would break silently. Lewis should verify no such assumption exists before approving this approach. Based on code review, no such assumption was found — `project_id` is treated as an opaque text key throughout Ledger.
 
 ---
 
@@ -155,13 +178,20 @@ New initiatives created after DNS cutover have no DynamoDB origin and therefore 
 **Status:** Open
 **Owner:** Lewis
 
-**Question:** Ledger's Expensify webhook handler (`expensify/main.go`) has a fallback path: when an incoming Expensify expense has no `projectID` field, it calls `getProjectIDByReport()` which queries the `LFF_PROJECTS_INDEX` and `LFF_ENTITIES_INDEX` OpenSearch indices to resolve the project ID from the report ID.
+**Question:** Ledger's Expensify webhook handler (`expensify/main.go`) has a fallback path: when an incoming Expensify expense has no `projectID` field, it calls `getProjectIDByReport()` which queries three OpenSearch indices to resolve the project ID from the report ID via slug lookup:
 
-When OpenSearch is decommissioned (after RS moves to K8s), this fallback silently fails — Expensify transactions with missing `projectID` get stored with an empty `project_id` in the Ledger DB. They become invisible to `GET /balance/{legacy_id}` queries and the initiative balance is understated.
+- `lfx-expense-log` — fetches the expense record to extract the first tag (used as slug)
+- `projects` (LFF CF projects) — slug lookup
+- `entities` (LFF CF entities) — slug lookup
+- `spring-projects` (Mentorship/jobspring programs) — slug lookup
+
+The `spring-projects` index is **owned and written by the Mentorship service (jobspring)**, not by CF. It is a separate index population from `projects`/`entities`. When OpenSearch is decommissioned, this fallback breaks for **all three populations** — not just CF projects.
+
+**Implication:** OpenSearch cannot be decommissioned until both CF and Mentorship have migrated off it. CF's migration replaces `projects`/`entities` reads with CF internal HTTP endpoints. Mentorship's `spring-projects` index has no replacement until Mentorship moves to Kubernetes. This means OpenSearch decommission is gated on Mentorship's K8s migration, independent of CF's timeline.
 
 **Questions for Lewis:**
 - How frequently does this fallback trigger in practice? Is `expense.ProjectID` reliably populated by Expensify, or does it regularly fall back to the OpenSearch lookup?
-- If it triggers regularly, what is the fix? Options: (a) Expensify is configured to always include projectID — confirm this is the case, (b) Ledger fallback is updated to call a CF internal endpoint instead of OpenSearch, (c) accept the data loss as low-frequency and monitor.
+- If it triggers regularly, what is the fix? Options: (a) Expensify is configured to always include projectID — confirm this is the case, (b) Ledger fallback is updated to call CF internal endpoint (covers CF projects) + Mentorship endpoint (covers spring-projects), (c) accept the data loss as low-frequency and monitor.
 
 **Blocking:** OpenSearch decommission. Must be assessed before OpenSearch is shut down.
 
@@ -171,19 +201,21 @@ When OpenSearch is decommissioned (after RS moves to K8s), this fallback silentl
 
 ### OQ-13: Reimbursement Service expense approval — how does auth work?
 
-**Status:** Open
-**Owner:** Lewis / Michal
+**Status:** Resolved — traced from source code
+**Owner:** Michal
 
-**Question:** When the Reimbursement Service sends an expense approval email to a project admin, the link in that email eventually hits the CF UI. The UI then calls the CF API, which calls the RS to approve/reject. This was discussed in the May 5 architecture review but the exact auth mechanism was not resolved.
+**Resolution:** The full flow is:
 
-Specifically:
-- Does the link in the email go directly to the RS endpoint, or to the CF UI (which then calls the RS)?
-- Lewis confirmed the link goes to the UI first, which authenticates the user and then calls the RS. But: how does the CF API authenticate to the RS when forwarding the approval? API key? Signed token?
-- In the current system, RS uses an API key for backend-to-backend calls. Is this the same key the new CF Go service will use?
+1. RS sends email with link `https://{FUNDING_URL}/expense-email/approve/{reportID}`
+2. Link hits the CF **frontend** at `/expense-email/approve/:reportId` — requires Auth0 login (`AuthGuardService`)
+3. Frontend calls `POST /v1/projects/approvals/approve/{reportId}` (or `/reject/`) on the CF API (Auth0 JWT)
+4. CF API calls RS at `POST {REIMBURSEMENTS_API_URL}/expense/{action}/{reportID}` with two headers:
+   - `X-API-KEY: {REIMBURSEMENTS_API_SECRET}` — RS validates this against its own `RS_API_KEY`
+   - `Authorization: Bearer {M2M client token}` — obtained via Auth0 client credentials grant
 
-**Blocking:** RS approval forwarding (`POST /expense/{action}/{reportID}`) in the new Go API. Must be resolved before implementing that endpoint.
-
-**Action:** Lewis to confirm the RS endpoint auth mechanism and provide the API key config name used in the current system.
+**Implementation requirements for new CF Go API:**
+- Env vars needed: `REIMBURSEMENTS_API_URL`, `REIMBURSEMENTS_API_SECRET`, Auth0 M2M client credentials (`AUTH_CLIENT_ID`, `AUTH_SECRET`, `AUTH_AUDIENCE`, `AUTH_URL`) — these are already listed in the current LFF config
+- The `/expense-email/approve/:reportId` and `/expense-email/reject/:reportId` routes **must be implemented in the new Nuxt frontend** — they are distinct from the initiative approval flow (`/email/approve-initiative`) and currently missing from the target architecture pages list. See `04-target-architecture.md`.
 
 ---
 
@@ -243,8 +275,8 @@ Pending: DevOps to share the new `client_id` values per tenant so they can be se
 | R-1 | Does LFF write directly to Ledger DB? | No — LFF calls Ledger HTTP API read-only. Ledger writes come from its own Stripe/Expensify webhooks. |
 | OQ-1 | Can K8s reach Lambda API Gateway endpoints? | Yes — both reachable over public HTTPS. CF only calls RS for expense approval/rejection; project sync stays on old Lambda. |
 | OQ-3 | Mentorship → CF sync mechanism | SNS/SQS dropped. All data (programs + beneficiaries) via Snowflake CronJob. Zero direct HTTP calls between Mentorship and CF. |
-| OQ-4 | GitHub repo created? | Yes — created as `linuxfoundation/lfx-crowdfunding`, renamed to `linuxfoundation/lfx-v2-crowdfunding`. |
-| OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-v2-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
+| OQ-4 | GitHub repo created? | Yes — `linuxfoundation/lfx-crowdfunding`. |
+| OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
 | OQ-6 | Stripe Plan/Product IDs outside DynamoDB? | 356 projects have Stripe plan/product IDs (mostly mentorship programs); 104 active subscriptions. All must be migrated as-is. No IDs hardcoded outside DynamoDB. |
 | OQ-7 | RS OpenSearch migration plan | Two-phase. Phase 1 (CF release day): RS reads CF data via three internal HTTPS endpoints on CF API — slug lookup, bulk published list (required for RefreshTags cron), and user lookup. Phase 1 endpoints must be live before old Lambda is decommissioned. Phase 2 (when RS moves to K8s): RS gets own DB on shared RDS, migrates its three OpenSearch indices to Postgres, switches CF reads to direct SQL. OpenSearch decommissions at Phase 2. |
 | OQ-8 | New Auth0 app for rewritten CF | Merged — `auth0_client.lfx_crowdfunding` created in all 3 tenants as `regular_web` with PKCE. Pending: DevOps to share new `client_id` values per tenant for ESO secrets. Old app stays active until Lambda decommission. |

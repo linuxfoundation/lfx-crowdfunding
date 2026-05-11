@@ -176,11 +176,11 @@ The CF Go API Stripe webhook handler handles `charge.succeeded` and `invoice.pay
 
 The webhook handler updates `updated_at` on the initiative row — a donation is a meaningful change to financial state.
 
-**Stripe webhook race condition:** CF's and Ledger's webhook handlers receive the same Stripe event concurrently. The 5s delay is a pragmatic mitigation, not a guarantee. If CF still races Ledger in rare cases, the reconciliation CronJob corrects the drift within 24h.
+**Stripe webhook race condition:** CF's and Ledger's webhook handlers receive the same Stripe event concurrently. The 5s delay is a pragmatic mitigation, not a guarantee. If CF still races Ledger in rare cases, the `amount-raised-sync` CronJob corrects the drift within 24h.
 
-**2. Reconciliation CronJob (primary, debit-side)**
+**2. `amount-raised-sync` CronJob (primary, debit-side)**
 
-A CronJob runs every 24h and calls `GET /balance/{legacy_id}` for all published initiatives, updating `amount_raised_cents`. This is not merely a safety net for webhook failures — it is the **primary and only mechanism** for debit-side balance changes:
+A CronJob (`cmd/amount-raised-sync/`) runs every 24h and calls `GET /balance/{legacy_id}` for all published initiatives, updating `amount_raised_cents`. This is not merely a safety net for webhook failures — it is the **primary and only mechanism** for debit-side balance changes:
 
 - **Expensify disbursements** — when beneficiaries draw funds, Ledger records a DEBIT transaction. This produces no Stripe event and no CF signal. Without the cron, `amount_raised_cents` would only ever increase, never reflecting disbursements. This is a correctness requirement, not optional.
 - **Subscription renewals** — Stripe charges recurring subscriptions on its own schedule. If CF's webhook handler misses an `invoice.payment_succeeded` event, the cron catches it.
@@ -206,7 +206,7 @@ WHERE id = $2
 
 **Migration cutover requirement**
 
-The reconciliation CronJob must be run once manually as part of the cutover procedure, before DNS switches to the new system. This pre-populates `amount_raised_cents` for all 1,374 migrated published initiatives so no card incorrectly shows `$0 raised` on day one. See migration plan Phase 4.
+The `amount-raised-sync` CronJob must be run once manually as part of the cutover procedure, before DNS switches to the new system. This pre-populates `amount_raised_cents` for all 1,374 migrated published initiatives so no card incorrectly shows `$0 raised` on day one. See migration plan Phase 4.
 
 **Open question (OQ-15): `legacy_id` for post-cutover initiatives**
 
@@ -218,7 +218,7 @@ When Ledger DB is co-located on the same Postgres instance (post-initial-release
 - Activate the `initiative_funding_summary` view (already written in migrations, marked INACTIVE)
 - Remove the `amount_raised_cents` column
 - Remove the Stripe webhook Ledger call
-- Remove the reconciliation CronJob
+- Remove the `amount-raised-sync` CronJob
 
 No API contract changes required — the column and the view return the same value.
 
@@ -393,6 +393,8 @@ All code lives in one repository (monorepo). Each entrypoint under `cmd/` builds
 |---|---|---|
 | `cmd/api/` | `Dockerfile.api` | `Deployment` |
 | `cmd/mentorship-sync/` | `Dockerfile.mentorship-sync` | `CronJob` |
+| `cmd/github-stats/` | `Dockerfile.github-stats` | `CronJob` |
+| `cmd/amount-raised-sync/` | `Dockerfile.amount-raised-sync` | `CronJob` |
 | `cmd/migrate/` | `Dockerfile.migrate` | one-off `Job` |
 
 Rationale: a single container serving both HTTP requests and being invoked as a CronJob (via a flag) conflates two distinct runtime responsibilities. Separate images are minimal, contain only the code they need, and make it obvious what each K8s resource is doing. Shared business logic in `internal/` is compiled into each binary — no duplication of source, no runtime coupling.
@@ -405,13 +407,32 @@ Keep Chi. No reason to change.
 
 The new Go service calls the Ledger HTTP API (read-only GET calls) exactly as LFF does today. LFF has never written to Ledger directly — Ledger gets its data from its own Stripe/Expensify webhooks. No change to this contract.
 
-**Ledger calls CF HTTP API for notification emails — legacy ID constraint:**
-Ledger's `SendNotifications()` function calls the CF API to resolve project name, user name, and org name for donation confirmation emails. It calls `GET /v1/projects/{id}` and `GET /v1/entities/{id}` using the `project_id` value stored in the Ledger DB — which is the old DynamoDB string ID. After DNS cutover these requests hit the new CF Go API.
+**Ledger calls CF HTTP API for notification emails — three endpoints, auth header, legacy ID:**
+Ledger's `SendNotifications()` function calls the CF API to resolve project name, user name, and org name for donation confirmation emails. It calls three endpoints using the `project_id` / `user_id` / `organization_id` values stored in the Ledger DB:
 
-The new CF Go API must support legacy ID lookups on these paths — either by keeping the old route shapes and resolving via `legacy_id`, or by accepting `legacy_id` as an alternative to the Postgres UUID on `GET /v1/initiatives/{id}`. If this is not implemented, donation confirmation emails silently fail for all transactions after cutover (Ledger logs a Slack error but posts the transaction anyway).
+- `GET /v1/projects/{id}` — resolves project name and owner details
+- `GET /v1/entities/{id}` — fallback if project lookup returns empty
+- `GET /v1/organizations/{id}` — resolves org name for org/invoice donations (called unauthenticated — no auth header sent; must remain a public endpoint)
 
-**Stripe metadata must use `legacy_id` for new donations after cutover:**
-When a donor makes a new donation or subscription via the new CF UI after cutover, the new CF Go API creates the Stripe charge or subscription. It must put `legacy_id` (the old DynamoDB string ID, preserved in `crowdfunding.initiatives.legacy_id`) — not the new Postgres UUID — in the Stripe object metadata fields `projectID` / `entityID`. Ledger's Stripe webhook reads `ch.Metadata["projectID"]` and stores it as `project_id` in the Ledger DB. If the new UUID is stored instead, `GET /balance/{legacy_id}` will not find those transactions and the initiative balance will be wrong.
+After DNS cutover, these requests hit the new CF Go API. If any of these lookups fail, donation confirmation emails silently fail (Ledger logs a Slack error but posts the transaction anyway).
+
+**Auth header: `x-ledger-auth` → must be changed to `Authorization: Bearer` before cutover**
+
+Ledger authenticates its CF API calls with a custom `x-ledger-auth` header (`fundspring.go:102`), sending the raw value of `LEDGER_AUTHORIZATION_TOKEN` (with the `Bearer ` prefix stripped). The old LFF Lambda read this from the API Gateway event — a Lambda/API Gateway artifact, not a design decision.
+
+The new CF Go API must **not** implement `x-ledger-auth` support. Instead, the Ledger Service must be updated to send a standard `Authorization: Bearer <token>` header before CF cutover. This is a one-line change in `fundspring.go:getToken()` and `request.Header.Set(...)`. Rationale: accepting a non-standard auth header creates a confusing third auth mechanism alongside Auth0 Bearer and `X-Internal-Token` (RS). `Authorization: Bearer` is the HTTP standard and is handled correctly by every proxy, middleware, and security scanner.
+
+The CF Go API accepts `Authorization: Bearer` on the project/entity detail endpoints and validates the token against a shared secret (`CF_LEDGER_AUTH_TOKEN` env var, same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`). This is a service-to-service shared secret, not a JWT — validated with a direct string comparison in a dedicated middleware applied only to these endpoints.
+
+**`GET /v1/organizations/{id}` — Ledger bug: called unauthenticated**
+
+Ledger's `GetOrganizationName()` (`fundspring.go:63`) uses plain `http.Get()` with no auth header — an oversight; `GetProject()` on the same file sends `Authorization: Bearer`. The fix is the same one-line change: use `http.Client` and `request.Header.Set("Authorization", "Bearer "+getToken())`. This should be fixed in the same Ledger PR that changes `x-ledger-auth` → `Authorization: Bearer`. The CF endpoint should require the same `Authorization: Bearer` header as the project/entity detail endpoints — no special public treatment needed.
+
+**Legacy ID lookups on project/entity endpoints:**
+The `project_id` stored in the Ledger DB is the old DynamoDB string ID. The new CF Go API must accept either a `legacy_id` or a Postgres UUID on `GET /v1/projects/{id}` and `GET /v1/entities/{id}`, resolving via `legacy_id` first. This covers both existing rows (keyed by `legacy_id`) and post-cutover rows (keyed by UUID — see OQ-15).
+
+**Stripe metadata must use the correct project ID for new donations after cutover:**
+See OQ-15. The ID placed in Stripe object metadata fields `projectID` / `entityID` at charge-creation time determines what `project_id` gets written to the Ledger DB and what key `GET /balance/{id}` must use. This is unresolved for post-cutover initiatives and is the subject of OQ-15.
 
 This is an implementation constraint on the new CF Go API Stripe integration — must be enforced at code review.
 
@@ -474,7 +495,7 @@ Option A (LFX One calls CF Go API directly) was raised during the architecture r
 
 The `expensify-sync` cron job (SyncExpensifyHandler) pushes project/entity metadata to the Reimbursement Service. This is NOT end-user visible and NOT part of the initial release. The old Lambda continues running this job unchanged until the Reimbursement Service is migrated.
 
-**Constraint for future expensify-sync port:** When expensify-sync is eventually ported to the new CF service, it must send `legacy_id` (the old DynamoDB string ID) as the project ID to RS — not the new Postgres UUID. RS stores the project ID in Expensify as a custom reporting field and uses it as the policy lookup key. The Reimbursement Service has two project IDs hardcoded in `chrisProjectList` (service.go:197) for special Expensify handling — these are DynamoDB string IDs and will continue to match as long as `legacy_id` is used. Sending the new Postgres UUID instead would silently break the `chrisProjectList` check and the Expensify policy lookup for all projects.
+**Constraint for future expensify-sync port:** When expensify-sync is eventually ported to the new CF service, it must send `legacy_id` (the old DynamoDB string ID) as the project ID to RS — not the new Postgres UUID. RS stores the project ID in Expensify as a custom reporting field and uses it as the policy lookup key. The Reimbursement Service has two project IDs hardcoded in `chrisProjectList` (service.go:197) for special Expensify handling (Kubernetes and CoreDNS — these projects route expense approval through Chris Aniszczyk as an auditor). These are DynamoDB-era project UUIDs (`2d438b9a...` = Kubernetes, `6705be57...` = CoreDNS — confirmed via RS Postman collection). RS receives and stores these IDs from LFF at policy-creation time (`POST /reimbursement/{projectID}`), where `projectID` is the DynamoDB `project.ProjectID`. They are preserved as `legacy_id` in migration and will continue to match as long as `legacy_id` is used in `expensify-sync`. Sending the new Postgres UUID instead would silently break the `chrisProjectList` check and the Expensify approval chain for these two projects.
 
 ### EMAIL_DRY_RUN mode
 
@@ -584,6 +605,26 @@ Deferred. Can be added later as they are non-functional additions.
 ### UI design source
 
 Prototype: `https://github.com/jonathimer/lfx-crowdfunding-prototype` — treat as the design reference for the initial release UI. Sponsor Tiers shown in prototype are out of scope for initial release.
+
+### `/stripe` OAuth callback route — dropped (dead code)
+
+The old CF Angular app had a `/stripe` route (`RedirectingModule`) with an empty `ngOnInit()`. It appeared to be a Stripe Connect OAuth callback but has no logic — the component does nothing. Investigation of the backend confirmed that `ConnectOAuthAccount()` only handles `github` as a provider type; there is no Stripe Connect OAuth flow in the current codebase.
+
+The `/stripe/callback` route is **not ported** to the new Nuxt frontend. If Stripe Connect OAuth is ever needed in the future, it must be implemented from scratch. There is no existing implementation to migrate.
+
+### `diversity` — budget category kept, Diversity API deferred
+
+`diversity` appears in two distinct and unrelated contexts:
+
+**1. `diversity` budget category (active, must be kept)**
+`diversity` is a valid entry in `entity_goals.json` (displayed as "Diversity Funding") and is used as a payment/subscription category in the current frontend and backend. Donors can designate their contribution to the `diversity` budget. This category exists in production data on `subscriptions` and `donations` DynamoDB records.
+
+`diversity` must be included in the `category` CHECK constraint on `crowdfunding.subscriptions` and `crowdfunding.donations`, and in the `budgets` JSONB schema — exactly as `development`, `marketing`, etc.
+
+**2. Diversity API integration (deferred)**
+The old system fetches demographic diversity stats (`malePercentage`, `femalePercentage`, etc.) from a separate Diversity API and displays them on the project page. This API integration is **deferred** — not in the initial release. It has nothing to do with the budget category above.
+
+Do not conflate these two: the Diversity API deferred flag does not mean the `diversity` budget category is removed. Keep the category; defer the API.
 
 ---
 
