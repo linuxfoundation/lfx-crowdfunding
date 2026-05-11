@@ -446,32 +446,9 @@ CREATE TABLE crowdfunding.users (
 );
 ```
 
-### View: `initiative_funding_summary`
+### View: `initiative_funding_summary` (post-initial-release)
 
-**Not active in initial release.** Ledger DB is a separate Postgres instance.
-Until Ledger DB is co-located, `amount_raised` and balance data are fetched via
-the Ledger HTTP API (`GET /balance/{legacy_id}`) — same as today.
-
-The view is written and committed to migrations but created with `-- INACTIVE` comment.
-It is activated as part of the Ledger DB migration (post-initial-release).
-
-Note: `ledger.ledger.project_id` stores the old DynamoDB string ID — match via `legacy_id`, not `id`.
-
-```sql
--- Assumption: l.amount is always stored as a positive integer regardless of txn_type.
--- CREDIT rows increase the balance; DEBIT rows decrease it.
--- If Ledger stores DEBIT amounts as negative, replace balance_cents with SUM(l.amount).
--- Verify against Ledger DB before activating this view.
-CREATE VIEW crowdfunding.initiative_funding_summary AS
-SELECT
-  c.id                                                                  AS initiative_id,
-  SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE 0 END)        AS amount_raised_cents,
-  SUM(CASE WHEN l.txn_type = 'DEBIT'  THEN l.amount ELSE 0 END)        AS amount_disbursed_cents,
-  SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE -l.amount END) AS balance_cents
-FROM crowdfunding.initiatives c
-JOIN ledger.ledger l ON l.project_id = c.legacy_id
-GROUP BY c.id;
-```
+Not part of the initial release. When Ledger DB is co-located on the same Postgres instance, a future migration will add this view, drop the `amount_raised_cents` column, and decommission the `amount-raised-sync` CronJob. The view SQL is documented in `02-decisions.md`.
 
 ### Indexes
 

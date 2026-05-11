@@ -164,27 +164,21 @@ GROUP BY c.id;
 
 Rationale: always fresh, no job to maintain, no staleness. If query performance becomes an issue at scale, materialize it then. Start simple.
 
-Note: this view requires the `ledger` schema to be accessible from the `crowdfunding` schema. Until Ledger is on the same Postgres instance, `amount_raised` will need to be fetched via the Ledger API (`GET /balance/{legacy_id}`) as today, and optionally cached on the initiative record. Revisit when Ledger is co-located.
+Note: this view requires the `ledger` schema to be accessible from the `crowdfunding` schema. Until Ledger is on the same Postgres instance, `amount_raised_cents` is kept fresh by the `amount-raised-sync` CronJob calling the Ledger HTTP API. The view is added as a future migration when Ledger DB is co-located — it is not written into the initial migration files.
 
-### `amount_raised_cents` — cached column for initial release
+### `amount_raised_cents` — cached column, refreshed by hourly CronJob only
 
-Until Ledger DB is co-located, `amount_raised_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh via two mechanisms:
+Until Ledger DB is co-located, `amount_raised_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob.
 
-**1. Stripe webhook refresh (primary, donation-side)**
+**Sole mechanism: `amount-raised-sync` CronJob (hourly)**
 
-The CF Go API Stripe webhook handler handles `charge.succeeded` and `invoice.payment_succeeded`. On receipt, it waits 5 seconds (to allow Ledger's own webhook handler to process the same event first), then calls `GET /balance/{legacy_id}` on the Ledger API and updates `amount_raised_cents`. This is best-effort — the 5s delay covers the realistic Stripe delivery variance but is not guaranteed. The reconciliation CronJob is the correctness guarantee.
+The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{legacy_id}` for all published initiatives, updating `amount_raised_cents`. It is the **only** mechanism for keeping `amount_raised_cents` current. It covers all balance change sources:
 
-The webhook handler updates `updated_at` on the initiative row — a donation is a meaningful change to financial state.
+- **Expensify disbursements** — when beneficiaries draw funds, Ledger records a DEBIT. This produces no Stripe event. Without the cron, `amount_raised_cents` would only ever increase, never reflecting disbursements. This is a correctness requirement, not optional.
+- **Donations and subscription renewals** — Stripe charges are processed by Ledger's own webhook. The cron reads the authoritative balance from Ledger after Ledger has processed it.
+- **Ledger corrections** — manual transaction corrections produce no CF signal; the cron picks them up on the next run.
 
-**Stripe webhook race condition:** CF's and Ledger's webhook handlers receive the same Stripe event concurrently. The 5s delay is a pragmatic mitigation, not a guarantee. If CF still races Ledger in rare cases, the `amount-raised-sync` CronJob corrects the drift within 24h.
-
-**2. `amount-raised-sync` CronJob (primary, debit-side)**
-
-A CronJob (`cmd/amount-raised-sync/`) runs every 24h and calls `GET /balance/{legacy_id}` for all published initiatives, updating `amount_raised_cents`. This is not merely a safety net for webhook failures — it is the **primary and only mechanism** for debit-side balance changes:
-
-- **Expensify disbursements** — when beneficiaries draw funds, Ledger records a DEBIT transaction. This produces no Stripe event and no CF signal. Without the cron, `amount_raised_cents` would only ever increase, never reflecting disbursements. This is a correctness requirement, not optional.
-- **Subscription renewals** — Stripe charges recurring subscriptions on its own schedule. If CF's webhook handler misses an `invoice.payment_succeeded` event, the cron catches it.
-- **Ledger corrections** — manual transaction corrections in Ledger produce no CF signal.
+The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API. It handles only `customer.subscription.deleted` (cancel subscription in Postgres). It does not call `GET /balance/` — that is the cron's job. Rationale: a Stripe webhook triggering a Ledger API call requires a 5-second delay to avoid a race condition with Ledger's own webhook handler — a timing hack. The hourly cron makes this unnecessary and gives the same freshness guarantee with simpler code.
 
 The cron UPDATE must **not** include `updated_at` in the SET clause. Background reconciliation is not a meaningful initiative change and must not produce false-positive change signals for Fivetran sync, RS bulk endpoint, or audit logs:
 
@@ -193,16 +187,11 @@ The cron UPDATE must **not** include `updated_at` in the SET clause. Background 
 UPDATE crowdfunding.initiatives
 SET amount_raised_cents = $1
 WHERE id = $2
-
--- wrong: do not do this in the cron
-UPDATE crowdfunding.initiatives
-SET amount_raised_cents = $1, updated_at = now()
-WHERE id = $2
 ```
 
 **`NULL` treated as `0` in display layer**
 
-`amount_raised_cents` is `NULL` on a new initiative before any donation has occurred. This is safe to display as `0` because any donation triggers the Stripe webhook which populates the column — `NULL` structurally means no donations have been processed. No spinner or special-case Ledger call is needed for `NULL` values.
+`amount_raised_cents` is `NULL` on a new initiative before the first cron run after a donation. Display as `0`. No spinner or special-case Ledger call needed.
 
 **Migration cutover requirement**
 
@@ -210,14 +199,13 @@ The `amount-raised-sync` CronJob must be run once manually as part of the cutove
 
 **Open question (OQ-15): `legacy_id` for post-cutover initiatives**
 
-New initiatives created after cutover have no DynamoDB origin and therefore no `legacy_id`. The Ledger API balance lookup (`GET /balance/{legacy_id}`) has no key to use for these. How Ledger identifies new CF initiatives (new UUID? a new registration step?) must be resolved before the webhook refresh and cron can work for post-cutover initiatives. See OQ-15 in `03-open-questions.md`.
+New initiatives created after cutover have no DynamoDB origin and therefore no `legacy_id`. See OQ-15 in `03-open-questions.md`.
 
 **Migration path**
 
 When Ledger DB is co-located on the same Postgres instance (post-initial-release):
-- Activate the `initiative_funding_summary` view (already written in migrations, marked INACTIVE)
+- Add the `initiative_funding_summary` view as a new migration
 - Remove the `amount_raised_cents` column
-- Remove the Stripe webhook Ledger call
 - Remove the `amount-raised-sync` CronJob
 
 No API contract changes required — the column and the view return the same value.
@@ -227,6 +215,12 @@ No API contract changes required — the column and the view return the same val
 Use `sqlc` to generate type-safe Go code from SQL queries. No ORM (GORM, ent, etc.).
 
 Rationale: the existing codebase uses raw AWS SDK calls with no ORM. `sqlc` gives compile-time query safety without the complexity and magic of an ORM. Consistent with the team's preference for explicit code.
+
+### `_id_migration_map` — in-memory Go map, not a DB table
+
+The migration CLI (`cmd/migrate-cf/`) needs to resolve old DynamoDB string IDs (`projectId`, `entityId`) to new Postgres UUIDs when migrating subscriptions and donations. This mapping is held in memory as a `map[string]uuid.UUID` — not persisted to a DB table.
+
+Rationale: 2,010 rows fit trivially in memory. Read initiatives first, build the map, then process subscriptions and donations. A DB table adds schema noise and a documented "drop after validation" step. An in-memory map is simpler, equally correct, and disappears automatically when the CLI exits.
 
 ### golang-migrate for schema migrations
 

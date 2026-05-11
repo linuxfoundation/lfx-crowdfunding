@@ -250,18 +250,7 @@ All production rows have `status = "approved"`. No `description`, `website`, `ap
 
 ### ID Mapping Problem
 
-DynamoDB uses string IDs (e.g., `projectId: "abc-123"`). Postgres uses UUIDs. The new system generates new UUIDs for all records. During migration, a mapping table is needed:
-
-```sql
-CREATE TABLE crowdfunding._id_migration_map (
-  old_id      text NOT NULL,
-  source      text NOT NULL,  -- 'project' | 'entity' (organizations are already UUIDs — not needed)
-  new_id      uuid NOT NULL,
-  PRIMARY KEY (old_id, source)
-);
-```
-
-This table is used during migration to resolve `projectId` and `entityId` references in subscriptions and donations to the new `initiative_id` UUID. It can be dropped after migration is validated.
+DynamoDB uses string IDs (e.g., `projectId: "abc-123"`). Postgres uses UUIDs. The new system generates new UUIDs for all records. During migration, the CLI holds a `map[string]uuid.UUID` in memory to resolve old `projectId` and `entityId` references to new Postgres UUIDs when migrating subscriptions and donations. No DB table is created — see decision in `02-decisions.md`.
 
 ### Data Quality Checks (run in `--validate` mode)
 
