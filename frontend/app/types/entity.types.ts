@@ -44,8 +44,8 @@ export interface Entity {
   status: string;
   entityType: string;
   description: string;
-  createdOn: Date;
-  updatedOn: Date;
+  createdOn: string;
+  updatedOn: string;
   color: string;
   logoUrl?: string;
   country?: string;
@@ -83,7 +83,7 @@ export interface EntityBackerResponse {
 
 export interface EntitySubscription {
   entityId: string;
-  createdOn: Date;
+  createdOn: string;
   amountInCents: number;
   industry: string;
   name: string;

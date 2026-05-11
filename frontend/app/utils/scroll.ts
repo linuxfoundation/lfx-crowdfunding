@@ -9,7 +9,9 @@ const useScroll = () => {
   const scrollTopPercentage = computed(() => {
     const scrollHeight = html?.scrollHeight || 1;
     const clientHeight = html?.clientHeight || 0;
-    return (scrollTop.value / (scrollHeight - clientHeight)) * 100;
+    const denominator = scrollHeight - clientHeight;
+    if (denominator <= 0) return 0;
+    return (scrollTop.value / denominator) * 100;
   });
 
   const updateScrollTop = () => {

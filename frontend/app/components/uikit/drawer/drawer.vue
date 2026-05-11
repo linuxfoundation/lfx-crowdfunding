@@ -30,7 +30,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onUnmounted, watch } from 'vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 
 const props = withDefaults(
@@ -85,10 +85,14 @@ watch(
     }
   },
 );
+
+onUnmounted(() => {
+  window.removeEventListener('keyup', onEscapeKeyUp);
+});
 </script>
 
 <script lang="ts">
 export default {
-  name: 'LfxModal',
+  name: 'LfxDrawer',
 };
 </script>

@@ -13,8 +13,8 @@ export default defineEventHandler(async () => {
       status: 'active',
       entityType: 'project',
       color: '#326CE5',
-      createdOn: new Date('2024-01-01'),
-      updatedOn: new Date('2025-01-01'),
+      createdOn: '2024-01-01T00:00:00.000Z',
+      updatedOn: '2025-01-01T00:00:00.000Z',
       fundingStatus: {
         totalAnnualGoalInCents: 10_000_000,
         totalDonationsInCents: 8_245_000,
@@ -29,8 +29,8 @@ export default defineEventHandler(async () => {
       status: 'active',
       entityType: 'mentorship',
       color: '#4CAF50',
-      createdOn: new Date('2025-01-01'),
-      updatedOn: new Date('2025-01-01'),
+      createdOn: '2025-01-01T00:00:00.000Z',
+      updatedOn: '2025-01-01T00:00:00.000Z',
       fundingStatus: {
         totalAnnualGoalInCents: 5_000_000,
         totalDonationsInCents: 2_310_000,
@@ -46,8 +46,8 @@ export default defineEventHandler(async () => {
       status: 'active',
       entityType: 'event',
       color: '#FF9800',
-      createdOn: new Date('2025-01-01'),
-      updatedOn: new Date('2025-01-01'),
+      createdOn: '2025-01-01T00:00:00.000Z',
+      updatedOn: '2025-01-01T00:00:00.000Z',
       eventStartDate: '2025-09-15',
       eventEndDate: '2025-09-18',
       fundingStatus: {

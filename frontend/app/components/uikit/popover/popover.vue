@@ -124,7 +124,7 @@ const closePopover = () => {
 };
 
 const handleClick = (e: Event) => {
-  if (!props.allowPassThrough) {
+  if (!props.allowPassThrough && props.triggerEvent === 'click') {
     e.stopPropagation();
     e.preventDefault();
   }

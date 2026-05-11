@@ -11,7 +11,7 @@ SPDX-License-Identifier: MIT
       :src="props.src || ''"
       :size="size"
       type="organization"
-      :aria-label="props.src && props.alt"
+      :aria-label="props.alt || props.src || undefined"
     />
     <div
       v-if="props.isLf"

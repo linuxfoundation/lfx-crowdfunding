@@ -18,7 +18,7 @@ SPDX-License-Identifier: MIT
       {{ props.label }}
     </div>
     <div
-      v-if="!props.hideEmpty"
+      v-if="!props.hideEmpty && totalFilled < 100"
       class="c-progress-bar__empty"
     />
   </div>
@@ -43,6 +43,8 @@ const props = withDefaults(
     label: undefined,
   },
 );
+
+const totalFilled = computed(() => props.values.reduce((sum, v) => sum + v, 0));
 </script>
 
 <script lang="ts">

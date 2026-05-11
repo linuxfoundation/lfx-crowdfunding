@@ -33,7 +33,7 @@ const { showToast } = useToastService();
 
 const sharableLink = computed(() => {
   if (!props.url) {
-    return window?.location.href;
+    return import.meta.client ? window.location.href : '';
   }
   return props.url;
 });

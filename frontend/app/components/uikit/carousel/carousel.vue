@@ -124,7 +124,7 @@ const displayItems = computed(() => {
 
 const totalItems = computed(() => props.value?.length || 0);
 const totalPages = computed(() => Math.ceil(totalItems.value / itemsToScroll.value));
-const currentPage = computed(() => Math.ceil(currentIndex.value / itemsToScroll.value));
+const currentPage = computed(() => Math.floor(currentIndex.value / itemsToScroll.value));
 
 const showNavigation = computed(() => totalItems.value > itemsPerView.value);
 const canGoPrev = computed(() => {

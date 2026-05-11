@@ -24,22 +24,25 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { ErrorObject, Validation } from '@vuelidate/core';
 import LfxFieldMessage from '~/components/uikit/field/field-message.vue';
 
 const props = withDefaults(
   defineProps<{
-    validation: object;
+    validation: Validation;
     errorMessages?: Record<string, string>;
+    hideDefault?: boolean;
   }>(),
   {
     errorMessages: () => ({}),
+    hideDefault: false,
   },
 );
 
 const errors = computed(() => props.validation?.$errors || []);
 
-const errorMessage = (error: object) => {
-  const prop = error.$validator;
+const errorMessage = (error: ErrorObject) => {
+  const prop = error.$validator as string;
   if (props.errorMessages && props.errorMessages[prop] !== undefined) {
     return props.errorMessages[prop];
   }

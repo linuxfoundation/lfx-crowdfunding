@@ -84,7 +84,7 @@ const modalClass = computed(() => {
 watch(
   () => props.modelValue,
   (show: boolean) => {
-    if (!document || !window) return;
+    if (!import.meta.client) return;
     if (!show) {
       window.removeEventListener('keyup', onEscapeKeyUp);
       document.documentElement.style.overflow = '';
@@ -97,6 +97,7 @@ watch(
 );
 
 onUnmounted(() => {
+  if (!import.meta.client) return;
   window.removeEventListener('keyup', onEscapeKeyUp);
   document.documentElement.style.overflow = '';
 });
