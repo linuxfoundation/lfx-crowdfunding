@@ -42,15 +42,6 @@ Total: **2,013 rows** across projects and entities tables. **1,374 published** (
 - DI: hand-rolled per domain (`*/di/init.go`)
 - Architecture: Domain-Driven Design — each domain has `domain/`, `usecases/`, `interfaces/repository/`, `interfaces/restapi/`
 
-### Lambda Functions
-
-| Function | Purpose | Timeout |
-|---|---|---|
-| `fundspring` | Main API + SQS + DynamoDB Stream handler | 90s |
-| `cron` | Background jobs (CloudWatch Events) | 900s |
-| `authorizer` | JWT validation (custom Lambda authorizer) | default |
-| `meta` | Health check (`GET /v1/meta`) | default |
-
 ---
 
 ## HTTP Endpoints
@@ -171,16 +162,6 @@ All tables prefixed: `lff-{stage}-{table}`. Stage values: `dev`, `staging`, `pro
 
 Primary key: `projectId` (partition) + `status` (sort).
 
-GSIs:
-- `projectIdAll` — projectId
-- `projectIdSorted` — projectId + amountInCents
-- `projectSlugAll` — slug
-- `projectSlugSorted` — slug + name
-- `projectNameSorted` — name
-- `projectOwnerSlugSorted` — ownerId + slug
-- `statusIndexAmountRaisedSorted` — status + amountRaised
-- `statusAll` — status
-
 DynamoDB attribute names (JSON struct tags):
 - `projectId`, `ownerId`, `name`, `status`, `planId` (StripePlanID), `productId` (StripeProductID)
 - `details` (nested ProjectDetails), `cachedDetails` (GitHub + project stats)
@@ -203,8 +184,6 @@ DynamoDB Streams: yes — triggers OpenSearch export on INSERT/MODIFY.
 ### `lff-{stage}-entities`
 
 Primary key: `entityId`. Subtypes stored as a type field: `project`, `initiative`, `general-fund`.
-
-GSIs: `entityIdAll`, `entityIdSorted`, `entitySlugAll`.
 
 DynamoDB Streams: yes — triggers OpenSearch export on INSERT/MODIFY.
 
@@ -300,38 +279,6 @@ Auth0 tenants by stage:
 - Prod: `sso.linuxfoundation.org` / client `1sgQmtwRIKwMrCFoFSu6iAm8RtJGvPmf`
 
 Project/entity approval uses signed JWT links emailed to admin (Sriji). No separate admin UI exists.
-
----
-
-## Background Jobs (CloudWatch Events → Lambda `cron`)
-
-| Job | Schedule (GMT) | Handler | What it does |
-|---|---|---|---|
-| `githubcron` | 00:00, 05:00, 11:00, 17:00 | AddGitHubDetailsHandler | Updates GitHub stats on all projects |
-| `amountraised` | 00:02, 05:02, 11:02, 17:02 | AddAmountRaisedInProjects | Aggregates amountRaised from Ledger, writes back to DynamoDB |
-| `amountraised-entities` | 00:04, 05:04, 11:04, 17:04 | AddAmountRaisedInEntities | Same for entities |
-| `export-projects` | Every 15 minutes | ExportProjectsHandler | Exports projects to OpenSearch |
-| `export-organizations` | 00:08, 05:08, 11:08, 17:08 | ExportOrganizationsHandler | Exports orgs to OpenSearch |
-| `expensify-sync` | 00:10, 05:10, 11:10, 17:10 | SyncExpensifyHandler | Pushes project/entity metadata to Reimbursement Service → Expensify |
-| `export-users` | Hourly :00 | ExportUsersHandler | Exports users to OpenSearch |
-| `ledger-viewmodel` | Hourly :02 | LedgerVMHandler | Builds Ledger transaction view models |
-| `entities-sync` | Hourly :04 | ExportEntitiesHandler | Exports entities to OpenSearch |
-| `cii-badge` | Hourly :06 | CIIBuilderHandler | Caches CII badges |
-
-On hold (FUND-1293, commented out):
-- `export-subscriptions` (was every 20 min)
-- `export-entity-subscriptions` (was every 25 min)
-
----
-
-## DynamoDB Stream Handlers
-
-| Table | Events | Handler | Effect |
-|---|---|---|---|
-| subscriptions | INSERT/MODIFY/REMOVE | Project stats handlers | Updates aggregate stats on project record |
-| projects | INSERT/MODIFY/REMOVE | Vulnerability handlers | Registers/updates vulnerability tracking |
-| entities | INSERT/MODIFY | OpenSearch export | Indexes entity |
-| donations | INSERT/MODIFY | OpenSearch export | Indexes donation |
 
 ---
 
@@ -438,96 +385,6 @@ Mentorship calls these CF API endpoints directly (against `FUNDING_API_URL`):
 | Vulnerability API | `VULNERABILITY_BASE_URL` | Vulnerability scanning registration |
 | JobSpring API | `JOBSPRING_API_URL` | Mentorship/mentee integration |
 | S3 | upload bucket `{project}-{stage}-uploads` | Logo/image uploads (presigned URLs) |
-
----
-
-## Frontend (lfx-crowdfunding-upgrade — Angular 15 + NgRx)
-
-### Tech Stack
-
-- Angular 15.2.10, TypeScript 4.9.5
-- NgRx 14.3.3 (Store, Effects, RouterStore) — ~15 feature slices
-- Auth0 (`@auth0/auth0-spa-js` 1.13.0) — token stored in memory/localStorage, injected via HTTP interceptor
-- Stripe v3 (external script)
-- Bootstrap 4 + ng-bootstrap 6.2.0
-- `@linuxfoundation/lfx-ui-core` (LFX Header as custom element)
-- Datadog Browser RUM 5.25.0
-- Intercom
-
-### Routes
-
-| Path | Feature | Purpose |
-|---|---|---|
-| `/` | ProjectsModule | Discovery — project listing |
-| `/projects/:slug` | ProjectsModule | Project detail (Dashboard / Financial / Stacks tabs) |
-| `/details/:id` | ProjectsModule | Entity detail (same tab structure) |
-| `/events/:id` | ProjectsModule | Event detail |
-| `/initiative/:id` | ProjectsModule | Initiative detail |
-| `/ostif/:id` | ProjectsModule | OSTIF detail |
-| `/projects/:id/payments` | ProjectsModule | Donation/subscription form |
-| `/details/:id/payments` | ProjectsModule | Entity donation form |
-| `/projects/:id/edit` | ProjectsModule | Edit project (owner only) |
-| `/details/:id/edit` | ProjectsModule | Edit entity (owner only) |
-| `/projects/create/connect` | CreateProjectModule | GitHub OAuth step |
-| `/projects/create/select-repo` | CreateProjectModule | Repository picker |
-| `/projects/create/details` | CreateProjectModule | Basic details |
-| `/projects/create/entity` | CreateProjectModule | Generic entity form |
-| `/projects/create/event` | CreateProjectModule | Event form |
-| `/projects/create/ostif` | CreateProjectModule | OSTIF form |
-| `/projects/create/initiative` | CreateProjectModule | Initiative form |
-| `/apply` | ApplyModule | Onboarding |
-| `/auth` | RedirectingModule | Auth0 callback |
-| `/stripe` | RedirectingModule | Stripe OAuth callback |
-| `/github` | RedirectingModule | GitHub OAuth callback |
-| `/email/approve` | EmailApproveModule | Approve expense (JWT link) |
-| `/email/reject` | EmailApproveModule | Reject expense (JWT link) |
-| `/email/approve-project` | EmailApproveModule | Approve project (JWT link) |
-| `/email/approve-entity` | EmailApproveModule | Approve entity (JWT link) |
-
-### Donation/Subscription Flow (user perspective)
-
-1. Select amount — individual tiers: $5, $25, $100, $250, $500, $1000+; org tiers: $50, $500, $5000, $25000+; invoice minimum $5000
-2. Select category — Development, Marketing, Meetups, Travel, Mentee, Documentation, Diversity, Other
-3. Select frequency — monthly, annual, one-time
-4. Select identity — individual or organization
-5. Enter card (Stripe Elements) or select invoice
-6. Fee display: Stripe 2.9% + $0.30, PayPal 2.9% (display only), Credit 0%
-7. Submit → `POST /v1/me/subscriptions` (recurring) or `POST /v1/me/donations` (one-time)
-
-### Project Creation Wizard (5 steps)
-
-1. Connect GitHub account (OAuth)
-2. Select repository
-3. Basic details — title, description, logo, license, website
-4. Budget — per-category goals and amounts
-5. Code of conduct + CII badge validation
-
-### NgRx State Slices
-
-`auth`, `router`, `card`, `subscriptions`, `subscriptionPages`, `entitySubscriptionPages`, `alerts`, `backers`, `backersPage`, `privateProjects`, `privateEntities`, `myEvents`, `organization`
-
-### Feature Flags (`flags.ts`)
-
-```
-FLAG_FULL_LOGS: true
-FLAG_SHOW_ACCOUNT_TABS: true
-FLAG_SHOW_BACKER_LIST: true
-FLAG_GITHUB_POC: false
-FLAG_SHOW_MY_PROJECTS: true
-FLAG_SHOW_PROGRESS_BAR: true
-FLAG_SHOW_COMMUNITY: true
-FLAG_SHOW_ANNUAL_GOAL_PIE_LIST: true
-FLAG_GENERAL_FUNDING_SUPPORT: true
-```
-
-### Environment Config
-
-| Var | Dev | Prod |
-|---|---|---|
-| `API_URL` | `https://api.funding.dev.platform.linuxfoundation.org/` | `https://api.crowdfunding.lfx.linuxfoundation.org/` |
-| `AUTH0_CLIENT_ID` | `lzClGRsDYnfgMmio8J9vYXwTkFm51na2` | `1sgQmtwRIKwMrCFoFSu6iAm8RtJGvPmf` |
-| `AUTH0_DOMAIN` | `linuxfoundation-dev.auth0.com` | `sso.linuxfoundation.org` |
-| `intercomId` | `mxl90k6y` | `w29sqomy` |
 
 ---
 
