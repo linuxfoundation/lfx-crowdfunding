@@ -40,7 +40,7 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 - A 24h sync delay is acceptable: new mentorship programs are not immediately donation-ready by business requirement, and mentees/beneficiaries don't access funds until mid-term (months after program creation).
 
 **How it works:**
-- CF runs a K8s CronJob (`mentorship-sync`) that queries Snowflake for mentorship programs and creates/updates `campaign_type = mentorship` rows in the CF Postgres DB.
+- CF runs a K8s CronJob (`mentorship-sync`) that queries Snowflake for mentorship programs and creates/updates `initiative_type = mentorship` rows in the CF Postgres DB.
 - CF no longer publishes SNS events back to Mentorship — those were only needed for the old bidirectional sync.
 - The five direct HTTP calls from the old system (slug sync, funding status, title-check, addbeneficiary, removebeneficiary) are all eliminated — either because the data is available in Snowflake or because the use case no longer applies.
 
@@ -87,37 +87,85 @@ The new CF service only calls the Reimbursement Service for one purpose: expense
 
 ### OQ-7: Reimbursement Service OpenSearch dependency — long-term plan
 
-**Status:** Resolved
+**Status:** Partially resolved — Phase 1 plan updated; Phase 2 blocked on RS moving to K8s (see OQ-12).
 **Owner:** Michal
 
-**Resolution:** Two-phase migration with hard decommission deadline of CF release + 2 weeks.
-
 **Phase 1 — on CF release day:**
-RS switches Category 1 reads (CF-owned data) from OpenSearch to direct SQL on CF Postgres:
-- `projects` OpenSearch index → `SELECT id, name, owner_id FROM crowdfunding.projects WHERE status = 'published'`
-- `entities` OpenSearch index → `SELECT id, name, owner_id FROM crowdfunding.funds WHERE status = 'published'`
-- `lff-users` OpenSearch index → `SELECT owner_id, email FROM crowdfunding.users`
+RS switches Category 1 reads (CF-owned data) from OpenSearch to three narrow internal HTTP endpoints on the CF Go API:
 
-RS gets a read-only Postgres role on `crowdfunding` schema. No HTTP API layer between RS and CF — direct DB connection. These are the reads used by `RefreshTags()` (Expensify GL code sync) and `getEmailBySlug()` (project owner email lookup).
-
-**Phase 2 — CF release + 2 weeks (hard deadline):**
-RS migrates Category 2 indices (RS-owned data) from OpenSearch to the `reimbursement` schema on the CF Postgres instance:
-
-| OpenSearch index | Replacement | Data |
+| OpenSearch index replaced | CF internal endpoint | Used by RS for |
 |---|---|---|
-| `lfx-expense-log` | `reimbursement.expense_log` table | Email send idempotency records |
-| `beneficiary-actions` | `reimbursement.beneficiary_actions` table | Pending add/remove work queue |
-| `travel-funds-tickets` | `reimbursement.travel_fund_tickets` table | Ticket→beneficiary mapping |
+| `projects` + `entities` (per-slug) | `GET /internal/v1/initiatives?slug={slug}` | Project/entity owner lookup (`getEmailBySlug`) |
+| `projects` + `entities` (bulk) | `GET /internal/v1/initiatives?status=published` | Bulk tag rebuild (`RefreshTags` cron, runs every 3h) |
+| `lff-users` | `GET /internal/v1/users/{owner_id}` | Owner email lookup |
 
-All three are simple key-value access patterns (get by ID, get by action type) — no full-text search. Schema is ~65 lines SQL, implementation ~100 lines Go replacing `ElasticRepository` calls with SQL queries.
+**Why the bulk endpoint is required:** Once CF DNS cuts over, the new CF service writes exclusively to Postgres — OpenSearch receives no new writes. From cutover day, OpenSearch is a stale snapshot. `RefreshTags()` runs every 3 hours and bulk-reads all published initiatives to rebuild Expensify GL code tags. If it keeps reading from stale OpenSearch, new projects created after cutover will never appear as Expensify tags, and beneficiaries cannot submit expenses against them. This is a silent failure with real financial impact.
 
-OpenSearch decommissions on CF release + 2 weeks. Not "when we get to it."
+The bulk endpoint returns `[{legacy_id, name}]` for all published initiatives. RS uses `legacy_id` as the Expensify GL code (matching what is already stored in Expensify from the old system).
+
+These endpoints are on the CF public HTTPS ingress, authenticated via a shared secret (`X-Internal-Token` header). RS Lambda can reach them over public HTTPS — same network path as all other Lambda→K8s calls today (confirmed reachable, OQ-1/OQ-2).
+
+No direct Postgres access from RS Lambda. The shared LFX v2 RDS is `publicly_accessible = false` and unreachable from the RS Lambda VPC (separate AWS account). See OQ-12.
+
+**Phase 2 — when RS moves to Kubernetes (timeline TBD):**
+Once RS is on K8s in the same cluster, it can reach the shared RDS directly. At that point:
+- RS gets its own database on the shared RDS via the `lfx-v2-opentofu` pattern (one entry in `postgres.tf`)
+- RS migrates its three OpenSearch indices to its own Postgres DB:
+
+| OpenSearch index | Replacement |
+|---|---|
+| `lfx-expense-log` | `reimbursement.expense_log` table |
+| `beneficiary-actions` | `reimbursement.beneficiary_actions` table |
+| `travel-funds-tickets` | `reimbursement.travel_fund_tickets` table |
+
+- RS switches CF data reads from the Phase 1 HTTP endpoints to a read-only Postgres role on `crowdfunding` schema (direct SQL, no HTTP layer)
+- OpenSearch decommissions at this point
 
 **Notes:**
-- RS tables live on the CF Postgres instance under the `reimbursement` schema — same connection, separate schema, separate role
-- `beneficiary-actions` remove path is fully commented out in RS (`PolicyEmployeesRemove` at service.go:919) — migration of this index is low risk
-- Existing `lfx-expense-log` data must be migrated before cutover to preserve email deduplication history
-- Old CF Lambda has zero OpenSearch writes — verify who populates `projects`/`entities` OpenSearch indices today before Phase 1 cutover
+- The "CF release + 2 weeks" hard deadline for Phase 2 is removed — it was premature given OQ-12
+- OpenSearch must NOT be decommissioned before Phase 2 — RS still owns three live indices there (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`)
+- The old CF Lambda keeps `projects`/`entities` OpenSearch indices populated during the parallel-run window only — once it is decommissioned, those indices go stale. Phase 1 HTTP endpoints must be live before the old Lambda is shut down
+- `beneficiary-actions` remove path is fully commented out in RS (`PolicyEmployeesRemove` at service.go:919) — low risk
+- Existing `lfx-expense-log` data must be migrated to Postgres before OpenSearch cutover to preserve email deduplication history
+
+---
+
+### OQ-15: Ledger balance lookup for post-cutover initiatives (no `legacy_id`)
+
+**Status:** Open
+**Owner:** Michal / Lewis
+
+**Question:** The `amount_raised_cents` cache column is kept fresh by calling `GET /balance/{legacy_id}` on the Ledger API. `legacy_id` is the old DynamoDB string ID, preserved during migration for all existing initiatives.
+
+New initiatives created after DNS cutover have no DynamoDB origin and therefore no `legacy_id`. The Ledger API has no key to look up their balance. Additionally, when CF creates a Stripe charge or subscription for a new post-cutover initiative, it must put an ID in the Stripe object metadata fields `projectID` / `entityID` — Ledger reads this to associate transactions with initiatives. If the new Postgres UUID is used instead of `legacy_id`, `GET /balance/{legacy_id}` will not find those transactions and the balance will always be `0`.
+
+**Questions for Lewis:**
+- Should the new CF Go API register new initiatives with Ledger at creation time, receiving a Ledger-side ID to use as `legacy_id`?
+- Or should the new Postgres UUID be used as `legacy_id` for post-cutover initiatives, with the Ledger API updated to accept UUIDs?
+- Or is there another mechanism Ledger uses to associate transactions with initiatives?
+
+**Blocking:** Stripe webhook refresh and reconciliation CronJob for any initiative created after cutover. Also blocks correct Stripe metadata on new donations/subscriptions.
+
+**Action:** Lewis to confirm how Ledger should identify new CF initiatives that have no DynamoDB legacy ID.
+
+---
+
+### OQ-14: Ledger Expensify fallback — OpenSearch dependency
+
+**Status:** Open
+**Owner:** Lewis
+
+**Question:** Ledger's Expensify webhook handler (`expensify/main.go`) has a fallback path: when an incoming Expensify expense has no `projectID` field, it calls `getProjectIDByReport()` which queries the `LFF_PROJECTS_INDEX` and `LLF_ENTITIES_INDEX` OpenSearch indices to resolve the project ID from the report ID.
+
+When OpenSearch is decommissioned (after RS moves to K8s), this fallback silently fails — Expensify transactions with missing `projectID` get stored with an empty `project_id` in the Ledger DB. They become invisible to `GET /balance/{legacy_id}` queries and the initiative balance is understated.
+
+**Questions for Lewis:**
+- How frequently does this fallback trigger in practice? Is `expense.ProjectID` reliably populated by Expensify, or does it regularly fall back to the OpenSearch lookup?
+- If it triggers regularly, what is the fix? Options: (a) Expensify is configured to always include projectID — confirm this is the case, (b) Ledger fallback is updated to call a CF internal endpoint instead of OpenSearch, (c) accept the data loss as low-frequency and monitor.
+
+**Blocking:** OpenSearch decommission. Must be assessed before OpenSearch is shut down.
+
+**Action:** Lewis to check Ledger logs/metrics for how often `getProjectIDByReport()` is actually called in production.
 
 ---
 
@@ -139,35 +187,14 @@ Specifically:
 
 ---
 
-### OQ-12: Can Reimbursement Service Lambda reach CF Postgres on K8s?
-
-**Status:** Open
-**Owner:** DevOps / Architect (raised by Eric Searcy, May 2026)
-
-**Question:** The Reimbursement Service runs as a Lambda function inside its own AWS VPC. The CF Postgres instance is on the shared LFX v2 RDS, reachable from K8s via an in-cluster ExternalName service (`rds-postgres.lfx:5432`). These are in separate AWS accounts / VPCs.
-
-For OQ-7 Phase 1 and Phase 2 to work (RS reading `crowdfunding` schema and owning `reimbursement` schema via direct Postgres connection), RS Lambda must be able to reach the RDS endpoint.
-
-**Options to investigate:**
-- Is the shared LFX v2 RDS instance publicly accessible (like the Ledger API)? If yes, RS Lambda can connect directly with credentials.
-- If RDS is private, VPC peering or an AWS PrivateLink between the RS VPC and the LFX v2 VPC is required — needs DevOps coordination.
-
-**Blocking:** OQ-7 Phase 1 (CF release day). Must be resolved before RS can switch off OpenSearch for CF data reads.
-
----
-
 ### OQ-8: New Auth0 application for rewritten Crowdfunding
 
-**Status:** In review — PR open at [linuxfoundation/auth0-terraform#299](https://github.com/linuxfoundation/auth0-terraform/pull/299)
+**Status:** Resolved — PR merged at [linuxfoundation/auth0-terraform#299](https://github.com/linuxfoundation/auth0-terraform/pull/299)
 **Owner:** Michal
 
-**Plan:** Michal opens a PR to `linuxfoundation/auth0-terraform` when implementation begins. DevOps reviews. The new app must be created in all three tenants (dev, staging, prod) with:
-- New client ID and secret
-- Allowed callback URLs for the new K8s Ingress URLs (dev/staging) and production domain
-- Allowed CORS origins and logout URLs
-- PKCE flow enabled (Nuxt frontend uses OAuth2 PKCE with HTTP-only cookies, server-side token exchange)
+**Resolution:** `auth0_client.lfx_crowdfunding` created as `regular_web` app in all three tenants (dev, staging, prod) with `authorization_code` + `refresh_token` grants, RS256 JWT, rotating refresh tokens, and PKCE-compatible server-side token exchange. Callback path: `/api/auth/callback`.
 
-The old Auth0 app stays active until the old Lambda stack is decommissioned. New client IDs must be set in `NUXT_PUBLIC_AUTH0_CLIENT_ID` env vars for each environment.
+Pending: DevOps to share the new `client_id` values per tenant so they can be set in `NUXT_PUBLIC_AUTH0_CLIENT_ID` env vars (via AWS Secrets Manager / ESO). The old Auth0 app (`CB Funding`) stays active until the old Lambda stack is decommissioned.
 
 ---
 
@@ -219,13 +246,13 @@ The old Auth0 app stays active until the old Lambda stack is decommissioned. New
 | OQ-4 | GitHub repo created? | Yes — created as `linuxfoundation/lfx-crowdfunding`, renamed to `linuxfoundation/lfx-v2-crowdfunding`. |
 | OQ-5 | ArgoCD namespace for CF K8s deployment | `crowdfunding` namespace. Helm chart in `charts/lfx-v2-crowdfunding/` in the CF repo; ArgoCD entry in `lfx-v2-applications.yaml`. |
 | OQ-6 | Stripe Plan/Product IDs outside DynamoDB? | 356 projects have Stripe plan/product IDs (mostly mentorship programs); 104 active subscriptions. All must be migrated as-is. No IDs hardcoded outside DynamoDB. |
-| OQ-7 | RS OpenSearch migration plan | Two-phase migration. CF release day: RS reads CF data from Postgres. CF release + 2 weeks (hard deadline): RS migrates its own indices to `reimbursement` schema on CF Postgres. |
-| OQ-8 | New Auth0 app for rewritten CF | PR open at [auth0-terraform#299](https://github.com/linuxfoundation/auth0-terraform/pull/299). New app in all 3 tenants with PKCE; client IDs shared after merge. Old app stays active until Lambda decommission. |
+| OQ-7 | RS OpenSearch migration plan | Two-phase. Phase 1 (CF release day): RS reads CF data via three internal HTTPS endpoints on CF API — slug lookup, bulk published list (required for RefreshTags cron), and user lookup. Phase 1 endpoints must be live before old Lambda is decommissioned. Phase 2 (when RS moves to K8s): RS gets own DB on shared RDS, migrates its three OpenSearch indices to Postgres, switches CF reads to direct SQL. OpenSearch decommissions at Phase 2. |
+| OQ-8 | New Auth0 app for rewritten CF | Merged — `auth0_client.lfx_crowdfunding` created in all 3 tenants as `regular_web` with PKCE. Pending: DevOps to share new `client_id` values per tenant for ESO secrets. Old app stays active until Lambda decommission. |
 | OQ-9 | Mentorship → CF direct HTTP calls post-cutover | Moot — all five calls eliminated. Mentorship no longer calls CF. Data flows through Snowflake. |
 | OQ-10 | UI prototype fidelity | Rough reference only. Implement functionally with PrimeVue; update once designer delivers final designs. |
+| OQ-12 | Can RS Lambda reach CF Postgres? | No — shared RDS is private (`publicly_accessible = false`), K8s-only. RS Lambda is in a separate AWS account/VPC. RS reads CF data via CF public HTTPS API instead. Direct DB access deferred until RS moves to K8s. |
 | R-2 | Does Reimbursement Service query Crowdfunding OpenSearch? | Yes — reads `projects`, `entities`, `lff-users`, `spring-projects`, `spring-users`, `beneficiary-actions`, `travel-funds-tickets`. Writes `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`. Migration plan in OQ-7. |
 | R-3 | Who owns the Mentorship SNS topic? | Mentorship (jobspring) owns it. CF is a subscriber. Topic: `lfx-topic-{stage}-project`. CF queue: `fundspring-lfx-queues-{stage}-project`. |
-| R-4 | Is there a separate admin UI for project approvals? | No. Approvals are done via HMAC-signed token links in emails sent to the CF approver (Sriji, LFID: `shubhrakar`). The token encodes the campaign ID and action — no Auth0 login required to click the link. |
+| R-4 | Is there a separate admin UI for project approvals? | No. Approvals are done via HMAC-signed token links in emails sent to the CF approver (Sriji, LFID: `shubhrakar`). The token encodes the initiative ID and action — no Auth0 login required to click the link. |
 | R-5 | Should Expensify sync be rewritten for initial release? | No. Keep old Lambda running it. Not end-user visible. Reimbursement Service unchanged. |
 | R-6 | Is lfx-v1-sync-helper useful for CF DB migration? | No. It syncs project/committee metadata via NATS KV. Does not touch CF donations, subscriptions, or Ledger data. |
-| OQ-12 | Can RS Lambda reach CF Postgres on K8s? | Open — must confirm RDS is publicly accessible or arrange VPC peering. Blocks OQ-7 Phase 1. |

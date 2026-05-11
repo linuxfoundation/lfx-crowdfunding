@@ -1,0 +1,8 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^https://github.com/linuxfoundation/",
+      "comment": "Private LFX repos return 404 to unauthenticated link checkers"
+    }
+  ]
+}
