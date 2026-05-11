@@ -55,41 +55,41 @@ SPDX-License-Identifier: MIT
         <span class="text-body-1">Failed to load campaigns. Please try again.</span>
       </div>
 
-      <!-- Campaign cards -->
+      <!-- Entity cards -->
       <div
         v-else-if="data"
         class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
       >
         <lfx-card
-          v-for="campaign in data.data"
-          :key="campaign.id"
+          v-for="entity in data.data"
+          :key="entity.id"
         >
           <div class="p-6 flex flex-col gap-4">
             <lfx-tag
-              :variation="tagVariation(campaign.type)"
+              :variation="tagVariation(entity.entityType)"
               size="small"
               type="transparent"
             >
-              {{ campaignTypeLabel(campaign.type) }}
+              {{ entityTypeLabel(entity.entityType) }}
             </lfx-tag>
 
-            <h3 class="text-heading-4 font-semibold">{{ campaign.title }}</h3>
+            <h3 class="text-heading-4 font-semibold">{{ entity.name }}</h3>
 
             <p class="text-body-1 text-neutral-600 line-clamp-2 flex-grow">
-              {{ campaign.description }}
+              {{ entity.description }}
             </p>
 
             <div class="flex flex-col gap-2">
               <lfx-progress-bar
-                :values="[progressPercent(campaign)]"
+                :values="[progressPercent(entity)]"
                 color="normal"
                 size="small"
               />
               <p class="text-body-2 text-neutral-500">
                 <span class="font-semibold text-neutral-900">
-                  {{ campaign.currency }}{{ campaign.raisedAmount.toLocaleString() }}
+                  {{ formatAmount(entity.fundingStatus?.totalDonationsInCents ?? 0) }}
                 </span>
-                raised of {{ campaign.currency }}{{ campaign.goalAmount.toLocaleString() }}
+                raised of {{ formatAmount(entity.fundingStatus?.totalAnnualGoalInCents ?? 0) }}
               </p>
             </div>
 
@@ -107,8 +107,8 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { useCampaigns } from '~/composables/useCampaigns';
-import type { Campaign } from '~/composables/useCampaigns';
+import { useEntities } from '~/composables/useEntities';
+import type { Entity } from '~/types/entity.types';
 import type { TagStyle } from '~/components/uikit/tag/types/tag.types';
 import CrowdfundingHero from '~/components/shared/hero.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
@@ -120,21 +120,26 @@ import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 
 useHead({ title: 'Home' });
 
-const { data, isLoading, error } = useCampaigns();
+const { data, isLoading, error } = useEntities();
 
-const tagVariation = (type: Campaign['type']): TagStyle => {
-  const map: Record<Campaign['type'], TagStyle> = {
+const tagVariation = (entityType: string): TagStyle => {
+  const map: Record<string, TagStyle> = {
     project: 'info',
     mentorship: 'positive',
     general_fund: 'neutral',
     event: 'warning',
   };
-  return map[type];
+  return map[entityType] ?? 'neutral';
 };
 
-const campaignTypeLabel = (type: Campaign['type']): string =>
-  type.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+const entityTypeLabel = (entityType: string): string =>
+  entityType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-const progressPercent = (campaign: Campaign): number =>
-  Math.min(100, Math.round((campaign.raisedAmount / campaign.goalAmount) * 100));
+const formatAmount = (cents: number): string => '$' + (cents / 100).toLocaleString();
+
+const progressPercent = (entity: Entity): number => {
+  const goal = entity.fundingStatus?.totalAnnualGoalInCents ?? 0;
+  const raised = entity.fundingStatus?.totalDonationsInCents ?? 0;
+  return goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
+};
 </script>
