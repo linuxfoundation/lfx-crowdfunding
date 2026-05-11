@@ -23,7 +23,7 @@ Ledger DB migration is a separate post-release project. When it happens, the `le
 2. **Data migration** — one-time copy from DynamoDB to Postgres using `migrate-cf` CLI
 3. **Validation** — reconcile record counts, spot-checks, Stripe cross-check
 4. **Cutover** — switch DNS/Ingress from old Lambda API Gateway to new K8s service
-5. **Decommission** — tear down old Lambda stack, DynamoDB, OpenSearch
+5. **Decommission** — tear down old Lambda stack, DynamoDB; OpenSearch decommission is a separate later phase (blocked on RS moving to K8s, see OQ-7)
 
 These phases are sequential and gated by human review. Do not proceed to the next phase without explicit sign-off.
 
@@ -116,35 +116,35 @@ The migration tool MUST detect the type and branch accordingly.
 | `projectDetails.customWebsites` | `custom_websites` | Marshal to JSONB array |
 | `projectDetails.sponsors` | `sponsors` | Marshal to JSONB array |
 | `cachedDetails.GithubStats` | `github_stats` | Marshal to JSONB |
-| `amountRaised` | — | **Drop** — replaced by Ledger view |
+| `amountRaised` | — | **Drop** — initial release uses `amount_raised_cents` cached column + CronJob; Ledger view activates post-initial-release when Ledger DB is co-located |
 | `createdOn` | `created_at` | Parse timestamp |
 | `updatedOn` | `updated_at` | Parse timestamp |
 
 **Budget mapping — branches by initiative_type:**
 
-For `initiative_type = 'project'` (read from `data.projectDetails.*`):
+For `initiative_type = 'project'` (read from `projectDetails.*`):
 ```
-data.projectDetails.development  → budgets.development  {amount_in_cents, description, goals, is_active}
-data.projectDetails.marketing    → budgets.marketing
-data.projectDetails.meetups      → budgets.meetups
-data.projectDetails.travel       → budgets.travel
-data.projectDetails.bugBounty    → budgets.bug_bounty
-data.projectDetails.documentation → budgets.documentation
-data.projectDetails.mentee       → budgets.mentee       (simple: amount + description only)
-data.projectDetails.other        → budgets.other
-```
-
-For `initiative_type = 'mentorship'` (read from `data.projectDetails.mentee`):
-```
-data.projectDetails.mentee.budget.amountInCents → budgets.mentee.amount_in_cents
-data.projectDetails.mentee.isActive             → budgets.mentee.is_active
-data.projectDetails.mentee.skills               → budgets.mentee.skills
-data.projectDetails.mentee.terms                → budgets.mentee.terms
-data.projectDetails.mentee.mentor               → budgets.mentee.mentors
-data.projectDetails.mentee.customTerm           → budgets.mentee.custom_term
+projectDetails.development  → budgets.development  {amount_in_cents, description, goals, is_active}
+projectDetails.marketing    → budgets.marketing
+projectDetails.meetups      → budgets.meetups
+projectDetails.travel       → budgets.travel
+projectDetails.bugBounty    → budgets.bug_bounty
+projectDetails.documentation → budgets.documentation
+projectDetails.mentee       → budgets.mentee       (simple: amount + description only)
+projectDetails.other        → budgets.other
 ```
 
-**⚠️ Do NOT read `data.mentee` (top-level).** The actual data is always nested under `data.projectDetails.mentee`. Reading from the wrong path silently drops all mentorship metadata — this was the bug that caused the first SQL pass to miss 1,249 of 1,476 rows.
+For `initiative_type = 'mentorship'` (read from `projectDetails.mentee`):
+```
+projectDetails.mentee.budget.amountInCents → budgets.mentee.amount_in_cents
+projectDetails.mentee.isActive             → budgets.mentee.is_active
+projectDetails.mentee.skills               → budgets.mentee.skills
+projectDetails.mentee.terms                → budgets.mentee.terms
+projectDetails.mentee.mentor               → budgets.mentee.mentors
+projectDetails.mentee.customTerm           → budgets.mentee.custom_term
+```
+
+**⚠️ Do NOT read the top-level `mentee` attribute.** The actual data is always nested under `projectDetails.mentee`. Reading from the wrong path silently drops all mentorship metadata — this was the bug that caused the first SQL pass to miss 1,249 of 1,476 rows.
 
 **Drop from migration:**
 - `amountRaised` — computed from Ledger

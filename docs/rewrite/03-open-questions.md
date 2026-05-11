@@ -155,7 +155,7 @@ New initiatives created after DNS cutover have no DynamoDB origin and therefore 
 **Status:** Open
 **Owner:** Lewis
 
-**Question:** Ledger's Expensify webhook handler (`expensify/main.go`) has a fallback path: when an incoming Expensify expense has no `projectID` field, it calls `getProjectIDByReport()` which queries the `LFF_PROJECTS_INDEX` and `LLF_ENTITIES_INDEX` OpenSearch indices to resolve the project ID from the report ID.
+**Question:** Ledger's Expensify webhook handler (`expensify/main.go`) has a fallback path: when an incoming Expensify expense has no `projectID` field, it calls `getProjectIDByReport()` which queries the `LFF_PROJECTS_INDEX` and `LFF_ENTITIES_INDEX` OpenSearch indices to resolve the project ID from the report ID.
 
 When OpenSearch is decommissioned (after RS moves to K8s), this fallback silently fails — Expensify transactions with missing `projectID` get stored with an empty `project_id` in the Ledger DB. They become invisible to `GET /balance/{legacy_id}` queries and the initiative balance is understated.
 
