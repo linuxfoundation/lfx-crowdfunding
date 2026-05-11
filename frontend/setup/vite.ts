@@ -1,0 +1,13 @@
+// Copyright (c) 2025 The Linux Foundation and each contributor.
+// SPDX-License-Identifier: MIT
+
+export default {
+  vue: {
+    template: {
+      // Allow lfx-* web components without "unknown element" warnings
+      compilerOptions: {
+        isCustomElement: (tag: string) => tag.startsWith('lfx-'),
+      },
+    },
+  },
+};
