@@ -147,7 +147,7 @@ projectDetails.mentee.customTerm           → budgets.mentee.custom_term
 **⚠️ Do NOT read the top-level `mentee` attribute.** The actual data is always nested under `projectDetails.mentee`. Reading from the wrong path silently drops all mentorship metadata — this was the bug that caused the first SQL pass to miss 1,249 of 1,476 rows.
 
 **Drop from migration:**
-- `amountRaised` — computed from Ledger
+- `amountRaised` — initial release uses `amount_raised_cents` cached column + CronJob; Ledger view activates post-initial-release
 - `cachedDetails.ProjectStats` — recomputed
 - `details.Diversity` — deferred feature
 - `details.VulnerabilitySummary` — deferred feature
@@ -193,7 +193,7 @@ Status normalization applies here too: `'hide'` → `'hidden'`.
 | `industry` | `industry` | Direct; comma-separated topic tags string |
 | `details.Beneficiaries` | `beneficiaries` | Marshal to JSONB array |
 | `goals` | `budgets` | Marshal to JSONB array (DynamoDB field is `goals`, a top-level array — not `details.Goals`) |
-| `amountRaised` | — | **Drop** — computed from Ledger |
+| `amountRaised` | — | **Drop** — initial release uses `amount_raised_cents` cached column + CronJob; Ledger view activates post-initial-release |
 | `approvedOn` | `approved_at` | Parse timestamp; nullable. Note: not observed in any production sample — may be absent on all entity rows. Migrate if present, leave null otherwise. |
 | `createdOn` | `created_at` | Parse timestamp |
 | `updatedOn` | `updated_at` | Parse timestamp |
@@ -274,7 +274,7 @@ Run tables in this order (respect FK dependencies):
 4. `users`
 5. `subscriptions` (from `lff-prod-subscriptions` + `lff-prod-entity-subscriptions`, merged)
 6. `donations` (from `lff-prod-donations` + `lff-prod-entity-donations`, merged)
-7. Drop `_id_migration_map` after validation
+7. Verify all subscriptions and donations resolved correctly (no nulled-out `initiative_id` rows in validation report)
 
 ---
 
@@ -332,7 +332,7 @@ Only after:
 Steps:
 1. Decommission old LFF Lambda functions
 2. Decommission DynamoDB tables (after backup)
-3. Decommission OpenSearch (after Reimbursement Service migrated off it)
+3. Decommission OpenSearch (after Reimbursement Service migrated off it — see OQ-7; also blocked on Ledger Expensify fallback resolution — see OQ-14)
 4. Archive old LFF and lfx-crowdfunding-upgrade repos (read-only)
 
 ---

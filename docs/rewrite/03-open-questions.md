@@ -154,7 +154,7 @@ No Ledger code changes are required. Here is why this works end-to-end:
 **Status:** Open
 **Owner:** Lewis
 
-**Question:** Ledger's Expensify webhook handler (`expensify/main.go`) has a fallback path: when an incoming Expensify expense has no `projectID` field, it calls `getProjectIDByReport()` which queries three OpenSearch indices to resolve the project ID from the report ID via slug lookup:
+**Question:** Ledger's Expensify webhook handler (`expensify/main.go`) has a fallback path: when an incoming Expensify expense has no `projectID` field, it calls `getProjectIDByReport()` which queries four OpenSearch indices to resolve the project ID from the report ID via slug lookup:
 
 - `lfx-expense-log` — fetches the expense record to extract the first tag (used as slug)
 - `projects` (LFF CF projects) — slug lookup

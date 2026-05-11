@@ -448,7 +448,7 @@ CREATE TABLE crowdfunding.users (
 
 ### View: `initiative_funding_summary` (post-initial-release)
 
-Not part of the initial release. When Ledger DB is co-located on the same Postgres instance, a future migration will add this view, drop the `amount_raised_cents` column, and decommission the `amount-raised-sync` CronJob. The view SQL is documented in `02-decisions.md`.
+Not part of the initial release. When Ledger DB is co-located on the same Postgres instance, a future migration will add this view, drop the `amount_raised_cents` column, and decommission the `amount-raised-sync` CronJob. The view SQL will be written at that point — it joins `ledger.transactions` with `crowdfunding.initiatives` on `project_id`.
 
 ### Indexes
 
