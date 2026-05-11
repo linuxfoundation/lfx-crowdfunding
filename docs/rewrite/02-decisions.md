@@ -149,24 +149,7 @@ Rationale: max donation is $999,999.99 = 99,999,999 cents, which fits in `int4` 
 
 Rationale: they represent different Stripe object types (`Subscription` vs `Charge`), have different lifecycles (recurring vs one-time), different cancellation/update logic, and different fields (frequency, stripe_subscription_id on subscriptions; stripe_charge_id on donations). Merging would create nullable columns and make queries less obvious.
 
-### `amount_raised` → Postgres view (not a cron job)
-
-Replace the `amountraised` cron job (which wrote a denormalized `amountRaised` field back to the DynamoDB project record) with a Postgres view:
-
-```sql
-CREATE VIEW crowdfunding.initiative_funding_summary AS
-SELECT c.id AS initiative_id, SUM(l.amount) AS amount_raised_cents
-FROM crowdfunding.initiatives c
-JOIN ledger.ledger l ON l.project_id = c.legacy_id
-WHERE l.txn_type = 'CREDIT'
-GROUP BY c.id;
-```
-
-Rationale: always fresh, no job to maintain, no staleness. If query performance becomes an issue at scale, materialize it then. Start simple.
-
-Note: this view requires the `ledger` schema to be accessible from the `crowdfunding` schema. Until Ledger is on the same Postgres instance, `amount_raised_cents` is kept fresh by the `amount-raised-sync` CronJob calling the Ledger HTTP API. The view is added as a future migration when Ledger DB is co-located — it is not written into the initial migration files.
-
-### `amount_raised_cents` — cached column, refreshed by hourly CronJob only
+### `amount_raised_cents` — cached column for initial release, view post-release
 
 Until Ledger DB is co-located, `amount_raised_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob.
 
@@ -232,7 +215,7 @@ Rationale: `cmd/` holds long-lived service entrypoints. `tools/` signals operati
 
 ### `_id_migration_map` — in-memory Go map, not a DB table
 
-The migration CLI (`cmd/migrate-cf/`) needs to resolve old DynamoDB string IDs (`projectId`, `entityId`) to new Postgres UUIDs when migrating subscriptions and donations. This mapping is held in memory as a `map[string]uuid.UUID` — not persisted to a DB table.
+The migration CLI (`tools/migrate-cf/`) needs to resolve old DynamoDB string IDs (`projectId`, `entityId`) to new Postgres UUIDs when migrating subscriptions and donations. This mapping is held in memory as a `map[string]uuid.UUID` — not persisted to a DB table.
 
 Rationale: 2,010 rows fit trivially in memory. Read initiatives first, build the map, then process subscriptions and donations. A DB table adds schema noise and a documented "drop after validation" step. An in-memory map is simpler, equally correct, and disappears automatically when the CLI exits.
 
@@ -651,7 +634,7 @@ Everything inside the "NEW" purple box in the architecture diagram is deployed t
 - Crowdfunding Go API — K8s Deployment + Service + Ingress
 - Crowdfunding Postgres DB — shared LFX v2 RDS instance; DevOps adds `crowdfunding` DB + role to `lfx-v2-opentofu`
 - `mentorship-sync` — K8s CronJob (daily or a few times/day)
-- GitHub stats job — K8s CronJob
+- `amount-raised-sync` — K8s CronJob (hourly)
 
 Nothing in the initial release runs on Lambda or Serverless Framework.
 

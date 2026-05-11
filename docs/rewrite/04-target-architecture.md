@@ -495,8 +495,7 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 | Go HTTP API | `Deployment` + `Service` + `Ingress` | Chi router, long-running |
 | Crowdfunding Postgres | Shared AWS RDS instance | LFX standard — DevOps adds `crowdfunding` DB + role to existing `lfx-v2` RDS in `lfx-v2-opentofu/postgres.tf`; app connects via `rds-postgres.lfx:5432` |
 | mentorship-sync job | `CronJob` | Daily or a few times/day; Snowflake → CF Postgres |
-| github-stats job | `CronJob` | Every 6 hours; updates `github_stats` JSONB on project initiatives |
-| amount-raised-sync job | `CronJob` | Every 24 hours; reconciles `amount_raised_cents` from Ledger API |
+| amount-raised-sync job | `CronJob` | Every hour; reconciles `amount_raised_cents` from Ledger API |
 | Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
 | ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
 
