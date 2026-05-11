@@ -28,7 +28,7 @@ SPDX-License-Identifier: MIT
             >
               <lfx-icon-button
                 size="small"
-                type="secondary"
+                type="outline"
               >
                 <lfx-icon
                   name="github"
@@ -63,16 +63,27 @@ SPDX-License-Identifier: MIT
               {{ section.title }}
             </p>
             <nav class="flex flex-col">
-              <a
+              <template
                 v-for="link of section.links"
                 :key="link.name"
-                :href="link.link"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-sm leading-7 hover:underline whitespace-nowrap"
               >
-                {{ link.name }}
-              </a>
+                <NuxtLink
+                  v-if="link.link?.startsWith('/')"
+                  :to="link.link"
+                  class="text-sm leading-7 hover:underline whitespace-nowrap"
+                >
+                  {{ link.name }}
+                </NuxtLink>
+                <a
+                  v-else
+                  :href="link.link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-sm leading-7 hover:underline whitespace-nowrap"
+                >
+                  {{ link.name }}
+                </a>
+              </template>
             </nav>
           </section>
         </div>
@@ -95,10 +106,6 @@ import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import { lfxFooterMenu } from '~/config/menu/footer';
-
-if (import.meta.client) {
-  await import('@linuxfoundation/lfx-ui-core');
-}
 
 onMounted(async () => {
   await nextTick();

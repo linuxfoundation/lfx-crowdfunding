@@ -17,7 +17,7 @@ SPDX-License-Identifier: MIT
               alt="LFX"
               class="h-5"
             />
-            <span class="font-normal text-2xl text-brand-500">CrowdFunding</span>
+            <span class="font-normal text-2xl text-brand-500">Crowdfunding</span>
           </NuxtLink>
 
           <div class="hidden md:flex items-center gap-6">

@@ -12,7 +12,7 @@ const useToastService = () => {
     delay: number = 3000,
     config: Partial<ToastOptions> = {},
   ) => {
-    const test: ToastOptions = {
+    const toastOptions: ToastOptions = {
       severity: toastType as ToastSeverity,
       summary: toastType,
       detail: message,
@@ -21,7 +21,7 @@ const useToastService = () => {
       life: delay,
       ...config,
     };
-    toast.add(test);
+    toast.add(toastOptions);
   };
 
   return {

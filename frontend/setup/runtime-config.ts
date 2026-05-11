@@ -5,9 +5,9 @@ const isProduction = process.env.NUXT_APP_ENV === 'production';
 
 export default {
   // Server-only secrets
-  auth0ClientSecret: '',
-  auth0CookieDomain: isProduction ? 'crowdfunding.lfx.linuxfoundation.org' : 'localhost',
-  jwtSecret: '',
+  auth0ClientSecret: process.env.NUXT_AUTH0_CLIENT_SECRET || '',
+  auth0CookieDomain: isProduction ? 'crowdfunding.lfx.linuxfoundation.org' : undefined,
+  jwtSecret: process.env.NUXT_JWT_SECRET || '',
 
   public: {
     apiBase: '/api',

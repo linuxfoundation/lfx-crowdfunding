@@ -47,13 +47,10 @@ const isMobile = computed(() => pageWidth.value < 768);
 
 const share = () => {
   if (navigator?.share && isMobile.value) {
-    navigator?.share({
-      title: document.title,
-      url: sharableLink.value,
-    });
+    navigator.share({ title: document.title, url: sharableLink.value }).catch(() => {});
   }
   if (navigator?.clipboard) {
-    navigator?.clipboard.writeText(sharableLink.value);
+    navigator.clipboard.writeText(sharableLink.value).catch(() => {});
     if (!(isSharable.value && isMobile.value)) {
       showToast(`Link copied to clipboard`, ToastTypesEnum.positive);
     }

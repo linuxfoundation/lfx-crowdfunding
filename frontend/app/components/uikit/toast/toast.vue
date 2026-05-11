@@ -22,7 +22,7 @@ SPDX-License-Identifier: MIT
           </p>
           <p
             class="text-xs leading-5"
-            v-html="sanitize(slotProps.message.detail)"
+            v-html="sanitize(slotProps.message.detail ?? '')"
           ></p>
         </div>
         <div v-if="slotProps.message.actionLabel">

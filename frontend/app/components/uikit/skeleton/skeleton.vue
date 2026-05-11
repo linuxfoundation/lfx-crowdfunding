@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 <template>
   <div
     class="animate-pulse bg-neutral-200 rounded-md"
-    :class="[props.rounded ? 'rounded-full' : 'rounded-md', props.class]"
+    :class="[props.rounded ? 'rounded-full' : 'rounded-md', props.customClass]"
     :style="{ width: props.width, height: props.height }"
     aria-hidden="true"
   />
@@ -17,13 +17,13 @@ const props = withDefaults(
     width?: string;
     height?: string;
     rounded?: boolean;
-    class?: string;
+    customClass?: string;
   }>(),
   {
     width: '100%',
     height: '1rem',
     rounded: false,
-    class: undefined,
+    customClass: undefined,
   },
 );
 </script>

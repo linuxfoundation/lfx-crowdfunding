@@ -27,6 +27,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import type { Ref, WritableComputedRef } from 'vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 
 const props = defineProps<{
@@ -37,8 +38,11 @@ const props = defineProps<{
 
 const attrs = useAttrs();
 // Inject provided value from DropdownSelect
-const selectedValue = inject<ReturnType<typeof computed<string>>>('selectedValue', ref<string>(''));
-const selectedOptionProps = inject('selectedOptionProps', ref(null));
+const selectedValue = inject<WritableComputedRef<string>>('selectedValue', ref('') as WritableComputedRef<string>);
+const selectedOptionProps = inject<Ref<Record<string, unknown>>>(
+  'selectedOptionProps',
+  ref<Record<string, unknown>>({}),
+);
 //
 // Determine if the item is currently selected
 const isSelected = computed(() => selectedValue && props.value && selectedValue.value === props.value);
