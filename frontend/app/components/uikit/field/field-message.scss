@@ -1,0 +1,25 @@
+// Copyright (c) 2025 The Linux Foundation and each contributor.
+// SPDX-License-Identifier: MIT
+.c-field-message {
+  @apply flex text-xs leading-4 mt-1;
+
+  &__icon {
+    @apply mr-1;
+  }
+
+  &--error {
+    @apply text-negative-600;
+  }
+
+  &--info {
+    @apply text-brand-600;
+  }
+
+  &--warning {
+    @apply text-warning-600;
+  }
+
+  &--hint {
+    @apply text-neutral-600;
+  }
+}

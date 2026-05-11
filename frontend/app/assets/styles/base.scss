@@ -1,0 +1,37 @@
+// Copyright (c) 2025 The Linux Foundation and each contributor.
+// SPDX-License-Identifier: MIT
+html {
+  -ms-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: scroll;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  position: relative;
+  color: var(--lfx-color-text);
+  background: var(--lfx-color-background);
+  // Base font size used for rem
+  font-size: 16px;
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+* {
+  font-family: var(--lfx-font-primary), sans-serif;
+}
+
+img {
+  display: inline-block;
+}

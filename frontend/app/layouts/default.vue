@@ -4,17 +4,15 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <div class="min-h-screen flex flex-col">
-    <!-- LFX header web component (rendered client-side only) -->
-    <ClientOnly>
-      <lfx-header app-name="Crowdfunding" />
-    </ClientOnly>
-
+    <crowdfunding-header />
     <main class="flex-grow">
       <slot />
     </main>
-
-    <footer class="py-6 px-4 border-t border-gray-200 text-sm text-gray-500 text-center">
-      © {{ new Date().getFullYear() }} The Linux Foundation. All rights reserved.
-    </footer>
+    <crowdfunding-footer />
   </div>
 </template>
+
+<script setup lang="ts">
+import CrowdfundingHeader from '~/components/shared/layout/header.vue';
+import CrowdfundingFooter from '~/components/shared/layout/footer.vue';
+</script>

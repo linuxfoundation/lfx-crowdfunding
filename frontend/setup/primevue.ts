@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 export default {
+  autoImport: false,
+  components: {
+    prefix: 'pv',
+    include: ['Avatar', 'AvatarGroup', 'DatePicker', 'SelectButton', 'Toast'],
+  },
   options: {
-    // Use unstyled mode — all styling is done via Tailwind + CSS variables
-    unstyled: true,
+    theme: 'none',
   },
 };

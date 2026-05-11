@@ -1,0 +1,130 @@
+// Copyright (c) 2025 The Linux Foundation and each contributor.
+// SPDX-License-Identifier: MIT
+.p-datepicker {
+  &-calendar-container {
+    @apply flex;
+    &:has(.p-datepicker-calendar:nth-child(2)) {
+      .p-datepicker-calendar:first-child {
+        @apply pr-5;
+      }
+    }
+  }
+
+  &-calendar-container {
+    &:has(.p-datepicker-calendar:nth-child(2)) {
+      .p-datepicker-calendar {
+        &:first-child {
+          .p-datepicker-next-button {
+            @apply invisible opacity-0 transition-none #{!important};
+          }
+        }
+
+        &:last-child {
+          @apply border-l border-neutral-100 pl-5;
+
+          .p-datepicker-prev-button {
+            @apply invisible opacity-0 transition-none  #{!important};
+          }
+        }
+      }
+    }
+  }
+
+  &-calendar {
+    @apply flex-auto;
+  }
+
+  &-header {
+    @apply flex justify-between items-center pb-2 border-b border-neutral-100 mb-2 px-1 gap-3;
+  }
+
+  &-next-button,
+  &-prev-button {
+    @apply block #{!important};
+    @apply p-2.5 h-9 w-9 bg-transparent text-neutral-500 flex items-center justify-center;
+
+    &:hover {
+      @apply bg-neutral-100;
+    }
+  }
+
+  &-title {
+    @apply flex items-center gap-5 text-sm font-medium;
+  }
+
+  &-day-view {
+    @apply w-full;
+
+    thead {
+      th {
+        @apply text-sm font-medium leading-6 text-center p-0 pb-3;
+      }
+    }
+
+    tbody {
+      td {
+        @apply py-1;
+      }
+    }
+  }
+
+  &-day {
+    @apply h-7 w-7 rounded-full mx-auto flex items-center justify-center cursor-pointer text-sm transition;
+
+    &:hover:not(.p-disabled) {
+      @apply bg-neutral-100;
+    }
+
+    &.p-disabled {
+      @apply text-neutral-400 cursor-default;
+    }
+
+    &-selected,
+    &-selected-range {
+      @apply bg-brand-500 text-white #{!important};
+    }
+  }
+
+  &-today {
+    span {
+      @apply bg-brand-100;
+    }
+  }
+
+  &-panel[role='dialog'] {
+    @apply bg-white shadow-md rounded-md mt-2 px-2;
+  }
+
+  &-month-view,
+  &-year-view {
+    @apply pb-2 px-3 flex flex-wrap;
+  }
+
+  &-month,
+  &-year {
+    @apply text-center text-sm rounded-md py-0.5 cursor-pointer;
+
+    &:hover {
+      @apply bg-neutral-50;
+    }
+  }
+
+  &-month {
+    @apply basis-1/3;
+  }
+  &-year {
+    @apply basis-1/2;
+  }
+}
+
+.custom-inline-datepicker {
+  .p-datepicker-month-view,
+  .p-datepicker-year-view {
+    @apply flex-col;
+
+    .p-datepicker-month,
+    .p-datepicker-year {
+      @apply rounded-full;
+    }
+  }
+}

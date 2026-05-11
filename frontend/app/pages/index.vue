@@ -4,71 +4,103 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <div>
-    <!-- Hero -->
-    <section class="bg-brand-600 text-white py-20 px-4">
-      <div class="max-w-4xl mx-auto text-center">
-        <h1 class="text-4xl font-bold mb-4">Fund Open Source</h1>
-        <p class="text-lg text-brand-100 mb-8">
-          Support open source projects, mentorships, and events through the Linux Foundation.
-        </p>
-        <NuxtLink
-          to="/campaigns"
-          class="inline-block bg-white text-brand-600 font-semibold px-6 py-3 rounded-lg hover:bg-brand-50 transition-colors"
-        >
-          Explore Campaigns
-        </NuxtLink>
-      </div>
-    </section>
+    <crowdfunding-hero />
 
     <!-- Campaign list -->
-    <section class="max-w-6xl mx-auto py-16 px-4">
-      <h2 class="text-2xl font-bold mb-8">Active Campaigns</h2>
+    <section class="container py-16">
+      <h2 class="text-heading-2 font-bold mb-8">Active Campaigns</h2>
 
+      <!-- Loading skeletons -->
       <div
         v-if="isLoading"
-        class="text-gray-500"
+        class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
       >
-        Loading campaigns...
+        <lfx-card
+          v-for="n in 3"
+          :key="n"
+        >
+          <div class="p-6 flex flex-col gap-4">
+            <lfx-skeleton
+              width="4rem"
+              height="1.5rem"
+              :rounded="true"
+            />
+            <lfx-skeleton height="1.25rem" />
+            <div class="flex flex-col gap-2">
+              <lfx-skeleton height="0.75rem" />
+              <lfx-skeleton
+                width="75%"
+                height="0.75rem"
+              />
+            </div>
+            <lfx-skeleton height="0.5rem" />
+            <lfx-skeleton
+              width="50%"
+              height="1rem"
+            />
+          </div>
+        </lfx-card>
       </div>
 
+      <!-- Error -->
       <div
         v-else-if="error"
-        class="text-red-600"
+        class="flex items-center gap-2 text-negative-600"
       >
-        Failed to load campaigns. Please try again.
+        <lfx-icon
+          name="circle-exclamation"
+          type="solid"
+          :size="16"
+        />
+        <span class="text-body-1">Failed to load campaigns. Please try again.</span>
       </div>
 
+      <!-- Campaign cards -->
       <div
         v-else-if="data"
         class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
       >
-        <article
+        <lfx-card
           v-for="campaign in data.data"
           :key="campaign.id"
-          class="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow"
         >
-          <span class="text-xs font-medium uppercase tracking-wide text-brand-600 mb-2 block">
-            {{ campaign.type.replace('_', ' ') }}
-          </span>
-          <h3 class="text-lg font-semibold mb-2">{{ campaign.title }}</h3>
-          <p class="text-gray-600 text-sm mb-4 line-clamp-2">{{ campaign.description }}</p>
+          <div class="p-6 flex flex-col gap-4">
+            <lfx-tag
+              :variation="tagVariation(campaign.type)"
+              size="small"
+              type="transparent"
+            >
+              {{ campaignTypeLabel(campaign.type) }}
+            </lfx-tag>
 
-          <!-- Progress bar -->
-          <div class="mb-2">
-            <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                class="h-full bg-brand-500 rounded-full"
-                :style="{ width: `${Math.min(100, (campaign.raisedAmount / campaign.goalAmount) * 100)}%` }"
+            <h3 class="text-heading-4 font-semibold">{{ campaign.title }}</h3>
+
+            <p class="text-body-1 text-neutral-600 line-clamp-2 flex-grow">
+              {{ campaign.description }}
+            </p>
+
+            <div class="flex flex-col gap-2">
+              <lfx-progress-bar
+                :values="[progressPercent(campaign)]"
+                color="normal"
+                size="small"
               />
+              <p class="text-body-2 text-neutral-500">
+                <span class="font-semibold text-neutral-900">
+                  {{ campaign.currency }}{{ campaign.raisedAmount.toLocaleString() }}
+                </span>
+                raised of {{ campaign.currency }}{{ campaign.goalAmount.toLocaleString() }}
+              </p>
             </div>
+
+            <lfx-button
+              label="Donate"
+              type="primary"
+              button-style="rounded"
+              size="small"
+            />
           </div>
-          <p class="text-sm text-gray-500">
-            <span class="font-semibold text-gray-900">
-              {{ campaign.currency }}{{ campaign.raisedAmount.toLocaleString() }}
-            </span>
-            raised of {{ campaign.currency }}{{ campaign.goalAmount.toLocaleString() }}
-          </p>
-        </article>
+        </lfx-card>
       </div>
     </section>
   </div>
@@ -76,8 +108,33 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { useCampaigns } from '~/composables/useCampaigns';
+import type { Campaign } from '~/composables/useCampaigns';
+import type { TagStyle } from '~/components/uikit/tag/types/tag.types';
+import CrowdfundingHero from '~/components/shared/hero.vue';
+import LfxButton from '~/components/uikit/button/button.vue';
+import LfxCard from '~/components/uikit/card/card.vue';
+import LfxTag from '~/components/uikit/tag/tag.vue';
+import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
+import LfxIcon from '~/components/uikit/icon/icon.vue';
+import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 
 useHead({ title: 'Home' });
 
 const { data, isLoading, error } = useCampaigns();
+
+const tagVariation = (type: Campaign['type']): TagStyle => {
+  const map: Record<Campaign['type'], TagStyle> = {
+    project: 'info',
+    mentorship: 'positive',
+    general_fund: 'neutral',
+    event: 'warning',
+  };
+  return map[type];
+};
+
+const campaignTypeLabel = (type: Campaign['type']): string =>
+  type.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const progressPercent = (campaign: Campaign): number =>
+  Math.min(100, Math.round((campaign.raisedAmount / campaign.goalAmount) * 100));
 </script>

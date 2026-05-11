@@ -1,0 +1,70 @@
+// Copyright (c) 2025 The Linux Foundation and each contributor.
+// SPDX-License-Identifier: MIT
+
+.lfx-carousel {
+  @apply relative w-full;
+
+  .carousel-container {
+    @apply sm:overflow-hidden overflow-visible w-full md:pt-10 pt-8;
+  }
+
+  .carousel-track {
+    @apply flex will-change-transform -ml-4;
+    width: calc(100% + 2rem);
+  }
+
+  .carousel-item {
+    @apply box-border px-4;
+  }
+
+  .carousel-nav {
+    @apply bg-white border border-neutral-200;
+    @apply rounded-full w-9 h-9 flex items-center justify-center cursor-pointer;
+
+    &:hover {
+      @apply bg-neutral-50 shadow-none;
+    }
+    &:disabled {
+      @apply opacity-50 cursor-not-allowed;
+    }
+  }
+
+  .carousel-dots {
+    @apply md:flex hidden justify-center gap-2;
+  }
+
+  .carousel-dot {
+    @apply w-20 h-1 rounded-full border-none bg-neutral-200 cursor-pointer transition-all duration-200;
+  }
+
+  .carousel-dot.active,
+  .carousel-dot:hover {
+    @apply bg-brand-500;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1023px) {
+  .lfx-carousel {
+    .carousel-track {
+      @apply -ml-2.5;
+      width: calc(100% + 1.25rem);
+    }
+
+    .carousel-item {
+      @apply box-border px-2.5;
+
+      &.carousel-active {
+        @apply sm:mx-0 -mx-2.5 sm:pl-2.5 pl-5 sm:pr-2.5 pr-0;
+      }
+
+      &.carousel-prev {
+        @apply ml-2.5 -mr-2.5;
+      }
+
+      &.carousel-next {
+        @apply ml-2.5;
+      }
+    }
+  }
+}
