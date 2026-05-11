@@ -84,6 +84,7 @@ watch(
       window.addEventListener('keyup', onEscapeKeyUp);
     }
   },
+  { immediate: true },
 );
 
 onUnmounted(() => {

@@ -49,7 +49,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, type Ref } from 'vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxDropdownSeparator from '~/components/uikit/dropdown/dropdown-separator.vue';
 
@@ -59,8 +59,8 @@ const props = defineProps<{
   label: string;
 }>();
 
-// Inject provided submenuOpen from Dropdown
-const submenuOpen = inject<ReturnType<typeof computed<string>>>('submenuOpen');
+// Inject provided submenuOpen from Dropdown (provided as Ref<string> in dropdown.vue)
+const submenuOpen = inject<Ref<string>>('submenuOpen');
 
 const isVisible = computed(() => submenuOpen && submenuOpen.value === props.name);
 
