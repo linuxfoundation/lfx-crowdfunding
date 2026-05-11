@@ -51,7 +51,7 @@ Steps:
 
 ### Tool: Dedicated Go CLI
 
-Location: `cmd/migrate-cf/` in the new CF repo. (`cmd/migrate/` is reserved for the golang-migrate schema runner — these are two distinct tools.)
+Location: `tools/migrate-cf/` in the new CF repo. (`cmd/` holds long-lived service entrypoints; `tools/` is for operational tooling with a bounded lifetime. `cmd/migrate/` is reserved for the golang-migrate schema runner — these are two distinct tools.)
 
 Not `lfx-v1-sync-helper`. Reason: lfx-v1-sync-helper is a NATS KV sync service with no knowledge of Crowdfunding data shapes. A purpose-built CLI is 200–300 lines, fully auditable, and disposable after the migration.
 

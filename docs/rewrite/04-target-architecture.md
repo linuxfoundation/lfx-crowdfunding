@@ -50,9 +50,8 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
 
   Background workers (K8s CronJobs):
   ┌──────────────────────────────────────────────────────┐
-  │  mentorship-sync   K8s CronJob (daily or few x/day)  │
-  │  github-stats      K8s CronJob (6-hourly)            │
-  │  amount-raised-sync K8s CronJob (every 24h)          │
+  │  mentorship-sync    K8s CronJob (daily or few x/day) │
+  │  amount-raised-sync K8s CronJob (hourly)             │
   └──────────────────────────────────────────────────────┘
 
 ━━━━━━━━━━━━━━━━━━━ UNCHANGED (Lambda / external) ━━━━━━━━━━━━━━━━━━
@@ -202,10 +201,11 @@ Public (accessible client-side):
 cmd/
 ├── api/                # HTTP server entrypoint
 ├── mentorship-sync/    # Snowflake CronJob entrypoint
-├── github-stats/       # GitHub stats CronJob entrypoint
 ├── amount-raised-sync/ # amount_raised_cents reconciliation CronJob entrypoint
-├── migrate/            # DB schema migration runner (golang-migrate)
-└── migrate-cf/         # One-time DynamoDB → Postgres data migration CLI
+└── migrate/            # DB schema migration runner (golang-migrate)
+
+tools/
+└── migrate-cf/         # One-time DynamoDB → Postgres data migration CLI (delete after cutover)
 
 internal/
 ├── initiatives/
@@ -244,8 +244,8 @@ When `EMAIL_DRY_RUN=true`:
 | Job | K8s resource | Schedule | What it does |
 |---|---|---|---|
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
-| `github-stats` | CronJob | Every 6 hours | Calls GitHub API for each project's linked repo; updates `github_stats` JSONB column (forks, stars, open issues). Required: the CF frontend displays these stats in the project card (`GithubStatsComponent`). No background job = stale zeros. |
-| `amount-raised-sync` | CronJob | Every 24 hours | Calls `GET /balance/{legacy_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). |
+| GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
+| `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{legacy_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). |
 
 Jobs removed from old system (not ported):
 - `amountraised` / `amountraised-entities` → replaced by Ledger HTTP API calls (same as today); will be replaced by `project_funding_summary` view once Ledger DB is co-located (post-initial-release)

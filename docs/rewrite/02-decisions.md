@@ -216,6 +216,20 @@ Use `sqlc` to generate type-safe Go code from SQL queries. No ORM (GORM, ent, et
 
 Rationale: the existing codebase uses raw AWS SDK calls with no ORM. `sqlc` gives compile-time query safety without the complexity and magic of an ORM. Consistent with the team's preference for explicit code.
 
+### GitHub stats — lazy refresh, no CronJob
+
+GitHub stats (forks, stars, open issues) are display-only metrics on project cards. There are ~82 published `project`-type initiatives. These stats have no financial or operational consequence if slightly stale.
+
+When the Go API serves a project detail response, it checks `github_stats->>'fetched_at'` against a 6-hour TTL. If stale (or absent), it fetches fresh data from the GitHub API, writes it back to `github_stats`, and returns it. If the GitHub API is unavailable, it returns the cached value without error.
+
+Rationale: a dedicated CronJob binary, Dockerfile, and K8s CronJob manifest for 82 GitHub API calls every 6 hours is disproportionate overhead. Lazy refresh is simpler, requires no separate deployment artifact, and produces identical staleness characteristics (6h TTL either way). The only tradeoff is ~200ms added latency for the first page load after TTL expiry — acceptable for display-only vanity metrics.
+
+### `migrate-cf` — in `tools/`, not `cmd/`
+
+The one-time DynamoDB → Postgres migration CLI lives at `tools/migrate-cf/`, not `cmd/migrate-cf/`.
+
+Rationale: `cmd/` holds long-lived service entrypoints. `tools/` signals operational tooling with a bounded lifetime. `migrate-cf` is deleted after cutover is validated. Its Dockerfile (`Dockerfile.migrate-cf`) lives alongside it in `tools/migrate-cf/`.
+
 ### `_id_migration_map` — in-memory Go map, not a DB table
 
 The migration CLI (`cmd/migrate-cf/`) needs to resolve old DynamoDB string IDs (`projectId`, `entityId`) to new Postgres UUIDs when migrating subscriptions and donations. This mapping is held in memory as a `map[string]uuid.UUID` — not persisted to a DB table.
@@ -387,9 +401,9 @@ All code lives in one repository (monorepo). Each entrypoint under `cmd/` builds
 |---|---|---|
 | `cmd/api/` | `Dockerfile.api` | `Deployment` |
 | `cmd/mentorship-sync/` | `Dockerfile.mentorship-sync` | `CronJob` |
-| `cmd/github-stats/` | `Dockerfile.github-stats` | `CronJob` |
 | `cmd/amount-raised-sync/` | `Dockerfile.amount-raised-sync` | `CronJob` |
 | `cmd/migrate/` | `Dockerfile.migrate` | one-off `Job` |
+| `tools/migrate-cf/` | `Dockerfile.migrate-cf` | one-off `Job` (delete after cutover) |
 
 Rationale: a single container serving both HTTP requests and being invoked as a CronJob (via a flag) conflates two distinct runtime responsibilities. Separate images are minimal, contain only the code they need, and make it obvious what each K8s resource is doing. Shared business logic in `internal/` is compiled into each binary — no duplication of source, no runtime coupling.
 
