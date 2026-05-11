@@ -50,8 +50,8 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
 
   Background workers (K8s CronJobs):
   ┌──────────────────────────────────────────────────────┐
-  │  mentorship-sync  K8s CronJob (daily or few x/day)   │
-  │  github-stats     K8s CronJob (6-hourly)             │
+  │  mentorship-sync    K8s CronJob (daily or few x/day) │
+  │  amount-raised-sync K8s CronJob (hourly)             │
   └──────────────────────────────────────────────────────┘
 
 ━━━━━━━━━━━━━━━━━━━ UNCHANGED (Lambda / external) ━━━━━━━━━━━━━━━━━━
@@ -137,14 +137,15 @@ pages/
 ├── index.vue                          # Discovery (project + fund listing)
 ├── auth/
 │   └── callback.vue                   # Auth0 callback redirect
-├── stripe/
-│   └── callback.vue                   # Stripe OAuth callback
 ├── github/
 │   └── callback.vue                   # GitHub OAuth callback
 ├── email/
-│   ├── approve.vue                    # Approve expense (JWT link)
-│   ├── reject.vue                     # Reject expense (JWT link)
-│   └── approve-initiative.vue           # Approve initiative (JWT link)
+│   └── approve-initiative.vue         # Approve/reject initiative (JWT link, no Auth0 required)
+├── expense-email/
+│   ├── approve/
+│   │   └── [reportId].vue             # Approve Expensify expense report (Auth0 required; calls POST /v1/projects/approvals/approve/{reportId})
+│   └── reject/
+│       └── [reportId].vue             # Reject Expensify expense report (Auth0 required; calls POST /v1/projects/approvals/reject/{reportId})
 └── initiatives/
     ├── create/
     │   ├── project/
@@ -196,12 +197,15 @@ Public (accessible client-side):
 
 ### Architecture Pattern (same DDD as LFF)
 
-```
+```text
 cmd/
-├── api/          # HTTP server entrypoint
-├── mentorship-sync/   # Snowflake CronJob entrypoint
-├── migrate/      # DB schema migration runner (golang-migrate)
-└── migrate-cf/   # One-time DynamoDB → Postgres data migration CLI
+├── api/                # HTTP server entrypoint
+├── mentorship-sync/    # Snowflake CronJob entrypoint
+├── amount-raised-sync/ # amount_raised_cents reconciliation CronJob entrypoint
+└── migrate/            # DB schema migration runner (golang-migrate)
+
+tools/
+└── migrate-cf/         # One-time DynamoDB → Postgres data migration CLI (delete after cutover)
 
 internal/
 ├── initiatives/
@@ -240,7 +244,8 @@ When `EMAIL_DRY_RUN=true`:
 | Job | K8s resource | Schedule | What it does |
 |---|---|---|---|
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
-| `github-stats` | CronJob | Every 6 hours | Fetches GitHub repo stats, updates project records |
+| GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
+| `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{legacy_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). |
 
 Jobs removed from old system (not ported):
 - `amountraised` / `amountraised-entities` → replaced by Ledger HTTP API calls (same as today); will be replaced by `project_funding_summary` view once Ledger DB is co-located (post-initial-release)
@@ -441,32 +446,9 @@ CREATE TABLE crowdfunding.users (
 );
 ```
 
-### View: `initiative_funding_summary`
+### View: `initiative_funding_summary` (post-initial-release)
 
-**Not active in initial release.** Ledger DB is a separate Postgres instance.
-Until Ledger DB is co-located, `amount_raised` and balance data are fetched via
-the Ledger HTTP API (`GET /balance/{legacy_id}`) — same as today.
-
-The view is written and committed to migrations but created with `-- INACTIVE` comment.
-It is activated as part of the Ledger DB migration (post-initial-release).
-
-Note: `ledger.ledger.project_id` stores the old DynamoDB string ID — match via `legacy_id`, not `id`.
-
-```sql
--- Assumption: l.amount is always stored as a positive integer regardless of txn_type.
--- CREDIT rows increase the balance; DEBIT rows decrease it.
--- If Ledger stores DEBIT amounts as negative, replace balance_cents with SUM(l.amount).
--- Verify against Ledger DB before activating this view.
-CREATE VIEW crowdfunding.initiative_funding_summary AS
-SELECT
-  c.id                                                                  AS initiative_id,
-  SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE 0 END)        AS amount_raised_cents,
-  SUM(CASE WHEN l.txn_type = 'DEBIT'  THEN l.amount ELSE 0 END)        AS amount_disbursed_cents,
-  SUM(CASE WHEN l.txn_type = 'CREDIT' THEN l.amount ELSE -l.amount END) AS balance_cents
-FROM crowdfunding.initiatives c
-JOIN ledger.ledger l ON l.project_id = c.legacy_id
-GROUP BY c.id;
-```
+Not part of the initial release. When Ledger DB is co-located on the same Postgres instance, a future migration will add this view, drop the `amount_raised_cents` column, and decommission the `amount-raised-sync` CronJob. The view SQL will be written at that point — it joins `ledger.transactions` with `crowdfunding.initiatives` on `project_id`.
 
 ### Indexes
 
@@ -513,7 +495,7 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 | Go HTTP API | `Deployment` + `Service` + `Ingress` | Chi router, long-running |
 | Crowdfunding Postgres | Shared AWS RDS instance | LFX standard — DevOps adds `crowdfunding` DB + role to existing `lfx-v2` RDS in `lfx-v2-opentofu/postgres.tf`; app connects via `rds-postgres.lfx:5432` |
 | mentorship-sync job | `CronJob` | Daily or a few times/day; Snowflake → CF Postgres |
-| GitHub stats job | `CronJob` | Every 6 hours |
+| amount-raised-sync job | `CronJob` | Every hour; reconciles `amount_raised_cents` from Ledger API |
 | Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
 | ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
 
