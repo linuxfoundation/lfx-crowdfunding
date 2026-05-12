@@ -444,7 +444,7 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
             amt    = _as_int(budget.get("amount"))
             alloc  = budget.get("allocation") or None
             # Normalize empty strings to None; only development category can have repo_link
-            repo   = (cat.get("repoLink") or None) if cat_key == "development" else None
+            repo   = cat.get("repoLink") or None if cat_key == "development" else None
             if amt > 0 or alloc or repo:
                 goals_rows.append((
                     _uuid5("goal", raw_initiative_id, goal_name),

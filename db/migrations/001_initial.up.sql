@@ -396,6 +396,7 @@ CREATE TRIGGER set_updated_on BEFORE UPDATE ON organizations                    
 -- MAINTENANCE: This WHEN clause lists all non-cache columns. When adding new columns:
 --   - Include them here if they are user-editable fields (trigger should fire)
 --   - Omit them if they are cache/computed fields (trigger should NOT fire)
+--   - Current cache fields: amount_raised_in_cents, source_dynamo_table
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives                         FOR EACH ROW 
     WHEN (
         OLD.owner_id IS DISTINCT FROM NEW.owner_id OR
