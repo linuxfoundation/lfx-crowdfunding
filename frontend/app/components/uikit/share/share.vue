@@ -45,14 +45,18 @@ const isCopyable = ref<boolean>(false);
 
 const isMobile = computed(() => pageWidth.value < 768);
 
-const share = () => {
+const share = async () => {
   if (navigator?.share && isMobile.value) {
     navigator.share({ title: document.title, url: sharableLink.value }).catch(() => {});
   }
   if (navigator?.clipboard) {
-    navigator.clipboard.writeText(sharableLink.value).catch(() => {});
-    if (!(isSharable.value && isMobile.value)) {
-      showToast(`Link copied to clipboard`, ToastTypesEnum.positive);
+    try {
+      await navigator.clipboard.writeText(sharableLink.value);
+      if (!(isSharable.value && isMobile.value)) {
+        showToast(`Link copied to clipboard`, ToastTypesEnum.positive);
+      }
+    } catch {
+      // Clipboard write failed (non-secure context or permission denied) — silent no-op
     }
   }
 };

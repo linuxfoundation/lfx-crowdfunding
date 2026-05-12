@@ -64,7 +64,11 @@ const isVisible = computed({
 const findDropdownItems = (nodes: VNode[], result: VNode[] = []) => {
   nodes.forEach((node: VNode) => {
     if (!node) return;
-    if (node.type && ['LfxDropdownItem', 'LfxOption'].includes(node.type.name)) {
+    const typeName =
+      typeof node.type === 'object' && node.type !== null && 'name' in node.type
+        ? (node.type as { name: string }).name
+        : null;
+    if (typeName && ['LfxDropdownItem', 'LfxOption'].includes(typeName)) {
       result.push(node);
     }
     if (node.children && Array.isArray(node.children)) {

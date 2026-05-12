@@ -156,9 +156,17 @@ const scheduleClose = () => {
   }, 150);
 };
 
-onMounted(() => {
+onMounted(async () => {
   if (import.meta.client) {
-    createPopperInstance();
+    // If visibility starts true the teleported panel doesn't exist yet — defer
+    // until after the next tick so createPopper finds the element in the DOM.
+    if (isVisible.value) {
+      await nextTick();
+      createPopperInstance();
+      if (props.triggerEvent === 'click') {
+        document.addEventListener('click', handleClickOutside, true);
+      }
+    }
     if (props.triggerEvent === 'hover') {
       trigger.value?.addEventListener('mouseenter', openPopover);
       trigger.value?.addEventListener('mouseleave', scheduleClose);

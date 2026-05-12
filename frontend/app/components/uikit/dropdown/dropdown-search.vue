@@ -47,6 +47,13 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>();
 
 const model = ref(props.modelValue);
 
+watch(
+  () => props.modelValue,
+  (val) => {
+    model.value = val;
+  },
+);
+
 const debouncedEmit = useDebounceFn((value: string) => {
   emit('update:modelValue', value);
 }, 300);

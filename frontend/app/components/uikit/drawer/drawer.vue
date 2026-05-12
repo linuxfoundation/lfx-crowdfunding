@@ -78,6 +78,7 @@ const onEscapeKeyUp = (event: KeyboardEvent) => {
 watch(
   () => isDrawerOpened.value,
   (show: boolean) => {
+    if (!import.meta.client) return;
     if (!show) {
       window.removeEventListener('keyup', onEscapeKeyUp);
     } else {
@@ -88,6 +89,7 @@ watch(
 );
 
 onUnmounted(() => {
+  if (!import.meta.client) return;
   window.removeEventListener('keyup', onEscapeKeyUp);
 });
 </script>

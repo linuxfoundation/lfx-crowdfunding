@@ -3,7 +3,7 @@
 
 export interface ProjectFundingStatus {
   totalAnnualGoalInCents?: number;
-  totalDonationsInCents: number;
+  amountRaisedCents: number;
   totalSubscriptionCount: number;
   annualSubscriptionAmountInCents: number;
   annualSubscriptionRemainingAmountInCents: number;

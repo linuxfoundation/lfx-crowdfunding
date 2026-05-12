@@ -6,13 +6,13 @@ import type { ExpenseCategory } from './transaction.types';
 import type { EventSponsorship } from './event-sponsorship.types';
 import type { ProjectFundingStatus } from './project.types';
 
-export interface EntityStats {
+export interface InitiativeStats {
   backers: number;
   sponsors: number;
   totalRaised: number;
 }
 
-export interface EntityBadge {
+export interface InitiativeBadge {
   amount: number;
   allocation: string;
 }
@@ -21,11 +21,11 @@ export interface FundingStatus {
   totalAnnualGoalInCents: number;
   annualSubscriptionAmountInCents?: number;
   annualSubscriptionRemainingAmountInCents?: number;
-  totalDonationsInCents?: number;
+  amountRaisedCents?: number;
   totalSubscriptionCount?: number;
 }
 
-export interface EntityGoal extends Goal {
+export interface InitiativeGoal extends Goal {
   name: string;
   description?: string;
   fundingStatus?: FundingStatus;
@@ -34,15 +34,15 @@ export interface EntityGoal extends Goal {
   errors?: any;
 }
 
-export interface Entity {
+export interface Initiative {
   id: string;
   industry?: string;
-  entityId: string;
+  initiativeId: string;
   ownerId: string;
   cocURL?: string;
   name: string;
   status: string;
-  entityType: string;
+  initiativeType: string;
   description: string;
   createdOn: string;
   updatedOn: string;
@@ -50,10 +50,10 @@ export interface Entity {
   logoUrl?: string;
   country?: string;
   city?: string;
-  entityStats?: EntityStats;
+  initiativeStats?: InitiativeStats;
   fundingStatus?: FundingStatus;
-  entityDetails?: any;
-  goals?: EntityGoal[];
+  initiativeDetails?: any;
+  goals?: InitiativeGoal[];
   sponsors?: any[];
   sponsorshipTiers?: EventSponsorship[];
   websiteURL?: string;
@@ -68,21 +68,21 @@ export interface Entity {
   amountRaised?: number;
 }
 
-export interface EntityBacker {
+export interface InitiativeBacker {
   name: string;
   avatarURL: string;
   backerSince: string;
   amountInCents: string;
 }
 
-export interface EntityBackerResponse {
-  entries: EntityBacker[];
+export interface InitiativeBackerResponse {
+  entries: InitiativeBacker[];
   link: any;
   totalRecords: number;
 }
 
-export interface EntitySubscription {
-  entityId: string;
+export interface InitiativeSubscription {
+  initiativeId: string;
   createdOn: string;
   amountInCents: number;
   industry: string;
@@ -95,7 +95,7 @@ export interface EntitySubscription {
   fundingStatus?: ProjectFundingStatus;
   eventStartDate?: string;
   eventEndDate?: string;
-  entityType: string;
+  initiativeType: string;
   ciiProjectID?: string;
   mentee?: any;
 }
@@ -105,13 +105,13 @@ export interface Beneficiary {
   email: string;
 }
 
-export interface DraftEntity extends SubscribableDraft {
+export interface DraftInitiative extends SubscribableDraft {
   beneficiaries: Beneficiary[];
-  entityType: string | null;
+  initiativeType: string | null;
   fundingStatus: FundingStatus;
   cocURL?: string;
   ciiProjectID?: string;
-  goals?: EntityGoal[];
+  goals?: InitiativeGoal[];
   sponsorshipTiers?: EventSponsorship[];
   websiteURL?: string;
   applicationURL?: string;
@@ -121,13 +121,13 @@ export interface DraftEntity extends SubscribableDraft {
   detail?: any;
 }
 
-export interface EntityEdit extends SubscribableEdit {
+export interface InitiativeEdit extends SubscribableEdit {
   beneficiaries?: Beneficiary[];
-  entityType?: string | null;
+  initiativeType?: string | null;
   fundingStatus?: FundingStatus;
   cocURL?: string;
   ciiProjectID?: string;
-  goals?: EntityGoal[];
+  goals?: InitiativeGoal[];
   sponsorshipTiers?: EventSponsorship[];
   websiteURL?: string;
   eventbriteId?: string;
