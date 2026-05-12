@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container px-10">
+  <section class="container">
     <!-- Section header -->
     <div class="flex flex-col gap-3 border-t border-neutral-200 pt-16 pb-8">
       <h2 class="text-xl font-semibold text-neutral-900">Impact Stories</h2>
