@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container px-10 pb-16">
+  <section class="container pb-16">
     <!-- Section header -->
     <div class="flex items-center justify-between border-t border-neutral-200 pt-16 pb-8">
       <h2 class="text-xl font-semibold text-neutral-900">Trending initiatives</h2>

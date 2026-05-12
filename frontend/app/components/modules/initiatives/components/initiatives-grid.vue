@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container px-10 pb-16">
+  <section class="container pb-16">
     <!-- Loading skeletons -->
     <div
       v-if="isLoading"
@@ -46,11 +46,14 @@ SPDX-License-Identifier: MIT
       v-else
       class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
     >
-      <initiative-card
+      <NuxtLink
         v-for="initiative in initiatives"
         :key="initiative.id"
-        :initiative="initiative"
-      />
+        :to="`/initiatives/${initiative.initiativeId}`"
+        class="block"
+      >
+        <initiative-card :initiative="initiative" />
+      </NuxtLink>
     </div>
   </section>
 </template>
