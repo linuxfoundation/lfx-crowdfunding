@@ -27,6 +27,30 @@ export interface FundingGoal {
   goalCents: number;
 }
 
+export interface FinancialSummary {
+  totalReceivedCents: number;
+  totalExpensesCents: number;
+  balanceCents: number;
+}
+
+export interface DonationRecord {
+  id: string;
+  date: string;
+  supporterName: string;
+  supporterLogoUrl?: string;
+  supporterType: 'organization' | 'member';
+  donorCategory: 'Company' | 'Individual';
+  amountCents: number;
+}
+
+export interface ExpenseRecord {
+  id: string;
+  date: string;
+  category: string;
+  description: string;
+  amountCents: number;
+}
+
 export interface ImpactStat {
   value: string;
   label: string;
@@ -48,4 +72,7 @@ export interface InitiativeDetail extends InitiativeBase {
   projectHealthStats?: ProjectHealthStat[];
   projectHealthRating?: string;
   fundingGoals?: FundingGoal[];
+  financialSummary?: FinancialSummary;
+  donationRecords?: DonationRecord[];
+  expenseRecords?: ExpenseRecord[];
 }
