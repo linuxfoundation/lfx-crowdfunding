@@ -26,6 +26,9 @@
 
 BEGIN;
 
+CREATE SCHEMA IF NOT EXISTS crowdfunding;
+SET search_path TO crowdfunding;
+
 -- ============================================
 -- TABLE: users
 -- ============================================
@@ -75,7 +78,7 @@ CREATE TABLE IF NOT EXISTS initiatives (
 
   -- core display fields
   name                TEXT         NOT NULL,
-  slug                TEXT,
+  slug                TEXT         NOT NULL UNIQUE,
   status              VARCHAR(50),
   industry            TEXT,
   description         TEXT,
@@ -325,7 +328,8 @@ CREATE TABLE IF NOT EXISTS donations (
   payment_method          VARCHAR(50),
   po_number               TEXT,
   status                  VARCHAR(50),
-  stripe_charge_id        VARCHAR(255)
+  stripe_charge_id        VARCHAR(255),
+  UNIQUE (stripe_charge_id)             -- partial dedup: Postgres UNIQUE allows multiple NULLs (invoice payments)
 );
 
 -- ============================================
@@ -345,7 +349,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   current_amount_in_cents     BIGINT      NOT NULL,
   frequency                   VARCHAR(50),
   status                      VARCHAR(50),
-  stripe_subscription_id      VARCHAR(255),
+  stripe_subscription_id      VARCHAR(255) UNIQUE,
   stripe_subscription_item_id VARCHAR(255)
 );
 

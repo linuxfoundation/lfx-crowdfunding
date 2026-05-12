@@ -437,15 +437,21 @@ CREATE INDEX ON crowdfunding.donations (initiative_id);
 CREATE INDEX ON crowdfunding.donations (user_id);
 
 -- Users (minimal — auth in Auth0, payment account in Stripe)
--- id is the Auth0 subject (e.g. auth0|abc123) used directly as PK — not a UUID.
+-- id is a UUID surrogate PK. Auth0 subject stored in user_id (UNIQUE natural key).
 -- Tech debt: github_access_token stored as plain text, matching current LFF behavior.
 -- Should be encrypted at the application layer (KMS envelope encryption) post-initial-release.
 CREATE TABLE crowdfunding.users (
-  id                  text        PRIMARY KEY,              -- Auth0 subject (e.g. auth0|abc123)
+  id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id             text        NOT NULL UNIQUE,          -- Auth0 subject (e.g. auth0|abc123)
+  email               text,
+  given_name          text,
+  family_name         text,
+  name                text,
+  avatar_url          text,
   stripe_customer_id  text,
   github_access_token text,
-  created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now()
+  created_on          timestamptz DEFAULT now(),
+  updated_on          timestamptz DEFAULT now()
 );
 ```
 

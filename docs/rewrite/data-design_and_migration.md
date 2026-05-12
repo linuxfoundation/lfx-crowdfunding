@@ -150,7 +150,7 @@ Source: `lff-prod-projects` + `lff-prod-entities` (merged)
 
 | Column | Type | Constraints | DynamoDB field | Notes |
 |---|---|---|---|---|
-| `owner_id` | UUID | NN, FK → `users.id` | `ownerId` | Auth0 subject of the project/entity owner. |
+| `owner_id` | UUID | NN, FK → `users.id` | `ownerId` | UUID FK to `users.id` (surrogate PK). The Auth0 subject lives in `users.user_id`; resolve by looking up `users.user_id = ownerId` → `users.id`. |
 
 #### Core display fields
 
