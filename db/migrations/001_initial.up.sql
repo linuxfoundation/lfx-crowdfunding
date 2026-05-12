@@ -393,6 +393,8 @@ $$;
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON users                               FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON organizations                       FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 -- Skip updated_on change when only cache fields (amount_raised_in_cents) are updated
+-- MAINTENANCE: If new columns are added to initiatives, add them to this WHEN clause
+-- to ensure the trigger fires for updates to those columns
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives                         FOR EACH ROW 
     WHEN (
         OLD.owner_id IS DISTINCT FROM NEW.owner_id OR

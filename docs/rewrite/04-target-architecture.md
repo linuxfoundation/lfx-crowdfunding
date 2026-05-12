@@ -318,7 +318,7 @@ All monetary values `bigint` (cents). All primary keys `uuid`. All timestamps `t
 
 **Terminology:**
 - `initiatives` — unified table for all fundable things; formerly split into `projects` and `funds`
-- `initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif` (plus legacy-only: `other` | `community`)
+- `initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif` (plus legacy migrated: `other` | `community` — present in production data but no new rows expected)
 - `status` values: `submitted` | `published` | `declined` | `hidden`
 
 The schema is defined in `db/migrations/001_initial.up.sql` (version 2.0.0) and reproduced here as a reference. The authoritative source is the SQL file.
