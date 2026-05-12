@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 export interface FooterMenuLink {
-  link?: string;
   name: string;
+  link: string;
 }
 
 export interface FooterMenuSection {
@@ -13,31 +13,28 @@ export interface FooterMenuSection {
 
 export const lfxFooterMenu: FooterMenuSection[] = [
   {
-    title: 'LFX Crowdfunding',
+    title: 'Platform',
     links: [
-      { name: 'Projects', link: '/campaigns?type=project' },
-      { name: 'Mentorships', link: '/campaigns?type=mentorship' },
-      { name: 'Events', link: '/campaigns?type=event' },
-      { name: 'General Funds', link: '/campaigns?type=general_fund' },
-      { name: 'Changelog', link: 'https://changelog.lfx.dev/?product=crowdfunding' },
-      { name: 'Roadmap', link: 'https://changelog.lfx.dev/roadmap?product=crowdfunding' },
+      { name: 'Explore initiatives', link: '/initiatives' },
+      { name: 'Statistics', link: '/statistics' },
+      { name: 'Start a Fundraise', link: '/start-fundraise' },
+      { name: 'About', link: '/about' },
     ],
   },
   {
-    title: 'Resources',
+    title: 'Solutions',
     links: [
-      { name: 'Documentation', link: 'https://docs.linuxfoundation.org/lfx/crowdfunding' },
-      { name: 'LFX Community', link: 'https://community.lfx.dev' },
-      { name: 'Linux Foundation', link: 'https://www.linuxfoundation.org' },
+      { name: 'For Projects', link: '/for-projects' },
+      { name: 'For Companies', link: '/for-companies' },
     ],
   },
   {
-    title: 'Other LFX Tools',
+    title: 'The Linux Foundation',
     links: [
-      { name: 'Insights', link: 'https://insights.lfx.linuxfoundation.org' },
-      { name: 'Mentorship', link: 'https://mentorship.lfx.linuxfoundation.org' },
-      { name: 'EasyCLA', link: 'https://easycla.lfx.linuxfoundation.org' },
-      { name: 'Security', link: 'https://security.lfx.linuxfoundation.org' },
+      { name: 'LFX Self Serve', link: 'https://lfx.linuxfoundation.org' },
+      { name: 'LFX Insights', link: 'https://insights.lfx.linuxfoundation.org' },
+      { name: 'LFX Mentorship', link: 'https://mentorship.lfx.linuxfoundation.org' },
+      { name: 'About the LF', link: 'https://www.linuxfoundation.org/about' },
     ],
   },
 ];

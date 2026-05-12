@@ -3,97 +3,68 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <footer class="border-t border-neutral-200 py-10 bg-white">
-    <div class="container">
-      <div class="flex justify-between pb-10 md:pb-16 gap-x-10 gap-y-15 flex-col xl:flex-row">
+  <footer class="bg-accent-900">
+    <div class="container px-10 py-10">
+      <!-- Top: brand + nav columns -->
+      <div class="flex items-start justify-between gap-10">
         <!-- Brand -->
-        <div class="max-w-100">
-          <img
-            src="~/assets/images/logo.svg"
-            alt="LFX Logo"
-            class="h-6"
-            loading="lazy"
-            width="176"
-            height="24"
-          />
-          <p class="pt-3 text-body-2 text-neutral-500">
-            LFX Crowdfunding helps open source projects, mentorships, and events secure the funding they need to thrive.
+        <div class="flex flex-col gap-3">
+          <NuxtLink to="/">
+            <img
+              src="~/assets/images/logo.svg"
+              alt="LFX Crowdfunding"
+              class="h-6 brightness-0 invert"
+              loading="lazy"
+            />
+          </NuxtLink>
+          <p class="text-xs leading-4 text-neutral-400">
+            Funding the open source software that powers the world. 0% platform fees.
           </p>
-          <div class="pt-10 md:pt-11 lg:pt-15 flex items-center gap-3">
-            <a
-              href="https://github.com/linuxfoundation"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Linux Foundation on GitHub"
-            >
-              <lfx-icon-button
-                size="small"
-                type="outline"
-              >
-                <lfx-icon
-                  name="github"
-                  type="brands"
-                />
-              </lfx-icon-button>
-            </a>
-            <a
-              href="https://community.lfx.dev"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <lfx-button
-                type="secondary"
-                button-style="pill"
-                size="small"
-              >
-                <lfx-icon name="messages" />
-                Join community
-              </lfx-button>
-            </a>
-          </div>
         </div>
 
         <!-- Nav sections -->
-        <div class="flex gap-x-10 gap-y-8 lg:gap-x-20 flex-col lg:flex-row">
+        <div class="flex gap-16">
           <section
-            v-for="section of lfxFooterMenu"
+            v-for="section in lfxFooterMenu"
             :key="section.title"
+            class="flex flex-col gap-2"
           >
-            <p class="text-xs leading-4 font-semibold text-neutral-400 pb-2">
+            <p class="text-xs font-semibold leading-4 text-neutral-500">
               {{ section.title }}
             </p>
             <nav class="flex flex-col">
-              <template
-                v-for="link of section.links"
+              <NuxtLink
+                v-for="link in section.links.filter((l) => l.link.startsWith('/'))"
                 :key="link.name"
+                :to="link.link"
+                class="text-sm leading-7 text-white hover:underline"
               >
-                <NuxtLink
-                  v-if="link.link?.startsWith('/')"
-                  :to="link.link"
-                  class="text-sm leading-7 hover:underline whitespace-nowrap"
-                >
-                  {{ link.name }}
-                </NuxtLink>
-                <a
-                  v-else
-                  :href="link.link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-sm leading-7 hover:underline whitespace-nowrap"
-                >
-                  {{ link.name }}
-                </a>
-              </template>
+                {{ link.name }}
+              </NuxtLink>
+              <a
+                v-for="link in section.links.filter((l) => !l.link.startsWith('/'))"
+                :key="link.name"
+                :href="link.link"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-sm leading-7 text-white hover:underline"
+              >
+                {{ link.name }}
+              </a>
             </nav>
           </section>
         </div>
       </div>
 
-      <!-- LFX web component footer (copyright, cookie policy, etc.) -->
+      <!-- Divider -->
+      <div class="my-8 h-px bg-white/10" />
+
+      <!-- LFX footer web component (copyright, cookie prefs, legal links) -->
       <ClientOnly>
         <lfx-footer
+          ref="lfxFooterRef"
           cookie-tracking
-          class="footer !p-0 !text-left max-w-190"
+          class="lfx-footer-wc !p-0 !text-left"
         />
       </ClientOnly>
     </div>
@@ -101,23 +72,46 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { nextTick } from 'vue';
-import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
-import LfxButton from '~/components/uikit/button/button.vue';
-import LfxIcon from '~/components/uikit/icon/icon.vue';
+import { nextTick, ref } from 'vue';
 import { lfxFooterMenu } from '~/config/menu/footer';
+
+const lfxFooterRef = ref<HTMLElement | null>(null);
 
 onMounted(async () => {
   await nextTick();
-  // Align lfx-footer web component content to the left (no public API for this)
-  const footer = document.querySelector('.footer') as HTMLElement;
-  const shadowRoot = footer?.shadowRoot;
-  if (shadowRoot) {
-    const container = shadowRoot.querySelector('.footer-content');
-    if (container) {
-      (container as HTMLElement).style.textAlign = 'left';
+  const el = document.querySelector('.lfx-footer-wc') as HTMLElement;
+  const shadowRoot = el?.shadowRoot;
+  if (!shadowRoot) return;
+
+  // Align content left (no public API for this)
+  const content = shadowRoot.querySelector('.footer-content') as HTMLElement | null;
+  if (content) content.style.textAlign = 'left';
+
+  // Inject styles to match the dark footer design
+  const style = document.createElement('style');
+  style.textContent = `
+    :host {
+      background: transparent !important;
+      color: #90a1b9 !important;
     }
-  }
+    * {
+      color: #90a1b9 !important;
+      background: transparent !important;
+    }
+    a {
+      text-decoration: underline !important;
+    }
+    a:hover {
+      color: #cbd5e1 !important;
+    }
+    button {
+      text-decoration: underline !important;
+    }
+    button:hover {
+      color: #cbd5e1 !important;
+    }
+  `;
+  shadowRoot.appendChild(style);
 });
 </script>
 
