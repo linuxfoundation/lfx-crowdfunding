@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS initiatives (
 
   -- project-only fields (SP write path)
   cii_project_id       TEXT,
-  jobspring_project_id TEXT,                   -- written only when programInfo.budget.amountInCents > 0
+  jobspring_project_id TEXT,                   -- top-level jobspringProjectId; present when mentee goal exists
   stacks_identifier    TEXT,
 
   -- entity-only fields (SE / SE-reflect write path)
@@ -380,6 +380,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 -- ============================================
 -- TRIGGER: auto-update updated_on on every UPDATE
+-- Note: initiatives trigger skips updates when only cache fields change
 -- ============================================
 CREATE OR REPLACE FUNCTION set_updated_on()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -391,7 +392,36 @@ $$;
 
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON users                               FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON organizations                       FOR EACH ROW EXECUTE FUNCTION set_updated_on();
-CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives                         FOR EACH ROW EXECUTE FUNCTION set_updated_on();
+-- Skip updated_on change when only cache fields (amount_raised_in_cents) are updated
+CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives                         FOR EACH ROW 
+    WHEN (OLD.* IS DISTINCT FROM NEW.* AND (
+        OLD.owner_id IS DISTINCT FROM NEW.owner_id OR
+        OLD.name IS DISTINCT FROM NEW.name OR
+        OLD.slug IS DISTINCT FROM NEW.slug OR
+        OLD.status IS DISTINCT FROM NEW.status OR
+        OLD.industry IS DISTINCT FROM NEW.industry OR
+        OLD.description IS DISTINCT FROM NEW.description OR
+        OLD.color IS DISTINCT FROM NEW.color OR
+        OLD.logo_url IS DISTINCT FROM NEW.logo_url OR
+        OLD.website_url IS DISTINCT FROM NEW.website_url OR
+        OLD.coc_url IS DISTINCT FROM NEW.coc_url OR
+        OLD.cii_project_id IS DISTINCT FROM NEW.cii_project_id OR
+        OLD.stripe_plan_id IS DISTINCT FROM NEW.stripe_plan_id OR
+        OLD.stripe_product_id IS DISTINCT FROM NEW.stripe_product_id OR
+        OLD.jobspring_project_id IS DISTINCT FROM NEW.jobspring_project_id OR
+        OLD.stacks_identifier IS DISTINCT FROM NEW.stacks_identifier OR
+        OLD.eventbrite_url IS DISTINCT FROM NEW.eventbrite_url OR
+        OLD.application_url IS DISTINCT FROM NEW.application_url OR
+        OLD.accept_funding IS DISTINCT FROM NEW.accept_funding OR
+        OLD.event_start_date IS DISTINCT FROM NEW.event_start_date OR
+        OLD.event_end_date IS DISTINCT FROM NEW.event_end_date OR
+        OLD.event_location IS DISTINCT FROM NEW.event_location OR
+        OLD.event_registration_url IS DISTINCT FROM NEW.event_registration_url OR
+        OLD.event_fee_in_cents IS DISTINCT FROM NEW.event_fee_in_cents OR
+        OLD.event_capacity IS DISTINCT FROM NEW.event_capacity OR
+        OLD.cached_details IS DISTINCT FROM NEW.cached_details
+    ))
+    EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_goals                    FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_beneficiaries            FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_custom_websites          FOR EACH ROW EXECUTE FUNCTION set_updated_on();
