@@ -3,7 +3,7 @@
 **Schema version:** 2.0.0  
 **Last updated:** 2026-05-12  
 **Source data:** AWS DynamoDB `us-east-1` (`lff-prod-*`)  
-**Target:** PostgreSQL `localhost:5433 / dbname=postgres`  
+**Target:** PostgreSQL via `PG_DSN` (example run: `localhost:5433 / dbname=postgres`)  
 **Migration status:** ✅ Complete — exit 0
 
 ---
