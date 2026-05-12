@@ -4,7 +4,7 @@
   @apply bg-neutral-100 overflow-hidden relative;
 }
 
-.p-skeleton:after {
+.p-skeleton::after {
   content: '';
   animation: p-skeleton-animation 1.2s infinite ease-in-out;
   background:

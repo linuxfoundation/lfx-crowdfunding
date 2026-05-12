@@ -13,6 +13,12 @@ DISABLE_LINTERS:
   - YAML_V8R
   # lychee link checker is redundant with markdown-link-check.
   - SPELL_LYCHEE
+  # stylelint-config-standard-scss is not bundled in the megalinter image;
+  # CSS_SCSS_LINT covers SCSS files instead.
+  - CSS_STYLELINT
+  # Project uses eslint + typescript-eslint; ts-standard is redundant and
+  # cannot locate the tsconfig.json from the workspace root.
+  - TYPESCRIPT_STANDARD
 
 DISABLE_ERRORS_LINTERS:
   # Informative but should not block builds.
