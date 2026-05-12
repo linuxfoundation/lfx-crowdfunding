@@ -45,7 +45,7 @@ SNS/SQS dropped entirely. CF syncs Mentorship program data from Snowflake via K8
 
 **Status:** Resolved
 
-Namespace is `crowdfunding` with ArgoCD entry in `lfx-v2-applications.yaml` and Helm chart at `charts/lfx-crowdfunding/`. See 02-decisions.md for details.
+Namespace is `crowdfunding` with ArgoCD entry in `lfx-v2-applications.yaml` and Helm chart will live at `charts/lfx-crowdfunding/` (not yet created). See 02-decisions.md for details.
 
 ---
 
