@@ -1071,7 +1071,7 @@ psql "host=localhost port=5433 dbname=postgres user=flightapp password=flightapp
 
 # 2. Re-apply schema
 psql "host=localhost port=5433 dbname=postgres user=flightapp password=flightapp_dev" \
-  -f db/schema.sql
+  -f db/migrations/001_initial.up.sql
 
 # 3. Set credentials
 export AWS_ACCESS_KEY_ID="..."
