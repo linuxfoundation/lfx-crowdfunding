@@ -52,6 +52,8 @@ The schema uses a **normalized 20-table design**: `users`, `organizations`, `ini
 
 **Note on Python script:** Lewis's original migration work used a Python script (`migrate_dynamo_to_postgres.py`) with the normalized 20-table schema now in `001_initial.up.sql`. The production Postgres DB currently contains the output of that script. The Go CLI replacement targets the same normalized schema.
 
+> **Action required (Lewis):** The script needs updating to reflect schema changes applied since the initial run. Column renames to apply: `initiative_id VARCHAR(255)` → use `id UUID` as the only PK (remove `initiative_id` from INSERT/ON CONFLICT); `jobspring_project_id` → `mentorship_program_id`; `amount_raised` → `amount_raised_in_cents`; `total_budget` → `total_budget_in_cents` on `initiative_ostif_detail`. Also add `stripe_customer_id` and `github_access_token` to the `users` INSERT.
+
 `cmd/migrate/` is reserved for the golang-migrate schema runner — that is a separate tool.
 
 ### Two modes
