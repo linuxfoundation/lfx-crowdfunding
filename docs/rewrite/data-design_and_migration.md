@@ -346,7 +346,7 @@ CREATE TABLE IF NOT EXISTS initiatives (
 
   stripe_plan_id       TEXT,
   stripe_product_id    TEXT,
-  amount_raised_in_cents BIGINT       NOT NULL DEFAULT 0 CHECK (amount_raised_in_cents >= 0),
+  amount_raised_in_cents BIGINT       NOT NULL DEFAULT 0,
   accept_funding        BOOLEAN      DEFAULT false,
 
   -- project-only
