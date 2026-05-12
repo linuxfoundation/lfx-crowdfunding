@@ -1,0 +1,48 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+/* ---------------------------------- *\
+            Font
+\* ---------------------------------- */
+@use '../helpers' as *;
+
+:root {
+  /* Font sizes */
+  --lfx-font-size-xs: #{toRem(12)};
+  --lfx-font-size-sm: #{toRem(14)};
+  --lfx-font-size-base: #{toRem(16)};
+  --lfx-font-size-lg: #{toRem(18)};
+  --lfx-font-size-xl: #{toRem(20)};
+  --lfx-font-size-2xl: #{toRem(24)};
+  --lfx-font-size-3xl: #{toRem(32)};
+  --lfx-font-size-4xl: #{toRem(40)};
+
+  /* Data display */
+  // Data display 1
+  --lfx-text-data-display-1-font-size: var(--lfx-font-size-4xl);
+  --lfx-text-data-display-1-line-height: #{toRem(44)};
+  // Data display 2
+  --lfx-text-data-display-2-font-size: var(--lfx-font-size-3xl);
+  --lfx-text-data-display-2-line-height: #{toRem(40)};
+
+  /* Heading */
+  // Heading 1
+  --lfx-text-heading-1-font-size: var(--lfx-font-size-3xl);
+  --lfx-text-heading-1-line-height: #{toRem(40)};
+  // Heading 2
+  --lfx-text-heading-2-font-size: var(--lfx-font-size-2xl);
+  --lfx-text-heading-2-line-height: #{toRem(32)};
+  // Heading 3
+  --lfx-text-heading-3-font-size: var(--lfx-font-size-xl);
+  --lfx-text-heading-3-line-height: #{toRem(28)};
+  // Heading 4
+  --lfx-text-heading-4-font-size: var(--lfx-font-size-base);
+  --lfx-text-heading-4-line-height: #{toRem(24)};
+
+  /* Body */
+  // Body 1
+  --lfx-text-body-1-font-size: var(--lfx-font-size-sm);
+  --lfx-text-body-1-line-height: #{toRem(20)};
+  // Body 2
+  --lfx-text-body-2-font-size: var(--lfx-font-size-xs);
+  --lfx-text-body-2-line-height: #{toRem(16)};
+}

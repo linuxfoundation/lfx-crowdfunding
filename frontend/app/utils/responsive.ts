@@ -1,0 +1,30 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+import { onMounted, onUnmounted, ref } from 'vue';
+
+const useResponsive = () => {
+  const pageWidth = ref(0);
+
+  const updatePageWidth = () => {
+    pageWidth.value = window.innerWidth;
+  };
+
+  const isMobileOrTablet = () =>
+    import.meta.client && /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  onMounted(() => {
+    updatePageWidth();
+    window.addEventListener('resize', updatePageWidth);
+  });
+
+  onUnmounted(() => {
+    window.removeEventListener('resize', updatePageWidth);
+  });
+
+  return {
+    isMobileOrTablet,
+    pageWidth,
+  };
+};
+
+export default useResponsive;

@@ -1,0 +1,108 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+# helpers.scss uses @use 'sass:math' and math.div(), which scss-lint 0.60
+# cannot parse. Exclude it to avoid a false Syntax error.
+exclude:
+  - "frontend/app/assets/styles/helpers.scss"
+
+linters:
+  # Tailwind @apply and PrimeVue overrides require vendor prefixes.
+  VendorPrefix:
+    enabled: false
+
+  # Property order is enforced by Prettier; alphabetical sort conflicts with
+  # logical grouping and Tailwind utility patterns.
+  PropertySortOrder:
+    enabled: false
+
+  # Colors come from CSS custom properties (var(--lfx-*)) and design tokens;
+  # requiring SCSS variable indirection is not applicable here.
+  ColorVariable:
+    enabled: false
+
+  # Allow rgba() and hex literals in addition to named keywords.
+  ColorKeyword:
+    enabled: false
+
+  # Allow /* */ block comments alongside // line comments (e.g. Tailwind
+  # source comments and temporary disable markers).
+  Comment:
+    enabled: false
+
+  # Allow 0.8 (with leading zero) — more readable than .8.
+  LeadingZero:
+    style: include_zero
+
+  # PrimeVue component overrides require deep nesting; 3 is too shallow.
+  NestingDepth:
+    max_depth: 6
+
+  # Deep component selectors for PrimeVue theme overrides exceed depth 3.
+  SelectorDepth:
+    max_depth: 6
+
+  # Empty lines between blocks is a Prettier concern, not scss-lint.
+  EmptyLineBetweenBlocks:
+    enabled: false
+
+  # Mergeable selectors are sometimes intentionally split for readability.
+  MergeableSelector:
+    enabled: false
+
+  # !important is necessary for overriding PrimeVue component defaults.
+  ImportantRule:
+    enabled: false
+
+  # Multi-line CSS custom property values (e.g. --shadow-sm:\n  value) have
+  # a newline after the colon, which trips this rule. Prettier handles spacing.
+  SpaceAfterPropertyColon:
+    enabled: false
+
+  # #{!important} is used inside Tailwind @apply blocks; the interpolation
+  # syntax looks like a BangFormat violation but is intentional.
+  BangFormat:
+    enabled: false
+
+  # BEM selectors (block__element--modifier) use __ which scss-lint's default
+  # hyphenated_lowercase convention rejects. Use hyphenated_BEM instead.
+  SelectorFormat:
+    convention: hyphenated_BEM
+
+  # & > child is necessary for the child combinator inside nested rules;
+  # removing & would produce a descendant selector, not a child selector.
+  UnnecessaryParentReference:
+    enabled: false
+
+  # Qualifying selectors like i.c-icon are intentional for element specificity.
+  QualifyingElement:
+    enabled: false
+
+  # Vendor-prefixed pseudo-elements (:-ms-input-placeholder) legitimately use
+  # single colon; disabling avoids false positives.
+  PseudoElement:
+    enabled: false
+
+  # Allow modern CSS properties not yet in scss-lint 0.60's built-in list.
+  PropertySpelling:
+    extra_properties:
+      - inset
+      - inset-block
+      - inset-inline
+      - inset-block-start
+      - inset-block-end
+      - inset-inline-start
+      - inset-inline-end
+      - gap
+      - row-gap
+      - column-gap
+      - aspect-ratio
+      - container-type
+      - container-name
+      - backdrop-filter
+      - overscroll-behavior
+      - overscroll-behavior-x
+      - overscroll-behavior-y
+      - scroll-behavior
+      - text-decoration-skip-ink
+      - -webkit-overflow-scrolling

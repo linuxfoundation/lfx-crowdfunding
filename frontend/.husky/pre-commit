@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+# Run pre-commit checks only if frontend files changed
+if git diff --diff-filter=d --name-only --cached | grep -q 'frontend/'; then
+  echo "FRONTEND FOLDER CHANGED --> starting husky..."
+  cd frontend && \
+    pnpm exec lint-staged && \
+    pnpm tsc-check
+fi

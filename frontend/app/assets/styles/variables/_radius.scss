@@ -1,0 +1,17 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+/* ---------------------------------- *\
+            Radius
+\* ---------------------------------- */
+@use '../helpers' as *;
+
+:root {
+  --lfx-radius-none: 0;
+  --lfx-radius-xs: #{toRem(2)};
+  --lfx-radius-sm: #{toRem(4)};
+  --lfx-radius-md: #{toRem(6)};
+  --lfx-radius-lg: #{toRem(8)};
+  --lfx-radius-xl: #{toRem(12)};
+  --lfx-radius-2xl: #{toRem(16)};
+  --lfx-radius-3xl: #{toRem(24)};
+}

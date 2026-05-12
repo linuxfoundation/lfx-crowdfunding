@@ -1,0 +1,57 @@
+<!--
+Copyright (c) 2025 The Linux Foundation and each contributor.
+SPDX-License-Identifier: MIT
+-->
+<template>
+  <div
+    :id="props.id"
+    ref="scrollViewRef"
+    class="scroll-view"
+  >
+    <slot />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref, watch } from 'vue';
+// import useScroll from '~/utils/scroll';
+
+const scrollViewRef = ref<HTMLElement | null>(null);
+const props = defineProps<{
+  id: string;
+  observer: IntersectionObserver | null;
+}>();
+
+const emit = defineEmits<{ (e: 'scrolledToView', id: string): void }>();
+
+const onScrolledToView = () => {
+  emit('scrolledToView', props.id);
+};
+
+onMounted(() => {
+  if (scrollViewRef.value) {
+    scrollViewRef.value.addEventListener('scrolledToView', onScrolledToView);
+  }
+});
+
+onUnmounted(() => {
+  if (scrollViewRef.value) {
+    scrollViewRef.value.removeEventListener('scrolledToView', onScrolledToView);
+
+    if (props.observer) {
+      props.observer.unobserve(scrollViewRef.value);
+    }
+  }
+});
+
+watch(props, (newVal) => {
+  if (newVal.observer && scrollViewRef.value) {
+    newVal.observer.observe(scrollViewRef.value);
+  }
+});
+</script>
+<script lang="ts">
+export default {
+  name: 'LfxScrollView',
+};
+</script>

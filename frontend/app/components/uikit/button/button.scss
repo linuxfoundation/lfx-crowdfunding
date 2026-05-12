@@ -1,0 +1,125 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+/* TODO: This a temporary styling until we have a proper design system */
+.p-button {
+  @apply bg-brand-500 text-white px-4 py-2 flex items-center gap-2 rounded-lg transition-all text-sm font-semibold;
+
+  &.p-button-pill {
+    @apply rounded-full;
+  }
+
+  &:hover {
+    @apply bg-brand-600;
+  }
+
+  &:active {
+    @apply bg-brand-500 outline outline-brand-200 outline-3;
+  }
+
+  &:disabled {
+    @apply bg-brand-200 cursor-not-allowed;
+  }
+
+  &-secondary {
+    @apply bg-brand-50 text-brand-500 font-semibold;
+
+    &:hover {
+      @apply bg-brand-100;
+    }
+
+    &:active {
+      @apply bg-brand-50 outline-brand-200;
+    }
+
+    &:disabled {
+      @apply bg-brand-50 text-brand-300;
+    }
+  }
+
+  &-tertiary {
+    @apply bg-white text-neutral-900 outline outline-1 outline-neutral-200 font-medium;
+
+    &:hover {
+      @apply bg-neutral-50;
+    }
+
+    &:active {
+      @apply bg-white outline-brand-200;
+    }
+
+    &:disabled {
+      @apply bg-white text-neutral-400;
+    }
+  }
+
+  &-transparent {
+    @apply bg-transparent text-brand-500 font-semibold;
+
+    &:hover {
+      @apply bg-brand-100;
+    }
+
+    &:active {
+      @apply bg-brand-50 outline-brand-200;
+    }
+
+    &:disabled {
+      @apply bg-brand-50 text-brand-300;
+    }
+  }
+
+  &-ghost {
+    @apply bg-transparent text-neutral-900 font-semibold;
+
+    &:hover {
+      @apply bg-neutral-50;
+    }
+
+    &:active {
+      @apply bg-transparent;
+    }
+
+    &:disabled {
+      @apply text-neutral-400;
+    }
+  }
+  &-outline {
+    @apply bg-white text-neutral-900 font-semibold outline outline-1 outline-neutral-200;
+
+    &:hover {
+      @apply bg-neutral-50;
+    }
+
+    &:active {
+      @apply bg-white;
+    }
+
+    &:disabled {
+      @apply text-neutral-400;
+    }
+  }
+
+  &-nav {
+    @apply bg-transparent text-neutral-500 font-medium;
+
+    &:hover {
+      @apply bg-neutral-50 text-neutral-700;
+    }
+
+    &:active {
+      @apply bg-neutral-50;
+    }
+
+    &:disabled {
+      @apply text-neutral-300 cursor-not-allowed;
+    }
+  }
+
+  &-large {
+    @apply text-base px-5 py-3;
+  }
+
+  &-small {
+    @apply text-xs px-3 py-1.5 leading-4;
+  }
+}

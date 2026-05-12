@@ -1,0 +1,35 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+.lfx-table {
+  @apply w-full flex flex-col gap-3;
+  &.has-hover {
+    @apply gap-0;
+    .lfx-table-row {
+      @apply hover:bg-neutral-50 cursor-pointer p-1.5 rounded-md transition-all duration-300 #{!important};
+    }
+  }
+  &.explore-tables {
+    @apply gap-3 pt-1.5;
+    .lfx-table-row {
+      @apply py-0;
+    }
+  }
+}
+
+.lfx-table-header {
+  @apply flex flex-row gap-4 justify-between text-neutral-400 py-1;
+  @apply text-xs font-medium;
+}
+
+.lfx-table-row {
+  @apply flex flex-row gap-4 justify-between text-neutral-900 py-1 text-sm items-center;
+  .name-col {
+    @apply flex flex-row gap-3 items-center basis-4/6 text-ellipsis whitespace-nowrap overflow-hidden;
+    .p-avatar {
+      @apply min-w-8;
+    }
+  }
+  .value-col {
+    @apply basis-2/6 text-right;
+  }
+}
