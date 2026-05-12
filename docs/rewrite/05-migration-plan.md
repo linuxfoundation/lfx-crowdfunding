@@ -2,6 +2,13 @@
 
 DynamoDB → PostgreSQL data migration and cutover plan.
 
+**Owner:** Lewis  
+**Schema version:** 2.0.0 (2026-05-07)  
+**Source document:** [`docs/rewrite/data-design_and_migration.md`](data-design_and_migration.md) — canonical reference for schema DDL, migration script, and data dictionary.  
+**Schema DDL:** [`db/migrations/001_initial.up.sql`](../../db/migrations/001_initial.up.sql)
+
+> **Migration status (2026-05-11):** Initial run complete — 2,021 initiatives, 16,840 users, 1,598 donations, 277 subscriptions migrated. FK integrity: 0 orphaned goals, 0 orphaned donations, 0 NULL owner IDs.
+
 ---
 
 ## Overview
@@ -15,266 +22,265 @@ This migration covers DynamoDB → Crowdfunding Postgres (`crowdfunding` schema)
 - Reimbursement Service data
 - OpenSearch data (old stack stays live for Reimbursement Service)
 
-Ledger DB migration is a separate post-release project. When it happens, the `ledger` schema is added to the Crowdfunding Postgres instance, the `project_funding_summary` view is activated, and CF API balance calls switch from HTTP to direct SQL.
+Ledger DB migration is a separate post-release project.
 
 ### Phases
 
-1. **Schema** — define and review Postgres tables before touching any data
-2. **Data migration** — one-time copy from DynamoDB to Postgres using `migrate-cf` CLI
+1. **Schema** — apply schema changes in `001_initial.up.sql`; Lewis updates migration script to match (see below)
+2. **Data migration** — Python script `migrate_dynamo_to_postgres.py` reads all DynamoDB tables and upserts into Postgres
 3. **Validation** — reconcile record counts, spot-checks, Stripe cross-check
 4. **Cutover** — switch DNS/Ingress from old Lambda API Gateway to new K8s service
-5. **Decommission** — tear down old Lambda stack, DynamoDB; OpenSearch decommission is a separate later phase (blocked on RS moving to K8s, see OQ-7)
+5. **Decommission** — tear down old Lambda stack, DynamoDB; OpenSearch decommission is a separate later phase
 
-These phases are sequential and gated by human review. Do not proceed to the next phase without explicit sign-off.
-
----
-
-## Phase 1: Schema Review (no data touched)
-
-**Goal:** finalize the Postgres schema before writing migration code.
-
-Steps:
-1. Write initial SQL migration files (`db/migrations/001_initial.up.sql`)
-2. Review schema with team — specifically:
-   - JSONB columns for budgets (confirmed decision)
-   - Unified `initiatives` table with `initiative_type` discriminator (replaces old `projects` + `entities` split)
-   - `stripe_plan_id` / `stripe_product_id` preserved on initiatives (must survive migration)
-   - `stripe_subscription_id` UNIQUE constraint (active subscriptions — must survive)
-   - `stripe_charge_id` UNIQUE constraint (donations — idempotency)
-   - `category` CHECK constraint on subscriptions and donations
-3. Run migrations against a local dev Postgres instance
-4. **Sign-off required before Phase 2**
+These phases are sequential and gated by human review.
 
 ---
 
-## Phase 2: Data Migration (`migrate-cf` CLI)
+## Schema Changes (action items for Lewis)
 
-### Tool: Dedicated Go CLI
+The schema DDL below reflects the agreed target. Lewis needs to update `migrate_dynamo_to_postgres.py` to match each change.
 
-Location: will live at `tools/migrate-cf/` in `linuxfoundation/lfx-crowdfunding` (this repo). (`cmd/` holds long-lived service entrypoints; `tools/` is for operational tooling with a bounded lifetime. `cmd/migrate/` is reserved for the golang-migrate schema runner — these are two distinct tools.)
+### 1. `users` — add UUID surrogate PK
 
-Not `lfx-v1-sync-helper`. Reason: lfx-v1-sync-helper is a NATS KV sync service with no knowledge of Crowdfunding data shapes. A purpose-built CLI is 200–300 lines, fully auditable, and disposable after the migration.
+**Why:** `auth0|username` leaks the auth provider into the data model. All four child tables carry VARCHAR FK columns pointing at Auth0 IDs. If Auth0 is ever replaced, FK values across all those tables would need to be updated in place. Adding a UUID PK now is a small upfront cost.
 
-### Two modes
-
-```text
-migrate-cf --mode=validate   # Read DynamoDB, report what would be written. No writes.
-migrate-cf --mode=execute    # Read DynamoDB, write to Postgres.
+**Target DDL:**
+```sql
+CREATE TABLE users (
+  id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    VARCHAR(255) NOT NULL UNIQUE,  -- Auth0 subject; used for auth lookups
+  email      TEXT,
+  given_name TEXT,
+  family_name TEXT,
+  name       TEXT,
+  avatar_url TEXT,
+  created_on TIMESTAMPTZ DEFAULT NOW(),
+  updated_on TIMESTAMPTZ DEFAULT NOW()
+);
 ```
 
-Always run `--validate` first against prod data. Fix any issues. Then run `--execute`.
+All FK columns in `donations`, `subscriptions`, `organizations`, and `initiatives` change from `VARCHAR(255) REFERENCES users(user_id)` → `UUID REFERENCES users(id)`.
 
-### DynamoDB Tables to Migrate
+**Migration script changes needed:**
+- `migrate_users`: generate a UUID `id` per user row; update INSERT to include `id`; conflict target stays `user_id`
+- `migrate_organizations`, `migrate_initiatives`, `migrate_donations`, `migrate_subscriptions`: resolve `ownerId`/`userId` to the Postgres `users.id` UUID (via an in-memory `user_id → id` map built after migrating users) instead of passing the Auth0 string directly
 
-| DynamoDB Table | Target Postgres Table | Notes |
-|---|---|---|
-| `lff-prod-projects` | `crowdfunding.initiatives` | Set `initiative_type` (`project` or `mentorship`); branch budget path by type |
-| `lff-prod-entities` | `crowdfunding.initiatives` | Reclassify DynamoDB `entityType` → `initiative_type` per type mapping table below |
-| `lff-prod-organizations` | `crowdfunding.organizations` | Straightforward |
-| `lff-prod-subscriptions` | `crowdfunding.subscriptions` | Preserve `stripe_subscription_id`; resolve old `projectId` → `initiative_id` |
-| `lff-prod-entity-subscriptions` | `crowdfunding.subscriptions` | Merge with subscriptions; resolve old `entityId` → `initiative_id` |
-| `lff-prod-donations` | `crowdfunding.donations` | Preserve `stripe_charge_id`; resolve old `projectId` → `initiative_id` |
-| `lff-prod-entity-donations` | `crowdfunding.donations` | Merge with donations; resolve old `entityId` → `initiative_id` |
-| `lff-prod-users` | `crowdfunding.users` | Minimal — just `stripe_customer_id` |
+---
 
-**Not migrated:** Ledger transactions remain in the Ledger Service Postgres DB unchanged.
+### 2. `organizations` — drop `organization_id`
 
-### Field Mapping: Projects
+**Why:** The data dictionary confirms it is a pure duplicate of `id` ("Duplicate of `id` for backward compatibility"). Both columns receive the same UUID value from `_as_uuid(organizationId)`. Keeping it confuses future developers.
 
-**Critical:** DynamoDB project rows contain two distinct data shapes depending on origin.
-The migration tool MUST detect the type and branch accordingly.
-
-**Detecting initiative_type:**
-- If `jobspringProjectId` field is present and non-empty → `initiative_type = 'mentorship'`
-- Otherwise → `initiative_type = 'project'`
-
-**Status normalization (apply to all rows):**
-- `'hide'` → `'hidden'` (13 rows in prod have this dirty value)
-- All other status values pass through as-is
-
-| DynamoDB attribute | Postgres column | Transform |
-|---|---|---|
-| `projectId` | `legacy_id` | **Store old string ID here** — needed for Ledger API calls |
-| `projectId` | — (new UUID generated) | New `id` is a fresh UUID |
-| `ownerId` | `owner_id` | Direct |
-| `name` | `name` | Direct |
-| `slug` | `slug` | Direct |
-| `status` | `status` | Normalize: `'hide'` → `'hidden'` |
-| `projectDetails.website` | `website` | Nested under `projectDetails` |
-| `projectDetails.description` | `description` | Nested under `projectDetails` |
-| `projectDetails.color` | `color` | Nested under `projectDetails` |
-| `logoUrl` | `logo_url` | Direct (top-level) |
-| `projectDetails.codeOfConduct.link` | `code_of_conduct` | Nested; extract `.link` string |
-| `projectDetails.ciiProjectID` | `cii_project_id` | Nested under `projectDetails` |
-| `projectDetails.stacksIdentifier` | `stacks_id` | Nested under `projectDetails` |
-| `projectDetails.industry` | `industry` | Nested under `projectDetails`; comma-separated topic tags string |
-| `jobspringProjectId` | `mentorship_program_id` | Direct (renamed column); field name uses lowercase `d` |
-| `planId` | `stripe_plan_id` | **Critical — must be preserved exactly** |
-| `productId` | `stripe_product_id` | **Critical — must be preserved exactly** |
-| `projectDetails.contributors` | `contributors` | Marshal to JSONB array |
-| `projectDetails.beneficiaries` | `beneficiaries` | Marshal to JSONB array |
-| `projectDetails.customWebsites` | `custom_websites` | Marshal to JSONB array |
-| `projectDetails.sponsors` | `sponsors` | Marshal to JSONB array |
-| `cachedDetails.GithubStats` | `github_stats` | Marshal to JSONB |
-| `amountRaised` | — | **Drop** — initial release uses `amount_raised_cents` cached column + CronJob; Ledger view activates post-initial-release when Ledger DB is co-located |
-| `createdOn` | `created_at` | Parse timestamp |
-| `updatedOn` | `updated_at` | Parse timestamp |
-
-**Budget mapping — branches by initiative_type:**
-
-For `initiative_type = 'project'` (read from `projectDetails.*`):
-```text
-projectDetails.development  → budgets.development  {amount_in_cents, description, goals, is_active}
-projectDetails.marketing    → budgets.marketing
-projectDetails.meetups      → budgets.meetups
-projectDetails.travel       → budgets.travel
-projectDetails.bugBounty    → budgets.bug_bounty
-projectDetails.documentation → budgets.documentation
-projectDetails.mentee       → budgets.mentee       (simple: amount + description only)
-projectDetails.other        → budgets.other
+**Target DDL:**
+```sql
+CREATE TABLE organizations (
+  id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id   UUID         NOT NULL REFERENCES users(id),
+  name       TEXT         NOT NULL,
+  avatar_url TEXT,
+  status     VARCHAR(50),
+  created_on TIMESTAMPTZ  DEFAULT NOW(),
+  updated_on TIMESTAMPTZ  DEFAULT NOW()
+);
 ```
 
-For `initiative_type = 'mentorship'` (read from `projectDetails.mentee`):
-```text
-projectDetails.mentee.budget.amountInCents → budgets.mentee.amount_in_cents
-projectDetails.mentee.isActive             → budgets.mentee.is_active
-projectDetails.mentee.skills               → budgets.mentee.skills
-projectDetails.mentee.terms                → budgets.mentee.terms
-projectDetails.mentee.mentor               → budgets.mentee.mentors
-projectDetails.mentee.customTerm           → budgets.mentee.custom_term
+**Migration script changes needed:**
+- Remove `organization_id` from the INSERT column list and `ON CONFLICT (id) DO UPDATE SET` clause in `migrate_organizations`
+
+---
+
+### 3. `initiatives` — drop `initiative_id`, normalize all child table FKs to UUID
+
+**Why:** In practice `id` and `initiative_id` hold the same value — DynamoDB `projectId` and `entityId` are already UUIDs, so `_as_uuid(projectId)` is a no-op. The only difference is column type (UUID vs VARCHAR). The current design creates an inconsistent FK split: 15 child tables use VARCHAR FKs, while `donations`/`subscriptions` use UUID FKs. Normalizing now costs one migration script update; doing it post-launch requires a FK migration on live data.
+
+**Target DDL (initiatives + example child table):**
+```sql
+CREATE TABLE initiatives (
+  id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- initiative_id dropped; id IS the natural key (DynamoDB IDs are already UUIDs)
+  initiative_type VARCHAR(50)  NOT NULL,
+  source_dynamo_table VARCHAR(50),  -- migration-only; drop post-cutover
+  owner_id        UUID         NOT NULL REFERENCES users(id),
+  ...
+);
+
+-- All 15 child tables: FK changes from VARCHAR(255) → UUID
+CREATE TABLE initiative_goals (
+  id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  initiative_id  UUID         NOT NULL REFERENCES initiatives(id) ON DELETE CASCADE,
+  ...
+);
 ```
 
-**⚠️ Do NOT read the top-level `mentee` attribute.** The actual data is always nested under `projectDetails.mentee`. Reading from the wrong path silently drops all mentorship metadata — this was the bug that caused the first SQL pass to miss 1,249 of 1,476 rows.
+**Migration script changes needed:**
+- Remove `initiative_id` column from `initiatives` INSERT
+- Change upsert conflict target from `ON CONFLICT (initiative_id)` → `ON CONFLICT (id)`; since `id = _as_uuid(projectId/entityId)` is deterministic, idempotency is preserved
+- Change `known_initiative_ids` set to store UUIDs (already the case — `pg_id` is a UUID)
+- All child table INSERTs: `initiative_id` column values are already the UUID `raw_initiative_id` coerced via `_as_uuid` — no value change needed, only the column type in DDL changes
+- `donations` and `subscriptions`: FK resolution unchanged — already using UUID `initiative_id`
 
-**Drop from migration:**
-- `amountRaised` — initial release uses `amount_raised_cents` cached column + CronJob; Ledger view activates post-initial-release
-- `cachedDetails.ProjectStats` — recomputed
-- `details.Diversity` — deferred feature
-- `details.VulnerabilitySummary` — deferred feature
+---
 
-### Field Mapping: Initiatives from entities (formerly `lff-prod-entities`)
+### 4. `donations.id` — fix determinism formula
 
-These rows migrate into the same `crowdfunding.initiatives` table as projects. The DynamoDB `entityType` value maps to `initiative_type` per the table below.
+The migration script uses a 2-field formula:
+```python
+pg_id = _uuid5("proj_donation", str(user_id), str(d.get("projectId")))
+```
 
-**Type reclassification (applied during migration):**
+The data dictionary specifies a 3-field formula:
+```
+uuid5("donation", user_id, initiative_id, created_on)
+```
 
-| DynamoDB `entityType` value | Postgres `initiative_type` | Row count | Notes |
-|---|---|---|---|
-| `initiative` | `general_fund` | 121 | UI label was already "General Fund" |
-| `general-fund` | `general_fund` | (subset of above) | Normalize hyphen |
-| `other` (travel) | `general_fund` | 26 | UI commented out; functionally identical |
-| `event` | `event` | 20 | Unchanged |
-| `ostif` | `ostif` | 11 | Unchanged |
-| `community` | **discard** | 3 | All declined/submitted 2019; no active users |
+The 2-field formula has a collision risk: the same user donating to the same initiative twice produces the same UUID. The 3-field formula avoids this.
 
-The old DynamoDB `entityId` maps to `legacy_id` (same as projects — needed for Ledger API calls).
-Status normalization applies here too: `'hide'` → `'hidden'`.
+**Since the migration has already run** (1,598 rows exist), the script's formula is the de facto standard for re-runs. The data dictionary must be corrected to match, **or** the script must be fixed and a full re-migration run.
 
-| DynamoDB attribute | Postgres column | Notes |
+**Migration script change needed:**
+- Decide which formula is canonical and make script and data dictionary consistent
+- If switching to 3-field formula: re-run migration (idempotent — existing rows will be updated via `ON CONFLICT`)
+
+---
+
+### 5. Post-migration validation
+
+The migration script has no embedded validation. Add a post-run validation pass covering:
+
+- Record counts: DynamoDB item count == Postgres row count per table
+- Zero NULL `initiative_id` rows in `donations` and `subscriptions` (failed FK resolution)
+- Every `stripeSubscriptionId` in DynamoDB present in Postgres with `status = 'active'`
+- Stripe API cross-check: every active Stripe subscription has a matching Postgres record
+- Financial totals: sum of `currentAmountInCents` in DynamoDB donations == sum of `current_amount_in_cents` in Postgres per initiative
+
+**Migration script change needed:** Add `--validate-post` mode (or extend existing `--validate`) to run these checks against the live Postgres DB after execute.
+
+---
+
+## Schema Summary (v2.0.0)
+
+20 PostgreSQL tables. Full DDL in `data-design_and_migration.pdf`.
+
+### Table inventory
+
+| Table | Source | Notes |
 |---|---|---|
-| `entityId` | `legacy_id` | Store old string ID for Ledger calls |
-| `entityId` | — (new UUID generated) | New `id` is a fresh UUID |
-| `ownerId` | `owner_id` | Direct |
-| `name` | `name` | Direct |
-| `slug` | `slug` | Direct |
-| `entityType` | `initiative_type` | Reclassify per table above (DynamoDB field is `entityType`, not `type`) |
-| `status` | `status` | Normalize `'hide'` → `'hidden'` |
-| `description` | `description` | Direct |
-| `websiteURL` | `website` | Direct (DynamoDB field is `websiteURL`) |
-| `logoUrl` | `logo_url` | Direct |
-| `city` | `city` | Direct; nullable |
-| `country` | `country` | Direct; nullable |
-| `isOnline` | `is_online` | Direct boolean; default false if missing |
-| `acceptFunding` | `accept_funding` | Direct boolean; default true if missing |
-| `applicationURL` | `application_url` | Direct; present on travel fund / scholarship types |
-| `eventStartDate` | `event_start_date` | Parse date; event type only |
-| `eventEndDate` | `event_end_date` | Parse date; event type only |
-| `eventbriteId` | `eventbrite_url` | Direct (despite the name, contains a URL); event type only |
-| `industry` | `industry` | Direct; comma-separated topic tags string |
-| `details.Beneficiaries` | `beneficiaries` | Marshal to JSONB array |
-| `goals` | `budgets` | Marshal to JSONB array (DynamoDB field is `goals`, a top-level array — not `details.Goals`) |
-| `amountRaised` | — | **Drop** — initial release uses `amount_raised_cents` cached column + CronJob; Ledger view activates post-initial-release |
-| `approvedOn` | `approved_at` | Parse timestamp; nullable. Note: not observed in any production sample — may be absent on all entity rows. Migrate if present, leave null otherwise. |
-| `createdOn` | `created_at` | Parse timestamp |
-| `updatedOn` | `updated_at` | Parse timestamp |
+| `users` | `lff-prod-users` | UUID `id` PK; `user_id` unique index for auth lookups |
+| `organizations` | `lff-prod-organizations` | `organization_id` dropped; `owner_id` is UUID FK → `users(id)` |
+| `initiatives` | `lff-prod-projects` + `lff-prod-entities` (merged) | `initiative_id` dropped; all FKs on `id` UUID |
+| `initiative_goals` | projects (budget categories) + entities (goals array) | FK → `initiatives(id)` |
+| `initiative_beneficiaries` | both | FK → `initiatives(id)` |
+| `initiative_custom_websites` | both | FK → `initiatives(id)` |
+| `initiative_contributors` | projects only | FK → `initiatives(id)` |
+| `initiative_mentors` | projects only (mentorship type) | FK → `initiatives(id)` |
+| `initiative_program_info_terms` | projects only (mentorship type) | FK → `initiatives(id)` |
+| `initiative_program_info_skills` | projects only (mentorship type) | FK → `initiatives(id)` |
+| `initiative_program_info_config` | projects only (mentorship type) | FK → `initiatives(id)` |
+| `initiative_program_info_custom_term` | projects only (mentorship type) | FK → `initiatives(id)` |
+| `initiative_sponsorship_tiers` | entities only | FK → `initiatives(id)` |
+| `initiative_ostif_detail` | entities (ostif type only) | FK → `initiatives(id)` |
+| `initiative_contacts` | entities (ostif type only) | FK → `initiatives(id)` |
+| `initiative_github_stats` | projects only | FK → `initiatives(id)` |
+| `initiative_stats` | projects only | FK → `initiatives(id)` |
+| `initiative_entity_details` | entities only | FK → `initiatives(id)` |
+| `donations` | `lff-prod-donations` + `lff-prod-entity-donations` (merged) | FK → `initiatives(id)` |
+| `subscriptions` | `lff-prod-subscriptions` + `lff-prod-entity-subscriptions` (merged) | FK → `initiatives(id)` |
 
-### Field Mapping: Subscriptions
+### Post-cutover cleanup
 
-| DynamoDB attribute | Postgres column | Notes |
-|---|---|---|
-| `stripeSubscriptionId` | `stripe_subscription_id` | **Critical unique constraint** |
-| `stripeSubscriptionItemId` | `stripe_subscription_item_id` | Nullable; needed for Stripe price/quantity updates |
-| `projectId` | `initiative_id` | Resolve old `projectId` → new Postgres UUID via in-memory map |
-| `userId` | `user_id` | Direct (Auth0 subject) |
-| `frequency` | `frequency` | Direct (`monthly` \| `annual`) |
-| `currentAmountInCents` | `amount_in_cents` | Same field name as donations (`currentAmountInCents`, not `amountInCents`) |
-| *(absent)* | `payment_method` | Field does not exist in DynamoDB subscriptions — column is nullable; set `NULL` on migration |
-| `status` | `status` | Actual prod values: `"active"` \| `"inactive"` (not `"cancelled"` or `"past_due"`) |
-| `createdOn` | `created_at` | ISO 8601 `T`-separator format (e.g. `2020-01-22T12:51:06Z`) |
-| *(absent)* | `updated_at` | Field does not exist in DynamoDB subscriptions — default to `created_at` value on migration |
+```sql
+ALTER TABLE initiatives DROP COLUMN source_dynamo_table;
+```
 
-For `lff-prod-entity-subscriptions`: same mapping, but resolve old `entityId` → new Postgres UUID via in-memory map and write it to `initiative_id`.
+---
 
-### Field Mapping: Donations
+## Migration Script
 
-| DynamoDB attribute | Postgres column | Notes |
-|---|---|---|
-| `stripeChargeId` | `stripe_charge_id` | **Critical unique constraint**; null for invoice payments — Postgres UNIQUE allows multiple NULLs |
-| `projectId` | `initiative_id` | Resolve old `projectId` → new Postgres UUID via in-memory map |
-| `userId` | `user_id` | Direct |
-| `orgId` | `org_id` | Resolve to Postgres UUID via in-memory map if set |
-| `cachedDetails.backerDetails.name` | `name` | Nested path |
-| `cachedDetails.backerDetails.avatarURL` | `avatar_url` | Nested path; DynamoDB key is `avatarURL` (uppercase URL) |
-| `currentAmountInCents` | `amount_in_cents` | DynamoDB field is `currentAmountInCents`, not `amountInCents` |
-| `category` | `category` | Direct |
-| `paymentmethod` | `payment_method` | DynamoDB field is `paymentmethod` (all lowercase) |
-| `ponumber` | `po_number` | DynamoDB field is `ponumber` (all lowercase) |
-| `status` | `status` | Direct; null on all production rows — migrate as null |
-| `createdOn` | `created_at` | Parse timestamp |
+**File:** `tools/migrate-cf/migrate_dynamo_to_postgres.py`  
+**Language:** Python 3  
+**Dependencies:** `boto3`, `psycopg2-binary`
 
-For `lff-prod-entity-donations`: same mapping, but resolve old `entityId` → new Postgres UUID via in-memory map and write it to `initiative_id`.
+### Usage
 
-### Field Mapping: Organizations
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_SESSION_TOKEN=...   # for STS credentials
+export AWS_REGION=us-east-1
+export PG_DSN="host=localhost port=5432 dbname=lff user=postgres password=..."
+python3 migrate_dynamo_to_postgres.py
+```
 
-Organization IDs in DynamoDB are already UUIDs — migrate `organizationId` directly to `id` (no new UUID needed, no in-memory map entry required).
+The script is a single-pass, idempotent upsert — safe to re-run. All INSERTs use `ON CONFLICT ... DO UPDATE`.
 
-All production rows have `status = "approved"`. No `description`, `website`, `approved_at`, or `rejected_at` fields exist in DynamoDB — those columns were dropped from the schema.
+### Execution order (FK dependency order)
 
-| DynamoDB attribute | Postgres column | Notes |
-|---|---|---|
-| `organizationId` | `id` | Already UUID — preserve as-is |
-| `ownerId` | `owner_id` | Direct (Auth0 subject) |
-| `name` | `name` | Direct |
-| `status` | `status` | Direct; all prod rows are `"approved"` |
-| `avatarUrl` | `avatar_url` | DynamoDB field is `avatarUrl` (capital U, lowercase rl) |
+1. `users` — no FK dependencies; placeholder rows inserted for any user ID referenced elsewhere but absent from `lff-prod-users`
+2. `organizations` — FK → `users`
+3. `initiatives` (projects + entities merged) + all 15 child tables — FK → `users`
+4. `donations` — FK → `users`, `initiatives(id)`, `organizations(id)`
+5. `subscriptions` — FK → `users`, `initiatives(id)`, `organizations(id)`
 
-### ID Mapping Problem
+### Key implementation notes
 
-DynamoDB uses string IDs (e.g., `projectId: "abc-123"`). Postgres uses UUIDs. The new system generates new UUIDs for all records. During migration, the CLI holds a `map[string]uuid.UUID` in memory to resolve old `projectId` and `entityId` references to new Postgres UUIDs when migrating subscriptions and donations. No DB table is created — see decision in `02-decisions.md`.
+- **Deterministic UUIDs:** `initiatives.id` and all child table PKs are generated via `uuid5` so re-runs produce the same IDs and the `ON CONFLICT` upserts are stable.
+- **`_as_uuid()`:** Coerces UUID strings; falls back to `uuid5("coerce", s)` for non-UUID strings.
+- **Placeholder users:** 58 synthetic user rows are inserted for user IDs referenced in other tables but absent from `lff-prod-users`. All fields except `user_id` are NULL.
+- **entityType quirk:** DynamoDB's `SaveEntity` rewrites `'general fund'` → `'initiative'` before every PutItem. Migration reverses this: `'initiative'` → `'general fund'`.
+- **Mentorship reclassification (Phase 3):** After all rows are inserted, an UPDATE reclassifies initiatives with a `mentee` goal where `amount_in_cents > 0` to `initiative_type = 'mentorship'`.
+- **`community` entities:** 3 rows (all declined/submitted 2019) are discarded — not inserted.
+- **`status` normalization:** `'hide'` → `'hidden'` applied to all rows.
 
-### Data Quality Checks (run in `--validate` mode)
+### DynamoDB tables scanned
 
-- Subscriptions referencing non-existent project or entity IDs → log as warnings, skip or null-out
-- Donations referencing non-existent project or entity IDs → same
-- Duplicate `stripe_subscription_id` values → error (must not exist)
-- Duplicate `stripe_charge_id` values → error (must not exist)
-- Missing `slug` on initiatives → error (slug is UNIQUE NOT NULL)
-- Initiatives with same slug → error
-- Null `owner_id` → error
-- Invalid `status` values → log and map to closest valid status
-- `amountInCents` outside valid range → log as warning
+| DynamoDB table | Target Postgres table(s) |
+|---|---|
+| `lff-prod-users` | `users` |
+| `lff-prod-organizations` | `organizations` |
+| `lff-prod-projects` | `initiatives` + 15 child tables |
+| `lff-prod-entities` | `initiatives` + child tables (merged) |
+| `lff-prod-donations` | `donations` |
+| `lff-prod-entity-donations` | `donations` (merged) |
+| `lff-prod-subscriptions` | `subscriptions` |
+| `lff-prod-entity-subscriptions` | `subscriptions` (merged) |
 
-### Migration Execution Order
+---
 
-Run tables in this order (respect FK dependencies):
+## Production Data Size (as of 2026-05-11)
 
-1. `organizations`
-2. `initiatives` (from `lff-prod-projects` — projects and mentorship)
-3. `initiatives` (from `lff-prod-entities` — general funds, events, OSTIF; appended to same table)
-4. `users`
-5. `subscriptions` (from `lff-prod-subscriptions` + `lff-prod-entity-subscriptions`, merged)
-6. `donations` (from `lff-prod-donations` + `lff-prod-entity-donations`, merged)
-7. Verify all subscriptions and donations resolved correctly (no nulled-out `initiative_id` rows in validation report)
+| Table | Rows |
+|---|---:|
+| `users` | 16,840 |
+| `organizations` | 606 |
+| `initiatives` | 2,021 |
+| `initiative_goals` | 4,436 |
+| `initiative_beneficiaries` | 2,004 |
+| `initiative_contributors` | 37 |
+| `initiative_custom_websites` | 1 |
+| `initiative_mentors` | 2,911 |
+| `initiative_program_info_skills` | 5,462 |
+| `initiative_program_info_terms` | 92 |
+| `initiative_program_info_config` | 1,840 |
+| `initiative_program_info_custom_term` | 11 |
+| `initiative_sponsorship_tiers` | 0 |
+| `initiative_ostif_detail` | 11 |
+| `initiative_contacts` | 26 |
+| `initiative_github_stats` | 1,551 |
+| `initiative_stats` | 1,840 |
+| `initiative_entity_details` | 0 |
+| `donations` | 1,598 |
+| `subscriptions` | 277 |
+
+**Initiative type breakdown:**
+
+| `initiative_type` | Count |
+|---|---:|
+| `project` | 1,839 |
+| `general_fund` | 122 |
+| `other` | 26 |
+| `event` | 20 |
+| `ostif` | 11 |
+| `community` (discarded) | 3 |
 
 ---
 
@@ -282,13 +288,13 @@ Run tables in this order (respect FK dependencies):
 
 Before cutover, run a reconciliation pass:
 
-1. **Record counts:** DynamoDB item count == Postgres row count for each table
+1. **Record counts:** DynamoDB item count == Postgres row count per table
 2. **Spot checks:** Sample 20 records per table, compare DynamoDB vs Postgres field by field
-3. **Active subscriptions:** Every `stripeSubscriptionId` in DynamoDB is present in Postgres with `status = active`
+3. **Active subscriptions:** Every `stripeSubscriptionId` in DynamoDB is present in Postgres with `status = 'active'`
 4. **Stripe cross-check:** Query Stripe API for active subscriptions; verify each one has a matching Postgres record
-5. **Financial totals:** Sum of `amountInCents` in DynamoDB donations == sum of `amount_in_cents` in Postgres donations (per initiative)
+5. **Financial totals:** Sum of `currentAmountInCents` in DynamoDB donations == sum of `current_amount_in_cents` in Postgres per initiative
 
-Document results of validation. Keep the validation report alongside migration logs.
+Document results. Keep the validation report alongside migration logs.
 
 ---
 
@@ -296,21 +302,21 @@ Document results of validation. Keep the validation report alongside migration l
 
 ### Prerequisites
 
+- [ ] Open schema questions (above) resolved and schema finalised
 - [ ] New CF service fully deployed and tested in dev and staging
 - [ ] Migration executed and validated in staging (against a staging DynamoDB copy)
 - [ ] Migration executed and validated in prod (validate mode first, then execute)
 - [ ] Auth0 callback/CORS URLs updated for new service
-- [ ] `EMAIL_DRY_RUN=true` confirmed for prod migration testing
 - [ ] Reimbursement Service OpenSearch dependency acknowledged (old Lambda keeps running)
 - [ ] Rollback procedure tested in staging
-- [ ] OQ-15 resolved — Ledger balance lookup mechanism for post-cutover initiatives confirmed
-- [ ] Ledger Service updated and deployed — auth headers fixed in `fundspring.go`: `x-ledger-auth` → `Authorization: Bearer` for `GetProject`/`GetUserName`; `Authorization: Bearer` added to `GetOrganizationName` (currently sends no auth — a Ledger bug); must be live before DNS cutover or donation confirmation emails break immediately
+- [ ] Ledger Service auth header fix deployed (`x-ledger-auth` → `Authorization: Bearer` for `GetProject`/`GetUserName`; auth header added to `GetOrganizationName`)
+- [ ] `amount_raised_cents` pre-populated via `amount-raised-sync` CronJob before DNS switch
 
 ### Cutover Steps
 
 1. Put old system in read-only mode (disable writes) — or accept brief dual-write window
 2. Run final incremental migration (any records created since the last full migration)
-3. **Run `amount_raised_cents` pre-population** — execute the `amount-raised-sync` CronJob manually against prod Ledger API to populate `amount_raised_cents` for all migrated initiatives before DNS switches. This ensures no published initiative card shows `$0 raised` incorrectly on day one.
+3. **Run `amount_raised_cents` pre-population** — execute the `amount-raised-sync` CronJob manually against prod Ledger API to populate `amount_raised_cents` for all migrated initiatives. This ensures no published initiative card shows `$0 raised` incorrectly on day one.
 4. Switch DNS / K8s ingress from old Lambda API Gateway to new K8s service
 5. Smoke test: login, view projects, make a test donation (test card), check subscription list
 6. Monitor for errors (Go service logs, Postgres errors)
@@ -326,37 +332,12 @@ Switch DNS / K8s ingress back to old Lambda API Gateway. Old DynamoDB data is un
 
 Only after:
 - New system has been stable for minimum 2 weeks
-- Reimbursement Service OpenSearch dependency is resolved (see OQ-7)
+- Reimbursement Service OpenSearch dependency is resolved
 - All active Stripe subscriptions verified working under new system
 
 Steps:
-1. Decommission old LFF Lambda functions
-2. Decommission DynamoDB tables (after backup)
-3. Decommission OpenSearch (after Reimbursement Service migrated off it — see OQ-7; also blocked on Ledger Expensify fallback resolution — see OQ-14)
-4. Archive old LFF and lfx-crowdfunding-upgrade repos (read-only)
-
----
-
-## Production Data Size (as of May 2026)
-
-2,013 total rows: 1,832 from `lff-prod-projects` + 181 from `lff-prod-entities`, all landing in `crowdfunding.initiatives`. At this volume, a full DynamoDB scan is fast (seconds, not minutes) and a full Postgres load is trivial. No need for chunked/streaming migration — a single-pass load is fine.
-
-Migration record counts to verify after execute:
-
-| Table | Expected rows | Source |
-|---|---|---|
-| `crowdfunding.initiatives` | 2,013 (minus 3 discarded `community` rows = 2,010) | `lff-prod-projects` + `lff-prod-entities` |
-| `crowdfunding.organizations` | TBD (query DynamoDB) | `lff-prod-organizations` |
-| `crowdfunding.subscriptions` | TBD (query DynamoDB) | `lff-prod-subscriptions` + `lff-prod-entity-subscriptions` |
-| `crowdfunding.donations` | TBD (query DynamoDB) | `lff-prod-donations` + `lff-prod-entity-donations` |
-
----
-
-## Migration Notes
-
-- **`community` entity type:** Resolved — 3 rows, all declined/submitted in 2019 with no active users. Discarded during migration (not inserted into `crowdfunding.initiatives`). No action needed.
-- **`other (travel)` entity type:** Resolved — 26 rows. DynamoDB `entityType` value is `other`; mapped to `initiative_type = 'general_fund'` per the type reclassification table above.
-- **Mentorship initiatives (1,476 rows):** Have a `mentorship_program_id` linking them to the Mentorship service. Migration must populate `mentorship_program_id` from the DynamoDB `jobspringProjectId` field (see Projects field mapping above). New mentorship programs arrive post-migration via the `mentorship-sync` Snowflake CronJob — SNS/SQS is not used.
-- **Old IDs and Ledger:** Ledger records use the old DynamoDB string ID as `project_id`. The `legacy_id` column on `crowdfunding.initiatives` bridges old string IDs to the new Postgres UUIDs when calling `GET /balance/{legacy_id}` on the Ledger API. `legacy_id` is populated during migration from `projectId` (for projects) and `entityId` (for entities). Never exposed in the public API.
-- **Stripe subscription continuity:** Active Stripe subscriptions must not be cancelled or recreated. The migration preserves `stripe_subscription_id` — Stripe continues charging the same plan. No Stripe API calls needed during migration.
-- **Non-published records:** 639 rows are not published (submitted, declined, hidden). All must be migrated — active subscriptions or pending approvals may reference them. Never filter to published-only during migration.
+1. Drop migration scaffolding: `ALTER TABLE initiatives DROP COLUMN source_dynamo_table;`
+2. Decommission old LFF Lambda functions
+3. Decommission DynamoDB tables (after backup)
+4. Decommission OpenSearch (after Reimbursement Service migrated off it)
+5. Archive old LFF and lfx-crowdfunding-upgrade repos (read-only)
