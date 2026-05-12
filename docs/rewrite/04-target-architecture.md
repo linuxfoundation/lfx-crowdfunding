@@ -331,7 +331,7 @@ Key structural notes:
 - `source_dynamo_table` column on initiatives is migration-only and must be dropped post-cutover
 - `stripe_subscription_id` and `stripe_charge_id` are nullable `VARCHAR(255)` with no UNIQUE constraint in the schema; uniqueness is enforced by Stripe
 
-See `db/migrations/001_initial.up.sql` and `db/data-design_and_migration.md` for the full DDL and field-by-field rationale.
+See `db/migrations/001_initial.up.sql` and `docs/rewrite/data-design_and_migration.md` for the full DDL and field-by-field rationale.
 
 ### View: `initiative_funding_summary` (post-initial-release)
 
@@ -339,19 +339,15 @@ Not part of the initial release. When Ledger DB is co-located on the same Postgr
 
 ### Indexes
 
-See `db/migrations/001_initial.up.sql` for the full index definitions (23 indexes). Key indexes:
+See `db/migrations/001_initial.up.sql` for the full index definitions (23 indexes). The migration sets `search_path TO crowdfunding, public` so all unqualified table names resolve to the `crowdfunding` schema. Key indexes:
 
 ```sql
--- Initiatives
-CREATE INDEX ON crowdfunding.initiatives (owner_id);
-CREATE INDEX ON crowdfunding.initiatives (initiative_type);
-CREATE INDEX ON crowdfunding.initiatives (status);
-CREATE INDEX ON crowdfunding.initiatives (slug);
-CREATE INDEX ON crowdfunding.initiatives (amount_raised_in_cents DESC);
-
--- Full-text search (replaces OpenSearch for discovery)
-CREATE INDEX ON crowdfunding.initiatives
-  USING gin(to_tsvector('english', name || ' ' || coalesce(description, '')));
+-- Initiatives (unqualified names resolve to crowdfunding schema via SET LOCAL search_path)
+CREATE INDEX IF NOT EXISTS idx_initiatives_owner_id       ON initiatives(owner_id);
+CREATE INDEX IF NOT EXISTS idx_initiatives_type           ON initiatives(initiative_type);
+CREATE INDEX IF NOT EXISTS idx_initiatives_status         ON initiatives(status);
+CREATE INDEX IF NOT EXISTS idx_initiatives_slug           ON initiatives(slug);
+CREATE INDEX IF NOT EXISTS idx_initiatives_amount_raised  ON initiatives(amount_raised_in_cents DESC);
 ```
 
 ---

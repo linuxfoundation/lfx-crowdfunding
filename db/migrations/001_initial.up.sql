@@ -17,7 +17,11 @@
 --   total_raised   — ProjectStats.TotalRaised has no update path (always 0)
 -- ============================================
 
+CREATE SCHEMA IF NOT EXISTS crowdfunding;
+
 BEGIN;
+
+SET LOCAL search_path TO crowdfunding, public;
 
 -- ============================================
 -- TABLE: users
