@@ -57,7 +57,7 @@ Usage
 
   export PG_DSN="host=localhost port=5432 dbname=lff user=postgres password=..."
 
-  python3 migrate_dynamo_to_postgres.py
+  python3 db/scripts/migrate_dynamo_to_postgres.py
 
 Dependencies
 ------------
