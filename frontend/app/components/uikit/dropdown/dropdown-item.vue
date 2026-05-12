@@ -3,9 +3,11 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div
+  <component
+    :is="rootEl"
     class="c-dropdown__item"
     :class="{ 'is-selected': isSelected }"
+    v-bind="rootProps"
     @click="handleClick"
   >
     <slot>
@@ -23,40 +25,46 @@ SPDX-License-Identifier: MIT
         class="!text-brand-500"
       />
     </div>
-  </div>
+  </component>
 </template>
 
 <script setup lang="ts">
+import { computed, resolveComponent } from 'vue';
 import type { Ref, WritableComputedRef } from 'vue';
-import LfxIcon from '~/components/uikit/icon/icon.vue';
 
 const props = defineProps<{
   value?: string;
   label?: string;
   checkmarkBefore?: boolean;
+  to?: string;
+  href?: string;
 }>();
 
+const rootEl = computed(() => {
+  if (props.to) return resolveComponent('NuxtLink');
+  if (props.href) return 'a';
+  return 'div';
+});
+
+const rootProps = computed(() => {
+  if (props.to) return { to: props.to };
+  if (props.href) return { href: props.href, target: '_blank', rel: 'noopener noreferrer' };
+  return {};
+});
+
 const attrs = useAttrs();
-// Inject provided value from DropdownSelect
 const selectedValue = inject<WritableComputedRef<string>>('selectedValue', ref('') as WritableComputedRef<string>);
 const selectedOptionProps = inject<Ref<Record<string, unknown>>>(
   'selectedOptionProps',
   ref<Record<string, unknown>>({}),
 );
-//
-// Determine if the item is currently selected
+
 const isSelected = computed(() => selectedValue && props.value && selectedValue.value === props.value);
 
-// Emit selection event upward
 const handleClick = () => {
-  if (!props.value) {
-    return;
-  }
+  if (!props.value) return;
   if (selectedOptionProps) {
-    selectedOptionProps.value = {
-      ...props,
-      ...attrs,
-    };
+    selectedOptionProps.value = { ...props, ...attrs };
   }
   if (selectedValue) {
     selectedValue.value = props.value;

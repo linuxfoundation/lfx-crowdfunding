@@ -7,6 +7,7 @@ export const buttonTypes = [
   'transparent',
   'ghost',
   'outline',
+  'nav',
 ] as const;
 export const buttonSizes = ['small', 'medium', 'large'] as const;
 export const iconPosition = ['left', 'right'] as const;

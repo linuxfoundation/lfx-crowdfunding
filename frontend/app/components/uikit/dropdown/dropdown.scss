@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 .c-dropdown {
-  @apply bg-white border border-neutral-200 rounded-xl p-1 flex flex-col gap-1 max-h-96 shadow-lg;
+  @apply bg-white border border-neutral-200 rounded-lg p-1 flex flex-col gap-1 max-h-96 shadow-lg;
 
   //@screen sm{
   //  @apply ;
@@ -28,11 +28,13 @@
   }
 
   &__separator {
-    @apply w-full border-b border-neutral-100 h-0;
+    @apply w-full border-b border-neutral-200 h-0;
   }
 
   &__group-title {
-    @apply px-3 pt-1 text-xs font-semibold leading-5 text-neutral-400;
+    @apply px-3 pt-2 pb-1 font-semibold uppercase tracking-wide text-neutral-400;
+    font-size: 10px;
+    line-height: 14px;
   }
 
   &__selector {

@@ -99,6 +99,22 @@
     }
   }
 
+  &-nav {
+    @apply bg-transparent text-neutral-500 font-medium;
+
+    &:hover {
+      @apply bg-neutral-50 text-neutral-700;
+    }
+
+    &:active {
+      @apply bg-neutral-50;
+    }
+
+    &:disabled {
+      @apply text-neutral-300 cursor-not-allowed;
+    }
+  }
+
   &-large {
     @apply text-base px-5 py-3;
   }

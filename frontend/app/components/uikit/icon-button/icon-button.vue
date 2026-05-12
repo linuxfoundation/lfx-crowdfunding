@@ -3,9 +3,11 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div
+  <button
+    type="button"
     class="c-icon-button"
     :class="[`c-icon-button--${props.size}`, `c-icon-button--${props.type}`, { 'is-disabled': props.disabled }]"
+    :disabled="props.disabled"
   >
     <slot>
       <lfx-icon
@@ -14,7 +16,7 @@ SPDX-License-Identifier: MIT
         :size="props.iconSize"
       />
     </slot>
-  </div>
+  </button>
 </template>
 
 <script setup lang="ts">
