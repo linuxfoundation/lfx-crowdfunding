@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="bg-white border border-neutral-200 rounded-2xl p-6 flex flex-col gap-8">
+  <lfx-card class="p-6 flex flex-col gap-8">
     <p class="text-base font-semibold text-neutral-900 leading-6">Impact</p>
 
     <div class="flex gap-4 items-start">
@@ -20,11 +20,12 @@ SPDX-License-Identifier: MIT
         </p>
       </div>
     </div>
-  </div>
+  </lfx-card>
 </template>
 
 <script setup lang="ts">
 import type { ImpactStat } from '#shared/types/initiative-detail.types';
+import LfxCard from '~/components/uikit/card/card.vue';
 
 defineProps<{ stats: ImpactStat[] }>();
 </script>

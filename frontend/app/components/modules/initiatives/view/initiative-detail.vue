@@ -26,20 +26,16 @@ SPDX-License-Identifier: MIT
           <div class="flex gap-8 items-start">
             <!-- Left column -->
             <div class="flex-1 min-w-0 flex flex-col gap-8">
-              <template v-if="activeTab === 'overview'">
-                <initiative-detail-funding-card :initiative="data" />
-                <initiative-detail-impact
-                  v-if="data.impactStats?.length"
-                  :stats="data.impactStats"
-                />
-                <initiative-detail-project-health
-                  v-if="data.projectHealthStats?.length"
-                  :stats="data.projectHealthStats"
-                  :rating="data.projectHealthRating"
-                />
-              </template>
+              <initiative-detail-overview
+                v-if="activeTab === 'overview'"
+                :initiative="data"
+              />
               <initiative-detail-financials
                 v-else-if="activeTab === 'financials'"
+                :initiative="data"
+              />
+              <initiative-detail-about
+                v-else-if="activeTab === 'about'"
                 :initiative="data"
               />
             </div>
@@ -67,11 +63,10 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import InitiativeDetailHeader from '../components/initiative-detail-header.vue';
-import InitiativeDetailFundingCard from '../components/details-overview/initiative-detail-funding-card.vue';
-import InitiativeDetailImpact from '../components/details-overview/initiative-detail-impact.vue';
-import InitiativeDetailProjectHealth from '../components/details-overview/initiative-detail-project-health.vue';
+import InitiativeDetailOverview from '../components/details-overview/initiative-detail-overview.vue';
 import InitiativeDetailSponsors from '../components/details-overview/initiative-detail-sponsors.vue';
 import InitiativeDetailFinancials from '../components/details-financials/initiative-detail-financials.vue';
+import InitiativeDetailAbout from '../components/details-about/initiative-detail-about.vue';
 import { useInitiative } from '~/composables/useInitiative';
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';

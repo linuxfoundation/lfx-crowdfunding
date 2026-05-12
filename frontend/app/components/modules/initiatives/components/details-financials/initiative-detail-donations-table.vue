@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="bg-white border border-neutral-200 rounded-2xl p-6 flex flex-col gap-6">
+  <lfx-card class="p-6 flex flex-col gap-6">
     <p class="text-base font-semibold text-neutral-900 leading-6">Donations received</p>
 
     <table class="w-full">
@@ -54,11 +54,12 @@ SPDX-License-Identifier: MIT
         size="small"
       />
     </div>
-  </div>
+  </lfx-card>
 </template>
 
 <script setup lang="ts">
 import type { DonationRecord } from '#shared/types/initiative-detail.types';
+import LfxCard from '~/components/uikit/card/card.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxTag from '~/components/uikit/tag/tag.vue';
 import LfxButton from '~/components/uikit/button/button.vue';

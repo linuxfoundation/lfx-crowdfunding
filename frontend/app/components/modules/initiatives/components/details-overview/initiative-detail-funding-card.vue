@@ -3,8 +3,8 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div
-    class="border border-neutral-200 rounded-2xl p-6 flex flex-col gap-8"
+  <lfx-card
+    class="p-6 flex flex-col gap-8"
     :style="{ backgroundImage: cardGradient }"
   >
     <!-- Current balance + progress -->
@@ -101,7 +101,7 @@ SPDX-License-Identifier: MIT
         </div>
       </div>
     </div>
-  </div>
+  </lfx-card>
 </template>
 
 <script setup lang="ts">
@@ -109,7 +109,8 @@ import { computed } from 'vue';
 import {
   initiativeTypeConfigMap,
   defaultInitiativeTypeConfig,
-} from '../../../shared/components/initiative-card/initiative-card.config';
+} from '../../../../shared/components/initiative-card/initiative-card.config';
+import LfxCard from '~/components/uikit/card/card.vue';
 import type { InitiativeDetail, FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';

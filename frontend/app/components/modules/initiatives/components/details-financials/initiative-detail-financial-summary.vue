@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="bg-white border border-neutral-200 rounded-2xl p-6">
+  <lfx-card class="p-6">
     <div class="flex gap-4 items-start">
       <div
         v-for="stat in stats"
@@ -29,12 +29,13 @@ SPDX-License-Identifier: MIT
         </p>
       </div>
     </div>
-  </div>
+  </lfx-card>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { FinancialSummary } from '#shared/types/initiative-detail.types';
+import LfxCard from '~/components/uikit/card/card.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 
 const props = defineProps<{ summary: FinancialSummary }>();
