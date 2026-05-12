@@ -418,11 +418,9 @@ CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives                      
         OLD.accept_funding IS DISTINCT FROM NEW.accept_funding OR
         OLD.event_start_date IS DISTINCT FROM NEW.event_start_date OR
         OLD.event_end_date IS DISTINCT FROM NEW.event_end_date OR
-        OLD.event_location IS DISTINCT FROM NEW.event_location OR
-        OLD.event_registration_url IS DISTINCT FROM NEW.event_registration_url OR
-        OLD.event_fee_in_cents IS DISTINCT FROM NEW.event_fee_in_cents OR
-        OLD.event_capacity IS DISTINCT FROM NEW.event_capacity OR
-        OLD.cached_details IS DISTINCT FROM NEW.cached_details
+        OLD.country IS DISTINCT FROM NEW.country OR
+        OLD.city IS DISTINCT FROM NEW.city OR
+        OLD.is_online IS DISTINCT FROM NEW.is_online
     )
     EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_goals                    FOR EACH ROW EXECUTE FUNCTION set_updated_on();
