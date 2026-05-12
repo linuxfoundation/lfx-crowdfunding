@@ -1054,7 +1054,7 @@ flowchart LR
 ### Prerequisites
 
 ```bash
-cd /Users/lewis/go/src/github.com/LF-Engineering/LFF
+cd <repo-root>
 source .venv/bin/activate        # boto3 + psycopg2-binary
 ```
 
