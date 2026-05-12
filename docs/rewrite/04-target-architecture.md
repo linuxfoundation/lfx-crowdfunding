@@ -285,7 +285,7 @@ CF syncs Mentorship program data from Snowflake via the `mentorship-sync` K8s Cr
 The CronJob:
 - Queries Snowflake for all mentorship programs and their approved beneficiaries
 - For each program not yet in CF Postgres: inserts a row with `initiative_type = 'mentorship'`, populates `jobspring_project_id`, `initiative_goals` mentee row (amount_in_cents), and approved beneficiary list
-- For each program already in CF Postgres: updates Mentorship-owned fields only (name, status, budgets.mentee, beneficiaries); never overwrites CF-owned fields (logo_url, color, description, website)
+- For each program already in CF Postgres: updates Mentorship-owned fields only (name, status, the `initiative_goals` mentee row amount, mentorship mentors/skills/terms/custom_term tables, beneficiaries); never overwrites CF-owned fields (logo_url, color, description, website)
 - Normalizes `'hide'` → `'hidden'` on status
 
 A 24h sync window is acceptable: new mentorship programs are not immediately donation-ready, and beneficiaries don't draw funds until mid-term (months after approval).
