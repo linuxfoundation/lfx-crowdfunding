@@ -81,63 +81,23 @@ Rationale: all initiative types share the same donor/subscription FK, the same L
 
 Type-specific sparse columns (e.g. `event_start_date`, `mentorship_program_id`, `city`) are nullable and only populated for the relevant `initiative_type`. This is the standard discriminated-union pattern for a sparse table — preferable to two tables with a UNION when the shared columns dominate, which they do here.
 
-### Budget categories → JSONB keyed object
+### Budget categories → normalized `initiative_goals` table
 
-Budget categories (development, marketing, meetups, travel, bug_bounty, documentation, mentee, other, diversity) stored as a JSONB keyed object on `crowdfunding.initiatives`.
-
-Rationale: new budget categories may be added in future — columns would require a migration per new category. JSONB allows adding new categories without schema changes. Categories are always read/written as a unit. No queries filter by individual category amounts at the DB level.
-
-**Shape:** keyed by category name (not an array). The keyed object enforces category uniqueness by structure and allows O(1) lookup by key. A `CHECK (jsonb_typeof(budgets) = 'object')` constraint enforces the shape at the DB level.
-
-```json
-{
-  "development": {"amount_in_cents": 100000, "description": "...", "goals": "...", "is_active": true},
-  "marketing":   {"amount_in_cents": 50000,  "description": "...", "goals": "...", "is_active": false}
-}
-```
-
-Mentorship initiatives extend the `mentee` key with additional fields:
-```json
-{
-  "mentee": {
-    "amount_in_cents": 600000,
-    "is_active": true,
-    "skills": ["Go", "Kubernetes"],
-    "terms": ["Spring 2026"],
-    "mentors": [{"name": "...", "email": "...", "introduction": "...", "avatar_url": "..."}],
-    "custom_term": {"start_month": "March", "end_month": "August", "term_name": "Spring", "year": 2026}
-  }
-}
-```
-
-**Migration:** fund `goals` arrays from DynamoDB are converted to keyed objects during migration. Project budgets are already keyed objects — no conversion needed.
-
-### Initiative workflow timestamps
-
-Three nullable timestamps track the approval workflow: `submitted_at`, `approved_at`, `published_at`. Set by the API on status transitions. Never updated once set.
-
-Migration sets `approved_at = created_at` for all existing rows with `status IN ('approved', 'published')` as a safe approximation — no historical data exists for the actual approval moment.
-
-Rationale: enables audit trails, SLA measurement ("how long does approval take"), and donor-facing "approved on" display. Zero schema cost.
-
-### `category` validation on subscriptions and donations
-
-The `category` column on `subscriptions` and `donations` references a budget category on the target initiative. Validated at two levels:
-
-1. **DB level:** CHECK constraint against the fixed known set (`development`, `marketing`, `meetups`, `travel`, `bug_bounty`, `documentation`, `mentee`, `other`, `diversity`). Catches garbage values at insert time.
-2. **API level:** validates that the category exists and `is_active = true` on the target initiative's `budgets` JSONB before accepting a payment.
-
-If a new budget category is added, the CHECK constraint is updated via migration at the same time.
+Budget categories are stored in a separate `initiative_goals` table (one row per category per initiative), not as a JSONB column on `initiatives`. See `data-design_and_migration.md` for the full table definition and DynamoDB field mappings.
 
 ### `stripe_charge_id` nullable on donations
 
-`stripe_charge_id` is nullable. Invoice-based donations have no Stripe charge ID at creation time. The UNIQUE constraint still applies — Postgres UNIQUE allows multiple NULLs, so invoice donations without a charge ID do not conflict.
+`stripe_charge_id` is nullable. Invoice-based donations have no Stripe charge ID at creation time.
 
-### Donor name snapshot on donations
+### Amount column naming — `_in_cents` suffix on all monetary columns
 
-`donations.name` stores the donor display name at time of donation. This differs from the Auth0 profile for org/invoice donations where the payer is an individual but the displayed donor is the company name. `avatar_url` is not stored — always fetched from Auth0 at render time to avoid stale cache.
+All monetary columns use the `_in_cents` suffix: `amount_in_cents`, `amount_raised_in_cents`, `total_budget_in_cents`. No exceptions.
 
-### `amount_in_cents` → `bigint`
+Rationale: the suffix makes the unit explicit at every callsite — SQL queries, Go structs, API responses, frontend templates. A unit error on a financial field (displaying `500` as `$500` instead of `$5.00`) is a silent donor-facing bug. The suffix prevents it. This also stays consistent with the existing Go codebase (`AmountInCents` throughout LFF), DynamoDB field names (`currentAmountInCents`), and the schema's own `amount_in_cents` columns on goals, donations, and subscriptions — one suffix, no exceptions to remember.
+
+`amount_raised` in the archived PDF and `001_initial.up.sql` is renamed to `amount_raised_in_cents`. Type is `BIGINT` throughout — see below.
+
+### All monetary amounts → `bigint`
 
 All monetary amounts stored as `bigint` (int8).
 
@@ -275,7 +235,7 @@ New system: field ownership split enforced at the API layer (`PATCH /v1/me/initi
 | `project` (without `jobspringProjectID`) | `project` | Unchanged |
 | `initiative` | `general_fund` | UI already labeled these "General Fund"; backend type was an alias |
 | `general-fund` | `general_fund` | Normalize hyphen, same concept |
-| `travel_fund` / `other` | `general_fund` | UI option commented out; 26 rows function identically to general funds |
+| `travel_fund` / `other` | `general_fund` | UI option commented out; 26 rows function identically to general funds. Retained in DB as `general_fund` for historic reference — **not shown in UI**. Confirm with PM: 8 published rows will display as "General Fund" after reclassification. |
 | `event` | `event` | Unchanged |
 | `ostif` | `ostif` | Unchanged |
 | `community` | ~~discarded~~ | 3 rows from 2019, all declined/submitted, no UI, no active users |
@@ -419,13 +379,10 @@ The CF Go API accepts `Authorization: Bearer` on the project/entity detail endpo
 
 Ledger's `GetOrganizationName()` (`fundspring.go:63`) uses plain `http.Get()` with no auth header — an oversight; `GetProject()` on the same file sends `Authorization: Bearer`. The fix is the same one-line change: use `http.Client` and `request.Header.Set("Authorization", "Bearer "+getToken())`. This should be fixed in the same Ledger PR that changes `x-ledger-auth` → `Authorization: Bearer`. The CF endpoint should require the same `Authorization: Bearer` header as the project/entity detail endpoints — no special public treatment needed.
 
-**Legacy ID lookups on project/entity endpoints:**
-The `project_id` stored in the Ledger DB is the old DynamoDB string ID. The new CF Go API must accept either a `legacy_id` or a Postgres UUID on `GET /v1/projects/{id}` and `GET /v1/entities/{id}`, resolving via `legacy_id` first. This covers both existing rows (keyed by `legacy_id`) and post-cutover rows (keyed by UUID — see OQ-15).
+**Ledger `project_id` = `initiatives.id` — no `legacy_id` column needed:**
+DynamoDB `projectId` and `entityId` are UUID v4 strings (confirmed: `satori/go.uuid`, `projects/usecases/projects.go`). They migrate directly to `initiatives.id UUID` — same value. Ledger stores `project_id text` verbatim from Stripe metadata, which LFF always set to `projectId`/`entityId`. So `ledger.project_id` already matches `initiatives.id` for all migrated initiatives.
 
-**Stripe metadata must use the correct project ID for new donations after cutover:**
-See OQ-15. The ID placed in Stripe object metadata fields `projectID` / `entityID` at charge-creation time determines what `project_id` gets written to the Ledger DB and what key `GET /balance/{id}` must use. This is unresolved for post-cutover initiatives and is the subject of OQ-15.
-
-This is an implementation constraint on the new CF Go API Stripe integration — must be enforced at code review.
+For post-cutover initiatives CF puts `initiatives.id` in Stripe metadata at charge-creation time. Ledger stores it verbatim. `GET /balance/{initiatives.id}` works correctly with no Ledger changes. See OQ-15 for full resolution.
 
 ### Mentorship sync — Snowflake pull, not SNS/SQS
 
@@ -624,6 +581,8 @@ Do not conflate these two: the Diversity API deferred flag does not mean the `di
 ### Dedicated `migrate-cf` Go CLI (not lfx-v1-sync-helper)
 
 Write a standalone Go CLI tool (`migrate-cf`) for the one-time DynamoDB → Postgres migration.
+
+The Python migration script from the initial run is committed at [`tools/migrate-cf/migrate_dynamo_to_postgres.py`](../../tools/migrate-cf/migrate_dynamo_to_postgres.py).
 
 Rationale: `lfx-v1-sync-helper` is purpose-built for project/committee metadata sync between LFX v1 and v2 via NATS KV. Bolting Crowdfunding migration logic onto it would be wrong — different concerns, different infrastructure, different data shapes. A 200–300 line Go CLI with `--validate` (dry-run, reads DynamoDB, reports what would be written) and `--execute` (writes to Postgres) phases is cleaner, more auditable, and easier to run/rerun.
 

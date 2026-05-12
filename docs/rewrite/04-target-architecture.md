@@ -352,7 +352,7 @@ CREATE TABLE crowdfunding.initiatives (
   application_url       text,                         -- scholarship application URL
   event_start_date      date,                         -- event type only
   event_end_date        date,                         -- event type only
-  eventbrite_url        text,                         -- event type only
+  eventbrite_url        text,                         -- event type only; DynamoDB field is eventbriteId but value is a URL
 
   -- JSONB columns
   budgets               jsonb NOT NULL DEFAULT '{}',  -- keyed by category name; see decisions doc for shape
@@ -378,11 +378,13 @@ CREATE INDEX ON crowdfunding.initiatives (initiative_type);
 CREATE INDEX ON crowdfunding.initiatives (status);
 
 -- Organizations
+-- Note: no description, website, approved_at, rejected_at — those fields don't exist in DynamoDB.
+-- All migrated rows have status = 'approved'.
 CREATE TABLE crowdfunding.organizations (
-  id          uuid PRIMARY KEY,                     -- migrated directly from DynamoDB organizationId (already UUID)
-  owner_id    text NOT NULL,                        -- Auth0 subject
-  name        text NOT NULL,
-  status      text NOT NULL,                        -- 'approved' on all migrated rows
+  id          uuid        PRIMARY KEY,              -- migrated directly from DynamoDB organizationId (already UUID)
+  owner_id    text        NOT NULL,                 -- Auth0 subject
+  name        text        NOT NULL,
+  status      text        NOT NULL,
   avatar_url  text,                                 -- DynamoDB field: avatarUrl
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
@@ -435,10 +437,11 @@ CREATE INDEX ON crowdfunding.donations (initiative_id);
 CREATE INDEX ON crowdfunding.donations (user_id);
 
 -- Users (minimal — auth in Auth0, payment account in Stripe)
+-- id is the Auth0 subject (e.g. auth0|abc123) used directly as PK — not a UUID.
 -- Tech debt: github_access_token stored as plain text, matching current LFF behavior.
 -- Should be encrypted at the application layer (KMS envelope encryption) post-initial-release.
 CREATE TABLE crowdfunding.users (
-  id                  text PRIMARY KEY,              -- Auth0 subject
+  id                  text        PRIMARY KEY,              -- Auth0 subject (e.g. auth0|abc123)
   stripe_customer_id  text,
   github_access_token text,
   created_at          timestamptz NOT NULL DEFAULT now(),

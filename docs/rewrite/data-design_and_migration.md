@@ -3,8 +3,9 @@
 **Schema version:** 2.0.0  
 **Source:** Live scan of `lff-prod-entities` (182 records) and `lff-prod-projects` (1,841 records)  
 **Migration status:** Complete — 2,021 initiatives, 16,840 users, 1,598 donations, 277 subscriptions migrated (2026-05-11)  
-**Schema DDL:** [`db/migrations/001_initial.up.sql`](../../db/migrations/001_initial.up.sql)  
-**Migration script:** [`tools/migrate-cf/migrate_dynamo_to_postgres.py`](#migration-script) (see below)
+**Schema DDL:** [`db/migrations/001_initial.up.sql`](../../db/migrations/001_initial.up.sql)
+
+> **Note:** This document describes the normalized 20-table schema implemented in `001_initial.up.sql` and the Python migration script used for the initial data migration. The field mappings and data dictionary are the authoritative reference for DynamoDB→Postgres field transformations.
 
 ---
 
@@ -99,13 +100,15 @@ Source: `lff-prod-users`
 
 | Column | Type | Constraints | DynamoDB field | Notes |
 |---|---|---|---|---|
-| `id` | UUID | PK | — | Surrogate PK. Not in DynamoDB — generated on migration. |
-| `user_id` | VARCHAR(255) | NN, UQ | `id` | Auth0 subject (e.g. `auth0|abc123`). Natural key — not a UUID. |
+| `id` | UUID | PK, DEFAULT gen_random_uuid() | — | Surrogate PK. |
+| `user_id` | VARCHAR(255) | NN, UNIQUE | `id` | Auth0 subject (e.g. `auth0|abc123`). Natural key used for all Auth0 lookups. |
 | `email` | TEXT | | `email` | |
-| `given_name` | TEXT | | `givenName` | Go JSON tag is `givenname` (no camelCase). |
+| `given_name` | TEXT | | `givenname` | DynamoDB key is `givenname` (no camelCase). |
 | `family_name` | TEXT | | `familyName` | |
 | `name` | TEXT | | `name` | Full display name. |
 | `avatar_url` | TEXT | | `avatarUrl` | |
+| `stripe_customer_id` | TEXT | | `stripeCustomerId` | Stripe customer ID. |
+| `github_access_token` | TEXT | | *(OAuth token)* | GitHub OAuth token; plain text matching current LFF behavior. |
 | `created_on` | TIMESTAMPTZ | DEFAULT NOW() | — | Set by DB default; DynamoDB users table has no `createdOn`. |
 | `updated_on` | TIMESTAMPTZ | DEFAULT NOW() | — | Set by DB default. |
 
@@ -169,7 +172,7 @@ Source: `lff-prod-projects` + `lff-prod-entities` (merged)
 |---|---|---|---|---|---|
 | `stripe_plan_id` | TEXT | | `planId` / `stripePlanId` | both | Stripe recurring-payment plan ID. **Critical — must be preserved exactly.** |
 | `stripe_product_id` | TEXT | | `productId` / `stripeProductId` | both | Stripe product ID. **Critical — must be preserved exactly.** |
-| `amount_raised` | INTEGER | NN, DEFAULT 0 | `amountRaised` | both | Denormalised total donations in cents raised. Updated by backend on each donation. |
+| `amount_raised_in_cents` | BIGINT | NN, DEFAULT 0 | `amountRaised` | both | Denormalised total donations in cents raised. Updated by the `amount-raised-sync` CronJob. |
 | `accept_funding` | BOOLEAN | DEFAULT false | `acceptFunding` | entities only | Whether the entity is currently accepting donations. Projects always accept funding when published. |
 
 #### Project-only fields
@@ -177,14 +180,14 @@ Source: `lff-prod-projects` + `lff-prod-entities` (merged)
 | Column | Type | Constraints | DynamoDB field | Notes |
 |---|---|---|---|---|
 | `cii_project_id` | TEXT | | `projectDetails.ciiProjectID` | CII Best Practices badge programme ID. |
-| `jobspring_project_id` | TEXT | | `jobspringProjectId` | ID of the linked LFX Mentorship (formerly Jobspring) project. Non-NULL when `initiative_type = 'mentorship'`. |
+| `mentorship_program_id` | TEXT | | `jobspringProjectId` | ID of the linked LFX Mentorship program. Non-NULL when `initiative_type = 'mentorship'`. Used as upsert key by `mentorship-sync` CronJob. DynamoDB field name uses lowercase `d` (`jobspringProjectId`). |
 | `stacks_identifier` | TEXT | | `projectDetails.stacksIdentifier` | Identifier in the Stacks platform. |
 
 #### Entity-only fields
 
 | Column | Type | Constraints | DynamoDB field | Notes |
 |---|---|---|---|---|
-| `eventbrite_id` | TEXT | | `eventbriteId` | Eventbrite event ID (event-type entities only). |
+| `eventbrite_id` | TEXT | | `eventbriteId` | Event-type entities only. Despite the field name, the stored value is a URL — handle accordingly at the application layer. |
 | `application_url` | TEXT | | `applicationURL` | URL for applicants to apply (event entities). |
 | `event_start_date` | TIMESTAMPTZ | | `eventStartDate` | Parsed from string. Event type only. |
 | `event_end_date` | TIMESTAMPTZ | | `eventEndDate` | Event type only. |
@@ -206,6 +209,10 @@ Source: `lff-prod-projects` + `lff-prod-entities` (merged)
 Source: `lff-prod-projects` (per-category budgets) + `lff-prod-entities` (entity goals array)
 
 One row per funding category per initiative. Projects produce up to 8 fixed rows; entities produce one row per element in `entity.Goals[]`.
+
+**⚠️ Critical:** `Budget.AmountInCents` has JSON tag `"amount"` — read from DynamoDB as `budget["amount"]`, NOT `budget["amountInCents"]`.
+
+**⚠️ Critical (mentorship projects):** Read mentee budget data from `projectDetails.mentee`, NOT from a top-level `mentee` attribute. Reading from the wrong path silently drops all mentorship metadata — this was the bug that caused the first migration pass to miss 1,249 of 1,476 rows.
 
 | Column | Type | Constraints | DynamoDB field | Source | Notes |
 |---|---|---|---|---|---|
@@ -269,10 +276,10 @@ Source: `lff-prod-projects` only — present only when `initiative_type = 'mento
 |---|---|---|---|---|
 | `id` | UUID | PK | — | Deterministic: `uuid5("mentor", initiative_id, email\|name)`. |
 | `initiative_id` | UUID | NN, FK → `initiatives.id` | | |
-| `name` | TEXT | | `mentee.mentor[].name` | |
-| `email` | TEXT | | `mentee.mentor[].email` | |
-| `avatar_url` | TEXT | | `mentee.mentor[].avatarURL` | JSON tag `avatarURL`. |
-| `introduction` | TEXT | | `mentee.mentor[].introduction` | Free-text bio. |
+| `name` | TEXT | | `projectDetails.mentee.mentor[].name` | |
+| `email` | TEXT | | `projectDetails.mentee.mentor[].email` | |
+| `avatar_url` | TEXT | | `projectDetails.mentee.mentor[].avatarURL` | JSON tag `avatarURL`. |
+| `introduction` | TEXT | | `projectDetails.mentee.mentor[].introduction` | Free-text bio. |
 
 ---
 
@@ -284,7 +291,7 @@ Source: `lff-prod-projects` only — present only when `initiative_type = 'mento
 |---|---|---|---|---|
 | `id` | UUID | PK | — | Deterministic: `uuid5("mentee_term", initiative_id, array_index)`. |
 | `initiative_id` | UUID | NN, FK → `initiatives.id` | | |
-| `term` | TEXT | NN | `mentee.terms[]` | Programme term label (e.g. `"Spring 2024"`). |
+| `term` | TEXT | NN | `projectDetails.mentee.terms[]` | Programme term label (e.g. `"Spring 2024"`). |
 | `sort_order` | INTEGER | DEFAULT 0 | — | Array index from DynamoDB. |
 
 ---
@@ -297,7 +304,7 @@ Source: `lff-prod-projects` only — present only when `initiative_type = 'mento
 |---|---|---|---|---|
 | `id` | UUID | PK | — | Deterministic: `uuid5("mentee_skill", initiative_id, skill)`. |
 | `initiative_id` | UUID | NN, FK → `initiatives.id` | | |
-| `skill` | TEXT | NN, UQ(initiative_id, skill) | `mentee.skills[]` | Skill tag; values drawn from `frontend/skills.json`. |
+| `skill` | TEXT | NN, UQ(initiative_id, skill) | `projectDetails.mentee.skills[]` | Skill tag; values drawn from `frontend/skills.json`. |
 
 ---
 
@@ -308,7 +315,7 @@ Source: `lff-prod-projects` only — one row per mentorship initiative
 | Column | Type | Constraints | DynamoDB field | Notes |
 |---|---|---|---|---|
 | `initiative_id` | UUID | PK, FK → `initiatives.id` | | One-to-one with parent initiative. |
-| `terms_conditions` | BOOLEAN | DEFAULT false | `mentee.termsConditions` | Whether the project owner has accepted the mentorship programme T&Cs. |
+| `terms_conditions` | BOOLEAN | DEFAULT false | `projectDetails.mentee.termsConditions` | Whether the project owner has accepted the mentorship programme T&Cs. |
 
 ---
 
@@ -319,10 +326,10 @@ Source: `lff-prod-projects` only — present only when `customTerm.termName` is 
 | Column | Type | Constraints | DynamoDB field | Notes |
 |---|---|---|---|---|
 | `initiative_id` | UUID | PK, FK → `initiatives.id` | | One-to-one. |
-| `term_name` | TEXT | | `mentee.customTerm.termName` | Human-readable term name. |
-| `start_month` | VARCHAR(20) | | `mentee.customTerm.startMonth` | Month name or abbreviation (e.g. `"January"`). |
-| `end_month` | VARCHAR(20) | | `mentee.customTerm.endMonth` | |
-| `year` | INTEGER | | `mentee.customTerm.year` | 4-digit year. |
+| `term_name` | TEXT | | `projectDetails.mentee.customTerm.termName` | Human-readable term name. |
+| `start_month` | VARCHAR(20) | | `projectDetails.mentee.customTerm.startMonth` | Month name or abbreviation (e.g. `"January"`). |
+| `end_month` | VARCHAR(20) | | `projectDetails.mentee.customTerm.endMonth` | |
+| `year` | INTEGER | | `projectDetails.mentee.customTerm.year` | 4-digit year. |
 
 ---
 
@@ -353,7 +360,7 @@ Source: `lff-prod-entities` only — ostif entity type only (one row per ostif i
 | `monetization_strategy` | TEXT | | `detail.monetizationStrategy` | |
 | `current_security_strategy` | TEXT | | `detail.currentSecurityStrategy` | |
 | `license_type` | VARCHAR(100) | | `detail.licenseType` | e.g. `"MIT"`, `"Apache 2.0"`. |
-| `total_budget` | BIGINT | DEFAULT 0 | `detail.totalBudget` | Total security audit budget in cents. Used as `FundingStatus.TotalAnnualGoalInCents` for ostif entities. |
+| `total_budget_in_cents` | BIGINT | DEFAULT 0 | `detail.totalBudget` | Total security audit budget in cents. Used as `FundingStatus.TotalAnnualGoalInCents` for ostif entities. |
 | `terms_conditions` | BOOLEAN | DEFAULT false | `detail.termsConditions` | |
 
 ---
@@ -421,17 +428,19 @@ Source: `lff-prod-donations` + `lff-prod-entity-donations` (merged)
 
 | Column | Type | Constraints | DynamoDB field | Notes |
 |---|---|---|---|---|
-| `id` | UUID | PK | — | Deterministic: `uuid5("donation", user_id, initiative_id, created_on)`. See [open issue](#donations-id-formula). |
-| `user_id` | UUID | NN, FK → `users.id` | `userId` | Auth0 subject of the donor. |
-| `initiative_id` | UUID | FK → `initiatives.id` | `projectId` / `entityId` | References the surrogate UUID PK. May be NULL if initiative was not found. |
-| `organization_id` | UUID | FK → `organizations.id` | `orgId` | Optional. Set when donation is made on behalf of an organisation. |
-| `cached_details` | JSONB | | `cachedDetails` | Snapshot of backer metadata at donation time: `{backerDetails: {name, avatarURL}}`. |
-| `category` | TEXT | | `category` | Funding category the donation is directed to (e.g. `development`, `marketing`, `mentee`). NULL means "all needs". In email rendering, `mentee` is displayed as `"Mentorship"`. |
+| `id` | UUID | PK | — | Generated on migration. |
+| `user_id` | UUID | NN, FK → `users(id)` | `userId` | Auth0 subject resolved via `users.user_id` → `users.id`. |
+| `initiative_id` | UUID | FK → `initiatives(id)` | `projectId` / `entityId` | May be NULL if initiative was not found. |
+| `organization_id` | UUID | FK → `organizations(id)` | `orgId` | Optional. Set when donation is made on behalf of an organisation. |
+| `cached_details` | JSONB | | `cachedDetails` | Snapshot of backer metadata at donation time. |
+| `category` | TEXT | | `category` | Funding category (e.g. `development`, `marketing`, `mentee`). NULL means "all needs". |
 | `created_on` | TIMESTAMPTZ | DEFAULT NOW() | `createdOn` | Parsed from RFC3339 string. |
+| `updated_at` | TIMESTAMPTZ | DEFAULT NOW() | — | Set by DB default. |
 | `current_amount_in_cents` | BIGINT | NN | `currentAmountInCents` | Donation amount in US cents (e.g. `500` = $5.00). |
 | `payment_method` | VARCHAR(50) | | `paymentmethod` | DynamoDB key is `paymentmethod` (all lowercase). `card` or `invoice`. |
+| `po_number` | TEXT | | `ponumber` | DynamoDB field is `ponumber` (all lowercase). Invoice payment purchase order number. |
 | `status` | VARCHAR(50) | | `status` | Known values: `succeeded`, `failed`, `pending`. NULL on all production rows — migrate as NULL. |
-| `stripe_charge_id` | VARCHAR(255) | | `stripeChargeId` | Stripe charge object ID (e.g. `ch_abc123`). NULL for invoice payments — Postgres UNIQUE allows multiple NULLs. |
+| `stripe_charge_id` | VARCHAR(255) | | `stripeChargeId` | Stripe charge object ID (e.g. `ch_abc123`). NULL for invoice payments. |
 
 ---
 
@@ -441,17 +450,18 @@ Source: `lff-prod-subscriptions` + `lff-prod-entity-subscriptions` (merged). Mir
 
 | Column | Type | Constraints | DynamoDB field | Notes |
 |---|---|---|---|---|
-| `id` | UUID | PK | — | Deterministic: `uuid5("subscription", user_id, initiative_id, created_on)`. |
-| `user_id` | UUID | NN, FK → `users.id` | `userId` | |
-| `initiative_id` | UUID | FK → `initiatives.id` | `projectId` / `entityId` | References surrogate UUID PK. May be NULL if initiative not found. |
-| `organization_id` | UUID | FK → `organizations.id` | `orgId` | Optional. Organisation on whose behalf the subscription was created. |
-| `cached_details` | JSONB | | `cachedDetails` | Snapshot of backer metadata: `{backerDetails: {name, avatarURL}}`. |
+| `id` | UUID | PK | — | Generated on migration. |
+| `user_id` | UUID | NN, FK → `users(id)` | `userId` | Auth0 subject resolved via `users.user_id` → `users.id`. |
+| `initiative_id` | UUID | FK → `initiatives(id)` | `projectId` / `entityId` | May be NULL if initiative not found. |
+| `organization_id` | UUID | FK → `organizations(id)` | `orgId` | Optional. Organisation on whose behalf the subscription was created. |
+| `cached_details` | JSONB | | `cachedDetails` | Snapshot of backer metadata at subscription time. |
 | `category` | TEXT | | `category` | Same values as `donations.category`. NULL = all needs. |
 | `created_on` | TIMESTAMPTZ | DEFAULT NOW() | `createdOn` | Parsed from string. |
+| `updated_at` | TIMESTAMPTZ | DEFAULT NOW() | *(absent)* | Does not exist in DynamoDB — default to `created_on` value on migration. |
 | `current_amount_in_cents` | BIGINT | NN | `currentAmountInCents` | Monthly or annual recurring amount in US cents. |
-| `frequency` | VARCHAR(50) | | `frequency` | `monthly` or `yearly`. Uses `stripeservice.SubscriptionFrequency` constants. |
+| `frequency` | VARCHAR(50) | | `frequency` | `monthly` or `annual`. Note: DynamoDB may contain `yearly` — normalize to `annual` on migration. |
 | `status` | VARCHAR(50) | | `status` | `active` or `inactive`. |
-| `stripe_subscription_id` | VARCHAR(255) | | `stripeSubscriptionId` | Stripe subscription object ID (e.g. `sub_abc123`). **Critical unique constraint.** |
+| `stripe_subscription_id` | VARCHAR(255) | | `stripeSubscriptionId` | Stripe subscription object ID (e.g. `sub_abc123`). |
 | `stripe_subscription_item_id` | VARCHAR(255) | | `stripeSubscriptionItemId` | Stripe subscription item ID (e.g. `si_abc123`). Needed for per-item price/quantity updates. |
 
 ---
@@ -464,8 +474,8 @@ Source: `lff-prod-subscriptions` + `lff-prod-entity-subscriptions` (merged). Mir
 | `VARCHAR(255)` | Natural keys (`user_id`) and Stripe/external IDs that are structurally bounded | Preserves index efficiency for FK join columns. |
 | `VARCHAR(50)` | Enum-like fields: `status`, `initiative_type`, `payment_method`, `frequency`, `contact_type` | Go validation constraints (`valid:"in(...)"`) enforce short values. |
 | `VARCHAR(10)` | `color` | Hex color max 7 chars (`#RRGGBB`); `valid:"hexcolor"` enforced in Go. |
-| `BIGINT` | `current_amount_in_cents` (donations, subscriptions), `amount_in_cents` (goals), `total_budget` (ostif) | Go uses `int64` for monetary amounts. |
-| `INTEGER` | `amount_raised`, stats counters | Go uses `int`; max observed value ~9.8M (fits 32-bit). |
+| `BIGINT` | `current_amount_in_cents` (donations, subscriptions), `amount_in_cents` (goals), `amount_raised_in_cents` (initiatives), `total_budget_in_cents` (ostif) | Go uses `int64` for monetary amounts. |
+| `INTEGER` | Stats counters (`backers`, `forks`, `stars`, `open_issues`) | Go uses `int`; max observed value ~9.8M (fits 32-bit). |
 | `BOOLEAN` | `accept_funding`, `is_online`, `terms_conditions` | Go `bool`. |
 | `TIMESTAMPTZ` | All timestamps | DynamoDB stores as strings in multiple formats; normalised to UTC on import. |
 | `UUID` | Surrogate PKs, FK refs in donations/subscriptions | Stable across re-runs via deterministic `uuid5`. |
@@ -489,7 +499,6 @@ These fields appear in the Go domain structs and/or DynamoDB but are **not persi
 | `project_stats.total_raised` | `projects/domain.ProjectStats.TotalRaised` | No active write path. `UpdateProjectStats` only increments/decrements `backers`. Value is always 0 in DynamoDB. |
 | `entity_stats.total_raised` | `entities/domain.EntityStats.TotalFundsRaised` | Same as above for entities. |
 | `cii_markup` | `projects/domain.ProjectDetails.CIIMarkup` | Fetched live from `bestpractices.coreinfrastructure.org` at request time, not stored. |
-| `po_number` | `donations/domain.Donation.PONumber` | Present in DynamoDB (`ponumber`) but not mapped in schema — purchase order number used only for invoice-payment email flows. |
 | `uncategorised` | `projects/domain.Uncategorised` | "All project needs" pseudo-category; not a true budget category and has no independent representation in goals. |
 | `project_funding_status` | `projects/domain.ProjectFundingStatus` | Per-category funding breakdown; computed from ledger + subscriptions at read time. |
 
@@ -502,7 +511,7 @@ These fields appear in the Go domain structs and/or DynamoDB but are **not persi
 1. **Ledger API** (`balanceData` / `ledgerService`) — the external service that holds the canonical transaction ledger for each initiative. All credits (donations, subscriptions) and debits (payouts to beneficiaries) live there.
 2. **Subscription summaries** (`subscriptionRepository.GetSubscriptionSummary`) — aggregated directly from the `subscriptions` table in PostgreSQL.
 
-The DynamoDB records for `balance` and `funding_status` were snapshots written by background jobs (`updateEntityAmountRaised`, `seed_amountraised_*`) and are **stale by design** — they existed solely as a read-cache for list views and are now superseded by the PostgreSQL `amount_raised` column and real-time derivation.
+The DynamoDB records for `balance` and `funding_status` were snapshots written by background jobs (`updateEntityAmountRaised`, `seed_amountraised_*`) and are **stale by design** — they existed solely as a read-cache for list views and are now superseded by the PostgreSQL `amount_raised_in_cents` column and real-time derivation.
 
 > **Note:** `balance.debit_in_cents` cannot be populated until `lff-prod-transactions` is migrated to a `transactions` table. Until then, the Ledger API remains the authoritative source for payout data and `balance_in_cents`.
 
@@ -519,18 +528,11 @@ LEFT JOIN donations d ON d.initiative_id = i.id
                      AND d.status = 'completed'
 GROUP BY i.id, i.name;
 
--- total_annual_goal_in_cents: sum of all budget category goals
-SELECT
-    initiative_id,
-    SUM(amount_in_cents) AS total_annual_goal_in_cents
-FROM initiative_goals
-GROUP BY initiative_id;
-
 -- total_subscription_count and annual_subscription_amount_in_cents
 SELECT
-    i.id                                        AS initiative_pg_id,
-    COUNT(s.id)                                 AS total_subscription_count,
-    COALESCE(SUM(s.current_amount_in_cents), 0) AS annual_subscription_amount_in_cents
+    i.id                                               AS initiative_id,
+    COUNT(s.id)                                        AS total_subscription_count,
+    COALESCE(SUM(s.current_amount_in_cents), 0)        AS annual_subscription_amount_in_cents
 FROM initiatives i
 LEFT JOIN subscriptions s ON s.initiative_id = i.id
                          AND s.status = 'active'
@@ -542,22 +544,20 @@ GROUP BY i.id;
 ```sql
 CREATE MATERIALIZED VIEW initiative_funding_summary AS
 SELECT
-    i.id                                                          AS initiative_pg_id,
+    i.id,
     i.name,
-    COALESCE(SUM(DISTINCT g.amount_in_cents), 0)                  AS total_annual_goal_in_cents,
     COALESCE(SUM(d.current_amount_in_cents)
-             FILTER (WHERE d.status = 'completed'), 0)            AS total_donations_in_cents,
-    COUNT(s.id) FILTER (WHERE s.status = 'active')                AS total_subscription_count,
+             FILTER (WHERE d.status = 'completed'), 0)        AS total_donations_in_cents,
+    COUNT(s.id) FILTER (WHERE s.status = 'active')            AS total_subscription_count,
     COALESCE(SUM(s.current_amount_in_cents)
-             FILTER (WHERE s.status = 'active'), 0)               AS annual_subscription_amount_in_cents
+             FILTER (WHERE s.status = 'active'), 0)           AS annual_subscription_amount_in_cents
 FROM initiatives i
-LEFT JOIN initiative_goals  g ON g.initiative_id = i.id
-LEFT JOIN donations         d ON d.initiative_id = i.id
-LEFT JOIN subscriptions     s ON s.initiative_id = i.id
+LEFT JOIN donations     d ON d.initiative_id = i.id
+LEFT JOIN subscriptions s ON s.initiative_id = i.id
 GROUP BY i.id, i.name;
 
 -- Refresh after each donation/subscription write:
--- REFRESH MATERIALIZED VIEW CONCURRENTLY initiative_funding_summary;
+-- REFRESH MATERIALIZED VIEW CONCURRENTLY crowdfunding.initiative_funding_summary;
 ```
 
 ---
@@ -584,11 +584,11 @@ GROUP BY i.id, i.name;
 | `cii_project_id` | `projectDetails.ciiProjectID` | — | `string` (full badge URLs observed) |
 | `stripe_plan_id` | `planId` | `stripePlanId` | `string` |
 | `stripe_product_id` | `productId` | `stripeProductId` | `string` |
-| `jobspring_project_id` | `jobspringProjectId` | — | `string` |
+| `mentorship_program_id` | `jobspringProjectId` | — | `string` |
 | `stacks_identifier` | `projectDetails.stacksIdentifier` | — | `string` |
-| `eventbrite_id` | — | `eventbriteId` | `string` |
+| `eventbrite_id` | — | `eventbriteId` | `string` — despite field name, value is a URL |
 | `application_url` | — | `applicationURL` | `string` |
-| `amount_raised` | `amountRaised` | `amountRaised` | `int` |
+| `amount_raised_in_cents` | `amountRaised` | `amountRaised` | `int` |
 | `accept_funding` | `false` (hardcoded) | `acceptFunding` | `bool` |
 | `event_start_date` | — | `eventStartDate` | `string` → `TIMESTAMPTZ` |
 | `event_end_date` | — | `eventEndDate` | `string` → `TIMESTAMPTZ` |
@@ -604,16 +604,16 @@ GROUP BY i.id, i.name;
 
 | Column | `lff-prod-donations` | `lff-prod-entity-donations` |
 |---|---|---|
-| `user_id` | `userId` → `users.id` lookup | `userId` → `users.id` lookup |
-| `initiative_id` (UUID FK → `initiatives.id`) | `projectId` → `_as_uuid()` | `entityId` → `_as_uuid()` |
-| `organization_id` | `orgId` → `_as_uuid()` or NULL | same |
+| `user_id` | `userId` (Auth0 subject, direct) | `userId` (Auth0 subject, direct) |
+| `initiative_id` | `projectId` → new Postgres UUID via in-memory map | `entityId` → new Postgres UUID via in-memory map |
+| `organization_id` | `orgId` → Postgres UUID via in-memory map or NULL | same |
 | `category` | `category` | `category` |
 | `created_on` | `createdOn` | `createdOn` |
 | `current_amount_in_cents` | `currentAmountInCents` | `currentAmountInCents` |
-| `payment_method` | `paymentmethod` | `paymentmethod` |
+| `payment_method` | `paymentmethod` (all lowercase) | same |
+| `po_number` | `ponumber` (all lowercase) | same |
 | `status` | `status` | `status` |
 | `stripe_charge_id` | `stripeChargeId` | `stripeChargeId` |
-| `cached_details` | `cachedDetails` JSONB | same |
 
 ### `subscriptions`
 
@@ -623,9 +623,7 @@ Mirrors `donations`. Additional columns: `frequency`, `stripe_subscription_id`, 
 
 ## Migration Script
 
-**File:** `tools/migrate-cf/migrate_dynamo_to_postgres.py`  
-**Language:** Python 3  
-**Dependencies:** `pip install boto3 psycopg2-binary`
+**File:** [`tools/migrate-cf/migrate_dynamo_to_postgres.py`](../../tools/migrate-cf/migrate_dynamo_to_postgres.py) — see `05-migration-plan.md` for operational instructions.
 
 ### Usage
 
@@ -662,48 +660,18 @@ All INSERTs use `ON CONFLICT ... DO UPDATE` — idempotent and safe to re-run.
 - **`community` entities:** 3 rows (all declined/submitted 2019, no active users) — discarded, not inserted.
 - **Status normalization:** `'hide'` → `'hidden'` applied to all rows.
 
-### Migration script changes needed (schema decisions)
+### Migration script changes needed
 
-The script was written for Lewis's original v2.0.0 schema. The following changes must be applied to match the updated DDL:
+The Python script was written for Lewis's original normalized v2.0.0 schema (20 tables, `initiative_id VARCHAR(255)` as natural key, `users.user_id` as PK). That original schema and the full script change details are preserved in `docs/rewrite/archived/data-design_and_migration.archived.pdf`.
 
-#### 1. `users` — UUID surrogate PK
+The current target schema (`001_initial.up.sql`) uses:
+- `users.id UUID PRIMARY KEY` (surrogate PK, `gen_random_uuid()`); Auth0 subject stored in `user_id VARCHAR(255) UNIQUE`
+- `organizations.id UUID` (no separate `organization_id` column)
+- `initiatives.id UUID` (no separate `initiative_id` column); all repeating groups in normalized child tables
 
-- Generate a UUID `id` per user row (can use `gen_random_uuid()` equivalent or deterministic `uuid5`)
-- Update INSERT to include `id`; keep `ON CONFLICT (user_id)` as conflict target
-- Build an in-memory `user_id → pg_uuid` map after migrating users
-- In `migrate_organizations`, `migrate_initiatives`, `migrate_donations`, `migrate_subscriptions`: resolve `ownerId`/`userId` to the UUID via the map instead of passing the Auth0 string directly
+Any migration script re-run must target the schema in `001_initial.up.sql`. See `05-migration-plan.md` for the complete field mapping reference.
 
-#### 2. `organizations` — drop `organization_id`
-
-- Remove `organization_id` from the INSERT column list
-- Remove `organization_id = EXCLUDED.organization_id` from `ON CONFLICT (id) DO UPDATE SET`
-
-#### 3. `initiatives` — drop `initiative_id`, normalize child table FKs
-
-- Remove `initiative_id` column from initiatives INSERT
-- Change upsert conflict target: `ON CONFLICT (initiative_id)` → `ON CONFLICT (id)`
-  - `id = _as_uuid(projectId/entityId)` is already deterministic — idempotency preserved
-- All child table INSERTs: `initiative_id` values are already the UUID `pg_id` — no value change needed; only the column type in DDL changes
-
-#### 4. `donations.id` — determinism formula discrepancy
-
-The script uses:
-```python
-pg_id = _uuid5("proj_donation", str(user_id), str(d.get("projectId")))  # 2 fields
-```
-
-The data dictionary specifies:
-```
-uuid5("donation", user_id, initiative_id, created_on)  # 3 fields
-```
-
-The 2-field formula has a **collision risk**: the same user donating to the same initiative twice produces the same UUID. The 3-field formula (adding `created_on`) avoids this.
-
-**Since migration has already run** (1,598 rows), the script's formula is the de facto standard for re-runs. Options:
-- **Correct the script** to use the 3-field formula and re-run migration (safe — `ON CONFLICT` will update existing rows with new IDs... but any rows referencing the old IDs externally will break)
-- **Keep the 2-field formula** and correct the data dictionary to match
-
-Lewis to decide.
+**No `legacy_id` column is needed.** DynamoDB `projectId` and `entityId` are UUID v4 strings (confirmed in source: `satori/go.uuid`, `projects/usecases/projects.go`). They cast directly to `initiatives.id UUID` — same value, no bridging column. Ledger's `project_id` column already matches `initiatives.id` for all migrated rows because LFF always placed the DynamoDB ID in Stripe metadata, which Ledger stored verbatim. See OQ-15 in `03-open-questions.md`.
 
 ---
 
