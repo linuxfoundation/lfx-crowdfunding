@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <footer class="bg-accent-900">
-    <div class="container px-10 py-10">
+    <div class="container py-10">
       <!-- Top: brand + nav columns -->
       <div class="flex items-start justify-between gap-10">
         <!-- Brand -->

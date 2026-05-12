@@ -4,26 +4,13 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <section class="container pb-16">
-    <!-- Section header -->
-    <div class="flex items-center justify-between border-t border-neutral-200 pt-16 pb-8">
-      <h2 class="text-xl font-semibold text-neutral-900">Trending initiatives</h2>
-      <lfx-button
-        label="View all"
-        type="transparent"
-        button-style="pill"
-        size="small"
-        icon="angle-right"
-        icon-position="right"
-      />
-    </div>
-
     <!-- Loading skeletons -->
     <div
       v-if="isLoading"
       class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
     >
       <initiative-card-loading
-        v-for="n in 3"
+        v-for="n in 9"
         :key="n"
       />
     </div>
@@ -38,25 +25,40 @@ SPDX-License-Identifier: MIT
         type="solid"
         :size="16"
       />
-      <span class="text-body-1">Failed to load campaigns. Please try again.</span>
+      <span class="text-body-1">Failed to load initiatives. Please try again.</span>
+    </div>
+
+    <!-- Empty state -->
+    <div
+      v-else-if="!initiatives.length"
+      class="flex flex-col items-center justify-center gap-4 py-24 text-neutral-500"
+    >
+      <lfx-icon
+        name="folder-open"
+        type="light"
+        :size="40"
+      />
+      <p class="text-base">No initiatives found.</p>
     </div>
 
     <!-- Initiative cards -->
     <div
-      v-else-if="initiatives.length"
+      v-else
       class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
     >
-      <initiative-card
+      <NuxtLink
         v-for="initiative in initiatives"
         :key="initiative.id"
-        :initiative="initiative"
-      />
+        :to="`/initiatives/${initiative.initiativeId}`"
+        class="block"
+      >
+        <initiative-card :initiative="initiative" />
+      </NuxtLink>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import InitiativeCard from '~/components/shared/components/initiative-card/initiative-card.vue';
 import InitiativeCardLoading from '~/components/shared/components/initiative-card/initiative-card-loading.vue';
@@ -71,6 +73,6 @@ defineProps<{
 
 <script lang="ts">
 export default {
-  name: 'LandingInitiatives',
+  name: 'InitiativesGrid',
 };
 </script>

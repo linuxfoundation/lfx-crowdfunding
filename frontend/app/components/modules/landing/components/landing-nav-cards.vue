@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container px-10 pb-16">
+  <section class="container pb-16">
     <div class="border-t border-neutral-200 pt-16 pb-8" />
     <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
       <nuxt-link

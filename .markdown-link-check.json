@@ -3,6 +3,10 @@
     {
       "pattern": "^https://github.com/linuxfoundation/",
       "comment": "Private LFX repos return 404 to unauthenticated link checkers"
+    },
+    {
+      "pattern": "^https://nuxt.com/modules",
+      "comment": "nuxt.com/modules times out in CI (Status: 0) but is a valid page"
     }
   ]
 }

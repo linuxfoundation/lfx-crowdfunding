@@ -4,6 +4,8 @@
 GITHUB_COMMENT_REPORTER: false
 
 DISABLE_LINTERS:
+  # Duplicate-code detection produces too much noise for this repo.
+  - COPYPASTE_JSCPD
   # No deployable code or IaC in this repo — vulnerability and IaC scanners
   # produce only false positives against documentation files.
   - REPOSITORY_GRYPE
@@ -11,6 +13,8 @@ DISABLE_LINTERS:
   # v8r schema validation is not useful for this repo's JSON/YAML files.
   - JSON_V8R
   - YAML_V8R
+  # cspell produces too much noise on legitimate project terminology.
+  - SPELL_CSPELL
   # lychee link checker is redundant with markdown-link-check.
   - SPELL_LYCHEE
   # stylelint-config-standard-scss is not bundled in the megalinter image;
@@ -19,10 +23,3 @@ DISABLE_LINTERS:
   # Project uses eslint + typescript-eslint; ts-standard is redundant and
   # cannot locate the tsconfig.json from the workspace root.
   - TYPESCRIPT_STANDARD
-
-DISABLE_ERRORS_LINTERS:
-  # Informative but should not block builds.
-  - COPYPASTE_JSCPD
-
-# Prevent cspell from flagging filenames (e.g. CODEOWNERS, mkdocs) as words.
-SPELL_CSPELL_ANALYZE_FILE_NAMES: false

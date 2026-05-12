@@ -1,0 +1,55 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+//
+// Types in this file are accessible to both the Nuxt app (~/types) and the
+// Nitro server layer (server/api). Keep this file free of app-only imports
+// (Vue, vue-query, browser APIs, etc.).
+
+export interface InitiativeStats {
+  backers: number;
+  sponsors: number;
+  totalRaised: number;
+}
+
+export interface FundingStatus {
+  totalAnnualGoalInCents: number;
+  annualSubscriptionAmountInCents?: number;
+  annualSubscriptionRemainingAmountInCents?: number;
+  amountRaisedCents?: number;
+  totalSubscriptionCount?: number;
+}
+
+/** Core initiative fields constructed and returned by the server. */
+export interface InitiativeBase {
+  id: string;
+  initiativeId: string;
+  ownerId: string;
+  name: string;
+  description: string;
+  status: string;
+  initiativeType: string;
+  color: string;
+  createdOn: string;
+  updatedOn: string;
+  industry?: string;
+  logoUrl?: string;
+  country?: string;
+  city?: string;
+  websiteURL?: string;
+  applicationURL?: string;
+  eventStartDate?: string;
+  eventEndDate?: string;
+  initiativeStats?: InitiativeStats;
+  fundingStatus?: FundingStatus;
+}
+
+export interface InitiativesParams {
+  search?: string;
+  type?: string;
+  sort?: string;
+}
+
+export interface InitiativesResponse {
+  data: InitiativeBase[];
+  total: number;
+}

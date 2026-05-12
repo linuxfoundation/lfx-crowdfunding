@@ -1,0 +1,76 @@
+<!--
+Copyright (c) 2025 The Linux Foundation and each contributor.
+SPDX-License-Identifier: MIT
+-->
+<template>
+  <lfx-card class="p-6">
+    <div class="flex gap-4 items-start">
+      <div
+        v-for="stat in stats"
+        :key="stat.label"
+        class="flex flex-1 min-w-0 flex-col gap-1"
+      >
+        <div class="flex items-center gap-2">
+          <div
+            class="size-6 rounded-full flex items-center justify-center shrink-0"
+            :class="stat.iconBg"
+          >
+            <lfx-icon
+              :name="stat.icon"
+              type="solid"
+              :size="12"
+              class="text-white"
+            />
+          </div>
+          <span class="text-sm text-neutral-900 leading-5 whitespace-nowrap">{{ stat.label }}</span>
+        </div>
+        <p class="text-4xl text-neutral-900 leading-[56px]">
+          {{ stat.value }}
+        </p>
+      </div>
+    </div>
+  </lfx-card>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue';
+import type { FinancialSummary } from '#shared/types/initiative-detail.types';
+import LfxCard from '~/components/uikit/card/card.vue';
+import LfxIcon from '~/components/uikit/icon/icon.vue';
+
+const props = defineProps<{ summary: FinancialSummary }>();
+
+const formatAmount = (cents: number): string => {
+  const dollars = cents / 100;
+  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}K`;
+  return `$${dollars.toLocaleString()}`;
+};
+
+const stats = computed(() => [
+  {
+    label: 'Total received',
+    icon: 'arrow-trend-up',
+    iconBg: 'bg-success-500',
+    value: formatAmount(props.summary.totalReceivedCents),
+  },
+  {
+    label: 'Total expenses',
+    icon: 'arrow-trend-down',
+    iconBg: 'bg-warning-500',
+    value: formatAmount(props.summary.totalExpensesCents),
+  },
+  {
+    label: 'Balance',
+    icon: 'sack-dollar',
+    iconBg: 'bg-accent-500',
+    value: formatAmount(props.summary.balanceCents),
+  },
+]);
+</script>
+
+<script lang="ts">
+export default {
+  name: 'InitiativeDetailFinancialSummary',
+};
+</script>
