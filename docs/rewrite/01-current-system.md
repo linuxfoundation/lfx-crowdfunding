@@ -7,7 +7,7 @@ Source repos explored: `LFF` (backend), `lfx-crowdfunding-upgrade` (frontend),
 
 ## Production Data Inventory (as of May 2026)
 
-Total: **2,013 rows** across projects and entities tables. **1,374 published** (active/live).
+Total: **2,023 rows** across projects and entities tables (1,841 from `lff-prod-projects`, 182 from `lff-prod-entities`; confirmed by DynamoDB scan at migration time, 2026-05-12). **~1,374 published** (active/live; pre-migration estimate).
 
 | Source | Type | Submitted | Published | Declined | Hidden | Total |
 |---|---|---|---|---|---|---|
@@ -18,15 +18,17 @@ Total: **2,013 rows** across projects and entities tables. **1,374 published** (
 | entities | event | 6 | 8 | 6 | — | 20 |
 | entities | ostif | 7 | 3 | 1 | — | 11 |
 | entities | community | 2 | 0 | 1 | — | 3 |
-| **Total** | | **378** | **1,374** | **145** | **115** | **2,013** |
+| **Total** | | **378** | **~1,374** | **145** | **115** | **~2,013** |
+
+> Note: the status breakdown above is a pre-migration survey. The actual DynamoDB scan at migration time found **2,023 total rows** (1,841 projects + 182 entities). 10 additional records not captured in the survey above.
 
 ### Key observations
 
-- **Mentorship projects dominate** — 1,476 of 1,832 project rows (80%) are mentorship-type. These come from the Mentorship service, not from Crowdfunding users directly. In the new system they are synced from Snowflake via a K8s CronJob (SNS/SQS is not used).
-- **"community" entity type** — 3 rows with type `community` not seen in the Go code's entity type enum (`project`, `initiative`, `general-fund`). Must be handled in migration (map to a known type or add `community` to the enum). **Needs clarification.**
-- **"other (travel)" entity type** — likely `general-fund` subtype used for travel funds. Confirm the exact DynamoDB type value.
+- **Mentorship projects dominate** — 1,486 of 1,841 project rows (81%) are mentorship-type (reclassified in Phase 4 of the migration based on `mentee` goal amount > 0). These come from the Mentorship service, not from Crowdfunding users directly. In the new system they are synced from Snowflake via a K8s CronJob (SNS/SQS is not used).
+- **"community" entity type** — 3 rows with DynamoDB `entityType = 'community'`. **Resolved:** all 3 rows are migrated as `initiative_type = 'community'` in Postgres.
+- **"other (travel)" entity type** — 26 entity rows with DynamoDB `entityType = 'other'` (travel funds). **Resolved:** migrated as `initiative_type = 'other'` in Postgres (not merged into `general fund`).
 - **Non-published records matter** — 639 non-published rows (submitted, declined, hidden). Migration must include all statuses, not just published. Active subscriptions may exist against non-published projects.
-- **Small entity volume** — 181 entity rows total; straightforward to migrate and validate manually if needed.
+- **Small entity volume** — 182 entity rows total; straightforward to migrate and validate manually if needed.
 
 ---
 
