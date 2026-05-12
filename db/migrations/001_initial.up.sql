@@ -394,7 +394,7 @@ CREATE TRIGGER set_updated_on BEFORE UPDATE ON users                            
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON organizations                       FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 -- Skip updated_on change when only cache fields (amount_raised_in_cents) are updated
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives                         FOR EACH ROW 
-    WHEN (OLD.* IS DISTINCT FROM NEW.* AND (
+    WHEN (
         OLD.owner_id IS DISTINCT FROM NEW.owner_id OR
         OLD.name IS DISTINCT FROM NEW.name OR
         OLD.slug IS DISTINCT FROM NEW.slug OR
@@ -420,7 +420,7 @@ CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives                      
         OLD.event_fee_in_cents IS DISTINCT FROM NEW.event_fee_in_cents OR
         OLD.event_capacity IS DISTINCT FROM NEW.event_capacity OR
         OLD.cached_details IS DISTINCT FROM NEW.cached_details
-    ))
+    )
     EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_goals                    FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_beneficiaries            FOR EACH ROW EXECUTE FUNCTION set_updated_on();
