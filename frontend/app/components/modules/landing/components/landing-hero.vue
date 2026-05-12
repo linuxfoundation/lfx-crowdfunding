@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container px-10 pt-18 pb-16 flex flex-col gap-16">
+  <section class="container px-10 pt-21 pb-16 flex flex-col gap-16">
     <!-- Top row: copy (left) + ring stat (right) -->
     <div class="flex items-center justify-between gap-10">
       <!-- Left: badges + headline + subtitle -->
@@ -82,7 +82,7 @@ SPDX-License-Identifier: MIT
               :size="18"
             />
           </div>
-          <span class="text-sm font-medium text-neutral-900 leading-5">{{ badge.label }}</span>
+          <span class="text-sm font-medium leading-5">{{ badge.label }}</span>
         </div>
       </div>
 

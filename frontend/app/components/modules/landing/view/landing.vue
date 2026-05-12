@@ -10,6 +10,8 @@ SPDX-License-Identifier: MIT
       :is-loading="isLoading"
       :error="initiativeError"
     />
+    <landing-impact-stories />
+    <landing-nav-cards />
   </div>
 </template>
 
@@ -17,6 +19,8 @@ SPDX-License-Identifier: MIT
 import { computed } from 'vue';
 import LandingHero from '../components/landing-hero.vue';
 import LandingInitiatives from '../components/landing-initiatives.vue';
+import LandingImpactStories from '../components/landing-impact-stories.vue';
+import LandingNavCards from '../components/landing-nav-cards.vue';
 import { useInitiatives } from '~/composables/useInitiatives';
 
 const { data, isLoading, error } = useInitiatives();
