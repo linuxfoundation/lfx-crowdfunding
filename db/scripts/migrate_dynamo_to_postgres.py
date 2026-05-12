@@ -6,7 +6,7 @@
 DynamoDB → PostgreSQL Migration Script
 =======================================
 Migrates all lff-prod-* DynamoDB tables into the PostgreSQL schema defined
-in db/schema.sql (v2 — fully normalised initiatives schema).
+in db/migrations/001_initial.up.sql (v2 — fully normalised initiatives schema).
 
 Source → Target mapping
 -----------------------
