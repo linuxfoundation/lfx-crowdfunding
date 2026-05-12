@@ -270,7 +270,7 @@ Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-ow
 
 **The bulk endpoint is release-blocking.** Once CF DNS cuts over, OpenSearch receives no new CF writes and goes stale. `RefreshTags()` must switch to the bulk endpoint on cutover day or new projects will never appear as Expensify tags — beneficiaries cannot submit expenses against them. This is a silent financial failure.
 
-`dynamo_id` (original DynamoDB string ID — not the Postgres UUID) is returned as the initiative identifier — RS stores legacy DynamoDB string IDs in Expensify as GL codes and must continue using them.
+The initiative identifier returned should be `initiatives.id` (Postgres UUID). For migrated initiatives with UUID-form DynamoDB IDs (the vast majority), this matches the original ID exactly. For the small number of non-UUID legacy IDs, RS must maintain a mapping if legacy DynamoDB string IDs are required in Expensify GL codes.
 
 ### Stripe Webhook
 
@@ -318,7 +318,7 @@ All monetary values `bigint` (cents). All primary keys `uuid`. All timestamps `t
 
 **Terminology:**
 - `initiatives` — unified table for all fundable things; formerly split into `projects` and `funds`
-- `initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif`; legacy migrated values also present in production data: `other` | `community`
+- `initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif` (plus legacy-only: `other` | `community`)
 - `status` values: `submitted` | `published` | `declined` | `hidden`
 
 The schema is defined in `db/migrations/001_initial.up.sql` (version 2.0.0) and reproduced here as a reference. The authoritative source is the SQL file.

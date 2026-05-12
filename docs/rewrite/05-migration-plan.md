@@ -99,7 +99,7 @@ The migration tool MUST detect the type and branch accordingly.
 
 | DynamoDB attribute | Postgres column | Transform |
 |---|---|---|
-| `projectId` | — | Source natural key; deterministic UUID generated via `uuid5("project", projectId)`; stable across re-runs |
+| `projectId` | — | Source natural key; deterministic UUID generated via `_as_uuid(projectId)` (preserves UUID-form IDs; otherwise `uuid5("coerce", projectId)`); stable across re-runs |
 | `ownerId` | `owner_id` | Direct |
 | `name` | `name` | Direct |
 | `slug` | `slug` | Direct |
@@ -174,12 +174,12 @@ These rows migrate into the same `crowdfunding.initiatives` table as projects. T
 | `ostif` | `ostif` | 11 | Unchanged |
 | `community` | `community` | 3 | Migrated as-is; all declined/submitted 2019; no active users |
 
-The old DynamoDB `entityId` maps to the Postgres `id` via `uuid5("entity:", entityId)` (same as projects — needed for Ledger API calls via the original string ID).
+The old DynamoDB `entityId` maps to the Postgres `id` via `_as_uuid(entityId)` (preserves UUID-form IDs; otherwise `uuid5("coerce", entityId)` — same as projects).
 Status normalization applies here too: `'hide'` → `'hidden'`.
 
 | DynamoDB attribute | Postgres column | Notes |
 |---|---|---|
-| `entityId` | — (new UUID via uuid5) | New `id` is a deterministic UUID5 of `entityId` |
+| `entityId` | — (UUID via _as_uuid) | New `id` is deterministic: UUID-form IDs preserved; non-UUID strings → `uuid5("coerce", entityId)` |
 | `ownerId` | `owner_id` | Direct |
 | `name` | `name` | Direct |
 | `slug` | `slug` | Direct |
@@ -385,6 +385,6 @@ Migration record counts to verify after execute:
 - **`community` entity type:** Resolved — 3 rows, all declined/submitted in 2019 with no active users. Migrated as `initiative_type = 'community'` (not discarded). No new rows expected.
 - **`other` entity type:** Resolved — 26 rows with DynamoDB `entityType = 'other'`. Migrated as `initiative_type = 'other'` (not merged into `general fund`).
 - **Mentorship initiatives (1,486 rows):** Detection: rows where `initiative_goals.name = 'mentee'` and `amount_in_cents > 0` are reclassified to `initiative_type = 'mentorship'` in Phase 4. The `jobspring_project_id` column is populated from the DynamoDB `jobspringProjectId` field. New mentorship programs arrive post-migration via the `mentorship-sync` Snowflake CronJob — SNS/SQS is not used.
-- **Old IDs and Ledger:** Ledger records use the old DynamoDB string ID as `project_id`. The new CF Go API must accept both the old DynamoDB string ID and the new Postgres UUID on project/entity detail endpoints, resolving via the deterministic `uuid5` inverse mapping. When calling `GET /balance/{id}` on the Ledger API, the CF service passes the original DynamoDB string ID (stored as `jobspring_project_id` for mentorship initiatives, or recovered from the `uuid5` derivation for other types). `source_dynamo_table` (migration-only column, dropped post-cutover) records origin for auditability.
+- **Old IDs and Ledger:** Ledger records use the old DynamoDB string ID as `project_id`. The migration script uses `_as_uuid()` to generate Postgres UUIDs: if the DynamoDB ID is already a valid UUID, it is preserved unchanged as `initiatives.id`; otherwise a deterministic `uuid5("coerce", id)` is generated. For UUID-form DynamoDB IDs (the vast majority), the Postgres UUID matches the original ID exactly, so the CF Go API can use `initiatives.id` directly when calling Ledger. For the small number of non-UUID legacy IDs, the service must store/maintain a mapping if Ledger lookups are required. `source_dynamo_table` (migration-only column, dropped post-cutover) records origin for auditability.
 - **Stripe subscription continuity:** Active Stripe subscriptions must not be cancelled or recreated. The migration preserves `stripe_subscription_id` — Stripe continues charging the same plan. No Stripe API calls needed during migration.
 - **Non-published records:** 639 rows are not published (submitted, declined, hidden). All must be migrated — active subscriptions or pending approvals may reference them. Never filter to published-only during migration.

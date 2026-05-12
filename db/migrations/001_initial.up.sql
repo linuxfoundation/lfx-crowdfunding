@@ -23,6 +23,9 @@ BEGIN;
 
 SET LOCAL search_path TO crowdfunding, public;
 
+-- Enable pgcrypto extension for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- ============================================
 -- TABLE: users
 -- ============================================

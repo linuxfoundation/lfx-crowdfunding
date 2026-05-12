@@ -111,7 +111,7 @@ Once RS is on K8s in the same cluster, it can reach the shared RDS directly. At 
 **Status:** Open
 **Owner:** Michal / Lewis
 
-**Question:** The `amount_raised_in_cents` cache column is kept fresh by calling `GET /balance/{dynamo_id}` on the Ledger API, where `dynamo_id` is the original DynamoDB string ID (derived from the deterministic `uuid5` mapping used at migration time).
+**Question:** The `amount_raised_in_cents` cache column is kept fresh by calling `GET /balance/{id}` on the Ledger API. The migration script uses `_as_uuid()` to generate Postgres UUIDs: if the DynamoDB ID is already a valid UUID (the vast majority), it is preserved unchanged as `initiatives.id`; otherwise a deterministic `uuid5("coerce", id)` is generated. For UUID-form DynamoDB IDs, the Postgres UUID matches the original ID exactly, so the CF Go API can use `initiatives.id` directly when calling Ledger.
 
 New initiatives created after DNS cutover have no DynamoDB origin and therefore no original string ID. The Ledger API has no key to look up their balance. Additionally, when CF creates a Stripe charge or subscription for a new post-cutover initiative, it must put an ID in the Stripe object metadata fields `projectID` / `entityID` — Ledger reads this to associate transactions with initiatives. If the new Postgres UUID is used instead of the original DynamoDB ID, `GET /balance/{id}` will not find those transactions and the balance will always be `0`.
 
@@ -141,9 +141,9 @@ No Ledger code changes are required. Here is why this works end-to-end:
 
 3. **`SendNotifications()` calls CF:** Ledger calls `GET /v1/projects/{project_id}` using the stored `project_id`. For post-cutover rows that value is a UUID. The new CF Go API already needs to support UUID lookups on these endpoints for its own use — so this costs nothing extra.
 
-4. **Ledger ID for migrated vs post-cutover initiatives:** For migrated initiatives, CF uses the original DynamoDB string ID (stored implicitly via the `uuid5` inverse) in Stripe metadata. For post-cutover initiatives with no DynamoDB origin, `uuid5`-derived ID is NULL — CF uses the Postgres UUID directly. CF branches on whether a DynamoDB ID exists to decide which ID to put in Stripe metadata.
+4. **Ledger ID for migrated vs post-cutover initiatives:** For migrated initiatives with UUID-form DynamoDB IDs (the vast majority), the Postgres UUID matches the original ID exactly — CF uses `initiatives.id` directly in Stripe metadata and Ledger lookups. For the small number of non-UUID legacy IDs, the service must store/maintain a mapping if Ledger lookups are required. For post-cutover initiatives with no DynamoDB origin, CF uses the Postgres UUID directly.
 
-5. **Reconciliation CronJob:** Calls `GET /balance/{id}` for all published initiatives. For migrated rows: uses the original DynamoDB string ID. For post-cutover rows: uses the Postgres UUID. Same logic as step 4.
+5. **Reconciliation CronJob:** Calls `GET /balance/{id}` for all published initiatives using `initiatives.id` (which matches the original DynamoDB ID for UUID-form IDs).
 
 **The only risk:** If any other Ledger code path assumes `project_id` is in a non-UUID format (e.g. a slug or a DynamoDB-style opaque string), it would break silently. Lewis should verify no such assumption exists before approving this approach. Based on code review, no such assumption was found — `project_id` is treated as an opaque text key throughout Ledger.
 

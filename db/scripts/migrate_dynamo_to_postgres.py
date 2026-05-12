@@ -174,6 +174,19 @@ def _to_jsonb(value) -> str | None:
     return json.dumps(value, default=_default)
 
 
+def _normalize_status(status: str | None) -> str | None:
+    """Normalize status values: 'hide' → 'hidden'; others pass through."""
+    if status == "hide":
+        return "hidden"
+    return status
+
+
+def _redact_dsn(dsn: str) -> str:
+    """Redact password from PostgreSQL DSN for safe logging."""
+    import re
+    return re.sub(r'password=\S+', 'password=***', dsn)
+
+
 def _parse_ts(s: str | None):
     """Parse DynamoDB timestamp string → tz-aware datetime (or None).
 
@@ -398,7 +411,7 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
             owner_id,                                    # owner_id
             p.get("name"),                               # name
             p.get("slug"),                               # slug
-            p.get("status"),                             # status
+            _normalize_status(p.get("status")),          # status
             pd.get("industry"),                          # industry
             pd.get("description"),                       # description
             _trunc(pd.get("color"), 10, "color"),        # color
@@ -430,7 +443,7 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
             # Budget.AmountInCents is serialised with json tag "amount"
             amt    = _as_int(budget.get("amount"))
             alloc  = budget.get("allocation") or None
-            repo   = cat.get("repoLink") or None if cat_key == "development" else None
+            repo   = cat.get("repoLink") if cat_key == "development" else None
             if amt > 0 or alloc or repo:
                 goals_rows.append((
                     _uuid5("goal", raw_initiative_id, goal_name),
@@ -571,7 +584,7 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
             owner_id,                                             # owner_id
             e.get("name"),                                        # name
             e.get("slug") or None,                                # slug
-            e.get("status"),                                      # status
+            _normalize_status(e.get("status")),                   # status
             e.get("industry") or None,                            # industry
             e.get("description") or None,                         # description
             _trunc(e.get("color"), 10, "color"),                  # color
@@ -1270,7 +1283,7 @@ def main():
     log.info("=" * 60)
     log.info("DynamoDB → PostgreSQL migration starting")
     log.info("Region : %s", REGION)
-    log.info("PG DSN : %s", PG_DSN)
+    log.info("PG DSN : %s", _redact_dsn(PG_DSN))
     log.info("=" * 60)
 
     dynamo = boto3.client("dynamodb", region_name=REGION)
@@ -1343,7 +1356,7 @@ def main():
 
     except Exception:
         conn.rollback()
-        log.exception("Migration failed — transaction rolled back")
+        log.exception("Migration failed — current phase rolled back (earlier phases already committed)")
         sys.exit(1)
 
     finally:

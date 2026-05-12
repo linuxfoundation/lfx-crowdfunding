@@ -109,7 +109,8 @@ flowchart LR
 ```mermaid
 erDiagram
     users {
-        varchar user_id PK
+        uuid id PK
+        varchar user_id UK
         text email
         text given_name
         text family_name
@@ -941,7 +942,7 @@ flowchart TD
     subgraph MIGRATE["Migrate in FK order"]
         PH1["Phase 1: users\n16,789 + 58 placeholders\nON CONFLICT user_id DO UPDATE"]
         PH2["Phase 2: organizations\n606 rows\nskip if owner not in known_users"]
-        PH3["Phase 3a: initiatives\n2,023 rows\nentities first, then projects\nON CONFLICT id DO UPDATE"]
+        PH3["Phase 3a: initiatives\n2,023 rows\nprojects first, then entities\nON CONFLICT id DO UPDATE"]
         PH3B["Phase 3b: 15 child tables\ngoals / beneficiaries / mentors\nprogram_info / stats / etc."]
         PH4["Phase 4: mentorship reclassification\nUPDATE initiative_type = 'mentorship'\nWHERE mentee goal > 0\n→ 1,486 rows updated"]
         PH5["Phase 5: donations\n1,598 rows\n1 skipped — initiative FK missing"]
