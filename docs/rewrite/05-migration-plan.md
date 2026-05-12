@@ -271,7 +271,7 @@ DynamoDB uses string IDs (e.g., `projectId: "abc-123"`). Postgres uses UUIDs. Al
 - Missing `slug` on initiatives → log as warning (`slug` is nullable TEXT with an index, not NOT NULL UNIQUE)
 - Initiatives with same slug → log as warning (no UNIQUE constraint on slug)
 - Null `owner_id` → error
-- Invalid `status` values → log and map to closest valid status
+- Unexpected `status` values → log as warning; normalize `'hide'` → `'hidden'`; otherwise preserve the source value unchanged
 - `current_amount_in_cents` outside valid range → log as warning
 
 ### Migration Execution Order
