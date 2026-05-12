@@ -20,12 +20,14 @@ SPDX-License-Identifier: MIT
       <lfx-icon
         v-if="props.icon && props.iconPosition === 'left'"
         :name="props.icon"
+        :type="props.iconType"
         :size="14"
       />
       <slot>{{ props.label }}</slot>
       <lfx-icon
         v-if="props.icon && props.iconPosition === 'right'"
         :name="props.icon"
+        :type="props.iconType"
         :size="14"
       />
     </template>
@@ -34,12 +36,14 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import type { ButtonStyle, ButtonType, ButtonSize, IconPosition } from './types/button.types';
+import type { IconType } from '~/components/uikit/icon/types/icon.types';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 
 const props = withDefaults(
   defineProps<{
     label?: string;
     icon?: string;
+    iconType?: IconType;
     type?: ButtonType;
     buttonStyle?: ButtonStyle;
     loading?: boolean;
@@ -55,6 +59,7 @@ const props = withDefaults(
     loading: false,
     label: undefined,
     icon: undefined,
+    iconType: 'light',
     buttonStyle: 'rounded',
   },
 );
