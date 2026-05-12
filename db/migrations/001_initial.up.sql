@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS initiatives (
 -- ============================================
 -- TABLE: initiative_goals
 -- Projects : projectDetails.{development,marketing,meetups,travel,
---            bugBounty,documentation,programInfo,other} — each carries
+--            bugBounty,documentation,mentee,other} — each carries
 --            Budget{amount, allocation}; development also carries repoLink.
 -- Entities : entity.Goals[] — each Goal{name,description,goalColor,
 --            goalIcon, budget{amount,allocation}}
