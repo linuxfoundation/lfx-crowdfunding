@@ -50,7 +50,7 @@ Steps:
 
 ### Tool: Python script
 
-Location: `db/scripts/migrate_dynamo_to_postgres.py` in `linuxfoundation/lfx-crowdfunding` (this repo). Migration status: **complete** — exit 0 against production data (2026-05-11).
+Location: `db/scripts/migrate_dynamo_to_postgres.py` in `linuxfoundation/lfx-crowdfunding` (this repo). Migration status: **complete** — exit 0 against production data (2026-05-12).
 
 Uses `boto3` for DynamoDB scans and `psycopg2` for Postgres upserts. The script is idempotent: all inserts use `ON CONFLICT DO UPDATE`, so it can be re-run safely against the same target DB.
 
