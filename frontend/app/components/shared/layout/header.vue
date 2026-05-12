@@ -73,14 +73,17 @@ SPDX-License-Identifier: MIT
               :key="child.label"
             >
               <lfx-dropdown-separator v-if="idx === 2" />
-              <lfx-dropdown-item :to="child.to">
+              <NuxtLink
+                :to="child.to"
+                class="c-dropdown__item"
+              >
                 <lfx-icon
                   :name="child.icon"
                   type="light"
                   :size="16"
                 />
                 {{ child.label }}
-              </lfx-dropdown-item>
+              </NuxtLink>
             </template>
           </lfx-dropdown>
         </nav>
@@ -104,60 +107,62 @@ SPDX-License-Identifier: MIT
         />
         <div class="h-6 w-px bg-neutral-200" />
 
-        <!-- User button + dropdown -->
-        <lfx-dropdown
-          v-model:visibility="userOpen"
-          width="240px"
+        <!-- User button + popover -->
+        <lfx-popover
           placement="bottom-end"
+          aria-label="User menu"
         >
-          <template #trigger>
-            <lfx-icon-button
-              type="transparent"
-              size="medium"
-              aria-label="User menu"
-              :class="user ? 'relative !bg-neutral-50' : ''"
-            >
-              <img
-                v-if="user"
-                :src="user.avatarUrl"
-                :alt="user.name"
-                class="absolute inset-1.5 size-6 rounded-full object-cover"
-              />
-              <lfx-icon
-                v-else
-                name="circle-user"
-                type="light"
-                :size="16"
-              />
-            </lfx-icon-button>
-          </template>
+          <lfx-avatar
+            v-if="user"
+            type="member"
+            :src="user.avatarUrl"
+            size="small"
+            class="cursor-pointer"
+          />
+          <lfx-icon
+            v-else
+            name="circle-user"
+            type="light"
+            :size="20"
+            class="cursor-pointer"
+          />
 
-          <lfx-dropdown-item to="/my-donations">
-            <lfx-icon
-              name="circle-dollar-to-slot"
-              type="light"
-              :size="16"
-            />
-            My donations
-          </lfx-dropdown-item>
-          <lfx-dropdown-item to="/my-initiatives">
-            <lfx-icon
-              name="folder-heart"
-              type="light"
-              :size="16"
-            />
-            My initiatives
-          </lfx-dropdown-item>
-          <lfx-dropdown-separator />
-          <lfx-dropdown-item>
-            <lfx-icon
-              name="arrow-right-from-bracket"
-              type="light"
-              :size="16"
-            />
-            Sign out
-          </lfx-dropdown-item>
-        </lfx-dropdown>
+          <template #content>
+            <div class="c-dropdown w-60">
+              <NuxtLink
+                to="/my-donations"
+                class="c-dropdown__item"
+              >
+                <lfx-icon
+                  name="circle-dollar-to-slot"
+                  type="light"
+                  :size="16"
+                />
+                My donations
+              </NuxtLink>
+              <NuxtLink
+                to="/my-initiatives"
+                class="c-dropdown__item"
+              >
+                <lfx-icon
+                  name="folder-heart"
+                  type="light"
+                  :size="16"
+                />
+                My initiatives
+              </NuxtLink>
+              <div class="c-dropdown__separator" />
+              <div class="c-dropdown__item">
+                <lfx-icon
+                  name="arrow-right-from-bracket"
+                  type="light"
+                  :size="16"
+                />
+                Sign out
+              </div>
+            </div>
+          </template>
+        </lfx-popover>
       </div>
     </div>
   </header>
@@ -168,10 +173,11 @@ import { computed, ref } from 'vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
+import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxDropdown from '~/components/uikit/dropdown/dropdown.vue';
-import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 import LfxDropdownGroupTitle from '~/components/uikit/dropdown/dropdown-group-title.vue';
 import LfxDropdownSeparator from '~/components/uikit/dropdown/dropdown-separator.vue';
+import LfxPopover from '~/components/uikit/popover/popover.vue';
 import { lfxHeaderMenu } from '~/config/menu/header';
 
 // ---------------------------------------------------------------------------
@@ -186,7 +192,6 @@ const regularMenuItems = computed(() => lfxHeaderMenu.filter((i) => !i.children)
 const moreItem = computed(() => lfxHeaderMenu.find((i) => !!i.children));
 
 const moreOpen = ref(false);
-const userOpen = ref(false);
 </script>
 
 <script lang="ts">
