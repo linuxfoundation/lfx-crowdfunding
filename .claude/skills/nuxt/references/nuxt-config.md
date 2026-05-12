@@ -415,5 +415,5 @@ export default defineNuxtConfig({
 
 - Nuxt config: https://nuxt.com/docs/api/nuxt-config
 - Runtime config: https://nuxt.com/docs/guide/going-further/runtime-config
-- App config: https://nuxt.com/docs/guide/directory-structure/app-config
+- App config: https://nuxt.com/docs/getting-started/configuration#app-configuration
 - Modules: https://nuxt.com/modules
