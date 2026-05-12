@@ -288,7 +288,7 @@ All child tables carry `initiative_id UUID NOT NULL REFERENCES initiatives(id) O
 
 ## 5. Schema DDL
 
-The full DDL is in [schema.sql](schema.sql). Key structural decisions are noted inline below.
+The full DDL is in [db/migrations/001_initial.up.sql](../../db/migrations/001_initial.up.sql). Key structural decisions are noted inline below.
 
 ### `users`
 
