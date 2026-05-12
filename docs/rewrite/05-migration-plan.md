@@ -204,9 +204,9 @@ These rows migrate into the same `crowdfunding.initiatives` table as projects.
 |---|---|---|
 | `stripeSubscriptionId` | `stripe_subscription_id` | |
 | `stripeSubscriptionItemId` | `stripe_subscription_item_id` | Nullable |
-| `projectId` | `initiative_id` | Resolve old `projectId` → new Postgres UUID via in-memory map |
+| `projectId` | `initiative_id` | Resolve via in-memory map: `projectId` string → `initiatives.id` UUID |
 | `userId` | `user_id` | Resolve Auth0 subject via `users.user_id` → `users.id` |
-| `orgId` | `organization_id` | Resolve to Postgres UUID via in-memory map if set |
+| `orgId` | `organization_id` | DynamoDB `orgId` is already a UUID — migrate directly (same as `organizations.id`); no in-memory map needed |
 | `frequency` | `frequency` | Direct (`monthly` \| `annual`); normalize `yearly` → `annual` |
 | `currentAmountInCents` | `current_amount_in_cents` | DynamoDB field is `currentAmountInCents` |
 | `status` | `status` | Prod values: `"active"` \| `"inactive"` |
@@ -220,9 +220,9 @@ For `lff-prod-entity-subscriptions`: same mapping, resolve old `entityId` → ne
 | DynamoDB attribute | Postgres column | Notes |
 |---|---|---|
 | `stripeChargeId` | `stripe_charge_id` | Null for invoice payments |
-| `projectId` | `initiative_id` | Resolve old `projectId` → new Postgres UUID via in-memory map |
+| `projectId` | `initiative_id` | Resolve via in-memory map: `projectId` string → `initiatives.id` UUID |
 | `userId` | `user_id` | Resolve Auth0 subject via `users.user_id` → `users.id` |
-| `orgId` | `organization_id` | Resolve to Postgres UUID via in-memory map if set |
+| `orgId` | `organization_id` | DynamoDB `orgId` is already a UUID — migrate directly (same as `organizations.id`); no in-memory map needed |
 | `currentAmountInCents` | `current_amount_in_cents` | DynamoDB field is `currentAmountInCents` |
 | `category` | `category` | Direct |
 | `paymentmethod` | `payment_method` | DynamoDB key is `paymentmethod` (all lowercase) |
@@ -261,7 +261,7 @@ No `description`, `website`, `approved_at`, or `rejected_at` — those fields do
 
 ### ID Mapping (in-memory)
 
-DynamoDB uses string IDs. Postgres uses UUIDs. The migration CLI holds a `map[string]uuid.UUID` in memory to resolve old `projectId` and `entityId` references when migrating subscriptions and donations. No DB table is created — see `02-decisions.md`.
+The migration CLI holds a `map[string]uuid.UUID` in memory to resolve `projectId` and `entityId` references in subscriptions and donations to their `initiatives.id` UUID. Organization IDs (`orgId`) are already UUIDs in DynamoDB and are migrated directly — no mapping needed. No DB table is created — see `02-decisions.md`.
 
 ### Data Quality Checks (run in `--validate` mode)
 
