@@ -1,3 +1,6 @@
+-- Copyright The Linux Foundation and each contributor to LFX.
+-- SPDX-License-Identifier: MIT
+
 -- ============================================
 -- Migration: Normalised Initiatives Schema
 -- Version: 2.0.0
