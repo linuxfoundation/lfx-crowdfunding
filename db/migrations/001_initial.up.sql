@@ -168,8 +168,8 @@ CREATE TABLE IF NOT EXISTS initiative_contributors (
 );
 
 -- ============================================
--- TABLE: initiative_mentors  (project programInfo only)
--- Projects : projectDetails.programInfo.mentor[]
+-- TABLE: initiative_mentors  (mentorship projects only)
+-- Projects : projectDetails.mentee.mentor[]
 --            Each Mentor{name, email, avatarURL, introduction}
 -- ============================================
 CREATE TABLE IF NOT EXISTS initiative_mentors (
@@ -184,8 +184,8 @@ CREATE TABLE IF NOT EXISTS initiative_mentors (
 );
 
 -- ============================================
--- TABLE: initiative_program_info_terms  (project programInfo only)
--- Projects : projectDetails.programInfo.terms[]  ([]string)
+-- TABLE: initiative_program_info_terms  (mentorship projects only)
+-- Projects : projectDetails.mentee.terms[]  ([]string)
 -- ============================================
 CREATE TABLE IF NOT EXISTS initiative_program_info_terms (
   id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -197,8 +197,8 @@ CREATE TABLE IF NOT EXISTS initiative_program_info_terms (
 );
 
 -- ============================================
--- TABLE: initiative_program_info_skills  (project programInfo only)
--- Projects : projectDetails.programInfo.skills[]  ([]string)
+-- TABLE: initiative_program_info_skills  (mentorship projects only)
+-- Projects : projectDetails.mentee.skills[]  ([]string)
 -- ============================================
 CREATE TABLE IF NOT EXISTS initiative_program_info_skills (
   id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -210,8 +210,8 @@ CREATE TABLE IF NOT EXISTS initiative_program_info_skills (
 );
 
 -- ============================================
--- TABLE: initiative_program_info_config  (project programInfo only — 0-or-1 per initiative)
--- Projects : projectDetails.programInfo.termsConditions  (bool)
+-- TABLE: initiative_program_info_config  (mentorship projects only — 0-or-1 per initiative)
+-- Projects : projectDetails.mentee.termsConditions  (bool)
 -- ============================================
 CREATE TABLE IF NOT EXISTS initiative_program_info_config (
   initiative_id    UUID PRIMARY KEY REFERENCES initiatives(id) ON DELETE CASCADE,
@@ -221,8 +221,8 @@ CREATE TABLE IF NOT EXISTS initiative_program_info_config (
 );
 
 -- ============================================
--- TABLE: initiative_program_info_custom_term  (project programInfo only — 0-or-1 per initiative)
--- Projects : projectDetails.programInfo.customTerm
+-- TABLE: initiative_program_info_custom_term  (mentorship projects only — 0-or-1 per initiative)
+-- Projects : projectDetails.mentee.customTerm
 --            CustomTerm{termName, startMonth, endMonth, year}
 --            Only present when termName is non-empty.
 -- ============================================
