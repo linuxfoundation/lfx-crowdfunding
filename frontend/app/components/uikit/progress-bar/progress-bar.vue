@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT
       v-for="(value, index) in props.values"
       :key="`${value}-${index}`"
       class="c-progress-bar__value"
-      :style="{ width: `${value}%` }"
+      :style="{ width: `${value}%`, ...(props.colors?.[index] ? { backgroundColor: props.colors[index] } : {}) }"
     />
     <div
       v-if="props.label"
@@ -30,7 +30,8 @@ import type { ProgressBarType } from './types/progress-bar.types';
 const props = withDefaults(
   defineProps<{
     values: number[];
-    size?: 'small' | 'normal';
+    colors?: string[];
+    size?: 'small' | 'normal' | 'large';
     // TODO: change this once we have the correct types
     color?: ProgressBarType;
     label?: string;
@@ -41,6 +42,7 @@ const props = withDefaults(
     size: 'normal',
     hideEmpty: false,
     label: undefined,
+    colors: undefined,
   },
 );
 
