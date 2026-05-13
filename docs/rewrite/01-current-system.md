@@ -27,9 +27,9 @@ Total: **2,023 rows** across projects and entities tables (1,841 from `lff-prod-
 
 ### Key observations
 
-- **Mentorship projects dominate** — 1,486 of 1,841 project rows (81%) are mentorship-type (reclassified in Phase 4 of the migration based on `mentee` goal amount > 0). These come from the Mentorship service, not from Crowdfunding users directly. In the new system they are synced from Snowflake via a K8s CronJob (SNS/SQS is not used).
+- **Mentorship projects dominate** — 1,486 of 1,841 project rows (81%) are mentorship-type (reclassified in Phase 4 of the migration based on `mentee` goal amount > 0). These come from the Mentorship service via SNS/SQS. See `02-decisions.md` for how this changes in the new system.
 - **"community" entity type** — 3 rows with DynamoDB `entityType = 'community'`. **Resolved:** all 3 rows are migrated as `initiative_type = 'community'` in Postgres.
-- **"other (travel)" entity type** — 26 entity rows with DynamoDB `entityType = 'other'` (travel funds). **Resolved:** migrated as `initiative_type = 'other'` in Postgres (not merged into `general fund`).
+- **"other (travel)" entity type** — 26 entity rows with DynamoDB `entityType = 'other'` (travel funds). **Resolved:** migrated as `initiative_type = 'other'` in Postgres.
 - **Non-published records matter** — 639 non-published rows (submitted, declined, hidden). Migration must include all statuses, not just published. Active subscriptions may exist against non-published projects.
 - **Small entity volume** — 182 entity rows total; straightforward to migrate and validate manually if needed.
 
@@ -208,7 +208,7 @@ User profile + Stripe customer info + GitHub OAuth tokens.
 
 Primary key: `organizationId`. GSI: `orgByOwner` (ownerId).
 
-Fields: `organizationId`, `ownerId`, `name`, `status`, `description`, `website`, `logoUrl`, `createdOn`, `updatedOn`, `approvedOn`, `rejectedOn`.
+Fields: `organizationId`, `ownerId`, `name`, `status`, `logoUrl`, `createdOn`, `updatedOn`, `approvedOn`, `rejectedOn`. Note: `description` and `website` do not exist in the DynamoDB schema — they are not present in the Go struct or DynamoDB records and are not migrated.
 
 ---
 
@@ -448,17 +448,8 @@ All require `LEDGER_AUTHORIZATION_TOKEN` Bearer header.
 - Purpose: manages Expensify expense policies for Crowdfunding projects; handles beneficiary lifecycle, policy creation/updates, expense approval/rejection notifications
 
 **OpenSearch dependency — migration plan (see OQ-7):**
-- On CF release day: RS switches `projects`/`entities`/`lff-users` index reads to direct SQL on CF Postgres (`crowdfunding` schema, read-only role)
-- CF release + 2 weeks: RS migrates `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets` to `reimbursement` schema on CF Postgres; OpenSearch decommissioned
-
----
-
-## lfx-v1-sync-helper
-
-- Purpose: real-time bidirectional sync between LFX v1 (legacy) and LFX One (v2) via NATS KV
-- Syncs: project metadata and committee data only
-- Does NOT sync: Crowdfunding donations, subscriptions, organizations, or Ledger transactions
-- Not useful for Crowdfunding DB migration — purpose-built for v1↔v2 platform metadata
+- On CF release day (Phase 1): RS switches `projects`/`entities`/`lff-users` index reads to three internal HTTPS endpoints on the CF Go API (`X-Internal-Token` auth). No direct Postgres access — RS is a Lambda in a separate AWS VPC and cannot reach the shared RDS.
+- When RS moves to Kubernetes (Phase 2, timeline TBD): RS gets its own database on the shared RDS (not a schema on CF Postgres), migrates its three OpenSearch indices (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) to its own Postgres, and switches CF data reads from the Phase 1 HTTP endpoints to a read-only role on the `crowdfunding` schema. OpenSearch decommissions at this point — not before.
 
 ---
 

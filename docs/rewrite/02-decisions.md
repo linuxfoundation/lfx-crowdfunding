@@ -44,9 +44,6 @@ Update this file when decisions change — note what changed and why.
 - CII badge validation (not in initial release UI)
 - Diversity API integration
 - Vulnerability API integration
-- `travel_fund` as a distinct fund type (the 26 DynamoDB `entityType = 'other'` rows are stored as `initiative_type = 'other'` during migration — they do not display as "General Fund")
-- `initiative` as a distinct fund type (merged into `general fund` during migration)
-- `community` entity type (3 rows from 2019, all declined/submitted; migrated as `initiative_type = 'community'` — no active UI, no new rows expected)
 
 ---
 
@@ -62,27 +59,17 @@ The CF Postgres instance has one schema:
 
 - `crowdfunding` — owned by CF Go API (initiatives, orgs, subscriptions, donations, users)
 
-There is no `reimbursement` schema on the CF Postgres instance. The Reimbursement Service is a Lambda running in a separate AWS VPC and cannot reach the shared LFX v2 RDS (which is `publicly_accessible = false`, reachable only from within the K8s cluster VPC). Co-locating RS tables on CF Postgres would require making the shared RDS publicly accessible or establishing cross-account VPC peering — both unacceptable.
+RS continues using OpenSearch for its own three tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) until it moves to Kubernetes. For the initial CF release, RS reads CF-owned data via three narrow internal HTTP endpoints on the CF Go API. See OQ-7 for the migration plan.
 
-RS continues using OpenSearch for its own three tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) until it moves to Kubernetes. When RS moves to K8s it will get its own database on the shared RDS via the same `lfx-v2-opentofu` pattern as CF (one four-line entry in `postgres.tf`). At that point RS can also read CF data directly from the `crowdfunding` schema via a read-only Postgres role.
+Ledger Service keeps its own separate Postgres DB (Ledger DB) in a separate AWS account. It is not changed in the initial release.
 
-For the initial CF release, RS reads CF-owned data (project/entity/user lookups) via three narrow internal HTTP endpoints on the CF Go API — the same network path RS uses today for other CF calls, over public HTTPS. See OQ-7 for the migration plan.
+Ledger DB co-location and raw table mirroring (cross-account DB access) were both considered and rejected by the architect (Eric, May 2026) — see OQ-18. The confirmed approach is stats-sync via Ledger HTTP API.
 
-Ledger Service keeps its own separate Postgres DB (Ledger DB). It is not migrated in the initial release. CF calls the Ledger HTTP API read-only for transaction stats and balance data — exactly as today.
+**Confirmed approach:** a `ledger-stats-sync` K8s CronJob calls the Ledger HTTP API to sync pre-aggregated financial stats per initiative and stores them as cached columns on `crowdfunding.initiatives`. Cached columns enable sorting and filtering by financial metrics (most funded, close to goal) at query time with a simple index scan. The full set of stats columns (amount raised, backer count, subscription totals, etc.) must be defined after UI design review — see OQ-19 and OQ-11.
 
-Future (post-initial-release): Ledger DB merges into Crowdfunding DB as a `ledger` schema on the same Postgres instance. At that point `project_funding_summary` view becomes active and the Ledger HTTP API call for balance data is replaced by a direct SQL query. This is a separate tracked project, not part of the initial release.
+### `projects` + `entities` → unified `initiatives` table
 
-Rationale: co-locating Ledger DB now requires migrating Ledger's Postgres data, reconfiguring Ledger Service (a change we want to avoid), and coordinating two cutover windows simultaneously. The tech debt of keeping one HTTP call is minimal and localized. Deliver CF first, migrate Ledger after.
-
-### `projects` + `funds` → unified `initiatives` table
-
-The old `projects` and `funds` tables are merged into a single `crowdfunding.initiatives` table with an `initiative_type` discriminator column.
-
-`initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif` | `other` (26 legacy migrated rows) | `community` (3 legacy migrated rows)
-
-Rationale: all initiative types share the same donor/subscription FK, the same Ledger balance lookup via original DynamoDB string ID, the same status workflow, and the same discovery/search surface. Two tables required a polymorphic FK (`project_id OR fund_id`) with a CHECK constraint and no hard FK enforcement. One table gives a clean `initiative_id` FK on subscriptions and donations, simpler queries, and a unified search/discovery endpoint.
-
-Type-specific sparse columns (e.g. `event_start_date`, `jobspring_project_id`, `city`) are nullable and only populated for the relevant `initiative_type`. This is the standard discriminated-union pattern for a sparse table — preferable to two tables with a UNION when the shared columns dominate, which they do here.
+The old `projects` and `entities` tables are merged into a single `crowdfunding.initiatives` table with an `initiative_type` discriminator column (`project` | `mentorship` | `general fund` | `event` | `ostif`; legacy: `other`, `community`). Type-specific sparse columns are nullable. See Domain Model section for full type definitions and field ownership rules.
 
 ### Budget categories → normalized `initiative_goals` child table
 
@@ -105,7 +92,7 @@ CREATE TABLE initiative_goals (
 );
 ```
 
-Projects produce up to 8 rows (one per fixed category). Entities produce one row per element in `entity.Goals[]`. Mentorship-specific data (skills, terms, mentors, custom term) lives in the dedicated child tables: `initiative_mentors`, `initiative_program_info_skills`, `initiative_program_info_terms`, `initiative_program_info_custom_term`.
+Projects produce up to 8 rows (one per fixed category). Entities produce one row per element in `entity.Goals[]`. Mentorship-specific data (skills, terms, mentors, config, custom term) lives in the dedicated child tables: `initiative_mentors`, `initiative_program_info_skills`, `initiative_program_info_terms`, `initiative_program_info_config`, `initiative_program_info_custom_term`.
 
 **`total_annual_goal_in_cents`** is derived at read time:
 ```sql
@@ -140,49 +127,20 @@ Rationale: max donation is $999,999.99 = 99,999,999 cents, which fits in `int4` 
 
 Rationale: they represent different Stripe object types (`Subscription` vs `Charge`), have different lifecycles (recurring vs one-time), different cancellation/update logic, and different fields (frequency, stripe_subscription_id on subscriptions; stripe_charge_id on donations). Merging would create nullable columns and make queries less obvious.
 
-### `amount_raised_in_cents` — cached column for initial release, view post-release
+### Ledger-derived financial fields — stats-sync cached columns
 
-Until Ledger DB is co-located, `amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob.
+Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives`, kept fresh by the `ledger-stats-sync` CronJob (hourly) that calls the Ledger HTTP API. The full set of stats columns must be defined after UI design review (see OQ-11 and OQ-19) — at minimum `amount_raised_in_cents` via `GET /balance/{id}`. Additional fields (backer count, subscription totals, etc.) require new Ledger API endpoints, new cached columns, and CronJob changes.
 
-**Sole mechanism: `amount-raised-sync` CronJob (hourly)**
+`amount_raised_in_cents` is the only stats column defined for the initial release. It is the only mechanism that reflects Expensify debit-side disbursements (no Stripe event), donations/renewals, and manual Ledger corrections.
 
-The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{id}` for all published initiatives, updating `amount_raised_in_cents`. It uses `initiatives.id` as the Ledger `{id}`. For migrated initiatives, that means: if the legacy DynamoDB ID was already UUID-form, `initiatives.id` matches that original ID; otherwise `initiatives.id` is the deterministic UUID generated during migration via the `uuid5` mapping, not the original non-UUID DynamoDB string. For post-cutover initiatives with no DynamoDB origin, `id` is the Postgres UUID (pending OQ-15 confirmation). It is the **only** mechanism for keeping `amount_raised_in_cents` current. It covers all balance change sources:
+The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
-- **Expensify disbursements** — when beneficiaries draw funds, Ledger records a DEBIT. This produces no Stripe event. Without the cron, `amount_raised_in_cents` would only ever increase, never reflecting disbursements. This is a correctness requirement, not optional.
-- **Donations and subscription renewals** — Stripe charges are processed by Ledger's own webhook. The cron reads the authoritative balance from Ledger after Ledger has processed it.
-- **Ledger corrections** — manual transaction corrections produce no CF signal; the cron picks them up on the next run.
+**Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SIGNING_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
 
-The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API. It handles only `customer.subscription.deleted` (cancel subscription in Postgres). It does not call `GET /balance/` — that is the cron's job. Rationale: a Stripe webhook triggering a Ledger API call requires a 5-second delay to avoid a race condition with Ledger's own webhook handler — a timing hack. The hourly cron makes this unnecessary and gives the same freshness guarantee with simpler code.
+The cron UPDATE must **not** touch `updated_on` — background reconciliation must not produce false-positive change signals for Fivetran, RS, or audit logs.
 
-The cron UPDATE must **not** include `updated_on` in the SET clause. Background reconciliation is not a meaningful initiative change and must not produce false-positive change signals for Fivetran sync, RS bulk endpoint, or audit logs:
+**Cutover:** run `ledger-stats-sync` once manually before DNS cutover to pre-populate stats columns for all migrated published initiatives. See migration plan Phase 4. Stats columns are `NULL` before the first run — display as `0`. See OQ-15 for post-cutover ID strategy.
 
-```sql
--- correct: updated_on is not touched
-UPDATE crowdfunding.initiatives
-SET amount_raised_in_cents = $1
-WHERE id = $2
-```
-
-**`NULL` treated as `0` in display layer**
-
-`amount_raised_in_cents` is `NULL` on a new initiative before the first cron run after a donation. Display as `0`. No spinner or special-case Ledger call needed.
-
-**Migration cutover requirement**
-
-The `amount-raised-sync` CronJob must be run once manually as part of the cutover procedure, before DNS switches to the new system. This pre-populates `amount_raised_in_cents` for all 1,374 migrated published initiatives so no card incorrectly shows `$0 raised` on day one. See migration plan Phase 4.
-
-**Open question (OQ-15): ID for post-cutover initiatives**
-
-New initiatives created after cutover have no DynamoDB origin and therefore no original string ID. See OQ-15 in `03-open-questions.md`.
-
-**Migration path**
-
-When Ledger DB is co-located on the same Postgres instance (post-initial-release):
-- Add the `initiative_funding_summary` view as a new migration
-- Remove the `amount_raised_in_cents` column
-- Remove the `amount-raised-sync` CronJob
-
-No API contract changes required — the column and the view return the same value.
 
 ### No ORM — sqlc for type-safe queries
 
@@ -196,7 +154,7 @@ GitHub stats (forks, stars, open issues) are display-only metrics on project car
 
 When the Go API serves a project detail response, it checks `github_stats->>'fetched_at'` against a 6-hour TTL. If stale (or absent), it fetches fresh data from the GitHub API, writes it back to `github_stats`, and returns it. If the GitHub API is unavailable, it returns the cached value without error.
 
-Rationale: a dedicated CronJob binary, Dockerfile, and K8s CronJob manifest for 82 GitHub API calls every 6 hours is disproportionate overhead. Lazy refresh is simpler, requires no separate deployment artifact, and produces identical staleness characteristics (6h TTL either way). The only tradeoff is ~200ms added latency for the first page load after TTL expiry — acceptable for display-only vanity metrics.
+Rationale: a dedicated CronJob for ~82 projects is disproportionate overhead. Lazy refresh is simpler, requires no separate deployment artifact, and produces identical staleness characteristics.
 
 ### `migrate_dynamo_to_postgres.py` — migration tool
 
@@ -260,37 +218,15 @@ New system: field ownership split enforced at the API layer (`PATCH /v1/me/initi
 
 ### Type consolidations (applied during migration)
 
-| Old DynamoDB type | New `initiative_type` | Rationale |
-|---|---|---|
-| `project` (with `jobspringProjectID`) | `mentorship` | Explicit type; was previously inferred from field presence |
-| `project` (without `jobspringProjectID`) | `project` | Unchanged |
-| `initiative` | `general fund` | UI already labeled these "General Fund"; backend type was an alias |
-| `general-fund` | `general fund` | Normalize hyphen, same concept |
-| `other` | `other` | Unchanged — 26 entity rows with DynamoDB `entityType = 'other'` stored as-is |
-| `event` | `event` | Unchanged |
-| `ostif` | `ostif` | Unchanged |
-| `community` | `community` | Unchanged — 3 rows from 2019 migrated as-is; no active UI, no new rows expected |
-
-### `general fund` vs `initiative` (old type) — same thing
-
-In the old system: `initiative` was the backend type string; "General Fund" was the UI label; the subscription service explicitly mapped `'general fund'` → `ExpenseCategory.INITIATIVE`. They were always the same concept. The new schema uses `general fund` everywhere and drops the alias. Note: `initiative` as an `initiative_type` value does NOT exist — the table is named `initiatives` but the active type values are `project`, `mentorship`, `general fund`, `event`, `ostif`. Legacy migrated rows also carry `other` (26) and `community` (3).
+Key non-obvious mappings: `project` rows with `jobspringProjectID` → `mentorship`; `initiative` and `general-fund` DynamoDB types → `general fund`; `other` entity rows (26) and `community` rows (3) stored as-is. See `db/scripts/migrate_dynamo_to_postgres.py` for the full mapping.
 
 ### Budget goals — `initiative_goals` child table, mentorship data in dedicated tables
 
-All initiative budget goals are stored in the `initiative_goals` child table (one row per category per initiative). Mentorship-specific metadata lives in four additional dedicated tables: `initiative_mentors`, `initiative_program_info_skills`, `initiative_program_info_terms`, `initiative_program_info_config`, and `initiative_program_info_custom_term`.
+All initiative budget goals are stored in the `initiative_goals` child table (one row per category per initiative). Mentorship-specific metadata lives in five additional dedicated tables: `initiative_mentors`, `initiative_program_info_skills`, `initiative_program_info_terms`, `initiative_program_info_config`, and `initiative_program_info_custom_term`.
 
 **Project-type initiatives** have up to 8 `initiative_goals` rows with fixed names: `development`, `marketing`, `meetups`, `travel`, `bugBounty`, `documentation`, `other`, `mentee`.
 
 **Mentorship-type initiatives** have one `initiative_goals` row with `name = 'mentee'` carrying the `amount_in_cents` goal, plus rows in the mentor/skills/terms tables for program metadata.
-
-**Migration implication:** the migration script reads `data.projectDetails.mentee` (nested) for mentorship projects — NOT `data.mentee` at the top level. Reading from the wrong path silently drops all mentorship metadata. This was the bug that caused the first migration pass to miss all 1,486 reclassified rows.
-
-### `status` normalization
-
-DynamoDB has dirty status values: `'hide'` (13 rows) and `'hidden'` (1 row) coexist. Normalize during migration:
-- `'hide'` → `'hidden'`
-
-Production status values observed: `submitted`, `published`, `declined`, `hidden`. The schema column is `VARCHAR(50)` with no CHECK constraint.
 
 ---
 
@@ -317,19 +253,44 @@ DNS cutover at go-live. Old and new systems must not run concurrently on the sam
 
 ---
 
+## Post-Release Cleanup Convention
+
+Some code in the initial release is intentionally temporary — legacy shims, compatibility wrappers, or features kept alive only until a dependent service migrates. To make the post-release cleanup tractable, all such code must be tagged at the point of writing using a standard `TODO(<label>)` comment so it can be found with a single `grep`.
+
+### Tag convention
+
+```
+// TODO(<label>): <one-line reason>
+// <what to do when the trigger is met and any context needed to act on it>
+```
+
+Tags go on the first line of the relevant handler, function, or block — not on a line inside the implementation. This makes `grep -rn 'TODO(label)'` return exactly the entry points, not noise.
+
+### Labels in use
+
+| Label | Trigger for removal | What to remove |
+|---|---|---|
+| `TODO(ledger-k8s)` | Ledger Service migrated to Kubernetes and updated to call `/v1/initiatives/{id}` | `GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}` legacy shim handlers and their middleware |
+| `TODO(rs-k8s)` | Reimbursement Service migrated to Kubernetes | Internal RS-facing HTTP endpoints, any RS-specific auth middleware, OpenSearch queue writes |
+| `TODO(post-cutover)` | Old LFF Lambda stack decommissioned | DynamoDB string ID → UUID resolution fallback in any endpoint that accepts legacy IDs; `source_dynamo_table` column and any code that reads it |
+
+Add new labels to this table when new temporary code is introduced. Each label must have a named trigger (a concrete event, not "someday") and a named owner or Jira epic if one exists.
+
+### Finding all cleanup points
+
+```bash
+grep -rn 'TODO(' cmd/ internal/ | grep -E 'TODO\((ledger-k8s|rs-k8s|post-cutover)\)'
+```
+
+Run this after each follow-on milestone to find what can now be deleted.
+
 ## Backend
 
 ### Architecture — separate Go API, not embedded in Nuxt
 
 The backend is a **standalone Go HTTP service**, separate from the Nuxt frontend. Business logic (DB queries, Stripe, webhooks, email) lives in Go. Nuxt's server layer handles auth (PKCE, HTTP-only cookies, session) and calls the Go API to build pages.
 
-This was explicitly considered and rejected: embedding all backend logic inside Nuxt's server routes (as suggested during architecture review) would couple the UI framework to payment processing, Stripe webhook handling, and LFX One integration in ways that are fragile and hard to reverse. Specifically:
-
-- **Stripe webhooks** must be handled by a stable, dedicated HTTPS endpoint — not a Nuxt server route subject to SSR configuration changes
-- **LFX One integration** — LFX One's Express BFF may call the CF API directly (see LFX One integration decision); this requires an independently addressable service, not a Nuxt route
-- **Go is the team's existing language** — the codebase, migration tooling, and team knowledge are all Go; a TypeScript rewrite of business logic adds risk with no benefit
-
-Nuxt is the BFF for the CF frontend. The Go API is the resource service for all transactional logic.
+Embedding business logic in Nuxt server routes was considered and rejected — Stripe webhooks require a stable dedicated endpoint, LFX Self Serve may call the CF API directly, and Go is the team's existing language. Nuxt is the BFF for the CF frontend; the Go API is the resource service for all transactional logic.
 
 ### Go — same language, same patterns
 
@@ -347,7 +308,7 @@ All code lives in one repository (monorepo). Each entrypoint under `cmd/` builds
 |---|---|---|
 | `cmd/api/` | `Dockerfile.api` | `Deployment` |
 | `cmd/mentorship-sync/` | `Dockerfile.mentorship-sync` | `CronJob` |
-| `cmd/amount-raised-sync/` | `Dockerfile.amount-raised-sync` | `CronJob` |
+| `cmd/ledger-stats-sync/` | `Dockerfile.ledger-stats-sync` | `CronJob` |
 | `cmd/migrate/` | `Dockerfile.migrate` | one-off `Job` |
 
 Rationale: a single container serving both HTTP requests and being invoked as a CronJob (via a flag) conflates two distinct runtime responsibilities. Separate images are minimal, contain only the code they need, and make it obvious what each K8s resource is doing. Shared business logic in `internal/` is compiled into each binary — no duplication of source, no runtime coupling.
@@ -356,9 +317,32 @@ Rationale: a single container serving both HTTP requests and being invoked as a 
 
 Keep Chi. No reason to change.
 
+### HTTP caching — public endpoints use `Cache-Control: public`
+
+Reviewed with Eric Searcy (chief architect, May 2026). Any Go API endpoint that serves public data (i.e. the response is identical regardless of whether the caller is authenticated) must return `Cache-Control: public, max-age=<N>` with no `Vary: Cookie`. This lets CDN edge nodes, corporate forward proxies, and browsers all cache and reuse the response without hitting the origin.
+
+**Rules:**
+
+- **Public endpoints** (anonymous-safe responses, same content for all callers): `Cache-Control: public, max-age=<N>`. Do NOT include `Vary: Cookie`. Include an `ETag` header (hash of the response body) so clients and CDN pops can do conditional `If-None-Match` revalidation and receive 304s instead of re-fetching the full payload.
+- **Private / authenticated endpoints** (response varies by user identity or contains personal data): `Cache-Control: private, max-age=<N>`. Do not expose to CDN caches. Browser caching is acceptable — `private` ensures the response is only stored by the end-user's browser, not shared caches. Use `must-revalidate` if stale responses must never be served.
+- **Unauthenticated view of a public page that also has an authenticated view**: serve `Vary: Cookie` so CDN does not re-serve an anonymous-user response to a logged-in user with a different cookie.
+
+**What qualifies as public:** initiative listing (`GET /v1/initiatives`), initiative detail (`GET /v1/initiatives/{id}`), backer list, organization detail — any read endpoint that does not expose per-user data.
+
+**ETag implementation:** compute `ETag` as the hex-encoded MD5 or xxHash of the JSON response body. Chi middleware is the right place to intercept the response writer, capture the body, hash it, and set the header. Return 304 if the request `If-None-Match` matches.
+
+**`stale-while-revalidate`:** For high-traffic list endpoints (e.g. the initiative discovery page), set `Cache-Control: public, max-age=60, stale-while-revalidate=300`. The CDN serves the cached copy immediately and asynchronously re-fetches in the background — users are never blocked on origin latency.
+
+**ValKey / in-app caching:** Not used for the initial release. HTTP caching at the CDN layer provides equivalent or better benefits without introducing a second cache TTL to manage. Revisit only if origin load data (Datadog) shows a specific bottleneck that HTTP caching cannot address.
+
+**Why this matters for CF specifically:** initiative listing is accessible to unauthenticated users (search engines, anonymous visitors, link previews). Without public caching, every card scroll triggers an origin hit. With `Cache-Control: public` + `stale-while-revalidate`, the CDN serves most traffic — origin only sees revalidation requests, not full payloads.
+
 ### Ledger integration → keep calling Ledger HTTP API
 
 The new Go service calls the Ledger HTTP API (read-only GET calls) exactly as LFF does today. LFF has never written to Ledger directly — Ledger gets its data from its own Stripe/Expensify webhooks. No change to this contract.
+
+**Donation and subscription acknowledgement emails are sent by Ledger, not CF.**
+This was migrated in FUND-1055. LFF kept stub implementations of `SendDonationSubscriptionEmail`, `SendDonationNoticeForOwner`, etc. that return `nil` immediately — they exist only to avoid changing callers. The new CF service must not implement these methods at all. CF's email responsibilities are: initiative/entity approval and rejection, expense approval, invoice notifications to the internal CB team, security audit submission confirmations, and GitHub Connect confirmations. Everything donation/subscription-acknowledgement-related is Ledger's job.
 
 **Ledger calls CF HTTP API for notification emails — three endpoints, auth header, legacy ID:**
 Ledger's `SendNotifications()` function calls the CF API to resolve project name, user name, and org name for donation confirmation emails. It calls three endpoints using the `project_id` / `user_id` / `organization_id` values stored in the Ledger DB:
@@ -366,6 +350,18 @@ Ledger's `SendNotifications()` function calls the CF API to resolve project name
 - `GET /v1/projects/{id}` — resolves project name and owner details
 - `GET /v1/entities/{id}` — fallback if project lookup returns empty
 - `GET /v1/organizations/{id}` — resolves org name for org/invoice donations (called unauthenticated — no auth header sent; must remain a public endpoint)
+
+These three routes are **Ledger-only legacy shims** — they exist solely because the Ledger Service has these URLs hardcoded and cannot be changed without a Ledger PR. They are not part of the public CF API and should not be used by any other caller. When the Ledger Service is migrated to Kubernetes, it must be updated to call `GET /v1/initiatives/{id}` instead, and these three routes must be removed.
+
+Mark each handler in the Go code with:
+
+```go
+// TODO(ledger-k8s): remove once Ledger Service is migrated to Kubernetes.
+// Ledger calls this path from fundspring.go to resolve initiative name/owner for notification emails.
+// Replace with GET /v1/initiatives/{id} in the Ledger Service, then delete this handler.
+```
+
+Search for `TODO(ledger-k8s)` to find all removal points.
 
 After DNS cutover, these requests hit the new CF Go API. If any of these lookups fail, donation confirmation emails silently fail (Ledger logs a Slack error but posts the transaction anyway).
 
@@ -375,7 +371,7 @@ Ledger authenticates its CF API calls with a custom `x-ledger-auth` header (`fun
 
 The new CF Go API must **not** implement `x-ledger-auth` support. Instead, the Ledger Service must be updated to send a standard `Authorization: Bearer <token>` header before CF cutover. This is a one-line change in `fundspring.go:getToken()` and `request.Header.Set(...)`. Rationale: accepting a non-standard auth header creates a confusing third auth mechanism alongside Auth0 Bearer and `X-Internal-Token` (RS). `Authorization: Bearer` is the HTTP standard and is handled correctly by every proxy, middleware, and security scanner.
 
-The CF Go API accepts `Authorization: Bearer` on the project/entity detail endpoints and validates the token against a shared secret (`CF_LEDGER_AUTH_TOKEN` env var, same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`). This is a service-to-service shared secret, not a JWT — validated with a direct string comparison in a dedicated middleware applied only to these endpoints.
+The CF Go API accepts `Authorization: Bearer` on the project/entity detail endpoints and validates the token against a shared secret (`CF_LEDGER_AUTH_TOKEN` env var, same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`). This is a service-to-service shared secret, not a JWT — validated with a constant-time comparison (e.g. `hmac.Equal`) in a dedicated middleware applied only to these endpoints. Do not use `==` or `strings.EqualFold` — both are vulnerable to timing attacks.
 
 **`GET /v1/organizations/{id}` — Ledger bug: called unauthenticated**
 
@@ -385,7 +381,9 @@ Ledger's `GetOrganizationName()` (`fundspring.go:63`) uses plain `http.Get()` wi
 The `project_id` stored in the Ledger DB is the old DynamoDB string ID. The new CF Go API must accept both the original DynamoDB string ID and the Postgres UUID on `GET /v1/projects/{id}` and `GET /v1/entities/{id}`, resolving via the DynamoDB string ID first. This covers both existing rows (keyed by original ID) and post-cutover rows (keyed by UUID — see OQ-15).
 
 **Stripe metadata must use the correct project ID for new donations after cutover:**
-See OQ-15. The ID placed in Stripe object metadata fields `projectID` / `entityID` at charge-creation time determines what `project_id` gets written to the Ledger DB and what key `GET /balance/{id}` must use. This is unresolved for post-cutover initiatives and is the subject of OQ-15.
+The ID placed in Stripe object metadata fields `projectID` / `entityID` at charge-creation time determines what `project_id` gets written to the Ledger DB and what key `GET /balance/{id}` must use.
+
+For post-cutover initiatives (no DynamoDB origin), the recommended approach is to use the Postgres UUID directly as the project ID: CF puts the UUID in Stripe metadata at charge-creation time; Ledger stores it verbatim; `GET /balance/{uuid}` finds it because Ledger's regex (`^[0-9a-zA-Z\_\-]+$`) accepts UUIDs and the `WHERE project_id = $1` query matches. No Ledger code changes required. Lewis must confirm no Ledger code path assumes `project_id` is in a non-UUID format before this is adopted — see OQ-15.
 
 This is an implementation constraint on the new CF Go API Stripe integration — must be enforced at code review.
 
@@ -411,8 +409,6 @@ CF is the financial custodian of donated funds. It collects money from donors an
 
 CF does not use beneficiary data for payment routing (Stripe charges are donor→program, not donor→beneficiary). The 24h sync delay is acceptable — mentees do not access funds until mid-term, months after approval.
 
-A 24h delay on beneficiary sync is acceptable by the same logic as program sync — mentees don't draw funds until mid-term, months after being approved.
-
 ### Mentorship UI — "available funds" display removed
 
 The Mentorship UI currently shows an "available funds" balance for each mentorship program, sourced from the CF API (which proxies Ledger). This display is removed and not carried into any future Mentorship rewrite.
@@ -429,26 +425,24 @@ This is **required for the initial release** — not "shortly after". A Jira tic
 
 Note: the `mentorship-sync` CronJob reads **Mentorship data from Snowflake into CF** — this is the Mentorship team's Fivetran responsibility, not CF's. CF→Snowflake is a separate Fivetran connector that CF DevOps owns.
 
-### LFX One integration — Snowflake (Option B) for initial release
+### LFX Self Serve integration — Snowflake via Fivetran
 
-The PM has requested CF data surfaces in LFX One ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). For the initial release, LFX One will read CF data from **Snowflake** (the same pattern used for My Trainings, My Meetings, etc.).
+The PM has requested CF data surfaces in LFX Self Serve ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). LFX Self Serve reads CF data from **Snowflake** via the Fivetran CF→Snowflake sync (the same pattern used for My Trainings, My Meetings, etc.).
 
-Rationale: the Snowflake pattern already exists in LFX One and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX One. This approach has no runtime dependency between LFX One and the CF API service.
+Rationale: the Snowflake pattern already exists in LFX Self Serve and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX Self Serve. This approach has no runtime dependency between LFX Self Serve and the CF API service. See OQ-11 for scope.
 
-Option A (LFX One calls CF Go API directly) was raised during the architecture review (Eric Searcy, May 2026) as a valid alternative once design is confirmed. This decision will be revisited once the LFX One UI design for CF widgets is delivered — see OQ-11.
-
-**No LFX One integration code will be written until:**
-1. The PM provides a UI design for the LFX One CF widgets (what data, what layout)
-2. The full list of CF data needed in LFX One is confirmed (see OQ-11)
+**No LFX Self Serve integration code will be written until:**
+1. The PM provides a UI design for the LFX Self Serve CF widgets (what data, what layout)
+2. The full list of CF data needed in LFX Self Serve is confirmed (see OQ-11)
 3. The Fivetran CF→Snowflake connector is live with production data
 
-**Future path (Option C):** Full platform stack integration (Traefik ingress, OpenFGA authorization, platform indexer, Query Service) is the long-term correct architecture for CF as an LFX v2 citizen. This is deferred post-initial-release and must be tracked as a separate Jira epic. It is not "later maybe" — it is a scheduled follow-on project.
+**Future path:** Full platform stack integration (Traefik ingress, OpenFGA authorization, platform indexer, Query Service) is the long-term correct architecture for CF as an LFX v2 citizen. This is deferred post-initial-release and must be tracked as a separate Jira epic. It is not "later maybe" — it is a scheduled follow-on project.
 
 ### Expensify sync — keep on old Lambda for initial release
 
 The `expensify-sync` cron job (SyncExpensifyHandler) pushes project/entity metadata to the Reimbursement Service. This is NOT end-user visible and NOT part of the initial release. The old Lambda continues running this job unchanged until the Reimbursement Service is migrated.
 
-**Constraint for future expensify-sync port:** When expensify-sync is eventually ported to the new CF service, it must send the old DynamoDB string ID (`projectId`) as the project ID to RS — not the new Postgres UUID. RS stores the project ID in Expensify as a custom reporting field and uses it as the policy lookup key. The Reimbursement Service has two project IDs hardcoded in `chrisProjectList` (service.go:197) for special Expensify handling (Kubernetes and CoreDNS — these projects route expense approval through Chris Aniszczyk as an auditor). These are DynamoDB-era project UUIDs (`2d438b9a...` = Kubernetes, `6705be57...` = CoreDNS — confirmed via RS Postman collection). RS receives and stores these IDs from LFF at policy-creation time (`POST /reimbursement/{projectID}`), where `projectID` is the DynamoDB `project.ProjectID`. Sending the new Postgres UUID instead would silently break the `chrisProjectList` check and the Expensify approval chain for these two projects. The original DynamoDB ID is not recoverable from the Postgres `initiatives.id` UUID by inverting the deterministic `uuid5` mapping; if the new service needs to send the legacy ID after migration, that DynamoDB `projectId` must be preserved explicitly in a dedicated column or mapping table during migration.
+**Constraint for future expensify-sync port:** When expensify-sync is eventually ported to the new CF service, it must send the original DynamoDB string ID (`projectId`) as the project ID to RS — not the new Postgres UUID. RS stores the project ID in Expensify as a custom reporting field and uses it as the policy lookup key; sending the Postgres UUID would silently break the approval chain. The original DynamoDB ID is not recoverable by inverting the `uuid5` mapping — it must be preserved explicitly in a dedicated column or mapping table during migration.
 
 ### EMAIL_DRY_RUN mode
 
@@ -461,12 +455,12 @@ CF does **not** integrate with the LFX v2 platform stack (Traefik gateway, Heimd
 This was reviewed with Eric Searcy (chief architect, May 2026). His position: participating in the access control graph is architecturally correct long-term but will slow down delivery significantly. Given the end-of-May deadline, standalone is the right call for initial release.
 
 **Tech debt created is bounded and intentional:**
-- CF's own JWT middleware → replaceable with Heimdall when Option C is implemented
+- CF's own JWT middleware → replaceable with Heimdall when full platform stack integration is implemented
 - CF's own Ingress → replaceable with Traefik HTTPRoute
 - Postgres FTS for search → stays; Query Service is additive, not a replacement
-- No OpenFGA types defined → must be designed and implemented as part of Option C
+- No OpenFGA types defined → must be designed and implemented as part of full platform stack integration
 
-**To keep Option C achievable:** access control intent must be documented now — who can do what to which resource — even though it is not implemented via OpenFGA yet. This is captured in the OpenFGA design notes below.
+**To keep the future platform integration achievable:** access control intent must be documented now — who can do what to which resource — even though it is not implemented via OpenFGA yet. This is captured in the OpenFGA design notes below.
 
 **Access control intent (for future OpenFGA model):**
 - `initiative` (project/mentorship/`general fund`/event/ostif): owner (creator) has writer; donors have no elevated access; CF admin has writer for approval flow
@@ -474,15 +468,15 @@ This was reviewed with Eric Searcy (chief architect, May 2026). His position: pa
 - `subscription` / `donation`: owned by the creating user; read-only to CF admin
 - Anonymous users: read-only access to published initiatives
 
-**Initiatives are decoupled from LFX project entities.** There is no FK or relationship linking a CF initiative to an LFX project in the permissions graph. Access is determined solely by `owner_id` (Auth0 subject) and `initiative_type`. Role inheritance from LFX project roles (e.g., project auditor → initiative writer) is not possible without adding a `project_id` FK — this is a design decision deferred to Option C.
+**Initiatives are decoupled from LFX project entities.** There is no FK or relationship linking a CF initiative to an LFX project in the permissions graph. Access is determined solely by `owner_id` (Auth0 subject) and `initiative_type`. Role inheritance from LFX project roles (e.g., project auditor → initiative writer) is not possible without adding a `project_id` FK — this is a design decision deferred to full platform stack integration.
 
 Consequence for non-LF projects (future): since initiatives are decoupled, supporting non-LF projects is a per-initiative policy decision, not a structural schema change.
 
-**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/initiatives`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when Option C is implemented.
+**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/initiatives`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when full platform stack integration is implemented.
 
-**LFX One integration auth:** For the initial release, LFX One reads CF data from Snowflake (Option B) — there are no live API calls from LFX One to the CF Go API. The question of how LFX One authenticates to the CF API (ID tokens, API key, M2M, Auth0 resource server) only arises if Option A or C is chosen. Deferred to OQ-11.
+**LFX Self Serve integration auth:** LFX Self Serve reads CF data from Snowflake — there are no live API calls from LFX Self Serve to the CF Go API. Auth between LFX Self Serve and the CF API is not needed until full platform stack integration (see below) is implemented. Deferred to OQ-11.
 
-**Option C** (full platform stack integration) is a post-initial-release tracked project — not "later maybe." File a Jira epic when initial release ships.
+**Full platform stack integration** is a post-initial-release tracked project — not "later maybe." File a Jira epic when initial release ships.
 
 ### Authorization model — initial release
 
@@ -559,25 +553,9 @@ Deferred. Can be added later as they are non-functional additions.
 
 Prototype: `https://github.com/jonathimer/lfx-crowdfunding-prototype` — treat as the design reference for the initial release UI. Sponsor Tiers shown in prototype are out of scope for initial release.
 
-### `/stripe` OAuth callback route — dropped (dead code)
-
-The old CF Angular app had a `/stripe` route (`RedirectingModule`) with an empty `ngOnInit()`. It appeared to be a Stripe Connect OAuth callback but has no logic — the component does nothing. Investigation of the backend confirmed that `ConnectOAuthAccount()` only handles `github` as a provider type; there is no Stripe Connect OAuth flow in the current codebase.
-
-The `/stripe/callback` route is **not ported** to the new Nuxt frontend. If Stripe Connect OAuth is ever needed in the future, it must be implemented from scratch. There is no existing implementation to migrate.
-
 ### `diversity` — budget category kept, Diversity API deferred
 
-`diversity` appears in two distinct and unrelated contexts:
-
-**1. `diversity` budget category (active, must be kept)**
-`diversity` is a valid entry in `entity_goals.json` (displayed as "Diversity Funding") and is used as a payment/subscription category in the current frontend and backend. Donors can designate their contribution to the `diversity` budget. This category exists in production data on `subscriptions` and `donations` DynamoDB records.
-
-`diversity` must be a valid `category` value on `crowdfunding.subscriptions` and `crowdfunding.donations` and must be migratable as an `initiative_goals` row — exactly as `development`, `marketing`, etc.
-
-**2. Diversity API integration (deferred)**
-The old system fetches demographic diversity stats (`malePercentage`, `femalePercentage`, etc.) from a separate Diversity API and displays them on the project page. This API integration is **deferred** — not in the initial release. It has nothing to do with the budget category above.
-
-Do not conflate these two: the Diversity API deferred flag does not mean the `diversity` budget category is removed. Keep the category; defer the API.
+`diversity` is both a budget category (active — used in production `subscriptions` and `donations` data, must be migrated as an `initiative_goals` row like `development`, `marketing`, etc.) and a separate Diversity API integration (deferred — fetches demographic stats for display on project pages). These are unrelated. The deferred API flag does not mean the budget category is removed.
 
 ---
 
@@ -596,7 +574,7 @@ Everything inside the "NEW" purple box in the architecture diagram is deployed t
 - Crowdfunding Go API — K8s Deployment + Service + Ingress
 - Crowdfunding Postgres DB — shared LFX v2 RDS instance; DevOps adds `crowdfunding` DB + role to `lfx-v2-opentofu`
 - `mentorship-sync` — K8s CronJob (daily or a few times/day)
-- `amount-raised-sync` — K8s CronJob (hourly)
+- `ledger-stats-sync` — K8s CronJob (hourly)
 
 Nothing in the initial release runs on Lambda or Serverless Framework.
 
@@ -610,9 +588,56 @@ From the app's perspective the connection string is `rds-postgres.lfx:5432` — 
 
 ### Secrets — External Secrets Operator + AWS Secrets Manager
 
-All secrets (DB credentials, Auth0 client secret, Stripe keys, GitHub OAuth secret, JWT secret, Mandrill key, Snowflake credentials) are stored in AWS Secrets Manager and synced into K8s Secrets by the External Secrets Operator. The service account uses IRSA (IAM Roles for Service Accounts) to authenticate to AWS Secrets Manager. This is the LFX platform standard — confirmed by reviewing ESO config in `lfx-v2-argocd` for existing services.
+All secrets are stored in AWS Secrets Manager and synced into K8s Secrets by the External Secrets Operator (ESO). The service account uses IRSA to authenticate to AWS Secrets Manager. This is the LFX platform standard.
 
 AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-secrets/crowdfunding/{env}/...` — confirm exact path with DevOps.
+
+#### Go API — required env vars
+
+| Env var | Description | Source / notes |
+|---|---|---|
+| `DATABASE_URL` | Postgres connection string for CF DB | Auto-provisioned via `lfx-v2-opentofu`; auto-rotated every 30 days |
+| `AUTH0_DOMAIN` | Auth0 tenant domain (e.g. `linuxfoundation.auth0.com`) | Same value as LFF `AUTH0_DOMAIN` |
+| `AUTH0_AUDIENCE` | Auth0 API audience for JWT validation | New — set when Auth0 API is configured for new CF app |
+| `STRIPE_CLIENT_SECRET` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
+| `STRIPE_WEBHOOK_SIGNING_SECRET` | Per-endpoint signing secret for `POST /v1/hooks/stripe` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
+| `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
+| `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
+| `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |
+| `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret | Same as LFF |
+| `CF_LEDGER_AUTH_TOKEN` | Shared secret for authenticating Ledger→CF API calls (`Authorization: Bearer`) | Same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`; must match what Ledger sends after the `fundspring.go` auth header fix |
+| `CF_RS_INTERNAL_TOKEN` | Shared secret for `X-Internal-Token` on RS-facing internal endpoints | New — must be provisioned in both CF and RS |
+| `CF_APPROVAL_SIGNING_SECRET` | HMAC secret for initiative/expense approval email links | New — replaces LFF `EMAIL_TOKEN_SIGNING_KEY` |
+| `CF_APPROVERS` | Comma-separated list of LFIDs who can approve initiatives | Replaces LFF `APPROVERS` env var |
+| `SNOWFLAKE_ACCOUNT` | Snowflake account identifier (for `mentorship-sync` CronJob) | Follow LFX platform pattern (see `lfx-lens` ArgoCD values) |
+| `SNOWFLAKE_USER` | Snowflake user for CF service account | New — to be provisioned by DevOps |
+| `SNOWFLAKE_PRIVATE_KEY` | Snowflake private key (key-pair auth) | New — LFX platform standard (no password auth) |
+| `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse name | Follow LFX platform pattern |
+| `SNOWFLAKE_ROLE` | Snowflake role for CF queries | New — to be provisioned by DevOps |
+| `LEDGER_API_URL` | Base URL of the Ledger HTTP API | Replaces LFF `TRANSACTIONS_API_URL` |
+| `EMAIL_DRY_RUN` | Set to `true` to suppress Mandrill calls (logs instead) | Non-secret config; used for testing with production data |
+| `CF_NOTIFICATION_SOURCE_EMAIL` | From address for outgoing emails | Replaces LFF `NOTIFICATION_SOURCE_EMAIL` |
+| `CF_ADMIN_EMAIL` | Admin contact email (used in approval flows) | Replaces LFF `ADMIN_EMAIL` |
+
+**Dropped from LFF (not needed in new system):**
+
+| LFF var | Reason dropped |
+|---|---|
+| `TRANSACTIONS_API_SECRET` / `BENEFICIARY_API_SECRET` | Replaced by `CF_LEDGER_AUTH_TOKEN` and `CF_RS_INTERNAL_TOKEN` with clearer names |
+| `SNS_PROJECT_TOPIC_ARN` | SNS/SQS dropped; Mentorship sync is Snowflake pull, not push |
+| `REIMBURSEMENTS_API_SECRET` / `CLIENT_SECRET` / `CLIENT_ID` / `AUTH0_URL` | RS integration is internal HTTP with `X-Internal-Token`; no Auth0 M2M needed from CF side |
+| `DIVERSITY_BASE_URL` | Diversity API integration deferred |
+| `JOBSPRING_API_URL` | Mentorship data now comes from Snowflake, not Jobspring HTTP API |
+| `STAGE` / `REGION` / `APP_NAME` | Lambda-era config; replaced by K8s environment convention |
+| `TRAVEL_SCHOLARSHIP_SLUG` / `DEFAULT_FUNDING_AMOUNT_IN_CENTS` | Audit whether still needed; likely hardcoded constants in the new service |
+
+#### Nuxt frontend — required env vars
+
+Already documented in the Frontend section above (`NUXT_AUTH0_*`, `NUXT_STRIPE_SECRET_KEY`, `NUXT_JWT_SECRET`, `NUXT_GITHUB_OAUTH_*`, `NUXT_PUBLIC_*`).
+
+#### Pre-cutover checklist item
+
+All Go API env vars must be provisioned in AWS Secrets Manager and verified via ESO before cutover. Add a smoke-test step that starts the Go service with `EMAIL_DRY_RUN=true` and confirms all required vars are present (the service panics on startup if any are missing — same pattern as LFF).
 
 ### Old Lambda stack runs in parallel during initial release
 

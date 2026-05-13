@@ -53,8 +53,8 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
 
   Background workers (K8s CronJobs):
   ┌──────────────────────────────────────────────────────┐
-  │  mentorship-sync    K8s CronJob (daily or few x/day) │
-  │  amount-raised-sync K8s CronJob (hourly)             │
+  │  mentorship-sync     K8s CronJob (daily or few x/day) │
+  │  ledger-stats-sync   K8s CronJob (hourly)             │
   └──────────────────────────────────────────────────────┘
 
 ━━━━━━━━━━━━━━━━━━━ UNCHANGED (Lambda / external) ━━━━━━━━━━━━━━━━━━
@@ -70,13 +70,6 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
   (no direct HTTP calls between Mentorship and CF)
 
   Old LFF Lambda + DynamoDB + OpenSearch  (parallel, until cutover)
-
-━━━━━━━━━━━━━━━━━━━━━ FUTURE (post-initial-release) ━━━━━━━━━━━━━━━━
-
-  Ledger DB merges into Crowdfunding DB as ledger.* schema.
-  Ledger Service reconfigured to point at combined Postgres.
-  project_funding_summary view becomes active.
-  CF API balance calls become direct SQL queries.
 ```
 
 ---
@@ -204,7 +197,7 @@ Public (accessible client-side):
 cmd/
 ├── api/                # HTTP server entrypoint
 ├── mentorship-sync/    # Snowflake CronJob entrypoint
-├── amount-raised-sync/ # amount_raised_in_cents reconciliation CronJob entrypoint
+├── ledger-stats-sync/  # Ledger financial stats CronJob entrypoint
 └── migrate/            # DB schema migration runner (golang-migrate)
 
 db/
@@ -249,10 +242,10 @@ When `EMAIL_DRY_RUN=true`:
 |---|---|---|---|
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
 | GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
-| `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{dynamo_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_in_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). |
+| `ledger-stats-sync` | CronJob | Every hour | Calls Ledger HTTP API to sync pre-aggregated financial stats as cached columns on `crowdfunding.initiatives`. **Required for correctness** — the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover. Initial release syncs `amount_raised_in_cents` only (`GET /balance/{id}`). Full set of stats columns (backer count, subscription totals, etc.) defined after UI design review — see OQ-11 and OQ-19. |
 
 Jobs removed from old system (not ported):
-- `amountraised` / `amountraised-entities` → replaced by Ledger HTTP API calls (same as today); will be replaced by `project_funding_summary` view once Ledger DB is co-located (post-initial-release)
+- `amountraised` / `amountraised-entities` → replaced by `ledger-stats-sync` CronJob
 - `export-projects`, `export-organizations`, `export-users`, `entities-sync` → OpenSearch dropped; search replaced by Postgres full-text search
 - `ledger-viewmodel` → no longer needed
 - `expensify-sync` → stays on old Lambda, not ported for initial release
@@ -265,15 +258,15 @@ Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-ow
 
 | Method | Path | Returns | Replaces | Used by |
 |---|---|---|---|---|
-| `GET` | `/internal/v1/initiatives?slug={slug}` | `{dynamo_id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
-| `GET` | `/internal/v1/initiatives?status=published` | `[{dynamo_id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
+| `GET` | `/internal/v1/initiatives?slug={slug}` | `{id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
+| `GET` | `/internal/v1/initiatives?status=published` | `[{id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
 | `GET` | `/internal/v1/users/{owner_id}` | `{id, email}` | `lff-users` reads | `getEmailBySlug()` |
 
 `X-Internal-Token` secret stored in AWS Secrets Manager, injected via ESO into both CF and RS at deploy time.
 
 **The bulk endpoint is release-blocking.** Once CF DNS cuts over, OpenSearch receives no new CF writes and goes stale. `RefreshTags()` must switch to the bulk endpoint on cutover day or new projects will never appear as Expensify tags — beneficiaries cannot submit expenses against them. This is a silent financial failure.
 
-The initiative identifier returned should be `initiatives.id` (Postgres UUID). For migrated initiatives with UUID-form DynamoDB IDs (the vast majority), this matches the original ID exactly. For the small number of non-UUID legacy IDs, RS must maintain a mapping if legacy DynamoDB string IDs are required in Expensify GL codes.
+`id` in the response is `initiatives.id` (Postgres UUID). For migrated initiatives whose DynamoDB ID was already UUID-form (the vast majority), `initiatives.id` is identical to the original DynamoDB string ID — RS can use it directly as the Expensify GL code. For the small number of non-UUID legacy IDs, `initiatives.id` is a `uuid5`-derived value that differs from the original DynamoDB string ID; RS must maintain a mapping in that case to match existing Expensify GL codes.
 
 ### Stripe Webhook
 
@@ -320,7 +313,7 @@ These endpoints do not need to exist in the new CF service. The old Lambda kept 
 All monetary values `bigint` (cents). All primary keys `uuid`. All timestamps `timestamptz`.
 
 **Terminology:**
-- `initiatives` — unified table for all fundable things; formerly split into `projects` and `funds`
+- `initiatives` — unified table for all fundable things; formerly split into `projects` and `entities`
 - `initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif` (plus legacy migrated: `other` | `community` — present in production data but no new rows expected)
 - `status` values: `submitted` | `published` | `declined` | `hidden`
 
@@ -335,10 +328,6 @@ Key structural notes:
 - `stripe_subscription_id` and `stripe_charge_id` are nullable `VARCHAR(255)` with no UNIQUE constraint in the schema; uniqueness is enforced by Stripe
 
 See `db/migrations/001_initial.up.sql` and `docs/rewrite/data-design_and_migration.md` for the full DDL and field-by-field rationale.
-
-### View: `initiative_funding_summary` (post-initial-release)
-
-Not part of the initial release. When Ledger DB is co-located on the same Postgres instance, a future migration will add this view, drop the `amount_raised_in_cents` column, and decommission the `amount-raised-sync` CronJob. The view SQL will be written at that point — it joins `ledger.transactions` with `crowdfunding.initiatives` on `project_id`.
 
 ### Indexes
 
@@ -380,7 +369,7 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 | Go HTTP API | `Deployment` + `Service` + `Ingress` | Chi router, long-running |
 | Crowdfunding Postgres | Shared AWS RDS instance | LFX standard — DevOps adds `crowdfunding` DB + role to existing `lfx-v2` RDS in `lfx-v2-opentofu/postgres.tf`; app connects via `rds-postgres.lfx:5432` |
 | mentorship-sync job | `CronJob` | Daily or a few times/day; Snowflake → CF Postgres |
-| amount-raised-sync job | `CronJob` | Every hour; reconciles `amount_raised_in_cents` from Ledger API |
+| ledger-stats-sync job | `CronJob` | Every hour; syncs financial stats from Ledger API into cached columns on `initiatives` |
 | Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
 | ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
 
