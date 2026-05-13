@@ -58,7 +58,7 @@ SPDX-License-Identifier: MIT
           type="solid"
           :size="16"
         />
-        <span class="text-sm">Failed to load featured initiatives.</span>
+        <span class="text-sm leading-5">Failed to load featured initiatives.</span>
       </div>
 
       <!-- Data rows -->

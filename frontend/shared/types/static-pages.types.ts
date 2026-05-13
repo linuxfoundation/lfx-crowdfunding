@@ -13,3 +13,14 @@ export interface FeaturedInitiative {
 export interface FeaturedInitiativesResponse {
   data: FeaturedInitiative[];
 }
+
+export interface InvestingCompany {
+  id: string;
+  name: string;
+  logoUrl?: string;
+  contributedCents: number;
+}
+
+export interface InvestingCompaniesResponse {
+  data: InvestingCompany[];
+}
