@@ -685,9 +685,56 @@ From the app's perspective the connection string is `rds-postgres.lfx:5432` — 
 
 ### Secrets — External Secrets Operator + AWS Secrets Manager
 
-All secrets (DB credentials, Auth0 client secret, Stripe keys, GitHub OAuth secret, JWT secret, Mandrill key, Snowflake credentials) are stored in AWS Secrets Manager and synced into K8s Secrets by the External Secrets Operator. The service account uses IRSA (IAM Roles for Service Accounts) to authenticate to AWS Secrets Manager. This is the LFX platform standard — confirmed by reviewing ESO config in `lfx-v2-argocd` for existing services.
+All secrets are stored in AWS Secrets Manager and synced into K8s Secrets by the External Secrets Operator (ESO). The service account uses IRSA to authenticate to AWS Secrets Manager. This is the LFX platform standard.
 
 AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-secrets/crowdfunding/{env}/...` — confirm exact path with DevOps.
+
+#### Go API — required env vars
+
+| Env var | Description | Source / notes |
+|---|---|---|
+| `DATABASE_URL` | Postgres connection string for CF DB | Auto-provisioned via `lfx-v2-opentofu`; auto-rotated every 30 days |
+| `AUTH0_DOMAIN` | Auth0 tenant domain (e.g. `linuxfoundation.auth0.com`) | Same value as LFF `AUTH0_DOMAIN` |
+| `AUTH0_AUDIENCE` | Auth0 API audience for JWT validation | New — set when Auth0 API is configured for new CF app |
+| `STRIPE_CLIENT_SECRET` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
+| `STRIPE_WEBHOOK_SIGNING_SECRET` | Per-endpoint signing secret for `POST /v1/hooks/stripe` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
+| `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
+| `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
+| `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |
+| `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret | Same as LFF |
+| `CF_LEDGER_AUTH_TOKEN` | Shared secret for authenticating Ledger→CF API calls (`Authorization: Bearer`) | Same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`; must match what Ledger sends after the `fundspring.go` auth header fix |
+| `CF_RS_INTERNAL_TOKEN` | Shared secret for `X-Internal-Token` on RS-facing internal endpoints | New — must be provisioned in both CF and RS |
+| `CF_APPROVAL_SIGNING_SECRET` | HMAC secret for initiative/expense approval email links | New — replaces LFF `EMAIL_TOKEN_SIGNING_KEY` |
+| `CF_APPROVERS` | Comma-separated list of LFIDs who can approve initiatives | Replaces LFF `APPROVERS` env var |
+| `SNOWFLAKE_ACCOUNT` | Snowflake account identifier (for `mentorship-sync` CronJob) | Follow LFX platform pattern (see `lfx-lens` ArgoCD values) |
+| `SNOWFLAKE_USER` | Snowflake user for CF service account | New — to be provisioned by DevOps |
+| `SNOWFLAKE_PRIVATE_KEY` | Snowflake private key (key-pair auth) | New — LFX platform standard (no password auth) |
+| `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse name | Follow LFX platform pattern |
+| `SNOWFLAKE_ROLE` | Snowflake role for CF queries | New — to be provisioned by DevOps |
+| `LEDGER_API_URL` | Base URL of the Ledger HTTP API | Replaces LFF `TRANSACTIONS_API_URL` |
+| `EMAIL_DRY_RUN` | Set to `true` to suppress Mandrill calls (logs instead) | Non-secret config; used for testing with production data |
+| `CF_NOTIFICATION_SOURCE_EMAIL` | From address for outgoing emails | Replaces LFF `NOTIFICATION_SOURCE_EMAIL` |
+| `CF_ADMIN_EMAIL` | Admin contact email (used in approval flows) | Replaces LFF `ADMIN_EMAIL` |
+
+**Dropped from LFF (not needed in new system):**
+
+| LFF var | Reason dropped |
+|---|---|
+| `TRANSACTIONS_API_SECRET` / `BENEFICIARY_API_SECRET` | Replaced by `CF_LEDGER_AUTH_TOKEN` and `CF_RS_INTERNAL_TOKEN` with clearer names |
+| `SNS_PROJECT_TOPIC_ARN` | SNS/SQS dropped; Mentorship sync is Snowflake pull, not push |
+| `REIMBURSEMENTS_API_SECRET` / `CLIENT_SECRET` / `CLIENT_ID` / `AUTH0_URL` | RS integration is internal HTTP with `X-Internal-Token`; no Auth0 M2M needed from CF side |
+| `DIVERSITY_BASE_URL` | Diversity API integration deferred |
+| `JOBSPRING_API_URL` | Mentorship data now comes from Snowflake, not Jobspring HTTP API |
+| `STAGE` / `REGION` / `APP_NAME` | Lambda-era config; replaced by K8s environment convention |
+| `TRAVEL_SCHOLARSHIP_SLUG` / `DEFAULT_FUNDING_AMOUNT_IN_CENTS` | Audit whether still needed; likely hardcoded constants in the new service |
+
+#### Nuxt frontend — required env vars
+
+Already documented in the Frontend section above (`NUXT_AUTH0_*`, `NUXT_STRIPE_SECRET_KEY`, `NUXT_JWT_SECRET`, `NUXT_GITHUB_OAUTH_*`, `NUXT_PUBLIC_*`).
+
+#### Pre-cutover checklist item
+
+All Go API env vars must be provisioned in AWS Secrets Manager and verified via ESO before cutover. Add a smoke-test step that starts the Go service with `EMAIL_DRY_RUN=true` and confirms all required vars are present (the service panics on startup if any are missing — same pattern as LFF).
 
 ### Old Lambda stack runs in parallel during initial release
 
