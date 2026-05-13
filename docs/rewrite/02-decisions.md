@@ -44,9 +44,6 @@ Update this file when decisions change — note what changed and why.
 - CII badge validation (not in initial release UI)
 - Diversity API integration
 - Vulnerability API integration
-- `travel_fund` as a distinct fund type (the 26 DynamoDB `entityType = 'other'` rows are stored as `initiative_type = 'other'` during migration — they do not display as "General Fund")
-- `initiative` as a distinct fund type (merged into `general fund` during migration)
-- `community` entity type (3 rows from 2019, all declined/submitted; migrated as `initiative_type = 'community'` — no active UI, no new rows expected)
 
 ---
 
@@ -72,13 +69,7 @@ Ledger DB co-location and raw table mirroring (cross-account DB access) were bot
 
 ### `projects` + `entities` → unified `initiatives` table
 
-The old `projects` and `entities` tables are merged into a single `crowdfunding.initiatives` table with an `initiative_type` discriminator column.
-
-`initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif` | `other` (26 legacy migrated rows) | `community` (3 legacy migrated rows)
-
-Rationale: all initiative types share the same donor/subscription FK, the same Ledger balance lookup via original DynamoDB string ID, the same status workflow, and the same discovery/search surface. Two tables required a polymorphic FK (`project_id OR fund_id`) with a CHECK constraint and no hard FK enforcement. One table gives a clean `initiative_id` FK on subscriptions and donations, simpler queries, and a unified search/discovery endpoint.
-
-Type-specific sparse columns (e.g. `event_start_date`, `jobspring_project_id`, `city`) are nullable and only populated for the relevant `initiative_type`. This is the standard discriminated-union pattern for a sparse table — preferable to two tables with a UNION when the shared columns dominate, which they do here.
+The old `projects` and `entities` tables are merged into a single `crowdfunding.initiatives` table with an `initiative_type` discriminator column (`project` | `mentorship` | `general fund` | `event` | `ostif`; legacy: `other`, `community`). Type-specific sparse columns are nullable. See Domain Model section for full type definitions and field ownership rules.
 
 ### Budget categories → normalized `initiative_goals` child table
 
@@ -140,34 +131,15 @@ Rationale: they represent different Stripe object types (`Subscription` vs `Char
 
 Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives`, kept fresh by a CronJob that calls the Ledger HTTP API. The initial release syncs `amount_raised_in_cents` only (via the existing `amount-raised-sync` CronJob). Additional UI fields (backer count, subscription totals, etc.) require new Ledger API endpoints + CronJob changes + new cached columns — see OQ-19 for the open question on API shape, pending UI field review.
 
-`amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob.
+`amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives`, kept fresh by the `amount-raised-sync` CronJob (hourly, calls `GET /balance/{id}` on Ledger API). It is the only mechanism — it covers Expensify disbursements (no Stripe event), donations/renewals, and manual Ledger corrections.
 
-**`amount-raised-sync` CronJob (hourly)**
+The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
-The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{id}` for all published initiatives, updating `amount_raised_in_cents`. It uses `initiatives.id` as the Ledger `{id}`. For migrated initiatives, that means: if the legacy DynamoDB ID was already UUID-form, `initiatives.id` matches that original ID; otherwise `initiatives.id` is the deterministic UUID generated during migration via the `uuid5` mapping, not the original non-UUID DynamoDB string. For post-cutover initiatives with no DynamoDB origin, `id` is the Postgres UUID (pending OQ-15 confirmation). It is the **only** mechanism for keeping `amount_raised_in_cents` current. It covers all balance change sources:
+**Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SIGNING_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
 
-- **Expensify disbursements** — when beneficiaries draw funds, Ledger records a DEBIT. This produces no Stripe event. Without the cron, `amount_raised_in_cents` would only ever increase, never reflecting disbursements. This is a correctness requirement, not optional.
-- **Donations and subscription renewals** — Stripe charges are processed by Ledger's own webhook. The cron reads the authoritative balance from Ledger after Ledger has processed it.
-- **Ledger corrections** — manual transaction corrections produce no CF signal; the cron picks them up on the next run.
+The cron UPDATE must **not** touch `updated_on` — background reconciliation must not produce false-positive change signals for Fivetran, RS, or audit logs.
 
-The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API. It handles only `customer.subscription.deleted` (cancel subscription in Postgres). It does not call `GET /balance/` — that is the cron's job. Rationale: a Stripe webhook triggering a Ledger API call requires a 5-second delay to avoid a race condition with Ledger's own webhook handler — a timing hack. The hourly cron makes this unnecessary and gives the same freshness guarantee with simpler code.
-
-**Authentication:** Stripe signs every webhook payload with an HMAC-SHA256 signature sent in the `Stripe-Signature` header. The handler verifies this using `webhook.ConstructEvent(body, signature, endpointSecret)` from the Stripe Go SDK, where `endpointSecret` is the `STRIPE_WEBHOOK_SIGNING_SECRET` env var (a per-endpoint secret generated in the Stripe dashboard — distinct from the Stripe API key). Requests that fail signature verification are rejected before any business logic runs. This endpoint must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
-
-The cron UPDATE must **not** include `updated_on` in the SET clause. Background reconciliation is not a meaningful initiative change and must not produce false-positive change signals for Fivetran sync, RS bulk endpoint, or audit logs:
-
-```sql
--- correct: updated_on is not touched
-UPDATE crowdfunding.initiatives
-SET amount_raised_in_cents = $1
-WHERE id = $2
-```
-
-**Migration cutover requirement**
-
-The `amount-raised-sync` CronJob must be run once manually as part of the cutover procedure, before DNS switches to the new system. This pre-populates `amount_raised_in_cents` for all 1,374 migrated published initiatives so no card incorrectly shows `$0 raised` on day one. See migration plan Phase 4.
-
-`amount_raised_in_cents` is `NULL` on a new initiative before the first cron run — display as `0`. See OQ-15 for the ID strategy for post-cutover initiatives.
+**Cutover:** run `amount-raised-sync` once manually before DNS cutover to pre-populate `amount_raised_in_cents` for all migrated published initiatives. See migration plan Phase 4. `amount_raised_in_cents` is `NULL` before the first run — display as `0`. See OQ-15 for post-cutover ID strategy.
 
 
 ### No ORM — sqlc for type-safe queries
@@ -246,20 +218,7 @@ New system: field ownership split enforced at the API layer (`PATCH /v1/me/initi
 
 ### Type consolidations (applied during migration)
 
-| Old DynamoDB type | New `initiative_type` | Rationale |
-|---|---|---|
-| `project` (with `jobspringProjectID`) | `mentorship` | Explicit type; was previously inferred from field presence |
-| `project` (without `jobspringProjectID`) | `project` | Unchanged |
-| `initiative` | `general fund` | UI already labeled these "General Fund"; backend type was an alias |
-| `general-fund` | `general fund` | Normalize hyphen, same concept |
-| `other` | `other` | Unchanged — 26 entity rows with DynamoDB `entityType = 'other'` stored as-is |
-| `event` | `event` | Unchanged |
-| `ostif` | `ostif` | Unchanged |
-| `community` | `community` | Unchanged — 3 rows from 2019 migrated as-is; no active UI, no new rows expected |
-
-### `general fund` vs `initiative` (old type) — same thing
-
-In the old system: `initiative` was the backend type string; "General Fund" was the UI label; the subscription service explicitly mapped `'general fund'` → `ExpenseCategory.INITIATIVE`. They were always the same concept. The new schema uses `general fund` everywhere and drops the alias. Note: `initiative` as an `initiative_type` value does NOT exist — the table is named `initiatives` but the active type values are `project`, `mentorship`, `general fund`, `event`, `ostif`. Legacy migrated rows also carry `other` (26) and `community` (3).
+Key non-obvious mappings: `project` rows with `jobspringProjectID` → `mentorship`; `initiative` and `general-fund` DynamoDB types → `general fund`; `other` entity rows (26) and `community` rows (3) stored as-is. See `db/scripts/migrate_dynamo_to_postgres.py` for the full mapping.
 
 ### Budget goals — `initiative_goals` child table, mentorship data in dedicated tables
 
@@ -268,15 +227,6 @@ All initiative budget goals are stored in the `initiative_goals` child table (on
 **Project-type initiatives** have up to 8 `initiative_goals` rows with fixed names: `development`, `marketing`, `meetups`, `travel`, `bugBounty`, `documentation`, `other`, `mentee`.
 
 **Mentorship-type initiatives** have one `initiative_goals` row with `name = 'mentee'` carrying the `amount_in_cents` goal, plus rows in the mentor/skills/terms tables for program metadata.
-
-**Migration implication:** the migration script reads `data.projectDetails.mentee` (nested) for mentorship projects — NOT `data.mentee` at the top level. Reading from the wrong path silently drops all mentorship metadata. This was the bug that caused the first migration pass to miss all 1,486 reclassified rows. The script was corrected and the second pass recovered all rows — the current script at `db/scripts/migrate_dynamo_to_postgres.py` uses the correct path.
-
-### `status` normalization
-
-DynamoDB has dirty status values: `'hide'` (13 rows) and `'hidden'` (1 row) coexist. Normalize during migration:
-- `'hide'` → `'hidden'`
-
-Production status values observed: `submitted`, `published`, `declined`, `hidden`. The schema column is `VARCHAR(50)` with no CHECK constraint.
 
 ---
 
