@@ -1,3 +1,6 @@
+<!-- Copyright The Linux Foundation and each contributor to LFX. -->
+<!-- SPDX-License-Identifier: MIT -->
+
 # Open Questions
 
 Questions that must be answered before or during implementation. Update status as questions are resolved.

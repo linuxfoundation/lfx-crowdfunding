@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# Copyright The Linux Foundation and each contributor to LFX.
 # SPDX-License-Identifier: MIT
 
 
@@ -615,13 +615,13 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
         # Goal{name, description, goalColor, goalIcon, budget{amount, allocation}}
         for idx, goal in enumerate(e.get("goals") or []):
             goal_name = goal.get("name") or f"goal_{idx}"
-            budget: dict = goal.get("budget") or {}
+            goal_budget: dict = goal.get("budget") or {}
             goals_rows.append((
                 _uuid5("goal", raw_initiative_id, goal_name),
                 pg_id,
                 goal_name,
-                _as_nonneg_int(budget.get("amount")),
-                budget.get("allocation") or None,
+                _as_nonneg_int(goal_budget.get("amount")),
+                goal_budget.get("allocation") or None,
                 None,                                   # repo_link (project only)
                 goal.get("description") or None,
                 _trunc(goal.get("goalColor"), 10, "goal_color"),
@@ -689,7 +689,7 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
                 for contact_type, detail_key in (
                     ("primary",       "primaryContact"),
                     ("secondary",     "secondaryContact"),
-                    ("technical_lead","technicalLead"),
+                    ("technical_lead", "technicalLead"),
                 ):
                     contact = raw_detail.get(detail_key)
                     if isinstance(contact, dict) and contact:

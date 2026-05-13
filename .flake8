@@ -1,0 +1,6 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+[flake8]
+max-line-length = 200
+# E221: multiple spaces before operator (used for alignment in table-like INSERT tuples)
+extend-ignore = E221

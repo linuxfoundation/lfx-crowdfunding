@@ -1,3 +1,6 @@
+<!-- Copyright The Linux Foundation and each contributor to LFX. -->
+<!-- SPDX-License-Identifier: MIT -->
+
 # Migration Plan
 
 DynamoDB → PostgreSQL data migration and cutover plan.

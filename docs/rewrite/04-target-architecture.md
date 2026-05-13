@@ -1,3 +1,6 @@
+<!-- Copyright The Linux Foundation and each contributor to LFX. -->
+<!-- SPDX-License-Identifier: MIT -->
+
 # Target Architecture
 
 This document describes the intended architecture for the rewritten LFX Crowdfunding platform.

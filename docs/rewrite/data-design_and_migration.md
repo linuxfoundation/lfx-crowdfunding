@@ -1,3 +1,6 @@
+<!-- Copyright The Linux Foundation and each contributor to LFX. -->
+<!-- SPDX-License-Identifier: MIT -->
+
 # LFF Data Design & Migration Reference
 
 **Schema version:** 2.0.0  
@@ -11,12 +14,12 @@
 ## Contents
 
 1. [Architecture Overview](#1-architecture-overview)
-2. [Source → Target Table Map](#2-source--target-table-map)
+2. [Source → Target Table Map](#2-source-target-table-map)
 3. [Entity-Relationship Diagram](#3-entity-relationship-diagram)
 4. [Initiative Tree (child tables)](#4-initiative-tree-child-tables)
 5. [Schema DDL](#5-schema-ddl)
 6. [Data Dictionary](#6-data-dictionary)
-7. [Source → Target Field Mapping](#7-source--target-field-mapping)
+7. [Source → Target Field Mapping](#7-source-target-field-mapping)
 8. [Column Type Rationale](#8-column-type-rationale)
 9. [Financial Data Design](#9-financial-data-design)
 10. [Migration Architecture](#10-migration-architecture)

@@ -1,3 +1,6 @@
+<!-- Copyright The Linux Foundation and each contributor to LFX. -->
+<!-- SPDX-License-Identifier: MIT -->
+
 # Architectural Decisions
 
 Decisions made during discovery (May 2026). Each decision has a rationale.
