@@ -75,8 +75,10 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
 
   ledger-sync CronJob mirrors Ledger `ledger` table into CF DB as
   crowdfunding.ledger_transactions.
-  initiative_funding_summary materialized view becomes active.
+  Financial aggregates queried directly from ledger_transactions.
   amount-raised-sync CronJob and direct Ledger HTTP API calls removed.
+  initiative_funding_summary materialized view added later only if
+  direct query performance requires it.
 
 ━━━━━━ PLAN B — fallback if cross-account DB access rejected ━━━━━━
 
@@ -257,7 +259,7 @@ When `EMAIL_DRY_RUN=true`:
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
 | GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
 | `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{dynamo_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_in_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). **Decommissioned if Plan A (ledger-sync) ships; extended into `ledger-stats-sync` if Plan B fallback is used.** |
-| `ledger-sync` | CronJob | TBD | **(Plan A — pending OQ-18 approval)** Copies new rows from Ledger DB `ledger` table into `crowdfunding.ledger_transactions` in CF DB via direct read-only DB-to-DB connection (cross-account). Enables `initiative_funding_summary` materialized view and removes the need for Ledger HTTP API calls for aggregated financial data. See OQ-16, OQ-17, OQ-18 before implementing. |
+| `ledger-sync` | CronJob | TBD | **(Plan A — pending OQ-18 approval)** Copies new rows from Ledger DB `ledger` table into `crowdfunding.ledger_transactions` in CF DB via direct read-only DB-to-DB connection (cross-account). Financial aggregates are then queried directly from `ledger_transactions` — no Ledger HTTP API calls needed at read time. An `initiative_funding_summary` materialized view may be added later as a performance optimization if direct queries prove too slow. See OQ-16, OQ-17, OQ-18 before implementing. |
 | `ledger-stats-sync` | CronJob | TBD | **(Plan B fallback — if OQ-18 rejected)** Calls Ledger HTTP API to sync pre-aggregated financial stats (amount raised, backer count, etc.) as cached columns on `crowdfunding.initiatives`. Replaces / extends `amount-raised-sync`. Requires Ledger API + schema changes per new UI field. |
 
 Jobs removed from old system (not ported):
@@ -345,11 +347,13 @@ Key structural notes:
 
 See `db/migrations/001_initial.up.sql` and `docs/rewrite/data-design_and_migration.md` for the full DDL and field-by-field rationale.
 
-### View: `initiative_funding_summary` (Plan A — pending OQ-18)
+### View: `initiative_funding_summary` (optional performance optimization, Plan A only)
 
-Part of the initial release if Plan A (ledger-sync) is approved. Once the `ledger-sync` CronJob is running and the Ledger `ledger` table is mirrored into `crowdfunding.ledger_transactions`, a migration will add this materialized view, drop the `amount_raised_in_cents` column and the individual cached funding columns, and decommission the `amount-raised-sync` CronJob. If Plan B is used instead, this view is deferred until Plan A is later approved.
+Not part of the initial release. Under Plan A, financial aggregates are queried directly from `crowdfunding.ledger_transactions`. If direct query performance proves insufficient (measured via Datadog), an `initiative_funding_summary` materialized view can be added as a follow-on optimization — no API contract changes required since the query shape is identical.
 
-The view aggregates directly from `ledger_transactions` — no cross-database join needed since the data is mirrored into CF DB. It will compute at minimum:
+If Plan A is never approved (Plan B), this view is not applicable.
+
+The view would aggregate from `ledger_transactions` — no cross-database join needed since the data is mirrored into CF DB. It would compute at minimum:
 
 - `amount_raised_in_cents` — sum of completed credit transactions (gross or net of fees, pending OQ-17)
 - `total_subscription_count` — count of active subscription transactions

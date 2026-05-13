@@ -157,13 +157,13 @@ No Ledger code changes are required. Here is why this works end-to-end:
 **Status:** Open — Eric contacted via Slack (May 2026)
 **Owner:** Eric (architect) / Michal
 
-**Question:** Proposed approach for Ledger financial data aggregation in the initial release: a `ledger-sync` K8s CronJob mirrors the entire Ledger `ledger` table into `crowdfunding.ledger_transactions` in CF DB via read-only cross-account DB access. An `initiative_funding_summary` materialized view then aggregates financial fields (amount raised, backer count, subscription totals) entirely in SQL.
+**Question:** Proposed approach for Ledger financial data aggregation in the initial release: a `ledger-sync` K8s CronJob mirrors the entire Ledger `ledger` table into `crowdfunding.ledger_transactions` in CF DB via read-only cross-account DB access. Financial aggregates are then computed by querying `ledger_transactions` directly. An `initiative_funding_summary` materialized view may be added later as a performance optimization if direct queries prove too slow, but is not assumed necessary.
 
 This was proposed over syncing pre-aggregated stats because syncing stats requires three coordinated changes (Ledger API + CronJob + CF DB column) per new UI field, whereas mirroring the raw table means new UI fields are SQL-only changes.
 
 Key concern raised: cross-account read-only DB credentials (Ledger DB in AWS Account B → CF K8s CronJob in Account A). Awaiting Eric's feedback on this and the overall approach.
 
-**If Eric approves (Plan A):** `ledger-sync` + `initiative_funding_summary` ship as part of the initial release. `amount-raised-sync` is decommissioned.
+**If Eric approves (Plan A):** `ledger-sync` ships as part of the initial release. Financial aggregates are queried directly from `ledger_transactions`. `amount-raised-sync` is decommissioned.
 
 **If Eric rejects cross-account DB access (Plan B fallback):** a `ledger-stats-sync` CronJob syncs pre-aggregated stats from the Ledger HTTP API instead, storing them as cached columns on `crowdfunding.initiatives`. Additional UI fields require Ledger API changes per field.
 
