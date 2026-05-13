@@ -18,7 +18,7 @@ This migration covers DynamoDB → Crowdfunding Postgres (`crowdfunding` schema)
 - Reimbursement Service data
 - OpenSearch data (old stack stays live for Reimbursement Service)
 
-Ledger DB migration is a separate post-release project. When it happens, the `ledger` schema is added to the Crowdfunding Postgres instance, the `project_funding_summary` view is activated, and CF API balance calls switch from HTTP to direct SQL.
+Ledger financial data integration is addressed via the Plan A / Plan B approach documented in `02-decisions.md`. Under Plan A (if architect approves, OQ-18): a `ledger-sync` CronJob mirrors the Ledger `ledger` table into `crowdfunding.ledger_transactions` in CF DB; financial aggregates are queried directly from that table. Under Plan B (fallback): a `ledger-stats-sync` CronJob syncs pre-aggregated stats from the Ledger HTTP API into cached columns on `crowdfunding.initiatives`. In neither case is the Ledger DB co-located on the CF Postgres instance or a schema-merge performed — that approach was considered and rejected (see `02-decisions.md`).
 
 ### Phases
 

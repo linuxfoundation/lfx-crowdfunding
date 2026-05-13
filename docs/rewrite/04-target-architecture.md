@@ -34,7 +34,7 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
      │                         └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
      │  GET /balance, /txns    │  Ledger Service (Lambda)   │
-     │────────────────────────►│                             │
+     │──[Plan B only]─────────►│                             │
      │◄────────────────────────│  GET /v1/projects/{id}      │
      │  (donation email data)  │  GET /v1/entities/{id}      │
      │                         └─────────────────────────────┘
@@ -52,10 +52,11 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
   └───────────────────┘
 
   Background workers (K8s CronJobs):
-  ┌──────────────────────────────────────────────────────┐
-  │  mentorship-sync    K8s CronJob (daily or few x/day) │
-  │  amount-raised-sync K8s CronJob (hourly)             │
-  └──────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │  mentorship-sync    K8s CronJob (daily or few x/day)                 │
+  │  amount-raised-sync K8s CronJob (hourly)  [Plan B only — see below]  │
+  │  ledger-sync        K8s CronJob           [Plan A only — see below]  │
+  └──────────────────────────────────────────────────────────────────────┘
 
 ━━━━━━━━━━━━━━━━━━━ UNCHANGED (Lambda / external) ━━━━━━━━━━━━━━━━━━
 
@@ -360,7 +361,7 @@ The view would aggregate from `ledger_transactions` — no cross-database join n
 - `annual_subscription_amount_in_cents` — sum of active subscription amounts
 - `backer_count` — count of distinct donors (`user_id`)
 
-The exact SQL will be written once OQ-16 (transaction immutability / refund pattern) and OQ-17 (gross vs net) are resolved with Lewis. The join key is `ledger_transactions.project_id = initiatives.id::text`.
+The exact SQL will be written once OQ-16 (transaction immutability / refund pattern) and OQ-17 (gross vs net) are resolved with Lewis. The join key is `ledger_transactions.project_id = initiatives.id::text`. Note: this join is correct for the vast majority of initiatives whose original DynamoDB ID was already UUID-form (see OQ-15, item 4) — for those, `initiatives.id` equals the original ID that CF placed in Stripe metadata and Ledger stored as `project_id`. For the small number of initiatives with non-UUID legacy DynamoDB IDs, `initiatives.id` is a deterministic UUID5 that does not match the original string Ledger stored — those rows will require a legacy-ID→UUID mapping or a separate resolution strategy before this join can aggregate them correctly.
 
 ### Indexes
 
