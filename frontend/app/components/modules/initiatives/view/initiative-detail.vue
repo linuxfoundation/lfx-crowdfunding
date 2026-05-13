@@ -67,7 +67,7 @@ import InitiativeDetailOverview from '../components/details-overview/initiative-
 import InitiativeDetailSponsors from '../components/details-overview/initiative-detail-sponsors.vue';
 import InitiativeDetailFinancials from '../components/details-financials/initiative-detail-financials.vue';
 import InitiativeDetailAbout from '../components/details-about/initiative-detail-about.vue';
-import { useInitiative } from '~/composables/useInitiative';
+import { useInitiative } from '~/composables/initiatives/useInitiative';
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 

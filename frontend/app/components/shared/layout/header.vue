@@ -35,6 +35,7 @@ SPDX-License-Identifier: MIT
             :key="item.label"
             :to="item.to!"
             class="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
+            active-class="!bg-neutral-100 !text-neutral-900"
           >
             <lfx-icon
               :name="item.icon"
@@ -76,6 +77,7 @@ SPDX-License-Identifier: MIT
               <NuxtLink
                 :to="child.to"
                 class="c-dropdown__item"
+                active-class="c-dropdown__item--active"
               >
                 <lfx-icon
                   :name="child.icon"

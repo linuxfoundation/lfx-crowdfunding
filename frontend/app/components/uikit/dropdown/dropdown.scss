@@ -18,7 +18,8 @@
       @apply text-neutral-500;
     }
 
-    &.is-selected {
+    &.is-selected,
+    &--active {
       @apply font-semibold;
 
       .c-icon {
