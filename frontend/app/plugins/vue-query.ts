@@ -8,6 +8,8 @@ export default defineNuxtPlugin((nuxtApp) => {
       queries: {
         staleTime: 5 * 60 * 1000,
         retry: 1,
+        // Prevent orphaned query instances from leaking memory on the server
+        ...(import.meta.server ? { gcTime: 0 } : {}),
       },
     },
   });

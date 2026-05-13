@@ -21,7 +21,7 @@ import LandingHero from '../components/landing-hero.vue';
 import LandingInitiatives from '../components/landing-initiatives.vue';
 import LandingImpactStories from '../components/landing-impact-stories.vue';
 import LandingNavCards from '../components/landing-nav-cards.vue';
-import { useInitiatives } from '~/composables/useInitiatives';
+import { useInitiatives } from '~/composables/initiatives/useInitiatives';
 
 const { data, isLoading, error } = useInitiatives();
 const initiativeError = computed(() => error.value as Error | null);

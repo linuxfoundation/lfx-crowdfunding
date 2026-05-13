@@ -1,11 +1,11 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 .c-progress-bar {
-  @apply flex flex-row items-center gap-0.5 w-full;
+  @apply flex flex-row items-center gap-1 w-full;
 
   .c-progress-bar__value,
   .c-progress-bar__empty {
-    @apply rounded-xs transition-all h-2;
+    @apply rounded-xs transition-all h-1.5;
   }
 
   .c-progress-bar__label {
@@ -34,10 +34,18 @@
   }
 
   &--size-small {
-    @apply gap-0;
+    @apply gap-0.5;
     .c-progress-bar__value,
     .c-progress-bar__empty {
       @apply h-1;
+    }
+  }
+
+  &--size-large {
+    @apply gap-1;
+    .c-progress-bar__value,
+    .c-progress-bar__empty {
+      @apply h-2;
     }
   }
 

@@ -21,7 +21,7 @@ SPDX-License-Identifier: MIT
 import { ref, computed } from 'vue';
 import InitiativesHeader from '../components/initiatives-header.vue';
 import InitiativesGrid from '../components/initiatives-grid.vue';
-import { useInitiatives } from '~/composables/useInitiatives';
+import { useInitiatives } from '~/composables/initiatives/useInitiatives';
 
 const searchTerm = ref('');
 const activeType = ref('all');
