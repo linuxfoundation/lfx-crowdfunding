@@ -423,6 +423,9 @@ Reviewed with Eric Searcy (chief architect, May 2026). Any Go API endpoint that 
 
 The new Go service calls the Ledger HTTP API (read-only GET calls) exactly as LFF does today. LFF has never written to Ledger directly — Ledger gets its data from its own Stripe/Expensify webhooks. No change to this contract.
 
+**Donation and subscription acknowledgement emails are sent by Ledger, not CF.**
+This was migrated in FUND-1055. LFF kept stub implementations of `SendDonationSubscriptionEmail`, `SendDonationNoticeForOwner`, etc. that return `nil` immediately — they exist only to avoid changing callers. The new CF service must not implement these methods at all. CF's email responsibilities are: initiative/entity approval and rejection, expense approval, invoice notifications to the internal CB team, security audit submission confirmations, and GitHub Connect confirmations. Everything donation/subscription-acknowledgement-related is Ledger's job.
+
 **Ledger calls CF HTTP API for notification emails — three endpoints, auth header, legacy ID:**
 Ledger's `SendNotifications()` function calls the CF API to resolve project name, user name, and org name for donation confirmation emails. It calls three endpoints using the `project_id` / `user_id` / `organization_id` values stored in the Ledger DB:
 
