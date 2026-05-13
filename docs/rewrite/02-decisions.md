@@ -76,9 +76,9 @@ Ledger DB co-location on the same RDS instance as CF DB was considered and rejec
 
 **Plan B (fallback if architect rejects cross-account DB access):** a `ledger-stats-sync` K8s CronJob calls the Ledger HTTP API to sync pre-aggregated stats (e.g. `amount_raised_in_cents`, backer count) per initiative and stores them as cached columns on `crowdfunding.initiatives`. This is essentially an extension of the current `amount-raised-sync` approach — more fields, same mechanism. It requires Ledger API + CronJob + CF DB schema changes per new UI field. OQ-18 must be resolved before implementation begins.
 
-### `projects` + `funds` → unified `initiatives` table
+### `projects` + `entities` → unified `initiatives` table
 
-The old `projects` and `funds` tables are merged into a single `crowdfunding.initiatives` table with an `initiative_type` discriminator column.
+The old `projects` and `entities` tables are merged into a single `crowdfunding.initiatives` table with an `initiative_type` discriminator column.
 
 `initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif` | `other` (26 legacy migrated rows) | `community` (3 legacy migrated rows)
 

@@ -332,7 +332,7 @@ These endpoints do not need to exist in the new CF service. The old Lambda kept 
 All monetary values `bigint` (cents). All primary keys `uuid`. All timestamps `timestamptz`.
 
 **Terminology:**
-- `initiatives` — unified table for all fundable things; formerly split into `projects` and `funds`
+- `initiatives` — unified table for all fundable things; formerly split into `projects` and `entities`
 - `initiative_type` values: `project` | `mentorship` | `general fund` | `event` | `ostif` (plus legacy migrated: `other` | `community` — present in production data but no new rows expected)
 - `status` values: `submitted` | `published` | `declined` | `hidden`
 
