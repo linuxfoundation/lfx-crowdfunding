@@ -1,0 +1,192 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
+package db
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+)
+
+var subscriptionTracer = otel.Tracer("subscriptions-db")
+
+// SubscriptionRepository implements domain.SubscriptionRepository against PostgreSQL.
+type SubscriptionRepository struct {
+	pool *pgxpool.Pool
+}
+
+// NewSubscriptionRepository creates a new SubscriptionRepository.
+func NewSubscriptionRepository(pool *pgxpool.Pool) *SubscriptionRepository {
+	return &SubscriptionRepository{pool: pool}
+}
+
+const subscriptionColumns = `
+	id, user_id, initiative_id, organization_id, category,
+	current_amount_in_cents, frequency, status,
+	stripe_subscription_id, stripe_subscription_item_id,
+	created_on, updated_on`
+
+func scanSubscription(row scanner) (*models.Subscription, error) {
+	s := &models.Subscription{}
+	var (
+		initiativeID, organizationID, category         *string
+		frequency, status                              *string
+		stripeSubscriptionID, stripeSubscriptionItemID *string
+		createdOn, updatedOn                           *time.Time
+	)
+	err := row.Scan(
+		&s.ID, &s.UserID, &initiativeID, &organizationID, &category,
+		&s.CurrentAmountCents, &frequency, &status,
+		&stripeSubscriptionID, &stripeSubscriptionItemID,
+		&createdOn, &updatedOn,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrSubscriptionNotFound
+		}
+		return nil, err
+	}
+	s.InitiativeID = derefString(initiativeID)
+	s.OrganizationID = derefString(organizationID)
+	s.Category = derefString(category)
+	s.Frequency = derefString(frequency)
+	s.Status = derefString(status)
+	s.StripeSubscriptionID = derefString(stripeSubscriptionID)
+	s.StripeSubscriptionItemID = derefString(stripeSubscriptionItemID)
+	if createdOn != nil {
+		s.CreatedOn = *createdOn
+	}
+	if updatedOn != nil {
+		s.UpdatedOn = *updatedOn
+	}
+	return s, nil
+}
+
+// GetByID retrieves a subscription by UUID.
+func (r *SubscriptionRepository) GetByID(ctx context.Context, id string) (*models.Subscription, error) {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.GetByID")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.subscription_id", id))
+
+	q := "SELECT " + subscriptionColumns + " FROM subscriptions WHERE id = $1"
+	row := r.pool.QueryRow(ctx, q, id)
+	sub, err := scanSubscription(row)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	return sub, nil
+}
+
+// ListByInitiative returns paginated subscriptions for an initiative.
+func (r *SubscriptionRepository) ListByInitiative(ctx context.Context, initiativeID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.ListByInitiative")
+	defer span.End()
+	return r.listSubs(ctx, "initiative_id", initiativeID, filter)
+}
+
+// ListByUser returns paginated subscriptions for a user.
+func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.ListByUser")
+	defer span.End()
+	return r.listSubs(ctx, "user_id", userID, filter)
+}
+
+func (r *SubscriptionRepository) listSubs(ctx context.Context, col, val string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	var total int
+	if err := r.pool.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM subscriptions WHERE %s = $1", col), val).Scan(&total); err != nil {
+		return nil, nil, fmt.Errorf("count subscriptions: %w", err)
+	}
+
+	q := fmt.Sprintf("SELECT %s FROM subscriptions WHERE %s = $1 ORDER BY created_on DESC LIMIT $2 OFFSET $3", subscriptionColumns, col)
+	rows, err := r.pool.Query(ctx, q, val, limit, offset)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var subs []models.Subscription
+	for rows.Next() {
+		s, err := scanSubscription(rows)
+		if err != nil {
+			return nil, nil, fmt.Errorf("scan subscription: %w", err)
+		}
+		subs = append(subs, *s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterate subscriptions: %w", err)
+	}
+	return subs, &models.PaginationMeta{Total: total, Limit: limit, Offset: offset}, nil
+}
+
+// Create inserts a new subscription row.
+func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscription) (*models.Subscription, error) {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.Create")
+	defer span.End()
+
+	const q = `
+		INSERT INTO subscriptions
+		       (user_id, initiative_id, organization_id, category,
+		        current_amount_in_cents, frequency, status,
+		        stripe_subscription_id, stripe_subscription_item_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		RETURNING ` + subscriptionColumns
+
+	row := r.pool.QueryRow(ctx, q,
+		s.UserID, s.InitiativeID, nullableString(s.OrganizationID),
+		nullableString(s.Category), s.CurrentAmountCents, s.Frequency,
+		nullableString(s.Status), nullableString(s.StripeSubscriptionID),
+		nullableString(s.StripeSubscriptionItemID),
+	)
+	created, err := scanSubscription(row)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("create subscription: %w", err)
+	}
+	return created, nil
+}
+
+// Update saves changes to a subscription (status, amount, Stripe IDs).
+func (r *SubscriptionRepository) Update(ctx context.Context, s *models.Subscription) (*models.Subscription, error) {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.Update")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.subscription_id", s.ID))
+
+	const q = `
+		UPDATE subscriptions SET
+		    status                      = $2,
+		    current_amount_in_cents     = $3,
+		    stripe_subscription_id      = $4,
+		    stripe_subscription_item_id = $5
+		WHERE id = $1
+		RETURNING ` + subscriptionColumns
+
+	row := r.pool.QueryRow(ctx, q,
+		s.ID, nullableString(s.Status), s.CurrentAmountCents,
+		nullableString(s.StripeSubscriptionID), nullableString(s.StripeSubscriptionItemID),
+	)
+	updated, err := scanSubscription(row)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	return updated, nil
+}
