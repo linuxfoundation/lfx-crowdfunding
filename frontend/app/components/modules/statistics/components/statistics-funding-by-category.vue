@@ -51,8 +51,8 @@ SPDX-License-Identifier: MIT
     <template v-else-if="categories.length">
       <!-- Combined stacked bar across all categories -->
       <lfx-progress-bar
-        :values="categories.map(categoryPercent)"
-        :colors="categories.map((c) => CATEGORY_HEX[c.id] ?? '#e2e8f0')"
+        :values="categories.map(categoryBarPercent)"
+        :colors="categories.map((c) => categoryColor(c.id))"
         :hide-empty="true"
       />
 
@@ -95,7 +95,7 @@ import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
 import { formatNumberShort } from '~/utils/formatter';
-import { CATEGORY_HEX } from '~/config/statistics/categories';
+import { CATEGORY_HEX, FundingCategoryId } from '~/config/statistics/categories';
 import type { FundingCategory } from '#shared/types/statistics.types';
 
 const props = defineProps<{
@@ -104,17 +104,18 @@ const props = defineProps<{
   error: Error | null;
 }>();
 
-const categoryBg = (id: string) => {
-  const hex = CATEGORY_HEX[id as keyof typeof CATEGORY_HEX];
-  return hex ? `background-color: ${hex}` : 'background-color: #e2e8f0';
-};
+const categoryColor = (id: string): string => CATEGORY_HEX[id as FundingCategoryId] ?? '#e2e8f0';
+
+const categoryBg = (id: string) => `background-color: ${categoryColor(id)}`;
 
 const total = () => props.categories.reduce((sum, c) => sum + c.raisedCents, 0);
 
-const categoryPercent = (c: FundingCategory): number => {
+const categoryBarPercent = (c: FundingCategory): number => {
   const t = total();
-  return t > 0 ? Math.round((c.raisedCents / t) * 100) : 0;
+  return t > 0 ? (c.raisedCents / t) * 100 : 0;
 };
+
+const categoryPercent = (c: FundingCategory): number => Math.round(categoryBarPercent(c));
 
 const formatShort = (cents: number) => formatNumberShort(cents / 100);
 </script>
