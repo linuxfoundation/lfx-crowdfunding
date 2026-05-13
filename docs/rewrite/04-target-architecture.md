@@ -73,10 +73,10 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
 
 ━━━━━━━━━━━━━━━━━━━━━ FUTURE (post-initial-release) ━━━━━━━━━━━━━━━━
 
-  Ledger DB merges into Crowdfunding DB as ledger.* schema.
-  Ledger Service reconfigured to point at combined Postgres.
-  project_funding_summary view becomes active.
-  CF API balance calls become direct SQL queries.
+  ledger-sync CronJob mirrors Ledger `ledger` table into CF DB as
+  crowdfunding.ledger_transactions. initiative_funding_summary
+  materialized view becomes active. amount-raised-sync CronJob
+  and direct Ledger HTTP API calls for balance data are removed.
 ```
 
 ---
@@ -249,10 +249,11 @@ When `EMAIL_DRY_RUN=true`:
 |---|---|---|---|
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
 | GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
-| `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{dynamo_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_in_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). |
+| `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{dynamo_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_in_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). **Replaced post-initial-release by `ledger-sync` + `initiative_funding_summary` view.** |
+| `ledger-sync` | CronJob | TBD (post-initial-release) | Copies new rows from Ledger DB `ledger` table into `crowdfunding.ledger_transactions` in CF DB via direct read-only DB-to-DB connection (cross-account). Enables `initiative_funding_summary` materialized view and removes the need for Ledger HTTP API calls for aggregated financial data. See OQ-16, OQ-17 before implementing. |
 
 Jobs removed from old system (not ported):
-- `amountraised` / `amountraised-entities` → replaced by Ledger HTTP API calls (same as today); will be replaced by `project_funding_summary` view once Ledger DB is co-located (post-initial-release)
+- `amountraised` / `amountraised-entities` → replaced by Ledger HTTP API calls via `amount-raised-sync` CronJob (initial release); will be replaced by `initiative_funding_summary` materialized view once `ledger-sync` mirrors `ledger_transactions` into CF DB (post-initial-release)
 - `export-projects`, `export-organizations`, `export-users`, `entities-sync` → OpenSearch dropped; search replaced by Postgres full-text search
 - `ledger-viewmodel` → no longer needed
 - `expensify-sync` → stays on old Lambda, not ported for initial release
@@ -338,7 +339,16 @@ See `db/migrations/001_initial.up.sql` and `docs/rewrite/data-design_and_migrati
 
 ### View: `initiative_funding_summary` (post-initial-release)
 
-Not part of the initial release. When Ledger DB is co-located on the same Postgres instance, a future migration will add this view, drop the `amount_raised_in_cents` column, and decommission the `amount-raised-sync` CronJob. The view SQL will be written at that point — it joins `ledger.transactions` with `crowdfunding.initiatives` on `project_id`.
+Not part of the initial release. Once the `ledger-sync` CronJob is running and the Ledger `ledger` table is mirrored into `crowdfunding.ledger_transactions`, a migration will add this materialized view, drop the `amount_raised_in_cents` column and the individual cached funding columns, and decommission the `amount-raised-sync` CronJob.
+
+The view aggregates directly from `ledger_transactions` — no cross-database join needed since the data is mirrored into CF DB. It will compute at minimum:
+
+- `amount_raised_in_cents` — sum of completed credit transactions (gross or net of fees, pending OQ-17)
+- `total_subscription_count` — count of active subscription transactions
+- `annual_subscription_amount_in_cents` — sum of active subscription amounts
+- `backer_count` — count of distinct donors (`user_id`)
+
+The exact SQL will be written once OQ-16 (transaction immutability / refund pattern) and OQ-17 (gross vs net) are resolved with Lewis. The join key is `ledger_transactions.project_id = initiatives.id::text`.
 
 ### Indexes
 

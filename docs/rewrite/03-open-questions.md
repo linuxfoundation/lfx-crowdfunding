@@ -152,6 +152,58 @@ No Ledger code changes are required. Here is why this works end-to-end:
 
 ---
 
+### OQ-18: Architect approval — mirror `ledger` table into CF DB
+
+**Status:** Open — Eric contacted via Slack (May 2026)
+**Owner:** Eric (architect) / Michal
+
+**Question:** Proposed approach for Ledger financial data aggregation (post-initial-release): a K8s CronJob mirrors the entire Ledger `ledger` table into `crowdfunding.ledger_transactions` in CF DB via read-only cross-account DB access. An `initiative_funding_summary` materialized view then aggregates financial fields (amount raised, backer count, subscription totals) entirely in SQL.
+
+This was proposed over syncing pre-aggregated stats because syncing stats requires three coordinated changes (Ledger API + CronJob + CF DB column) per new UI field, whereas mirroring the raw table means new UI fields are SQL-only changes.
+
+Key concern raised: cross-account read-only DB credentials (Ledger DB in AWS Account B → CF K8s CronJob in Account A). Awaiting Eric's feedback on this and the overall approach.
+
+**Blocking:** `ledger-sync` CronJob implementation (post-initial-release).
+
+**Action:** Eric to confirm approach and sign off on cross-account DB access pattern.
+
+---
+
+### OQ-16: Are Ledger transactions append-only? How are refunds and failures recorded?
+
+**Status:** Open — Lewis contacted via Slack (May 2026)
+**Owner:** Lewis
+
+**Question:** The proposed `ledger-sync` CronJob will copy rows from the Ledger `ledger` table into CF DB using `WHERE created_at > $last_synced_epoch` (append-only). This is safe only if rows are never updated or deleted after creation. The `ledger` table has no `updated_at` column and no `status` column, which is consistent with immutability — but needs explicit confirmation.
+
+Specifically:
+- Are refunds/reversals recorded as new `debit` rows, or does the original `credit` row get updated or deleted?
+- Are failed or pending transactions ever written to the `ledger` table, or only confirmed/completed ones?
+- Can any row ever be modified after insert (e.g. via a manual correction directly in the DB)?
+
+**Why it matters:** If refunds update or delete existing rows, an append-only sync will silently produce wrong aggregates in CF DB — the original credit will remain with no record of the reversal. If failed transactions are inserted and then updated to a failed status, CF DB will count them as completed.
+
+**Blocking:** Implementation of the `ledger-sync` CronJob sync strategy. If rows are mutable, the sync must use full upsert logic (matching on `txn_id`) and handle deletes, which is significantly more complex.
+
+**Action:** Lewis to confirm transaction immutability and refund/failure recording pattern.
+
+---
+
+### OQ-17: Is "amount raised" gross or net of fees?
+
+**Status:** Open — Lewis contacted via Slack (May 2026)
+**Owner:** Lewis
+
+**Question:** The Ledger `ledger` table stores `amount` (gross, in cents) and `fee` (processor fee, stored as a negative integer). When displaying "amount raised" on an initiative card, which figure should be shown — gross (`amount`) or net (`amount + fee`)?
+
+The existing `amount-raised-sync` CronJob calls `GET /balance/{id}` on the Ledger API and stores the returned value as `amount_raised_in_cents`. The `GET /balance/{id}` endpoint presumably already encodes this choice — but it needs to be made explicit before the new `ledger-sync` aggregation query is written, so the two approaches return the same value.
+
+**Why it matters:** If the sync aggregation query uses `SUM(amount)` but the Ledger API's `/balance` endpoint returns `SUM(amount + fee)`, the two systems will disagree on the displayed balance after migration.
+
+**Action:** Lewis to confirm what `/balance/{id}` returns (gross or net), and confirm which figure should be displayed to donors and initiative owners.
+
+---
+
 ### OQ-14: Ledger Expensify fallback — OpenSearch dependency
 
 **Status:** Open

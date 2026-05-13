@@ -68,11 +68,11 @@ RS continues using OpenSearch for its own three tables (`lfx-expense-log`, `bene
 
 For the initial CF release, RS reads CF-owned data (project/entity/user lookups) via three narrow internal HTTP endpoints on the CF Go API — the same network path RS uses today for other CF calls, over public HTTPS. See OQ-7 for the migration plan.
 
-Ledger Service keeps its own separate Postgres DB (Ledger DB). It is not migrated in the initial release. CF calls the Ledger HTTP API read-only for transaction stats and balance data — exactly as today.
+Ledger Service keeps its own separate Postgres DB (Ledger DB) in a separate AWS account. It is not changed in the initial release. CF calls the Ledger HTTP API read-only for transaction stats and balance data — exactly as today.
 
-Future (post-initial-release): Ledger DB merges into Crowdfunding DB as a `ledger` schema on the same Postgres instance. At that point `project_funding_summary` view becomes active and the Ledger HTTP API call for balance data is replaced by a direct SQL query. This is a separate tracked project, not part of the initial release.
+Ledger DB co-location on the same RDS instance as CF DB was considered and rejected. Ledger DB is RDS in AWS Account B; CF DB is on the shared LFX v2 RDS in AWS Account A (K8s). Even if both were on the same RDS instance, they would be separate Postgres databases — plain SQL JOINs across databases on the same RDS instance are not possible without `postgres_fdw` or `dblink`, neither of which is provisioned. Co-location brings no practical benefit given the mirroring approach below.
 
-Rationale: co-locating Ledger DB now requires migrating Ledger's Postgres data, reconfiguring Ledger Service (a change we want to avoid), and coordinating two cutover windows simultaneously. The tech debt of keeping one HTTP call is minimal and localized. Deliver CF first, migrate Ledger after.
+Future (post-initial-release): a `ledger-sync` K8s CronJob mirrors the Ledger `ledger` table into `crowdfunding.ledger_transactions` in CF DB via a direct read-only cross-account DB connection. Once mirrored, the `initiative_funding_summary` materialized view aggregates all financial fields from `ledger_transactions` directly — no Ledger HTTP API calls needed at read time. The `amount-raised-sync` CronJob is decommissioned at that point. See OQ-16 and OQ-17 for open questions that must be resolved before implementing the sync. This is a separate tracked project, not part of the initial release.
 
 ### `projects` + `funds` → unified `initiatives` table
 
@@ -140,9 +140,11 @@ Rationale: max donation is $999,999.99 = 99,999,999 cents, which fits in `int4` 
 
 Rationale: they represent different Stripe object types (`Subscription` vs `Charge`), have different lifecycles (recurring vs one-time), different cancellation/update logic, and different fields (frequency, stripe_subscription_id on subscriptions; stripe_charge_id on donations). Merging would create nullable columns and make queries less obvious.
 
-### `amount_raised_in_cents` — cached column for initial release, view post-release
+### Ledger-derived financial fields — cached columns for initial release, materialized view post-release
 
-Until Ledger DB is co-located, `amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob.
+Until the `ledger-sync` CronJob is running (post-initial-release), Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob. The initial release caches `amount_raised_in_cents` only. Additional fields needed by the UI (total subscription count, annual subscription amount, backer count, and any future aggregations) will be served from the `initiative_funding_summary` materialized view once `ledger-sync` is live — they are not individually back-filled as separate cached columns in the initial release.
+
+`amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob.
 
 **Sole mechanism: `amount-raised-sync` CronJob (hourly)**
 
@@ -177,12 +179,12 @@ New initiatives created after cutover have no DynamoDB origin and therefore no o
 
 **Migration path**
 
-When Ledger DB is co-located on the same Postgres instance (post-initial-release):
-- Add the `initiative_funding_summary` view as a new migration
-- Remove the `amount_raised_in_cents` column
+Once `ledger-sync` is running and `crowdfunding.ledger_transactions` is populated (post-initial-release):
+- Add the `initiative_funding_summary` materialized view as a new migration
+- Remove the `amount_raised_in_cents` cached column
 - Remove the `amount-raised-sync` CronJob
 
-No API contract changes required — the column and the view return the same value.
+No API contract changes required — the cached column and the view return the same value for `amount_raised_in_cents`. Additional fields (backer count, subscription totals) become available via the view without schema changes to the API response.
 
 ### No ORM — sqlc for type-safe queries
 
@@ -355,6 +357,26 @@ Rationale: a single container serving both HTTP requests and being invoked as a 
 ### Chi router (same as today)
 
 Keep Chi. No reason to change.
+
+### HTTP caching — public endpoints use `Cache-Control: public`
+
+Reviewed with Eric Searcy (chief architect, May 2026). Any Go API endpoint that serves public data (i.e. the response is identical regardless of whether the caller is authenticated) must return `Cache-Control: public, max-age=<N>` with no `Vary: Cookie`. This lets CDN edge nodes, corporate forward proxies, and browsers all cache and reuse the response without hitting the origin.
+
+**Rules:**
+
+- **Public endpoints** (anonymous-safe responses, same content for all callers): `Cache-Control: public, max-age=<N>`. Do NOT include `Vary: Cookie`. Include an `ETag` header (hash of the response body) so clients and CDN pops can do conditional `If-None-Match` revalidation and receive 304s instead of re-fetching the full payload.
+- **Private / authenticated endpoints** (response varies by user identity or contains personal data): `Cache-Control: private, no-store`. Do not expose to CDN caches. Browser caching is still acceptable and handled by `Cache-Control: private`.
+- **Unauthenticated view of a public page that also has an authenticated view**: serve `Vary: Cookie` so CDN does not re-serve an anonymous-user response to a logged-in user with a different cookie.
+
+**What qualifies as public:** initiative listing (`GET /v1/initiatives`), initiative detail (`GET /v1/initiatives/{id}`), backer list, organization detail — any read endpoint that does not expose per-user data.
+
+**ETag implementation:** compute `ETag` as the hex-encoded MD5 or xxHash of the JSON response body. Chi middleware is the right place to intercept the response writer, capture the body, hash it, and set the header. Return 304 if the request `If-None-Match` matches.
+
+**`stale-while-revalidate`:** For high-traffic list endpoints (e.g. the initiative discovery page), set `Cache-Control: public, max-age=60, stale-while-revalidate=300`. The CDN serves the cached copy immediately and asynchronously re-fetches in the background — users are never blocked on origin latency.
+
+**ValKey / in-app caching:** Not used for the initial release. HTTP caching at the CDN layer provides equivalent or better benefits without introducing a second cache TTL to manage. Revisit only if origin load data (Datadog) shows a specific bottleneck that HTTP caching cannot address.
+
+**Why this matters for CF specifically:** initiative listing is accessible to unauthenticated users (search engines, anonymous visitors, link previews). Without public caching, every card scroll triggers an origin hit. With `Cache-Control: public` + `stale-while-revalidate`, the CDN serves most traffic — origin only sees revalidation requests, not full payloads.
 
 ### Ledger integration → keep calling Ledger HTTP API
 
