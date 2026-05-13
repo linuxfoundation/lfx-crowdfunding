@@ -263,19 +263,19 @@ Prototype is a rough reference only. Implement functionally with PrimeVue; UI wi
 
 ---
 
-### OQ-11: Full scope of CF data needed in LFX One
+### OQ-11: Full scope of CF data needed in LFX Self Serve
 
 **Status:** Open — blocked on PM + design
 **Owner:** Michal / PM
 
-**Question:** The PM has requested "My Donations" and "My Initiatives" in LFX One, but the full list of CF data surfaces is not confirmed. Before any LFX One integration code is written, this must be clarified:
+**Question:** The PM has requested "My Donations" and "My Initiatives" in LFX Self Serve, but the full list of CF data surfaces is not confirmed. Before any LFX Self Serve integration code is written, this must be clarified:
 
 - What exactly is shown per widget — count, amount total, list of items, grouped by project?
 - Which data types: donations only, or also subscriptions, owned projects, owned funds?
 - Is there an empty state design?
 - Are cancelled subscriptions / declined projects shown or hidden?
 
-**Blocked on:** UI design for the LFX One CF widgets. No implementation until design is delivered and the full data list is confirmed.
+**Blocked on:** UI design for the LFX Self Serve CF widgets. No implementation until design is delivered and the full data list is confirmed.
 
 **Integration approach:** Snowflake (Option B) via Fivetran CF→Snowflake sync. See decision in `02-decisions.md`.
 

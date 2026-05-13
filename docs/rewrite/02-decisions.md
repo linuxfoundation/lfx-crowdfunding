@@ -290,7 +290,7 @@ Run this after each follow-on milestone to find what can now be deleted.
 
 The backend is a **standalone Go HTTP service**, separate from the Nuxt frontend. Business logic (DB queries, Stripe, webhooks, email) lives in Go. Nuxt's server layer handles auth (PKCE, HTTP-only cookies, session) and calls the Go API to build pages.
 
-Embedding business logic in Nuxt server routes was considered and rejected — Stripe webhooks require a stable dedicated endpoint, LFX One may call the CF API directly, and Go is the team's existing language. Nuxt is the BFF for the CF frontend; the Go API is the resource service for all transactional logic.
+Embedding business logic in Nuxt server routes was considered and rejected — Stripe webhooks require a stable dedicated endpoint, LFX Self Serve may call the CF API directly, and Go is the team's existing language. Nuxt is the BFF for the CF frontend; the Go API is the resource service for all transactional logic.
 
 ### Go — same language, same patterns
 
@@ -423,15 +423,15 @@ This is **required for the initial release** — not "shortly after". A Jira tic
 
 Note: the `mentorship-sync` CronJob reads **Mentorship data from Snowflake into CF** — this is the Mentorship team's Fivetran responsibility, not CF's. CF→Snowflake is a separate Fivetran connector that CF DevOps owns.
 
-### LFX One integration — Snowflake (Option B) for initial release
+### LFX Self Serve integration — Snowflake (Option B) for initial release
 
-The PM has requested CF data surfaces in LFX One ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). For the initial release, LFX One will read CF data from **Snowflake** (the same pattern used for My Trainings, My Meetings, etc.).
+The PM has requested CF data surfaces in LFX Self Serve ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). For the initial release, LFX Self Serve will read CF data from **Snowflake** (the same pattern used for My Trainings, My Meetings, etc.).
 
-Rationale: the Snowflake pattern already exists in LFX One and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX One. This approach has no runtime dependency between LFX One and the CF API service. See OQ-11 for alternatives.
+Rationale: the Snowflake pattern already exists in LFX Self Serve and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX Self Serve. This approach has no runtime dependency between LFX Self Serve and the CF API service. See OQ-11 for alternatives.
 
-**No LFX One integration code will be written until:**
-1. The PM provides a UI design for the LFX One CF widgets (what data, what layout)
-2. The full list of CF data needed in LFX One is confirmed (see OQ-11)
+**No LFX Self Serve integration code will be written until:**
+1. The PM provides a UI design for the LFX Self Serve CF widgets (what data, what layout)
+2. The full list of CF data needed in LFX Self Serve is confirmed (see OQ-11)
 3. The Fivetran CF→Snowflake connector is live with production data
 
 **Future path (Option C):** Full platform stack integration (Traefik ingress, OpenFGA authorization, platform indexer, Query Service) is the long-term correct architecture for CF as an LFX v2 citizen. This is deferred post-initial-release and must be tracked as a separate Jira epic. It is not "later maybe" — it is a scheduled follow-on project.
@@ -472,7 +472,7 @@ Consequence for non-LF projects (future): since initiatives are decoupled, suppo
 
 **Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/initiatives`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when Option C is implemented.
 
-**LFX One integration auth:** For the initial release, LFX One reads CF data from Snowflake (Option B) — there are no live API calls from LFX One to the CF Go API. The question of how LFX One authenticates to the CF API (ID tokens, API key, M2M, Auth0 resource server) only arises if Option A or C is chosen. Deferred to OQ-11.
+**LFX Self Serve integration auth:** For the initial release, LFX Self Serve reads CF data from Snowflake (Option B) — there are no live API calls from LFX Self Serve to the CF Go API. The question of how LFX Self Serve authenticates to the CF API (ID tokens, API key, M2M, Auth0 resource server) only arises if Option A or C is chosen. Deferred to OQ-11.
 
 **Option C** (full platform stack integration) is a post-initial-release tracked project — not "later maybe." File a Jira epic when initial release ships.
 
