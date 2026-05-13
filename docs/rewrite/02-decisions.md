@@ -327,6 +327,38 @@ DNS cutover at go-live. Old and new systems must not run concurrently on the sam
 
 ---
 
+## Post-Release Cleanup Convention
+
+Some code in the initial release is intentionally temporary — legacy shims, compatibility wrappers, or features kept alive only until a dependent service migrates. To make the post-release cleanup tractable, all such code must be tagged at the point of writing using a standard `TODO(<label>)` comment so it can be found with a single `grep`.
+
+### Tag convention
+
+```
+// TODO(<label>): <one-line reason>
+// <what to do when the trigger is met and any context needed to act on it>
+```
+
+Tags go on the first line of the relevant handler, function, or block — not on a line inside the implementation. This makes `grep -rn 'TODO(label)'` return exactly the entry points, not noise.
+
+### Labels in use
+
+| Label | Trigger for removal | What to remove |
+|---|---|---|
+| `TODO(ledger-k8s)` | Ledger Service migrated to Kubernetes and updated to call `/v1/initiatives/{id}` | `GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}` legacy shim handlers and their middleware |
+| `TODO(rs-k8s)` | Reimbursement Service migrated to Kubernetes | Internal RS-facing HTTP endpoints, any RS-specific auth middleware, OpenSearch queue writes |
+| `TODO(post-cutover)` | Old LFF Lambda stack decommissioned | DynamoDB string ID → UUID resolution fallback in any endpoint that accepts legacy IDs; `source_dynamo_table` column and any code that reads it |
+| `TODO(plan-b-only)` | Plan A (ledger-sync) approved and live | `amount-raised-sync` CronJob and its `amount_raised_in_cents` cached column; or `ledger-stats-sync` CronJob if Plan B was used |
+
+Add new labels to this table when new temporary code is introduced. Each label must have a named trigger (a concrete event, not "someday") and a named owner or Jira epic if one exists.
+
+### Finding all cleanup points
+
+```bash
+grep -rn 'TODO(' cmd/ internal/ | grep -E 'TODO\((ledger-k8s|rs-k8s|post-cutover|plan-b-only)\)'
+```
+
+Run this after each follow-on milestone to find what can now be deleted.
+
 ## Backend
 
 ### Architecture — separate Go API, not embedded in Nuxt
