@@ -1,0 +1,16 @@
+apiVersion: v2
+name: lfx-v2-initiatives-service
+description: LFX Crowdfunding Initiatives API
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - lfx
+  - crowdfunding
+  - initiatives
+home: https://github.com/linuxfoundation/lfx-crowdfunding
+sources:
+  - https://github.com/linuxfoundation/lfx-crowdfunding
+maintainers:
+  - name: LFX Engineering
+    email: lfx-engineering@linuxfoundation.org
