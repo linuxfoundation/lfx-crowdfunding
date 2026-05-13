@@ -1,9 +1,16 @@
-# LFX Crowdfunding
+# LFX Crowdfunding (Standalone UI & API)
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![DCO](https://img.shields.io/badge/DCO-required-brightgreen.svg)](https://developercertificate.org/)
 
 LFX Crowdfunding enables open source projects to raise funds for development, security audits, mentorship programs, events, and community initiatives. This is the rewritten platform — a Kubernetes-native monorepo replacing the original AWS Lambda + DynamoDB system.
+
+---
+
+> ### Not the Self Serve integration
+> This repo is the **standalone Crowdfunding UI and API** — it is separate from [LFX Self Serve](https://github.com/linuxfoundation/lfx-v2-ui). Crowdfunding data ("My Donations", "My Initiatives") that appears in Self Serve originates from this application.
+
+---
 
 ## Repository Layout
 
