@@ -62,11 +62,7 @@ The CF Postgres instance has one schema:
 
 - `crowdfunding` — owned by CF Go API (initiatives, orgs, subscriptions, donations, users)
 
-There is no `reimbursement` schema on the CF Postgres instance. The Reimbursement Service is a Lambda running in a separate AWS VPC and cannot reach the shared LFX v2 RDS (which is `publicly_accessible = false`, reachable only from within the K8s cluster VPC). Co-locating RS tables on CF Postgres would require making the shared RDS publicly accessible or establishing cross-account VPC peering — both unacceptable.
-
-RS continues using OpenSearch for its own three tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) until it moves to Kubernetes. When RS moves to K8s it will get its own database on the shared RDS via the same `lfx-v2-opentofu` pattern as CF (one four-line entry in `postgres.tf`). At that point RS can also read CF data directly from the `crowdfunding` schema via a read-only Postgres role.
-
-For the initial CF release, RS reads CF-owned data (project/entity/user lookups) via three narrow internal HTTP endpoints on the CF Go API — the same network path RS uses today for other CF calls, over public HTTPS. See OQ-7 for the migration plan.
+RS continues using OpenSearch for its own three tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) until it moves to Kubernetes. For the initial CF release, RS reads CF-owned data via three narrow internal HTTP endpoints on the CF Go API. See OQ-7 for the migration plan.
 
 Ledger Service keeps its own separate Postgres DB (Ledger DB) in a separate AWS account. It is not changed in the initial release.
 
@@ -105,7 +101,7 @@ CREATE TABLE initiative_goals (
 );
 ```
 
-Projects produce up to 8 rows (one per fixed category). Entities produce one row per element in `entity.Goals[]`. Mentorship-specific data (skills, terms, mentors, custom term) lives in the dedicated child tables: `initiative_mentors`, `initiative_program_info_skills`, `initiative_program_info_terms`, `initiative_program_info_custom_term`.
+Projects produce up to 8 rows (one per fixed category). Entities produce one row per element in `entity.Goals[]`. Mentorship-specific data (skills, terms, mentors, config, custom term) lives in the dedicated child tables: `initiative_mentors`, `initiative_program_info_skills`, `initiative_program_info_terms`, `initiative_program_info_config`, `initiative_program_info_custom_term`.
 
 **`total_annual_goal_in_cents`** is derived at read time:
 ```sql
@@ -148,7 +144,7 @@ Ledger-derived financial data is stored as cached columns on `crowdfunding.initi
 
 **`amount-raised-sync` CronJob (hourly)**
 
-The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{id}` for all published initiatives, updating `amount_raised_in_cents`. It uses `initiatives.id` as the Ledger `{id}`. For migrated initiatives, that means: if the legacy DynamoDB ID was already UUID-form, `initiatives.id` matches that original ID; otherwise `initiatives.id` is the deterministic UUID generated during migration via the `uuid5` mapping, not the original non-UUID DynamoDB string. For post-cutover initiatives with no DynamoDB origin, `id` is the Postgres UUID (pending OQ-15 confirmation). It is the **only** mechanism for keeping `amount_raised_in_cents` current under Plan B. It covers all balance change sources:
+The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{id}` for all published initiatives, updating `amount_raised_in_cents`. It uses `initiatives.id` as the Ledger `{id}`. For migrated initiatives, that means: if the legacy DynamoDB ID was already UUID-form, `initiatives.id` matches that original ID; otherwise `initiatives.id` is the deterministic UUID generated during migration via the `uuid5` mapping, not the original non-UUID DynamoDB string. For post-cutover initiatives with no DynamoDB origin, `id` is the Postgres UUID (pending OQ-15 confirmation). It is the **only** mechanism for keeping `amount_raised_in_cents` current. It covers all balance change sources:
 
 - **Expensify disbursements** — when beneficiaries draw funds, Ledger records a DEBIT. This produces no Stripe event. Without the cron, `amount_raised_in_cents` would only ever increase, never reflecting disbursements. This is a correctness requirement, not optional.
 - **Donations and subscription renewals** — Stripe charges are processed by Ledger's own webhook. The cron reads the authoritative balance from Ledger after Ledger has processed it.
@@ -167,17 +163,11 @@ SET amount_raised_in_cents = $1
 WHERE id = $2
 ```
 
-**`NULL` treated as `0` in display layer**
-
-`amount_raised_in_cents` is `NULL` on a new initiative before the first cron run after a donation. Display as `0`. No spinner or special-case Ledger call needed.
-
 **Migration cutover requirement**
 
 The `amount-raised-sync` CronJob must be run once manually as part of the cutover procedure, before DNS switches to the new system. This pre-populates `amount_raised_in_cents` for all 1,374 migrated published initiatives so no card incorrectly shows `$0 raised` on day one. See migration plan Phase 4.
 
-**Open question (OQ-15): ID for post-cutover initiatives**
-
-New initiatives created after cutover have no DynamoDB origin and therefore no original string ID. See OQ-15 in `03-open-questions.md`.
+`amount_raised_in_cents` is `NULL` on a new initiative before the first cron run — display as `0`. See OQ-15 for the ID strategy for post-cutover initiatives.
 
 
 ### No ORM — sqlc for type-safe queries
@@ -192,7 +182,7 @@ GitHub stats (forks, stars, open issues) are display-only metrics on project car
 
 When the Go API serves a project detail response, it checks `github_stats->>'fetched_at'` against a 6-hour TTL. If stale (or absent), it fetches fresh data from the GitHub API, writes it back to `github_stats`, and returns it. If the GitHub API is unavailable, it returns the cached value without error.
 
-Rationale: a dedicated CronJob binary, Dockerfile, and K8s CronJob manifest for 82 GitHub API calls every 6 hours is disproportionate overhead. Lazy refresh is simpler, requires no separate deployment artifact, and produces identical staleness characteristics (6h TTL either way). The only tradeoff is ~200ms added latency for the first page load after TTL expiry — acceptable for display-only vanity metrics.
+Rationale: a dedicated CronJob for ~82 projects is disproportionate overhead. Lazy refresh is simpler, requires no separate deployment artifact, and produces identical staleness characteristics.
 
 ### `migrate_dynamo_to_postgres.py` — migration tool
 
@@ -350,13 +340,7 @@ Run this after each follow-on milestone to find what can now be deleted.
 
 The backend is a **standalone Go HTTP service**, separate from the Nuxt frontend. Business logic (DB queries, Stripe, webhooks, email) lives in Go. Nuxt's server layer handles auth (PKCE, HTTP-only cookies, session) and calls the Go API to build pages.
 
-This was explicitly considered and rejected: embedding all backend logic inside Nuxt's server routes (as suggested during architecture review) would couple the UI framework to payment processing, Stripe webhook handling, and LFX One integration in ways that are fragile and hard to reverse. Specifically:
-
-- **Stripe webhooks** must be handled by a stable, dedicated HTTPS endpoint — not a Nuxt server route subject to SSR configuration changes
-- **LFX One integration** — LFX One's Express BFF may call the CF API directly (see LFX One integration decision); this requires an independently addressable service, not a Nuxt route
-- **Go is the team's existing language** — the codebase, migration tooling, and team knowledge are all Go; a TypeScript rewrite of business logic adds risk with no benefit
-
-Nuxt is the BFF for the CF frontend. The Go API is the resource service for all transactional logic.
+Embedding business logic in Nuxt server routes was considered and rejected — Stripe webhooks require a stable dedicated endpoint, LFX One may call the CF API directly, and Go is the team's existing language. Nuxt is the BFF for the CF frontend; the Go API is the resource service for all transactional logic.
 
 ### Go — same language, same patterns
 
@@ -473,8 +457,6 @@ CF is the financial custodian of donated funds. It collects money from donors an
 
 CF does not use beneficiary data for payment routing (Stripe charges are donor→program, not donor→beneficiary). The 24h sync delay is acceptable — mentees do not access funds until mid-term, months after approval.
 
-A 24h delay on beneficiary sync is acceptable by the same logic as program sync — mentees don't draw funds until mid-term, months after being approved.
-
 ### Mentorship UI — "available funds" display removed
 
 The Mentorship UI currently shows an "available funds" balance for each mentorship program, sourced from the CF API (which proxies Ledger). This display is removed and not carried into any future Mentorship rewrite.
@@ -495,9 +477,7 @@ Note: the `mentorship-sync` CronJob reads **Mentorship data from Snowflake into 
 
 The PM has requested CF data surfaces in LFX One ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). For the initial release, LFX One will read CF data from **Snowflake** (the same pattern used for My Trainings, My Meetings, etc.).
 
-Rationale: the Snowflake pattern already exists in LFX One and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX One. This approach has no runtime dependency between LFX One and the CF API service.
-
-Option A (LFX One calls CF Go API directly) was raised during the architecture review (Eric Searcy, May 2026) as a valid alternative once design is confirmed. This decision will be revisited once the LFX One UI design for CF widgets is delivered — see OQ-11.
+Rationale: the Snowflake pattern already exists in LFX One and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX One. This approach has no runtime dependency between LFX One and the CF API service. See OQ-11 for alternatives.
 
 **No LFX One integration code will be written until:**
 1. The PM provides a UI design for the LFX One CF widgets (what data, what layout)
@@ -510,7 +490,7 @@ Option A (LFX One calls CF Go API directly) was raised during the architecture r
 
 The `expensify-sync` cron job (SyncExpensifyHandler) pushes project/entity metadata to the Reimbursement Service. This is NOT end-user visible and NOT part of the initial release. The old Lambda continues running this job unchanged until the Reimbursement Service is migrated.
 
-**Constraint for future expensify-sync port:** When expensify-sync is eventually ported to the new CF service, it must send the old DynamoDB string ID (`projectId`) as the project ID to RS — not the new Postgres UUID. RS stores the project ID in Expensify as a custom reporting field and uses it as the policy lookup key. The Reimbursement Service has two project IDs hardcoded in `chrisProjectList` (service.go:197) for special Expensify handling (Kubernetes and CoreDNS — these projects route expense approval through Chris Aniszczyk as an auditor). These are DynamoDB-era project UUIDs (`2d438b9a...` = Kubernetes, `6705be57...` = CoreDNS — confirmed via RS Postman collection). RS receives and stores these IDs from LFF at policy-creation time (`POST /reimbursement/{projectID}`), where `projectID` is the DynamoDB `project.ProjectID`. Sending the new Postgres UUID instead would silently break the `chrisProjectList` check and the Expensify approval chain for these two projects. The original DynamoDB ID is not recoverable from the Postgres `initiatives.id` UUID by inverting the deterministic `uuid5` mapping; if the new service needs to send the legacy ID after migration, that DynamoDB `projectId` must be preserved explicitly in a dedicated column or mapping table during migration.
+**Constraint for future expensify-sync port:** When expensify-sync is eventually ported to the new CF service, it must send the original DynamoDB string ID (`projectId`) as the project ID to RS — not the new Postgres UUID. RS stores the project ID in Expensify as a custom reporting field and uses it as the policy lookup key; sending the Postgres UUID would silently break the approval chain. The original DynamoDB ID is not recoverable by inverting the `uuid5` mapping — it must be preserved explicitly in a dedicated column or mapping table during migration.
 
 ### EMAIL_DRY_RUN mode
 
@@ -621,25 +601,9 @@ Deferred. Can be added later as they are non-functional additions.
 
 Prototype: `https://github.com/jonathimer/lfx-crowdfunding-prototype` — treat as the design reference for the initial release UI. Sponsor Tiers shown in prototype are out of scope for initial release.
 
-### `/stripe` OAuth callback route — dropped (dead code)
-
-The old CF Angular app had a `/stripe` route (`RedirectingModule`) with an empty `ngOnInit()`. It appeared to be a Stripe Connect OAuth callback but has no logic — the component does nothing. Investigation of the backend confirmed that `ConnectOAuthAccount()` only handles `github` as a provider type; there is no Stripe Connect OAuth flow in the current codebase.
-
-The `/stripe/callback` route is **not ported** to the new Nuxt frontend. If Stripe Connect OAuth is ever needed in the future, it must be implemented from scratch. There is no existing implementation to migrate.
-
 ### `diversity` — budget category kept, Diversity API deferred
 
-`diversity` appears in two distinct and unrelated contexts:
-
-**1. `diversity` budget category (active, must be kept)**
-`diversity` is a valid entry in `entity_goals.json` (displayed as "Diversity Funding") and is used as a payment/subscription category in the current frontend and backend. Donors can designate their contribution to the `diversity` budget. This category exists in production data on `subscriptions` and `donations` DynamoDB records.
-
-`diversity` must be a valid `category` value on `crowdfunding.subscriptions` and `crowdfunding.donations` and must be migratable as an `initiative_goals` row — exactly as `development`, `marketing`, etc.
-
-**2. Diversity API integration (deferred)**
-The old system fetches demographic diversity stats (`malePercentage`, `femalePercentage`, etc.) from a separate Diversity API and displays them on the project page. This API integration is **deferred** — not in the initial release. It has nothing to do with the budget category above.
-
-Do not conflate these two: the Diversity API deferred flag does not mean the `diversity` budget category is removed. Keep the category; defer the API.
+`diversity` is both a budget category (active — used in production `subscriptions` and `donations` data, must be migrated as an `initiative_goals` row like `development`, `marketing`, etc.) and a separate Diversity API integration (deferred — fetches demographic stats for display on project pages). These are unrelated. The deferred API flag does not mean the budget category is removed.
 
 ---
 
