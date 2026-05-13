@@ -3,3 +3,5 @@
 
 .specify/
 megalinter-reports/
+.env
+backend/bin/

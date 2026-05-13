@@ -142,11 +142,11 @@ The cron UPDATE must **not** touch `updated_on` — background reconciliation mu
 **Cutover:** run `ledger-stats-sync` once manually before DNS cutover to pre-populate stats columns for all migrated published initiatives. See migration plan Phase 4. Stats columns are `NULL` before the first run — display as `0`. See OQ-15 for post-cutover ID strategy.
 
 
-### No ORM — sqlc for type-safe queries
+### No ORM — raw pgx with explicit query functions
 
-Use `sqlc` to generate type-safe Go code from SQL queries. No ORM (GORM, ent, etc.).
+Use raw `pgx/v5` with explicit query functions. No ORM (GORM, ent, etc.), no code generator (sqlc).
 
-Rationale: the existing codebase uses raw AWS SDK calls with no ORM. `sqlc` gives compile-time query safety without the complexity and magic of an ORM. Consistent with the team's preference for explicit code.
+Rationale: the existing codebase uses raw AWS SDK calls with no ORM. Raw pgx keeps SQL visible and explicit without tooling overhead. Consistent with the team's preference for explicit code.
 
 ### GitHub stats — lazy refresh, no CronJob
 
