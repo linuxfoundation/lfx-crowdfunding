@@ -448,8 +448,8 @@ All require `LEDGER_AUTHORIZATION_TOKEN` Bearer header.
 - Purpose: manages Expensify expense policies for Crowdfunding projects; handles beneficiary lifecycle, policy creation/updates, expense approval/rejection notifications
 
 **OpenSearch dependency — migration plan (see OQ-7):**
-- On CF release day: RS switches `projects`/`entities`/`lff-users` index reads to direct SQL on CF Postgres (`crowdfunding` schema, read-only role)
-- CF release + 2 weeks: RS migrates `lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets` to `reimbursement` schema on CF Postgres; OpenSearch decommissioned
+- On CF release day (Phase 1): RS switches `projects`/`entities`/`lff-users` index reads to three internal HTTPS endpoints on the CF Go API (`X-Internal-Token` auth). No direct Postgres access — RS is a Lambda in a separate AWS VPC and cannot reach the shared RDS.
+- When RS moves to Kubernetes (Phase 2, timeline TBD): RS gets its own database on the shared RDS (not a schema on CF Postgres), migrates its three OpenSearch indices (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) to its own Postgres, and switches CF data reads from the Phase 1 HTTP endpoints to a read-only role on the `crowdfunding` schema. OpenSearch decommissions at this point — not before.
 
 ---
 
