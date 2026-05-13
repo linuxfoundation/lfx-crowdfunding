@@ -365,7 +365,7 @@ Reviewed with Eric Searcy (chief architect, May 2026). Any Go API endpoint that 
 **Rules:**
 
 - **Public endpoints** (anonymous-safe responses, same content for all callers): `Cache-Control: public, max-age=<N>`. Do NOT include `Vary: Cookie`. Include an `ETag` header (hash of the response body) so clients and CDN pops can do conditional `If-None-Match` revalidation and receive 304s instead of re-fetching the full payload.
-- **Private / authenticated endpoints** (response varies by user identity or contains personal data): `Cache-Control: private, no-store`. Do not expose to CDN caches. Browser caching is still acceptable and handled by `Cache-Control: private`.
+- **Private / authenticated endpoints** (response varies by user identity or contains personal data): `Cache-Control: private, max-age=<N>`. Do not expose to CDN caches. Browser caching is acceptable — `private` ensures the response is only stored by the end-user's browser, not shared caches. Use `must-revalidate` if stale responses must never be served.
 - **Unauthenticated view of a public page that also has an authenticated view**: serve `Vary: Cookie` so CDN does not re-serve an anonymous-user response to a logged-in user with a different cookie.
 
 **What qualifies as public:** initiative listing (`GET /v1/initiatives`), initiative detail (`GET /v1/initiatives/{id}`), backer list, organization detail — any read endpoint that does not expose per-user data.
