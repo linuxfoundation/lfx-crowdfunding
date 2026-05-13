@@ -434,7 +434,7 @@ Rationale: the Snowflake pattern already exists in LFX Self Serve and requires m
 2. The full list of CF data needed in LFX Self Serve is confirmed (see OQ-11)
 3. The Fivetran CF→Snowflake connector is live with production data
 
-**Future path (Option C):** Full platform stack integration (Traefik ingress, OpenFGA authorization, platform indexer, Query Service) is the long-term correct architecture for CF as an LFX v2 citizen. This is deferred post-initial-release and must be tracked as a separate Jira epic. It is not "later maybe" — it is a scheduled follow-on project.
+**Future path:** Full platform stack integration (Traefik ingress, OpenFGA authorization, platform indexer, Query Service) is the long-term correct architecture for CF as an LFX v2 citizen. This is deferred post-initial-release and must be tracked as a separate Jira epic. It is not "later maybe" — it is a scheduled follow-on project.
 
 ### Expensify sync — keep on old Lambda for initial release
 
@@ -453,12 +453,12 @@ CF does **not** integrate with the LFX v2 platform stack (Traefik gateway, Heimd
 This was reviewed with Eric Searcy (chief architect, May 2026). His position: participating in the access control graph is architecturally correct long-term but will slow down delivery significantly. Given the end-of-May deadline, standalone is the right call for initial release.
 
 **Tech debt created is bounded and intentional:**
-- CF's own JWT middleware → replaceable with Heimdall when Option C is implemented
+- CF's own JWT middleware → replaceable with Heimdall when full platform stack integration is implemented
 - CF's own Ingress → replaceable with Traefik HTTPRoute
 - Postgres FTS for search → stays; Query Service is additive, not a replacement
-- No OpenFGA types defined → must be designed and implemented as part of Option C
+- No OpenFGA types defined → must be designed and implemented as part of full platform stack integration
 
-**To keep Option C achievable:** access control intent must be documented now — who can do what to which resource — even though it is not implemented via OpenFGA yet. This is captured in the OpenFGA design notes below.
+**To keep the future platform integration achievable:** access control intent must be documented now — who can do what to which resource — even though it is not implemented via OpenFGA yet. This is captured in the OpenFGA design notes below.
 
 **Access control intent (for future OpenFGA model):**
 - `initiative` (project/mentorship/`general fund`/event/ostif): owner (creator) has writer; donors have no elevated access; CF admin has writer for approval flow
@@ -466,15 +466,15 @@ This was reviewed with Eric Searcy (chief architect, May 2026). His position: pa
 - `subscription` / `donation`: owned by the creating user; read-only to CF admin
 - Anonymous users: read-only access to published initiatives
 
-**Initiatives are decoupled from LFX project entities.** There is no FK or relationship linking a CF initiative to an LFX project in the permissions graph. Access is determined solely by `owner_id` (Auth0 subject) and `initiative_type`. Role inheritance from LFX project roles (e.g., project auditor → initiative writer) is not possible without adding a `project_id` FK — this is a design decision deferred to Option C.
+**Initiatives are decoupled from LFX project entities.** There is no FK or relationship linking a CF initiative to an LFX project in the permissions graph. Access is determined solely by `owner_id` (Auth0 subject) and `initiative_type`. Role inheritance from LFX project roles (e.g., project auditor → initiative writer) is not possible without adding a `project_id` FK — this is a design decision deferred to full platform stack integration.
 
 Consequence for non-LF projects (future): since initiatives are decoupled, supporting non-LF projects is a per-initiative policy decision, not a structural schema change.
 
-**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/initiatives`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when Option C is implemented.
+**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/initiatives`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when full platform stack integration is implemented.
 
 **LFX Self Serve integration auth:** LFX Self Serve reads CF data from Snowflake — there are no live API calls from LFX Self Serve to the CF Go API. Auth between LFX Self Serve and the CF API is not needed until full platform stack integration (see below) is implemented. Deferred to OQ-11.
 
-**Option C** (full platform stack integration) is a post-initial-release tracked project — not "later maybe." File a Jira epic when initial release ships.
+**Full platform stack integration** is a post-initial-release tracked project — not "later maybe." File a Jira epic when initial release ships.
 
 ### Authorization model — initial release
 
