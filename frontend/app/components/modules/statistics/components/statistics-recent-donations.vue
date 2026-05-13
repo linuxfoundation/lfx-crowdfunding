@@ -46,6 +46,7 @@ SPDX-License-Identifier: MIT
     v-else-if="data?.data?.length"
     :donations="data.data"
     :show-initiative-link="true"
+    :show-see-all-link="false"
   />
 </template>
 

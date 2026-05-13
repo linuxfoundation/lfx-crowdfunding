@@ -4,15 +4,17 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <div class="bg-white">
-    <!-- Hero header -->
-    <statistics-header
-      :overview="overviewData"
-      :is-loading="overviewLoading"
-    />
+    <div class="container">
+      <!-- Hero header -->
+      <div class="px-35">
+        <statistics-header
+          :overview="overviewData"
+          :is-loading="overviewLoading"
+        />
+      </div>
 
-    <!-- Body -->
-    <div class="pb-30">
-      <div class="container">
+      <!-- Body -->
+      <div class="pb-30 px-35">
         <div class="flex flex-col lg:flex-row gap-8 items-start">
           <!-- Left column -->
           <div class="flex-1 min-w-0 flex flex-col gap-6">

@@ -7,6 +7,7 @@ SPDX-License-Identifier: MIT
     <div class="flex items-center justify-between">
       <p class="text-base font-semibold text-neutral-900 leading-6">Recent donations</p>
       <a
+        v-if="showSeeAllLink"
         href="#"
         class="text-sm text-accent-500 hover:text-accent-600 font-medium leading-4"
       >
@@ -29,10 +30,16 @@ SPDX-License-Identifier: MIT
 import DonationsRow from './donations-row.vue';
 import type { RecentDonation } from '#shared/types/initiative-detail.types';
 
-defineProps<{
-  donations: RecentDonation[];
-  showInitiativeLink?: boolean;
-}>();
+withDefaults(
+  defineProps<{
+    donations: RecentDonation[];
+    showInitiativeLink?: boolean;
+    showSeeAllLink?: boolean;
+  }>(),
+  {
+    showSeeAllLink: true,
+  },
+);
 </script>
 
 <script lang="ts">
