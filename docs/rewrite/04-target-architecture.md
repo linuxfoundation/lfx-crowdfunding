@@ -276,15 +276,15 @@ Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-ow
 
 | Method | Path | Returns | Replaces | Used by |
 |---|---|---|---|---|
-| `GET` | `/internal/v1/initiatives?slug={slug}` | `{dynamo_id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
-| `GET` | `/internal/v1/initiatives?status=published` | `[{dynamo_id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
+| `GET` | `/internal/v1/initiatives?slug={slug}` | `{id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
+| `GET` | `/internal/v1/initiatives?status=published` | `[{id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
 | `GET` | `/internal/v1/users/{owner_id}` | `{id, email}` | `lff-users` reads | `getEmailBySlug()` |
 
 `X-Internal-Token` secret stored in AWS Secrets Manager, injected via ESO into both CF and RS at deploy time.
 
 **The bulk endpoint is release-blocking.** Once CF DNS cuts over, OpenSearch receives no new CF writes and goes stale. `RefreshTags()` must switch to the bulk endpoint on cutover day or new projects will never appear as Expensify tags — beneficiaries cannot submit expenses against them. This is a silent financial failure.
 
-The initiative identifier returned should be `initiatives.id` (Postgres UUID). For migrated initiatives with UUID-form DynamoDB IDs (the vast majority), this matches the original ID exactly. For the small number of non-UUID legacy IDs, RS must maintain a mapping if legacy DynamoDB string IDs are required in Expensify GL codes.
+`id` in the response is `initiatives.id` (Postgres UUID). For migrated initiatives whose DynamoDB ID was already UUID-form (the vast majority), `initiatives.id` is identical to the original DynamoDB string ID — RS can use it directly as the Expensify GL code. For the small number of non-UUID legacy IDs, `initiatives.id` is a `uuid5`-derived value that differs from the original DynamoDB string ID; RS must maintain a mapping in that case to match existing Expensify GL codes.
 
 ### Stripe Webhook
 

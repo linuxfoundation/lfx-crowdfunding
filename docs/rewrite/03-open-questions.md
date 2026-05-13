@@ -80,7 +80,7 @@ RS switches Category 1 reads (CF-owned data) from OpenSearch to three narrow int
 
 **Why the bulk endpoint is required:** Once CF DNS cuts over, the new CF service writes exclusively to Postgres — OpenSearch receives no new writes. From cutover day, OpenSearch is a stale snapshot. `RefreshTags()` runs every 3 hours and bulk-reads all published initiatives to rebuild Expensify GL code tags. If it keeps reading from stale OpenSearch, new projects created after cutover will never appear as Expensify tags, and beneficiaries cannot submit expenses against them. This is a silent failure with real financial impact.
 
-The bulk endpoint returns `[{dynamo_id, name}]` for all published initiatives. RS uses the original DynamoDB string ID as the Expensify GL code (matching what is already stored in Expensify from the old system).
+The bulk endpoint returns `[{id, name}]` for all published initiatives, where `id` is `initiatives.id` (Postgres UUID). For UUID-form DynamoDB IDs (the vast majority), this equals the original DynamoDB string ID — RS can use it directly as the Expensify GL code. For the small number of non-UUID legacy IDs, `initiatives.id` differs from the original DynamoDB string ID and RS must maintain a mapping.
 
 These endpoints are on the CF public HTTPS ingress, authenticated via a shared secret (`X-Internal-Token` header). RS Lambda can reach them over public HTTPS — same network path as all other Lambda→K8s calls today (confirmed reachable, OQ-1/OQ-2).
 

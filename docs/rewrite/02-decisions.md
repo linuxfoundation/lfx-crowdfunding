@@ -150,11 +150,11 @@ The approach for initial release depends on OQ-18 architect approval (see above)
 
 **If Plan B (fallback):** Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives`, kept fresh by CronJob calls to the Ledger HTTP API. The initial release caches `amount_raised_in_cents` only (via `amount-raised-sync`). Additional UI fields require separate Ledger API endpoints + CronJob changes + new cached columns — they are not individually back-filled without those changes.
 
-`amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob.
+`amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob. This applies under **Plan B only** — under Plan A, `amount_raised_in_cents` is derived by querying `ledger_transactions` directly and there is no cached column.
 
-**Sole mechanism: `amount-raised-sync` CronJob (hourly)**
+**Sole mechanism under Plan B: `amount-raised-sync` CronJob (hourly)**
 
-The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{id}` for all published initiatives, updating `amount_raised_in_cents`. It uses `initiatives.id` as the Ledger `{id}`. For migrated initiatives, that means: if the legacy DynamoDB ID was already UUID-form, `initiatives.id` matches that original ID; otherwise `initiatives.id` is the deterministic UUID generated during migration via the `uuid5` mapping, not the original non-UUID DynamoDB string. For post-cutover initiatives with no DynamoDB origin, `id` is the Postgres UUID (pending OQ-15 confirmation). It is the **only** mechanism for keeping `amount_raised_in_cents` current. It covers all balance change sources:
+The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{id}` for all published initiatives, updating `amount_raised_in_cents`. It uses `initiatives.id` as the Ledger `{id}`. For migrated initiatives, that means: if the legacy DynamoDB ID was already UUID-form, `initiatives.id` matches that original ID; otherwise `initiatives.id` is the deterministic UUID generated during migration via the `uuid5` mapping, not the original non-UUID DynamoDB string. For post-cutover initiatives with no DynamoDB origin, `id` is the Postgres UUID (pending OQ-15 confirmation). It is the **only** mechanism for keeping `amount_raised_in_cents` current under Plan B. It covers all balance change sources:
 
 - **Expensify disbursements** — when beneficiaries draw funds, Ledger records a DEBIT. This produces no Stripe event. Without the cron, `amount_raised_in_cents` would only ever increase, never reflecting disbursements. This is a correctness requirement, not optional.
 - **Donations and subscription renewals** — Stripe charges are processed by Ledger's own webhook. The cron reads the authoritative balance from Ledger after Ledger has processed it.
@@ -289,13 +289,13 @@ In the old system: `initiative` was the backend type string; "General Fund" was 
 
 ### Budget goals — `initiative_goals` child table, mentorship data in dedicated tables
 
-All initiative budget goals are stored in the `initiative_goals` child table (one row per category per initiative). Mentorship-specific metadata lives in four additional dedicated tables: `initiative_mentors`, `initiative_program_info_skills`, `initiative_program_info_terms`, `initiative_program_info_config`, and `initiative_program_info_custom_term`.
+All initiative budget goals are stored in the `initiative_goals` child table (one row per category per initiative). Mentorship-specific metadata lives in five additional dedicated tables: `initiative_mentors`, `initiative_program_info_skills`, `initiative_program_info_terms`, `initiative_program_info_config`, and `initiative_program_info_custom_term`.
 
 **Project-type initiatives** have up to 8 `initiative_goals` rows with fixed names: `development`, `marketing`, `meetups`, `travel`, `bugBounty`, `documentation`, `other`, `mentee`.
 
 **Mentorship-type initiatives** have one `initiative_goals` row with `name = 'mentee'` carrying the `amount_in_cents` goal, plus rows in the mentor/skills/terms tables for program metadata.
 
-**Migration implication:** the migration script reads `data.projectDetails.mentee` (nested) for mentorship projects — NOT `data.mentee` at the top level. Reading from the wrong path silently drops all mentorship metadata. This was the bug that caused the first migration pass to miss all 1,486 reclassified rows.
+**Migration implication:** the migration script reads `data.projectDetails.mentee` (nested) for mentorship projects — NOT `data.mentee` at the top level. Reading from the wrong path silently drops all mentorship metadata. This was the bug that caused the first migration pass to miss all 1,486 reclassified rows. The script was corrected and the second pass recovered all rows — the current script at `db/scripts/migrate_dynamo_to_postgres.py` uses the correct path.
 
 ### `status` normalization
 

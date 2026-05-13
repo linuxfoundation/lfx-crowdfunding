@@ -208,7 +208,7 @@ User profile + Stripe customer info + GitHub OAuth tokens.
 
 Primary key: `organizationId`. GSI: `orgByOwner` (ownerId).
 
-Fields: `organizationId`, `ownerId`, `name`, `status`, `description`, `website`, `logoUrl`, `createdOn`, `updatedOn`, `approvedOn`, `rejectedOn`.
+Fields: `organizationId`, `ownerId`, `name`, `status`, `logoUrl`, `createdOn`, `updatedOn`, `approvedOn`, `rejectedOn`. Note: `description` and `website` do not exist in the DynamoDB schema — they are not present in the Go struct or DynamoDB records and are not migrated.
 
 ---
 
