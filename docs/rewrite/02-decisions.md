@@ -381,7 +381,9 @@ Ledger's `GetOrganizationName()` (`fundspring.go:63`) uses plain `http.Get()` wi
 The `project_id` stored in the Ledger DB is the old DynamoDB string ID. The new CF Go API must accept both the original DynamoDB string ID and the Postgres UUID on `GET /v1/projects/{id}` and `GET /v1/entities/{id}`, resolving via the DynamoDB string ID first. This covers both existing rows (keyed by original ID) and post-cutover rows (keyed by UUID — see OQ-15).
 
 **Stripe metadata must use the correct project ID for new donations after cutover:**
-See OQ-15. The ID placed in Stripe object metadata fields `projectID` / `entityID` at charge-creation time determines what `project_id` gets written to the Ledger DB and what key `GET /balance/{id}` must use. This is unresolved for post-cutover initiatives and is the subject of OQ-15.
+The ID placed in Stripe object metadata fields `projectID` / `entityID` at charge-creation time determines what `project_id` gets written to the Ledger DB and what key `GET /balance/{id}` must use.
+
+For post-cutover initiatives (no DynamoDB origin), the recommended approach is to use the Postgres UUID directly as the project ID: CF puts the UUID in Stripe metadata at charge-creation time; Ledger stores it verbatim; `GET /balance/{uuid}` finds it because Ledger's regex (`^[0-9a-zA-Z\_\-]+$`) accepts UUIDs and the `WHERE project_id = $1` query matches. No Ledger code changes required. Lewis must confirm no Ledger code path assumes `project_id` is in a non-UUID format before this is adopted — see OQ-15.
 
 This is an implementation constraint on the new CF Go API Stripe integration — must be enforced at code review.
 
