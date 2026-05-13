@@ -99,18 +99,11 @@ The `spring-projects` index is owned and written by the Mentorship service (jobs
 
 ---
 
-### OQ-18: Cross-account DB mirroring — architect decision
-
-**Status:** Resolved — stats-sync via Ledger HTTP API confirmed (May 2026)
-
-Eric rejected cross-account DB mirroring: coupling two services against the same database schema is not the right approach — an API is the correct way to expose a defined contract. Confirmed approach: stats-sync via Ledger HTTP API. See `02-decisions.md` and OQ-19.
-
----
-
 ## Resolved
 
 | # | Question | Resolution |
 |---|---|---|
+| OQ-18 | Cross-account DB mirroring — architect decision | Rejected by Eric (May 2026): coupling services via shared DB schema is wrong; API is the correct contract. Confirmed approach: stats-sync via Ledger HTTP API. See `02-decisions.md` and OQ-19. |
 | OQ-1 | Can K8s cluster reach Lambda API Gateway endpoints? | Yes — both Ledger and RS APIs are reachable over public HTTPS from K8s. |
 | OQ-2 | Is the Ledger API URL public HTTPS or private VPC? | Public HTTPS — CF K8s can call Ledger API directly. |
 | OQ-3 | Mentorship → CF data sync mechanism | SNS/SQS dropped. CF syncs from Snowflake via K8s CronJob. See `02-decisions.md`. |
