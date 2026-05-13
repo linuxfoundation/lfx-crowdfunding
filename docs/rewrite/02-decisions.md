@@ -453,7 +453,7 @@ Ledger authenticates its CF API calls with a custom `x-ledger-auth` header (`fun
 
 The new CF Go API must **not** implement `x-ledger-auth` support. Instead, the Ledger Service must be updated to send a standard `Authorization: Bearer <token>` header before CF cutover. This is a one-line change in `fundspring.go:getToken()` and `request.Header.Set(...)`. Rationale: accepting a non-standard auth header creates a confusing third auth mechanism alongside Auth0 Bearer and `X-Internal-Token` (RS). `Authorization: Bearer` is the HTTP standard and is handled correctly by every proxy, middleware, and security scanner.
 
-The CF Go API accepts `Authorization: Bearer` on the project/entity detail endpoints and validates the token against a shared secret (`CF_LEDGER_AUTH_TOKEN` env var, same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`). This is a service-to-service shared secret, not a JWT — validated with a direct string comparison in a dedicated middleware applied only to these endpoints.
+The CF Go API accepts `Authorization: Bearer` on the project/entity detail endpoints and validates the token against a shared secret (`CF_LEDGER_AUTH_TOKEN` env var, same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`). This is a service-to-service shared secret, not a JWT — validated with a constant-time comparison (e.g. `hmac.Equal`) in a dedicated middleware applied only to these endpoints. Do not use `==` or `strings.EqualFold` — both are vulnerable to timing attacks.
 
 **`GET /v1/organizations/{id}` — Ledger bug: called unauthenticated**
 
