@@ -53,8 +53,8 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
 
   Background workers (K8s CronJobs):
   ┌──────────────────────────────────────────────────────┐
-  │  mentorship-sync    K8s CronJob (daily or few x/day) │
-  │  amount-raised-sync K8s CronJob (hourly)             │
+  │  mentorship-sync     K8s CronJob (daily or few x/day) │
+  │  ledger-stats-sync   K8s CronJob (hourly)             │
   └──────────────────────────────────────────────────────┘
 
 ━━━━━━━━━━━━━━━━━━━ UNCHANGED (Lambda / external) ━━━━━━━━━━━━━━━━━━
@@ -197,7 +197,7 @@ Public (accessible client-side):
 cmd/
 ├── api/                # HTTP server entrypoint
 ├── mentorship-sync/    # Snowflake CronJob entrypoint
-├── amount-raised-sync/ # amount_raised_in_cents reconciliation CronJob entrypoint
+├── ledger-stats-sync/  # Ledger financial stats CronJob entrypoint
 └── migrate/            # DB schema migration runner (golang-migrate)
 
 db/
@@ -242,11 +242,10 @@ When `EMAIL_DRY_RUN=true`:
 |---|---|---|---|
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
 | GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
-| `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{dynamo_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_in_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). Will be extended or replaced by `ledger-stats-sync` as additional UI fields are confirmed (see OQ-19). |
-| `ledger-stats-sync` | CronJob | TBD | Calls Ledger HTTP API to sync pre-aggregated financial stats (amount raised, backer count, etc.) as cached columns on `crowdfunding.initiatives`. Replaces / extends `amount-raised-sync`. Requires Ledger API + schema changes per new UI field. Design pending UI field review — see OQ-19. |
+| `ledger-stats-sync` | CronJob | Every hour | Calls Ledger HTTP API to sync pre-aggregated financial stats as cached columns on `crowdfunding.initiatives`. **Required for correctness** — the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover. Initial release syncs `amount_raised_in_cents` only (`GET /balance/{id}`). Full set of stats columns (backer count, subscription totals, etc.) defined after UI design review — see OQ-11 and OQ-19. |
 
 Jobs removed from old system (not ported):
-- `amountraised` / `amountraised-entities` → replaced by `amount-raised-sync` CronJob (extended into `ledger-stats-sync` as additional fields are confirmed, see OQ-19)
+- `amountraised` / `amountraised-entities` → replaced by `ledger-stats-sync` CronJob
 - `export-projects`, `export-organizations`, `export-users`, `entities-sync` → OpenSearch dropped; search replaced by Postgres full-text search
 - `ledger-viewmodel` → no longer needed
 - `expensify-sync` → stays on old Lambda, not ported for initial release
@@ -370,7 +369,7 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 | Go HTTP API | `Deployment` + `Service` + `Ingress` | Chi router, long-running |
 | Crowdfunding Postgres | Shared AWS RDS instance | LFX standard — DevOps adds `crowdfunding` DB + role to existing `lfx-v2` RDS in `lfx-v2-opentofu/postgres.tf`; app connects via `rds-postgres.lfx:5432` |
 | mentorship-sync job | `CronJob` | Daily or a few times/day; Snowflake → CF Postgres |
-| amount-raised-sync job | `CronJob` | Every hour; reconciles `amount_raised_in_cents` from Ledger API |
+| ledger-stats-sync job | `CronJob` | Every hour; syncs financial stats from Ledger API into cached columns on `initiatives` |
 | Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
 | ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
 

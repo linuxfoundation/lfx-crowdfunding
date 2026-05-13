@@ -79,7 +79,7 @@ The `spring-projects` index is owned and written by the Mentorship service (jobs
 
 **Action:** Lewis to confirm no Ledger code path assumes `project_id` is in a non-UUID format before this approach is adopted.
 
-**Blocking:** Stripe integration for post-cutover initiatives; `amount-raised-sync` reconciliation CronJob; backer list (`GET /v1/initiatives/{id}/backers`).
+**Blocking:** Stripe integration for post-cutover initiatives; `ledger-stats-sync` CronJob; backer list (`GET /v1/initiatives/{id}/backers`).
 
 ---
 

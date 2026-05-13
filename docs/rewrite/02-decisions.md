@@ -65,7 +65,7 @@ Ledger Service keeps its own separate Postgres DB (Ledger DB) in a separate AWS 
 
 Ledger DB co-location and raw table mirroring (cross-account DB access) were both considered and rejected by the architect (Eric, May 2026) — see OQ-18. The confirmed approach is stats-sync via Ledger HTTP API.
 
-**Confirmed approach:** a `ledger-stats-sync` K8s CronJob calls the Ledger HTTP API to sync pre-aggregated financial stats per initiative and stores them as cached columns on `crowdfunding.initiatives`. This extends the current `amount-raised-sync` pattern to cover additional fields (backer count, subscription totals, etc.) as UI requirements are confirmed. Cached columns enable sorting and filtering by financial metrics (most funded, close to goal) at query time with a simple index scan. See OQ-19 for the open question on Ledger API shape.
+**Confirmed approach:** a `ledger-stats-sync` K8s CronJob calls the Ledger HTTP API to sync pre-aggregated financial stats per initiative and stores them as cached columns on `crowdfunding.initiatives`. Cached columns enable sorting and filtering by financial metrics (most funded, close to goal) at query time with a simple index scan. The full set of stats columns (amount raised, backer count, subscription totals, etc.) must be defined after UI design review — see OQ-19 and OQ-11.
 
 ### `projects` + `entities` → unified `initiatives` table
 
@@ -129,9 +129,9 @@ Rationale: they represent different Stripe object types (`Subscription` vs `Char
 
 ### Ledger-derived financial fields — stats-sync cached columns
 
-Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives`, kept fresh by a CronJob that calls the Ledger HTTP API. The initial release syncs `amount_raised_in_cents` only (via the existing `amount-raised-sync` CronJob). Additional UI fields (backer count, subscription totals, etc.) require new Ledger API endpoints + CronJob changes + new cached columns — see OQ-19 for the open question on API shape, pending UI field review.
+Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives`, kept fresh by the `ledger-stats-sync` CronJob (hourly) that calls the Ledger HTTP API. The full set of stats columns must be defined after UI design review (see OQ-11 and OQ-19) — at minimum `amount_raised_in_cents` via `GET /balance/{id}`. Additional fields (backer count, subscription totals, etc.) require new Ledger API endpoints, new cached columns, and CronJob changes.
 
-`amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives`, kept fresh by the `amount-raised-sync` CronJob (hourly, calls `GET /balance/{id}` on Ledger API). It is the only mechanism — it covers Expensify disbursements (no Stripe event), donations/renewals, and manual Ledger corrections.
+`amount_raised_in_cents` is the only stats column defined for the initial release. It is the only mechanism that reflects Expensify debit-side disbursements (no Stripe event), donations/renewals, and manual Ledger corrections.
 
 The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
@@ -139,7 +139,7 @@ The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledge
 
 The cron UPDATE must **not** touch `updated_on` — background reconciliation must not produce false-positive change signals for Fivetran, RS, or audit logs.
 
-**Cutover:** run `amount-raised-sync` once manually before DNS cutover to pre-populate `amount_raised_in_cents` for all migrated published initiatives. See migration plan Phase 4. `amount_raised_in_cents` is `NULL` before the first run — display as `0`. See OQ-15 for post-cutover ID strategy.
+**Cutover:** run `ledger-stats-sync` once manually before DNS cutover to pre-populate stats columns for all migrated published initiatives. See migration plan Phase 4. Stats columns are `NULL` before the first run — display as `0`. See OQ-15 for post-cutover ID strategy.
 
 
 ### No ORM — sqlc for type-safe queries
@@ -308,7 +308,7 @@ All code lives in one repository (monorepo). Each entrypoint under `cmd/` builds
 |---|---|---|
 | `cmd/api/` | `Dockerfile.api` | `Deployment` |
 | `cmd/mentorship-sync/` | `Dockerfile.mentorship-sync` | `CronJob` |
-| `cmd/amount-raised-sync/` | `Dockerfile.amount-raised-sync` | `CronJob` |
+| `cmd/ledger-stats-sync/` | `Dockerfile.ledger-stats-sync` | `CronJob` |
 | `cmd/migrate/` | `Dockerfile.migrate` | one-off `Job` |
 
 Rationale: a single container serving both HTTP requests and being invoked as a CronJob (via a flag) conflates two distinct runtime responsibilities. Separate images are minimal, contain only the code they need, and make it obvious what each K8s resource is doing. Shared business logic in `internal/` is compiled into each binary — no duplication of source, no runtime coupling.
@@ -574,7 +574,7 @@ Everything inside the "NEW" purple box in the architecture diagram is deployed t
 - Crowdfunding Go API — K8s Deployment + Service + Ingress
 - Crowdfunding Postgres DB — shared LFX v2 RDS instance; DevOps adds `crowdfunding` DB + role to `lfx-v2-opentofu`
 - `mentorship-sync` — K8s CronJob (daily or a few times/day)
-- `amount-raised-sync` — K8s CronJob (hourly)
+- `ledger-stats-sync` — K8s CronJob (hourly)
 
 Nothing in the initial release runs on Lambda or Serverless Framework.
 
