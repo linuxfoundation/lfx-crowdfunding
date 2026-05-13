@@ -453,15 +453,6 @@ All require `LEDGER_AUTHORIZATION_TOKEN` Bearer header.
 
 ---
 
-## lfx-v1-sync-helper
-
-- Purpose: real-time bidirectional sync between LFX v1 (legacy) and LFX One (v2) via NATS KV
-- Syncs: project metadata and committee data only
-- Does NOT sync: Crowdfunding donations, subscriptions, organizations, or Ledger transactions
-- Not useful for Crowdfunding DB migration — purpose-built for v1↔v2 platform metadata
-
----
-
 ## User-Facing Features (feature parity reference)
 
 The new system must replicate all of the following unless explicitly listed as out of scope in `02-decisions.md`.
