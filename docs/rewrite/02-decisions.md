@@ -423,11 +423,11 @@ This is **required for the initial release** — not "shortly after". A Jira tic
 
 Note: the `mentorship-sync` CronJob reads **Mentorship data from Snowflake into CF** — this is the Mentorship team's Fivetran responsibility, not CF's. CF→Snowflake is a separate Fivetran connector that CF DevOps owns.
 
-### LFX Self Serve integration — Snowflake (Option B) for initial release
+### LFX Self Serve integration — Snowflake via Fivetran
 
-The PM has requested CF data surfaces in LFX Self Serve ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). For the initial release, LFX Self Serve will read CF data from **Snowflake** (the same pattern used for My Trainings, My Meetings, etc.).
+The PM has requested CF data surfaces in LFX Self Serve ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). LFX Self Serve reads CF data from **Snowflake** via the Fivetran CF→Snowflake sync (the same pattern used for My Trainings, My Meetings, etc.).
 
-Rationale: the Snowflake pattern already exists in LFX Self Serve and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX Self Serve. This approach has no runtime dependency between LFX Self Serve and the CF API service. See OQ-11 for alternatives.
+Rationale: the Snowflake pattern already exists in LFX Self Serve and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX Self Serve. This approach has no runtime dependency between LFX Self Serve and the CF API service. See OQ-11 for scope.
 
 **No LFX Self Serve integration code will be written until:**
 1. The PM provides a UI design for the LFX Self Serve CF widgets (what data, what layout)
@@ -472,7 +472,7 @@ Consequence for non-LF projects (future): since initiatives are decoupled, suppo
 
 **Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/initiatives`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when Option C is implemented.
 
-**LFX Self Serve integration auth:** For the initial release, LFX Self Serve reads CF data from Snowflake (Option B) — there are no live API calls from LFX Self Serve to the CF Go API. The question of how LFX Self Serve authenticates to the CF API (ID tokens, API key, M2M, Auth0 resource server) only arises if Option A or C is chosen. Deferred to OQ-11.
+**LFX Self Serve integration auth:** LFX Self Serve reads CF data from Snowflake — there are no live API calls from LFX Self Serve to the CF Go API. Auth between LFX Self Serve and the CF API is not needed until full platform stack integration (see below) is implemented. Deferred to OQ-11.
 
 **Option C** (full platform stack integration) is a post-initial-release tracked project — not "later maybe." File a Jira epic when initial release ships.
 
