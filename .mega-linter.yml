@@ -23,3 +23,13 @@ DISABLE_LINTERS:
   # Project uses eslint + typescript-eslint; ts-standard is redundant and
   # cannot locate the tsconfig.json from the workspace root.
   - TYPESCRIPT_STANDARD
+
+DISABLE_ERRORS_LINTERS:
+  # boto3 and psycopg2 are runtime dependencies not installed in the MegaLinter
+  # container; import errors from these linters are false positives.
+  - PYTHON_PYLINT
+  - PYTHON_PYRIGHT
+  - PYTHON_MYPY
+
+# Prevent cspell from flagging filenames (e.g. CODEOWNERS, mkdocs) as words.
+SPELL_CSPELL_ANALYZE_FILE_NAMES: false

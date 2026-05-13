@@ -1,3 +1,6 @@
+<!-- Copyright The Linux Foundation and each contributor to LFX. -->
+<!-- SPDX-License-Identifier: MIT -->
+
 # Open Questions
 
 Questions that must be answered before or during implementation. Update status as questions are resolved.
@@ -55,7 +58,7 @@ Namespace is `crowdfunding` with ArgoCD entry in `lfx-v2-applications.yaml` and 
 
 **Status:** Resolved
 
-356 projects have Stripe plan/product IDs; 104 active subscriptions exist. All must be migrated as-is to Postgres with UNIQUE constraint on `stripe_subscription_id`. See 02-decisions.md for migration strategy.
+356 projects have Stripe plan/product IDs; 104 active subscriptions exist. All must be migrated as-is to Postgres. Note: `stripe_subscription_id` is a nullable `VARCHAR(255)` with no UNIQUE constraint in the schema. See 02-decisions.md for migration strategy.
 
 ---
 
@@ -77,7 +80,7 @@ RS switches Category 1 reads (CF-owned data) from OpenSearch to three narrow int
 
 **Why the bulk endpoint is required:** Once CF DNS cuts over, the new CF service writes exclusively to Postgres — OpenSearch receives no new writes. From cutover day, OpenSearch is a stale snapshot. `RefreshTags()` runs every 3 hours and bulk-reads all published initiatives to rebuild Expensify GL code tags. If it keeps reading from stale OpenSearch, new projects created after cutover will never appear as Expensify tags, and beneficiaries cannot submit expenses against them. This is a silent failure with real financial impact.
 
-The bulk endpoint returns `[{legacy_id, name}]` for all published initiatives. RS uses `legacy_id` as the Expensify GL code (matching what is already stored in Expensify from the old system).
+The bulk endpoint returns `[{dynamo_id, name}]` for all published initiatives. RS uses the original DynamoDB string ID as the Expensify GL code (matching what is already stored in Expensify from the old system).
 
 These endpoints are on the CF public HTTPS ingress, authenticated via a shared secret (`X-Internal-Token` header). RS Lambda can reach them over public HTTPS — same network path as all other Lambda→K8s calls today (confirmed reachable, OQ-1/OQ-2).
 
@@ -106,14 +109,14 @@ Once RS is on K8s in the same cluster, it can reach the shared RDS directly. At 
 
 ---
 
-### OQ-15: Ledger balance lookup for post-cutover initiatives (no `legacy_id`)
+### OQ-15: Ledger balance lookup for post-cutover initiatives (no original DynamoDB string ID)
 
 **Status:** Open
 **Owner:** Michal / Lewis
 
-**Question:** The `amount_raised_cents` cache column is kept fresh by calling `GET /balance/{legacy_id}` on the Ledger API. `legacy_id` is the old DynamoDB string ID, preserved during migration for all existing initiatives.
+**Question:** The `amount_raised_in_cents` cache column is kept fresh by calling `GET /balance/{id}` on the Ledger API. The migration script uses `_as_uuid()` to generate Postgres UUIDs: if the DynamoDB ID is already a valid UUID (the vast majority), it is preserved unchanged as `initiatives.id`; otherwise a deterministic `uuid5("coerce", id)` is generated. For UUID-form DynamoDB IDs, the Postgres UUID matches the original ID exactly, so the CF Go API can use `initiatives.id` directly when calling Ledger.
 
-New initiatives created after DNS cutover have no DynamoDB origin and therefore no `legacy_id`. The Ledger API has no key to look up their balance. Additionally, when CF creates a Stripe charge or subscription for a new post-cutover initiative, it must put an ID in the Stripe object metadata fields `projectID` / `entityID` — Ledger reads this to associate transactions with initiatives. If the new Postgres UUID is used instead of `legacy_id`, `GET /balance/{legacy_id}` will not find those transactions and the balance will always be `0`.
+New initiatives created after DNS cutover have no DynamoDB origin and therefore no original string ID. The Ledger API has no key to look up their balance. Additionally, when CF creates a Stripe charge or subscription for a new post-cutover initiative, it must put an ID in the Stripe object metadata fields `projectID` / `entityID` — Ledger reads this to associate transactions with initiatives. If the new Postgres UUID is used instead of the original DynamoDB ID, `GET /balance/{id}` will not find those transactions and the balance will always be `0`.
 
 **How Ledger stores and looks up `project_id`:**
 - Stripe webhook handler (`stripehook/hook.go:92`) reads `ch.Metadata["projectID"]` and stores it verbatim as `project_id text` in the `ledger` table — no validation, no transformation
@@ -141,9 +144,9 @@ No Ledger code changes are required. Here is why this works end-to-end:
 
 3. **`SendNotifications()` calls CF:** Ledger calls `GET /v1/projects/{project_id}` using the stored `project_id`. For post-cutover rows that value is a UUID. The new CF Go API already needs to support UUID lookups on these endpoints for its own use — so this costs nothing extra.
 
-4. **`legacy_id` column:** For migrated initiatives, `legacy_id` holds the old DynamoDB string ID and CF uses that in Stripe metadata (as today). For post-cutover initiatives, `legacy_id` is `NULL`. CF branches on `legacy_id IS NULL` to decide which ID to put in Stripe metadata: `legacy_id` if set, Postgres UUID otherwise.
+4. **Ledger ID for migrated vs post-cutover initiatives:** For migrated initiatives with UUID-form DynamoDB IDs (the vast majority), the Postgres UUID matches the original ID exactly — CF uses `initiatives.id` directly in Stripe metadata and Ledger lookups. For the small number of non-UUID legacy IDs, the service must store/maintain a mapping if Ledger lookups are required. For post-cutover initiatives with no DynamoDB origin, CF uses the Postgres UUID directly.
 
-5. **Reconciliation CronJob:** Calls `GET /balance/{id}` for all published initiatives. For migrated rows: uses `legacy_id`. For post-cutover rows: uses `id` (UUID). Same logic as step 4.
+5. **Reconciliation CronJob:** Calls `GET /balance/{id}` for all published initiatives using `initiatives.id` (which matches the original DynamoDB ID for UUID-form IDs).
 
 **The only risk:** If any other Ledger code path assumes `project_id` is in a non-UUID format (e.g. a slug or a DynamoDB-style opaque string), it would break silently. Lewis should verify no such assumption exists before approving this approach. Based on code review, no such assumption was found — `project_id` is treated as an opaque text key throughout Ledger.
 
