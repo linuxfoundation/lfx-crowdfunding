@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container pt-21 pb-16 flex flex-col gap-5">
+  <section class="pt-21 pb-16 flex flex-col gap-5">
     <!-- Eyebrow -->
     <div class="flex items-center gap-2 text-accent-800">
       <lfx-icon
