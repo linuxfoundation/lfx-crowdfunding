@@ -397,6 +397,18 @@ Ledger's `SendNotifications()` function calls the CF API to resolve project name
 - `GET /v1/entities/{id}` — fallback if project lookup returns empty
 - `GET /v1/organizations/{id}` — resolves org name for org/invoice donations (called unauthenticated — no auth header sent; must remain a public endpoint)
 
+These three routes are **Ledger-only legacy shims** — they exist solely because the Ledger Service has these URLs hardcoded and cannot be changed without a Ledger PR. They are not part of the public CF API and should not be used by any other caller. When the Ledger Service is migrated to Kubernetes, it must be updated to call `GET /v1/initiatives/{id}` instead, and these three routes must be removed.
+
+Mark each handler in the Go code with:
+
+```go
+// TODO(ledger-k8s): remove once Ledger Service is migrated to Kubernetes.
+// Ledger calls this path from fundspring.go to resolve initiative name/owner for notification emails.
+// Replace with GET /v1/initiatives/{id} in the Ledger Service, then delete this handler.
+```
+
+Search for `TODO(ledger-k8s)` to find all removal points.
+
 After DNS cutover, these requests hit the new CF Go API. If any of these lookups fail, donation confirmation emails silently fail (Ledger logs a Slack error but posts the transaction anyway).
 
 **Auth header: `x-ledger-auth` → must be changed to `Authorization: Bearer` before cutover**
