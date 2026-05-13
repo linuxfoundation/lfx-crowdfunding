@@ -68,13 +68,11 @@ RS continues using OpenSearch for its own three tables (`lfx-expense-log`, `bene
 
 For the initial CF release, RS reads CF-owned data (project/entity/user lookups) via three narrow internal HTTP endpoints on the CF Go API — the same network path RS uses today for other CF calls, over public HTTPS. See OQ-7 for the migration plan.
 
-Ledger Service keeps its own separate Postgres DB (Ledger DB) in a separate AWS account. It is not changed in the initial release. CF calls the Ledger HTTP API read-only for transaction stats and balance data — exactly as today.
+Ledger Service keeps its own separate Postgres DB (Ledger DB) in a separate AWS account. It is not changed in the initial release.
 
-Ledger DB co-location on the same RDS instance as CF DB was considered and rejected. Ledger DB is RDS in AWS Account B; CF DB is on the shared LFX v2 RDS in AWS Account A (K8s). Even if both were on the same RDS instance, they would be separate Postgres databases — plain SQL JOINs across databases on the same RDS instance are not possible without `postgres_fdw` or `dblink`, neither of which is provisioned. Co-location brings no practical benefit given the mirroring approach below.
+Ledger DB co-location and raw table mirroring (cross-account DB access) were both considered and rejected by the architect (Eric, May 2026) — see OQ-18. The confirmed approach is stats-sync via Ledger HTTP API.
 
-**Plan A (initial release, pending OQ-18 architect approval):** a `ledger-sync` K8s CronJob mirrors the Ledger `ledger` table into `crowdfunding.ledger_transactions` in CF DB via a direct read-only cross-account DB connection. Financial aggregates (amount raised, backer count, subscription totals) are then computed by querying `ledger_transactions` directly — no Ledger HTTP API calls needed at read time. The `amount-raised-sync` CronJob is decommissioned at that point. An `initiative_funding_summary` materialized view may be added later as a performance optimization if direct queries prove too slow, but is not assumed to be necessary. See OQ-16 and OQ-17 for open questions that must be resolved before implementing the sync.
-
-**Plan B (fallback if architect rejects cross-account DB access):** a `ledger-stats-sync` K8s CronJob calls the Ledger HTTP API to sync pre-aggregated stats (e.g. `amount_raised_in_cents`, backer count) per initiative and stores them as cached columns on `crowdfunding.initiatives`. This is essentially an extension of the current `amount-raised-sync` approach — more fields, same mechanism. It requires Ledger API + CronJob + CF DB schema changes per new UI field. OQ-18 must be resolved before implementation begins.
+**Confirmed approach:** a `ledger-stats-sync` K8s CronJob calls the Ledger HTTP API to sync pre-aggregated financial stats per initiative and stores them as cached columns on `crowdfunding.initiatives`. This extends the current `amount-raised-sync` pattern to cover additional fields (backer count, subscription totals, etc.) as UI requirements are confirmed. Cached columns enable sorting and filtering by financial metrics (most funded, close to goal) at query time with a simple index scan. See OQ-19 for the open question on Ledger API shape.
 
 ### `projects` + `entities` → unified `initiatives` table
 
@@ -142,17 +140,13 @@ Rationale: max donation is $999,999.99 = 99,999,999 cents, which fits in `int4` 
 
 Rationale: they represent different Stripe object types (`Subscription` vs `Charge`), have different lifecycles (recurring vs one-time), different cancellation/update logic, and different fields (frequency, stripe_subscription_id on subscriptions; stripe_charge_id on donations). Merging would create nullable columns and make queries less obvious.
 
-### Ledger-derived financial fields — Plan A (ledger-sync + direct queries) or Plan B (stats-sync cached columns)
+### Ledger-derived financial fields — stats-sync cached columns
 
-The approach for initial release depends on OQ-18 architect approval (see above).
+Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives`, kept fresh by a CronJob that calls the Ledger HTTP API. The initial release syncs `amount_raised_in_cents` only (via the existing `amount-raised-sync` CronJob). Additional UI fields (backer count, subscription totals, etc.) require new Ledger API endpoints + CronJob changes + new cached columns — see OQ-19 for the open question on API shape, pending UI field review.
 
-**If Plan A (ledger-sync) is approved:** The `ledger-sync` CronJob ships as part of the initial release. Financial aggregates are computed by querying `crowdfunding.ledger_transactions` directly. The `amount-raised-sync` CronJob is decommissioned. Additional financial fields (backer count, subscription totals, etc.) are SQL-only changes — no schema or API additions needed. An `initiative_funding_summary` materialized view is an optional follow-on optimization if direct query performance is insufficient.
+`amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob.
 
-**If Plan B (fallback):** Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives`, kept fresh by CronJob calls to the Ledger HTTP API. The initial release caches `amount_raised_in_cents` only (via `amount-raised-sync`). Additional UI fields require separate Ledger API endpoints + CronJob changes + new cached columns — they are not individually back-filled without those changes.
-
-`amount_raised_in_cents` is stored as a cached column on `crowdfunding.initiatives` and kept fresh solely by the `amount-raised-sync` CronJob. This applies under **Plan B only** — under Plan A, `amount_raised_in_cents` is derived by querying `ledger_transactions` directly and there is no cached column.
-
-**Sole mechanism under Plan B: `amount-raised-sync` CronJob (hourly)**
+**`amount-raised-sync` CronJob (hourly)**
 
 The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/{id}` for all published initiatives, updating `amount_raised_in_cents`. It uses `initiatives.id` as the Ledger `{id}`. For migrated initiatives, that means: if the legacy DynamoDB ID was already UUID-form, `initiatives.id` matches that original ID; otherwise `initiatives.id` is the deterministic UUID generated during migration via the `uuid5` mapping, not the original non-UUID DynamoDB string. For post-cutover initiatives with no DynamoDB origin, `id` is the Postgres UUID (pending OQ-15 confirmation). It is the **only** mechanism for keeping `amount_raised_in_cents` current under Plan B. It covers all balance change sources:
 
@@ -185,16 +179,6 @@ The `amount-raised-sync` CronJob must be run once manually as part of the cutove
 
 New initiatives created after cutover have no DynamoDB origin and therefore no original string ID. See OQ-15 in `03-open-questions.md`.
 
-**Migration path (Plan A only)**
-
-If Plan A ships: `ledger-sync` and the removal of `amount-raised-sync` are part of the initial release. Direct queries to `ledger_transactions` serve financial aggregates. An `initiative_funding_summary` materialized view may be added later if query performance requires it — no schema changes to the API response needed in either case.
-
-If Plan B ships instead and Plan A is later approved: once `ledger-sync` is running and `crowdfunding.ledger_transactions` is populated:
-- Switch aggregate queries to read from `ledger_transactions` directly
-- Remove the `amount_raised_in_cents` cached column (migration)
-- Remove the `amount-raised-sync` / `ledger-stats-sync` CronJob
-
-No API contract changes required — the cached column and the view return the same value for `amount_raised_in_cents`. Additional fields (backer count, subscription totals) become available via the view without schema changes to the API response.
 
 ### No ORM — sqlc for type-safe queries
 

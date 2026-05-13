@@ -34,7 +34,7 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
      │                         └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
      │  GET /balance, /txns    │  Ledger Service (Lambda)   │
-     │──[Plan B only]─────────►│                             │
+     │────────────────────────►│                             │
      │◄────────────────────────│  GET /v1/projects/{id}      │
      │  (donation email data)  │  GET /v1/entities/{id}      │
      │                         └─────────────────────────────┘
@@ -52,11 +52,10 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
   └───────────────────┘
 
   Background workers (K8s CronJobs):
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │  mentorship-sync    K8s CronJob (daily or few x/day)                 │
-  │  amount-raised-sync K8s CronJob (hourly)  [Plan B only — see below]  │
-  │  ledger-sync        K8s CronJob           [Plan A only — see below]  │
-  └──────────────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────┐
+  │  mentorship-sync    K8s CronJob (daily or few x/day) │
+  │  amount-raised-sync K8s CronJob (hourly)             │
+  └──────────────────────────────────────────────────────┘
 
 ━━━━━━━━━━━━━━━━━━━ UNCHANGED (Lambda / external) ━━━━━━━━━━━━━━━━━━
 
@@ -71,22 +70,6 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
   (no direct HTTP calls between Mentorship and CF)
 
   Old LFF Lambda + DynamoDB + OpenSearch  (parallel, until cutover)
-
-━━━━━━━━━━━ PLAN A — initial release if OQ-18 approved ━━━━━━━━━━━━
-
-  ledger-sync CronJob mirrors Ledger `ledger` table into CF DB as
-  crowdfunding.ledger_transactions.
-  Financial aggregates queried directly from ledger_transactions.
-  amount-raised-sync CronJob and direct Ledger HTTP API calls removed.
-  initiative_funding_summary materialized view added later only if
-  direct query performance requires it.
-
-━━━━━━ PLAN B — fallback if cross-account DB access rejected ━━━━━━
-
-  ledger-stats-sync CronJob calls Ledger HTTP API to sync
-  pre-aggregated stats (amount_raised_in_cents, backer count, etc.)
-  as cached columns on crowdfunding.initiatives.
-  amount-raised-sync CronJob extended or replaced by ledger-stats-sync.
 ```
 
 ---
@@ -259,12 +242,11 @@ When `EMAIL_DRY_RUN=true`:
 |---|---|---|---|
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
 | GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
-| `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{dynamo_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_in_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). **Decommissioned if Plan A (ledger-sync) ships; extended into `ledger-stats-sync` if Plan B fallback is used.** |
-| `ledger-sync` | CronJob | TBD | **(Plan A — pending OQ-18 approval)** Copies new rows from Ledger DB `ledger` table into `crowdfunding.ledger_transactions` in CF DB via direct read-only DB-to-DB connection (cross-account). Financial aggregates are then queried directly from `ledger_transactions` — no Ledger HTTP API calls needed at read time. An `initiative_funding_summary` materialized view may be added later as a performance optimization if direct queries prove too slow. See OQ-16, OQ-17, OQ-18 before implementing. |
-| `ledger-stats-sync` | CronJob | TBD | **(Plan B fallback — if OQ-18 rejected)** Calls Ledger HTTP API to sync pre-aggregated financial stats (amount raised, backer count, etc.) as cached columns on `crowdfunding.initiatives`. Replaces / extends `amount-raised-sync`. Requires Ledger API + schema changes per new UI field. |
+| `amount-raised-sync` | CronJob | Every hour | Calls `GET /balance/{dynamo_id_or_uuid}` on Ledger API for all published initiatives, updates `amount_raised_in_cents`. **Required for correctness** — this is the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover (see migration plan Phase 4). Will be extended or replaced by `ledger-stats-sync` as additional UI fields are confirmed (see OQ-19). |
+| `ledger-stats-sync` | CronJob | TBD | Calls Ledger HTTP API to sync pre-aggregated financial stats (amount raised, backer count, etc.) as cached columns on `crowdfunding.initiatives`. Replaces / extends `amount-raised-sync`. Requires Ledger API + schema changes per new UI field. Design pending UI field review — see OQ-19. |
 
 Jobs removed from old system (not ported):
-- `amountraised` / `amountraised-entities` → replaced by `amount-raised-sync` CronJob calling the Ledger HTTP API (Plan B) or by `ledger-sync` + `initiative_funding_summary` view (Plan A, pending OQ-18)
+- `amountraised` / `amountraised-entities` → replaced by `amount-raised-sync` CronJob (extended into `ledger-stats-sync` as additional fields are confirmed, see OQ-19)
 - `export-projects`, `export-organizations`, `export-users`, `entities-sync` → OpenSearch dropped; search replaced by Postgres full-text search
 - `ledger-viewmodel` → no longer needed
 - `expensify-sync` → stays on old Lambda, not ported for initial release
@@ -347,21 +329,6 @@ Key structural notes:
 - `stripe_subscription_id` and `stripe_charge_id` are nullable `VARCHAR(255)` with no UNIQUE constraint in the schema; uniqueness is enforced by Stripe
 
 See `db/migrations/001_initial.up.sql` and `docs/rewrite/data-design_and_migration.md` for the full DDL and field-by-field rationale.
-
-### View: `initiative_funding_summary` (optional performance optimization, Plan A only)
-
-Not part of the initial release. Under Plan A, financial aggregates are queried directly from `crowdfunding.ledger_transactions`. If direct query performance proves insufficient (measured via Datadog), an `initiative_funding_summary` materialized view can be added as a follow-on optimization — no API contract changes required since the query shape is identical.
-
-If Plan A is never approved (Plan B), this view is not applicable.
-
-The view would aggregate from `ledger_transactions` — no cross-database join needed since the data is mirrored into CF DB. It would compute at minimum:
-
-- `amount_raised_in_cents` — sum of completed credit transactions (gross or net of fees, pending OQ-17)
-- `total_subscription_count` — count of active subscription transactions
-- `annual_subscription_amount_in_cents` — sum of active subscription amounts
-- `backer_count` — count of distinct donors (`user_id`)
-
-The exact SQL will be written once OQ-16 (transaction immutability / refund pattern) and OQ-17 (gross vs net) are resolved with Lewis. The join key is `ledger_transactions.project_id = initiatives.id::text`. Note: this join is correct for the vast majority of initiatives whose original DynamoDB ID was already UUID-form (see OQ-15, item 4) — for those, `initiatives.id` equals the original ID that CF placed in Stripe metadata and Ledger stored as `project_id`. For the small number of initiatives with non-UUID legacy DynamoDB IDs, `initiatives.id` is a deterministic UUID5 that does not match the original string Ledger stored — those rows will require a legacy-ID→UUID mapping or a separate resolution strategy before this join can aggregate them correctly.
 
 ### Indexes
 
