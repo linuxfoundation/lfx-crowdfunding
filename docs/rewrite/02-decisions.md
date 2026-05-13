@@ -162,6 +162,8 @@ The CronJob (`cmd/amount-raised-sync/`) runs every hour and calls `GET /balance/
 
 The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API. It handles only `customer.subscription.deleted` (cancel subscription in Postgres). It does not call `GET /balance/` — that is the cron's job. Rationale: a Stripe webhook triggering a Ledger API call requires a 5-second delay to avoid a race condition with Ledger's own webhook handler — a timing hack. The hourly cron makes this unnecessary and gives the same freshness guarantee with simpler code.
 
+**Authentication:** Stripe signs every webhook payload with an HMAC-SHA256 signature sent in the `Stripe-Signature` header. The handler verifies this using `webhook.ConstructEvent(body, signature, endpointSecret)` from the Stripe Go SDK, where `endpointSecret` is the `STRIPE_WEBHOOK_SIGNING_SECRET` env var (a per-endpoint secret generated in the Stripe dashboard — distinct from the Stripe API key). Requests that fail signature verification are rejected before any business logic runs. This endpoint must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
+
 The cron UPDATE must **not** include `updated_on` in the SET clause. Background reconciliation is not a meaningful initiative change and must not produce false-positive change signals for Fivetran sync, RS bulk endpoint, or audit logs:
 
 ```sql

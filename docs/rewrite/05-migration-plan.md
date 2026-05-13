@@ -320,7 +320,7 @@ Document results of validation. Keep the validation report alongside migration l
 - [ ] Rollback procedure tested in staging
 - [ ] OQ-15 resolved — Ledger balance lookup mechanism for post-cutover initiatives confirmed
 - [ ] Ledger Service updated and deployed — auth headers fixed in `fundspring.go`: `x-ledger-auth` → `Authorization: Bearer` for `GetProject`/`GetUserName`; `Authorization: Bearer` added to `GetOrganizationName` (currently sends no auth — a Ledger bug); must be live before DNS cutover or donation confirmation emails break immediately
-- [ ] `STRIPE_WEBHOOK_SECRET` provisioned in new CF service (AWS Secrets Manager / ESO) — required to verify `Stripe-Signature` on incoming `POST /v1/hooks/stripe` events; the webhook URL itself does not change (same domain, DNS cutover swaps what is behind it)
+- [ ] `STRIPE_WEBHOOK_SIGNING_SECRET` provisioned in new CF service (AWS Secrets Manager / ESO) — required to verify the `Stripe-Signature` HMAC on incoming `POST /v1/hooks/stripe` events via `webhook.ConstructEvent()`; this is a separate credential from the Stripe API key; the webhook URL itself does not change (same domain, DNS cutover swaps what is behind it)
 
 ### Cutover Steps
 
