@@ -225,15 +225,3 @@ func getDurationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	}
 	return d, nil
 }
-
-func getBoolEnv(key string, fallback bool) (bool, error) {
-	v := getEnv(key, "")
-	if v == "" {
-		return fallback, nil
-	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return false, fmt.Errorf("env %s: invalid boolean %q: %w", key, v, err)
-	}
-	return b, nil
-}
