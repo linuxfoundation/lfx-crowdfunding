@@ -23,6 +23,6 @@ spec:
         target:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
-...
+---
 # prettier-ignore
 {{ end }}
