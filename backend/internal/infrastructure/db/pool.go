@@ -33,7 +33,7 @@ func NewPool(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error) {
 	if cfg.MinConns < 0 || cfg.MinConns > math.MaxInt32 {
 		return nil, fmt.Errorf("MinConns %d is out of valid range [0, %d]", cfg.MinConns, math.MaxInt32)
 	}
-	if cfg.MinConns > cfg.MaxConns {
+	if cfg.MaxConns > 0 && cfg.MinConns > cfg.MaxConns {
 		return nil, fmt.Errorf("invalid pool configuration: DB_MIN_CONNS (%d) must be less than or equal to DB_MAX_CONNS (%d)", cfg.MinConns, cfg.MaxConns)
 	}
 	config.MaxConns = int32(cfg.MaxConns)
