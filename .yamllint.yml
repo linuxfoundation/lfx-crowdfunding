@@ -14,4 +14,4 @@ rules:
 # cannot parse as plain YAML — skip the entire charts directory.
 ignore: |
   frontend/pnpm-lock.yaml
-  backend/charts/
+  backend/charts/**
