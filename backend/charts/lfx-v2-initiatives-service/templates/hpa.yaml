@@ -7,6 +7,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "lfx-v2-initiatives-service.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
 spec:

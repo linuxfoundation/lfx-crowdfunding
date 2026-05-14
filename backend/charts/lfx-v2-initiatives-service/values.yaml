@@ -5,13 +5,14 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/linuxfoundation/lfx-v2-initiatives-service
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   tag: ""  # defaults to .Chart.AppVersion
 
 imagePullSecrets: []
 
 serviceAccount:
   create: true
+  automount: false
   annotations: {}
   name: ""
 
@@ -19,8 +20,10 @@ podAnnotations: {}
 
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false

@@ -21,7 +21,7 @@ FROM alpine:3.20
 # ca-certificates is required for outbound TLS (Auth0 JWKS, Stripe, Ledger, OTLP).
 # Security: run as non-root user
 RUN apk add --no-cache ca-certificates \
-    && addgroup -S appgroup && adduser -S appuser -G appgroup -u 1000
+    && addgroup -S appgroup && adduser -S appuser -G appgroup -u 65532
 
 WORKDIR /app
 COPY --from=builder /build/initiatives-api ./initiatives-api

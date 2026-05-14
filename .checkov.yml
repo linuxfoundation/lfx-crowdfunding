@@ -1,0 +1,8 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+# CKV_K8S_43: Image digest pinning is a deployment-time concern — the image tag
+# is supplied at deploy time via .Values.image.tag or the CI pipeline. Enforcing
+# digest in the chart template itself is not feasible.
+skip-check:
+  - CKV_K8S_43
