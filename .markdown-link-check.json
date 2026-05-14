@@ -7,10 +7,6 @@
     {
       "pattern": "^https://nuxt.com/modules",
       "comment": "nuxt.com/modules times out in CI (Status: 0) but is a valid page"
-    },
-    {
-      "pattern": "^(?!https?://)",
-      "comment": "Relative file links resolve correctly locally but return 400 in the MegaLinter container where the repo root is not served over HTTP"
     }
   ]
 }
