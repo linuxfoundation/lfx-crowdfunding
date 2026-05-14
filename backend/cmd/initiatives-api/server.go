@@ -35,8 +35,8 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	// Database pool
 	pool, err := db.NewPool(context.Background(), db.PoolConfig{
 		DSN:             cfg.Database.DSN,
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		MaxIdleConns:    cfg.Database.MaxIdleConns,
+		MaxConns:        cfg.Database.MaxConns,
+		MinConns:        cfg.Database.MinConns,
 		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
 	})
 	if err != nil {
@@ -70,6 +70,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		JWKSURL:                    cfg.JWT.JWKSURL,
 		Audience:                   cfg.JWT.Audience,
 		Issuer:                     cfg.JWT.Issuer,
+		ClockSkew:                  cfg.JWT.ClockSkew,
 		DisabledMockLocalPrincipal: cfg.Local.DisabledMockLocalPrincipal,
 	})
 	if err != nil {

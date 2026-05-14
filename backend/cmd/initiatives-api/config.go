@@ -9,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
 )
 
 // Config holds all runtime configuration for the service.
@@ -34,16 +36,17 @@ type ServerConfig struct {
 // DatabaseConfig holds PostgreSQL connection settings.
 type DatabaseConfig struct {
 	DSN             string
-	MaxOpenConns    int
-	MaxIdleConns    int
+	MaxConns        int
+	MinConns        int
 	ConnMaxLifetime time.Duration
 }
 
 // JWTConfig holds Auth0 / JWKS settings.
 type JWTConfig struct {
-	JWKSURL  string
-	Audience string
-	Issuer   string
+	JWKSURL   string
+	Audience  string
+	Issuer    string
+	ClockSkew time.Duration
 }
 
 // StripeConfig holds Stripe API settings.
@@ -85,6 +88,18 @@ func LoadConfig() (*Config, error) {
 	if jwksURL == "" && mockPrincipal == "" {
 		return nil, fmt.Errorf("JWKS_URL is required (or set DISABLED_MOCK_LOCAL_PRINCIPAL for local dev)")
 	}
+	jwtAudience := getEnv("JWT_AUDIENCE", auth.DefaultAudience)
+	jwtIssuer := getEnv("JWT_ISSUER", auth.DefaultIssuer)
+	// When real JWT validation is active, audience and issuer must be non-empty
+	// so jwt.NewParser doesn't enforce an empty-string match and reject all tokens.
+	if mockPrincipal == "" {
+		if jwtAudience == "" {
+			return nil, fmt.Errorf("JWT_AUDIENCE is required when JWT validation is enabled")
+		}
+		if jwtIssuer == "" {
+			return nil, fmt.Errorf("JWT_ISSUER is required when JWT validation is enabled")
+		}
+	}
 	stripeKey := getEnv("STRIPE_SECRET_KEY", "")
 	if stripeKey == "" {
 		return nil, fmt.Errorf("STRIPE_SECRET_KEY is required")
@@ -98,34 +113,76 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("LEDGER_BASE_URL is required")
 	}
 
+	port, err := getIntEnv("PORT", 8080)
+	if err != nil {
+		return nil, err
+	}
+	readTimeout, err := getDurationEnv("SERVER_READ_TIMEOUT", 15*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	writeTimeout, err := getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	idleTimeout, err := getDurationEnv("SERVER_IDLE_TIMEOUT", 60*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	shutdownTimeout, err := getDurationEnv("SERVER_SHUTDOWN_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	maxConns, err := getIntEnv("DB_MAX_CONNS", 20)
+	if err != nil {
+		return nil, err
+	}
+	minConns, err := getIntEnv("DB_MIN_CONNS", 2)
+	if err != nil {
+		return nil, err
+	}
+	connMaxLifetime, err := getDurationEnv("DB_CONN_MAX_LIFETIME", 5*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	stripeTimeout, err := getDurationEnv("STRIPE_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	ledgerTimeout, err := getDurationEnv("LEDGER_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		Server: ServerConfig{
-			Port:            getIntEnv("PORT", 8080),
-			ReadTimeout:     getDurationEnv("SERVER_READ_TIMEOUT", 15*time.Second),
-			WriteTimeout:    getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:     getDurationEnv("SERVER_IDLE_TIMEOUT", 60*time.Second),
-			ShutdownTimeout: getDurationEnv("SERVER_SHUTDOWN_TIMEOUT", 30*time.Second),
+			Port:            port,
+			ReadTimeout:     readTimeout,
+			WriteTimeout:    writeTimeout,
+			IdleTimeout:     idleTimeout,
+			ShutdownTimeout: shutdownTimeout,
 		},
 		Database: DatabaseConfig{
 			DSN:             dsn,
-			MaxOpenConns:    getIntEnv("DB_MAX_CONNS", 20),
-			MaxIdleConns:    getIntEnv("DB_MIN_CONNS", 2),
-			ConnMaxLifetime: getDurationEnv("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+			MaxConns:        maxConns,
+			MinConns:        minConns,
+			ConnMaxLifetime: connMaxLifetime,
 		},
 		JWT: JWTConfig{
-			JWKSURL:  jwksURL,
-			Audience: getEnv("JWT_AUDIENCE", ""),
-			Issuer:   getEnv("JWT_ISSUER", ""),
+			JWKSURL:   jwksURL,
+			Audience:  jwtAudience,
+			Issuer:    jwtIssuer,
+			ClockSkew: auth.DefaultClockSkew,
 		},
 		Stripe: StripeConfig{
 			SecretKey:     stripeKey,
 			WebhookSecret: stripeWebhookSecret,
-			Timeout:       getDurationEnv("STRIPE_TIMEOUT", 30*time.Second),
+			Timeout:       stripeTimeout,
 		},
 		Ledger: LedgerConfig{
 			BaseURL: ledgerBaseURL,
 			APIKey:  getEnv("LEDGER_API_KEY", ""),
-			Timeout: getDurationEnv("LEDGER_TIMEOUT", 10*time.Second),
+			Timeout: ledgerTimeout,
 		},
 		OTel: OTelConfig{
 			ServiceName:    getEnv("OTEL_SERVICE_NAME", "lfx-v2-initiatives-service"),
@@ -145,38 +202,38 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func getIntEnv(key string, fallback int) int {
+func getIntEnv(key string, fallback int) (int, error) {
 	v := getEnv(key, "")
 	if v == "" {
-		return fallback
+		return fallback, nil
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
-		return fallback
+		return 0, fmt.Errorf("env %s: invalid integer %q: %w", key, v, err)
 	}
-	return n
+	return n, nil
 }
 
-func getDurationEnv(key string, fallback time.Duration) time.Duration {
+func getDurationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	v := getEnv(key, "")
 	if v == "" {
-		return fallback
+		return fallback, nil
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		return fallback
+		return 0, fmt.Errorf("env %s: invalid duration %q: %w", key, v, err)
 	}
-	return d
+	return d, nil
 }
 
-func getBoolEnv(key string, fallback bool) bool {
+func getBoolEnv(key string, fallback bool) (bool, error) {
 	v := getEnv(key, "")
 	if v == "" {
-		return fallback
+		return fallback, nil
 	}
 	b, err := strconv.ParseBool(v)
 	if err != nil {
-		return fallback
+		return false, fmt.Errorf("env %s: invalid boolean %q: %w", key, v, err)
 	}
-	return b
+	return b, nil
 }

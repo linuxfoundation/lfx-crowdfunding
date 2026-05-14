@@ -14,8 +14,8 @@ import (
 // PoolConfig holds connection pool settings, all sourced from environment variables.
 type PoolConfig struct {
 	DSN             string
-	MaxOpenConns    int
-	MaxIdleConns    int
+	MaxConns        int
+	MinConns        int
 	ConnMaxLifetime time.Duration
 }
 
@@ -25,8 +25,8 @@ func NewPool(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse DSN: %w", err)
 	}
-	config.MaxConns = int32(cfg.MaxOpenConns)
-	config.MinConns = int32(cfg.MaxIdleConns)
+	config.MaxConns = int32(cfg.MaxConns)
+	config.MinConns = int32(cfg.MinConns)
 	config.MaxConnLifetime = cfg.ConnMaxLifetime
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)

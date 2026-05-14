@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /build
 
@@ -18,8 +18,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 # ── Final stage ───────────────────────────────────────────────────────────────
 FROM alpine:3.20
 
+# ca-certificates is required for outbound TLS (Auth0 JWKS, Stripe, Ledger, OTLP).
 # Security: run as non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup -u 1000
+RUN apk add --no-cache ca-certificates \
+    && addgroup -S appgroup && adduser -S appuser -G appgroup -u 1000
 
 WORKDIR /app
 COPY --from=builder /build/initiatives-api ./initiatives-api

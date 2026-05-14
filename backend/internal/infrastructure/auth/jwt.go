@@ -6,6 +6,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -94,13 +95,13 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 
 		token, err := a.extractAndValidate(r)
 		if err != nil {
-			http.Error(w, `{"code":"unauthorized","message":"invalid or missing token"}`, http.StatusUnauthorized)
+			jsonError(w, http.StatusUnauthorized, "invalid or missing token")
 			return
 		}
 
 		claims, ok := token.Claims.(*JWTClaims)
 		if !ok || claims.Subject == "" {
-			http.Error(w, `{"code":"unauthorized","message":"invalid token claims"}`, http.StatusUnauthorized)
+			jsonError(w, http.StatusUnauthorized, "invalid token claims")
 			return
 		}
 
@@ -142,4 +143,14 @@ func ContextWithPrincipal(ctx context.Context, p *models.Principal) context.Cont
 func PrincipalFromContext(ctx context.Context) *models.Principal {
 	p, _ := ctx.Value(principalKey).(*models.Principal)
 	return p
+}
+
+// jsonError writes a JSON {"error":"..."} response with the given status,
+// matching the error shape used by all other API handlers.
+func jsonError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+	}{Error: msg})
 }
