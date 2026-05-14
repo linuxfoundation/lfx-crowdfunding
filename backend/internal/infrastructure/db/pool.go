@@ -26,11 +26,11 @@ func NewPool(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse DSN: %w", err)
 	}
-	if cfg.MaxConns > math.MaxInt32 {
-		return nil, fmt.Errorf("MaxConns %d exceeds int32 maximum", cfg.MaxConns)
+	if cfg.MaxConns < 0 || cfg.MaxConns > math.MaxInt32 {
+		return nil, fmt.Errorf("MaxConns %d is out of valid range [0, %d]", cfg.MaxConns, math.MaxInt32)
 	}
-	if cfg.MinConns > math.MaxInt32 {
-		return nil, fmt.Errorf("MinConns %d exceeds int32 maximum", cfg.MinConns)
+	if cfg.MinConns < 0 || cfg.MinConns > math.MaxInt32 {
+		return nil, fmt.Errorf("MinConns %d is out of valid range [0, %d]", cfg.MinConns, math.MaxInt32)
 	}
 	config.MaxConns = int32(cfg.MaxConns)
 	config.MinConns = int32(cfg.MinConns)
