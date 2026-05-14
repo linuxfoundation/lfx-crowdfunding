@@ -1,0 +1,19 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+# CKV_K8S_43: Image digest pinning is a deployment-time concern — the image tag
+# is supplied at deploy time via .Values.image.tag or the CI pipeline. Enforcing
+# digest in the chart template itself is not feasible.
+#
+# CKV_K8S_21: All templates use namespace: {{ .Release.Namespace }} so the
+# namespace is always set at deploy time. Checkov evaluates Helm templates by
+# rendering with .Release.Namespace = "default", producing a false positive.
+#
+# CKV_K8S_35: The application reads secrets (DATABASE_URL, STRIPE_SECRET_KEY,
+# etc.) from environment variables by design. envFrom.secretRef is the correct
+# Kubernetes pattern for this; mounting as files would require changing the
+# application's config loading code.
+skip-check:
+  - CKV_K8S_43
+  - CKV_K8S_21
+  - CKV_K8S_35

@@ -5,13 +5,14 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/linuxfoundation/lfx-v2-initiatives-service
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   tag: ""  # defaults to .Chart.AppVersion
 
 imagePullSecrets: []
 
 serviceAccount:
   create: true
+  automount: false
   annotations: {}
   name: ""
 
@@ -19,12 +20,17 @@ podAnnotations: {}
 
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
   capabilities:
     drop:
       - ALL
@@ -73,15 +79,36 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-# Externally managed secrets — populated from k8s Secrets or a secrets manager.
-env:
-  DATABASE_URL: ""
+# ── Non-secret environment variables ────────────────────────────────────────
+# These are rendered into a ConfigMap and mounted via envFrom.
+config:
   JWKS_URL: ""
   JWT_AUDIENCE: ""
   JWT_ISSUER: ""
-  STRIPE_SECRET_KEY: ""
-  STRIPE_WEBHOOK_SECRET: ""
   LEDGER_BASE_URL: ""
-  LEDGER_API_KEY: ""
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   OTEL_SERVICE_NAME: "lfx-v2-initiatives-service"
+
+# ── Secret environment variables ─────────────────────────────────────────────
+# These are sourced from a Kubernetes Secret via envFrom.secretRef.
+# The Secret itself is managed externally (e.g. External Secrets Operator
+# syncing from AWS Secrets Manager).
+#
+# Expected keys in the Secret:
+#   DATABASE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LEDGER_API_KEY
+secretName: lfx-v2-initiatives-service-secrets
+
+# createPlaceholderSecret — opt-in, defaults to false.
+#
+# When false (default): the Secret must already exist before helm install runs.
+# ESO (or another operator) creates and owns it with the default
+# creationPolicy: Owner. This is the correct setting for all non-local
+# environments.
+#
+# When true: the chart creates an empty Secret placeholder via a pre-install
+# hook so the Deployment's envFrom.secretRef resolves on a brand-new cluster
+# with no pre-existing Secret (e.g. local development with kind/minikube).
+# WARNING: if ESO is also managing this Secret it MUST be configured with
+# creationPolicy: Merge — otherwise ESO will refuse to take ownership of a
+# Secret it did not create and the sync will fail silently.
+createPlaceholderSecret: false

@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package main starts the initiatives API server.
 package main
 
 import (
@@ -35,8 +36,8 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	// Database pool
 	pool, err := db.NewPool(context.Background(), db.PoolConfig{
 		DSN:             cfg.Database.DSN,
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		MaxIdleConns:    cfg.Database.MaxIdleConns,
+		MaxConns:        cfg.Database.MaxConns,
+		MinConns:        cfg.Database.MinConns,
 		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
 	})
 	if err != nil {
@@ -70,24 +71,38 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		JWKSURL:                    cfg.JWT.JWKSURL,
 		Audience:                   cfg.JWT.Audience,
 		Issuer:                     cfg.JWT.Issuer,
+		ClockSkew:                  cfg.JWT.ClockSkew,
 		DisabledMockLocalPrincipal: cfg.Local.DisabledMockLocalPrincipal,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jwt authenticator: %w", err)
+	}
+	if jwtAuth.IsBypassActive() {
+		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		logger.Warn("!!! JWT AUTHENTICATION IS DISABLED — ALL REQUESTS ARE    !!!")
+		logger.Warn("!!! TREATED AS AUTHENTICATED. NEVER USE IN PRODUCTION.   !!!")
+		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	}
 
 	// Handlers
 	initiativeH := handler.NewInitiativeHandler(initiativeSvc)
 	donationH := handler.NewDonationHandler(donationSvc)
 	subscriptionH := handler.NewSubscriptionHandler(subscriptionSvc)
-	webhookH := handler.NewWebhookHandler(stripeClient, cfg.Stripe.WebhookSecret, logger)
+	webhookH := handler.NewWebhookHandler(stripeClient, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 
 	// Router
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.Timeout(cfg.Server.WriteTimeout))
+	// Chi's context timeout must be shorter than the HTTP WriteTimeout so the
+	// handler has time to write a graceful 504 before the server closes the
+	// connection. 80% of WriteTimeout is a safe margin.
+	// When WriteTimeout is 0 (disabled) the computed value is also 0, which
+	// causes chimiddleware.Timeout to panic. Skip the middleware in that case.
+	if chiTimeout := cfg.Server.WriteTimeout * 4 / 5; chiTimeout > 0 {
+		r.Use(chimiddleware.Timeout(chiTimeout))
+	}
 
 	// Health endpoints (no auth)
 	r.Get("/livez", handleLivez)

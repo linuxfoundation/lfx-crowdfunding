@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package db provides PostgreSQL connection helpers and repositories.
 package db
 
 import (
@@ -235,11 +236,11 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative)
 	)
 	updated, err := scanInitiative(row)
 	if err != nil {
-		if errors.Is(err, domain.ErrInitiativeNotFound) {
-			return nil, domain.ErrInitiativeNotFound
+		if !errors.Is(err, domain.ErrInitiativeNotFound) {
+			span.RecordError(err)
+			err = fmt.Errorf("update initiative: %w", err)
 		}
-		span.RecordError(err)
-		return nil, fmt.Errorf("update initiative: %w", err)
+		return nil, err
 	}
 	return updated, nil
 }
