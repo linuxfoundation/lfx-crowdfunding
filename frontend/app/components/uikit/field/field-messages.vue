@@ -24,12 +24,12 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { ErrorObject, Validation } from '@vuelidate/core';
+import type { BaseValidation, ErrorObject } from '@vuelidate/core';
 import LfxFieldMessage from '~/components/uikit/field/field-message.vue';
 
 const props = withDefaults(
   defineProps<{
-    validation: Validation;
+    validation: BaseValidation;
     errorMessages?: Record<string, string>;
     hideDefault?: boolean;
   }>(),

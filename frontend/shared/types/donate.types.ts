@@ -15,11 +15,24 @@ export interface DonateAmountForm {
   amountCents: number;
 }
 
+export type DonorType = 'individual' | 'company';
+
+export interface DonateContactForm {
+  donorType: DonorType;
+  fullName: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  needsInvoice: boolean;
+  poNumber: string;
+}
+
 export interface DonateSubmission {
   initiativeId: string;
   tierId: string | null;
   tierName: string | null;
   amountCents: number;
+  contact: DonateContactForm;
 }
 
 export interface DonationRecord extends DonateSubmission {

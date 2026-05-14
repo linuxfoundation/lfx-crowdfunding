@@ -22,6 +22,7 @@ export default defineEventHandler(async (event) => {
     tierId: body.tierId ?? null,
     tierName: body.tierName ?? null,
     amountCents: body.amountCents,
+    contact: body.contact,
     createdAt: new Date().toISOString(),
   };
 

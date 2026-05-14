@@ -58,7 +58,12 @@ SPDX-License-Identifier: MIT
       <div class="flex-1 overflow-y-auto px-8 py-6">
         <donate-step-amount
           v-if="step === 0"
-          v-model="form"
+          v-model="amountForm"
+        />
+        <donate-step-contact
+          v-else-if="step === 1"
+          ref="contactStepRef"
+          v-model="contactForm"
         />
       </div>
 
@@ -70,7 +75,13 @@ SPDX-License-Identifier: MIT
           @click="close()"
         />
 
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-3">
+          <lfx-icon-button
+            v-if="step > 0"
+            type="outline"
+            icon="chevron-left"
+            @click="previousStep()"
+          />
           <span
             v-if="amountSummary"
             class="text-sm text-neutral-600"
@@ -79,10 +90,10 @@ SPDX-License-Identifier: MIT
           </span>
           <lfx-button
             type="primary"
-            label="Continue"
+            :label="isLastStep ? 'Continue to Payment' : 'Continue'"
             icon="chevron-right"
             icon-position="right"
-            :disabled="!hasSelection"
+            :disabled="!isCurrentStepValid"
             :loading="submitting"
             @click="handleContinue()"
           />
@@ -95,11 +106,14 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import DonateStepAmount from './donate-step-amount.vue';
-import type { DonateAmountForm } from '#shared/types/donate.types';
+import DonateStepContact from './donate-step-contact.vue';
+import type { DonateAmountForm, DonateContactForm } from '#shared/types/donate.types';
 import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
+
+const TOTAL_STEPS = 2;
 
 const props = defineProps<{
   modelValue: boolean;
@@ -121,32 +135,76 @@ const isOpen = computed({
 });
 
 const step = ref(0);
+const isLastStep = computed(() => step.value === TOTAL_STEPS - 1);
 const submitting = ref(false);
 
-const form = ref<DonateAmountForm>({
+const contactStepRef = ref<InstanceType<typeof DonateStepContact> | null>(null);
+
+const amountForm = ref<DonateAmountForm>({
   tierId: null,
   tierName: null,
   customAmountCents: null,
   amountCents: 0,
 });
 
-const hasSelection = computed(() => form.value.amountCents > 0);
+const contactForm = ref<DonateContactForm>({
+  donorType: 'individual',
+  fullName: '',
+  companyName: '',
+  contactName: '',
+  email: '',
+  needsInvoice: false,
+  poNumber: '',
+});
+
+const hasSelection = computed(() => amountForm.value.amountCents > 0);
+
+const isCurrentStepValid = computed(() => {
+  if (step.value === 0) return hasSelection.value;
+  const f = contactForm.value;
+  if (f.donorType === 'individual') return f.fullName.trim().length > 0 && f.email.trim().length > 0;
+  return f.companyName.trim().length > 0 && f.contactName.trim().length > 0 && f.email.trim().length > 0;
+});
 
 const amountSummary = computed(() => {
   if (!hasSelection.value) return null;
-  const dollars = form.value.amountCents / 100;
+  const dollars = amountForm.value.amountCents / 100;
   const formatted = dollars >= 1_000 ? `$${(dollars / 1_000).toLocaleString()}K` : `$${dollars.toLocaleString()}`;
-  return form.value.tierName ? `Amount: ${formatted} (${form.value.tierName})` : `Amount: ${formatted}`;
+  return amountForm.value.tierName ? `Amount: ${formatted} (${amountForm.value.tierName})` : `Amount: ${formatted}`;
 });
 
 const close = () => {
   isOpen.value = false;
   step.value = 0;
-  form.value = { tierId: null, tierName: null, customAmountCents: null, amountCents: 0 };
+  amountForm.value = { tierId: null, tierName: null, customAmountCents: null, amountCents: 0 };
+  contactForm.value = {
+    donorType: 'individual',
+    fullName: '',
+    companyName: '',
+    contactName: '',
+    email: '',
+    needsInvoice: false,
+    poNumber: '',
+  };
+};
+
+const previousStep = () => {
+  if (step.value > 0) step.value--;
 };
 
 const handleContinue = async () => {
   if (!hasSelection.value) return;
+
+  if (!isLastStep.value) {
+    step.value++;
+    return;
+  }
+
+  // Validate contact step before submitting
+  if (contactStepRef.value?.$v) {
+    contactStepRef.value.$v.$touch();
+    if (contactStepRef.value.$v.$invalid) return;
+  }
 
   submitting.value = true;
   try {
@@ -154,9 +212,10 @@ const handleContinue = async () => {
       method: 'POST',
       body: {
         initiativeId: props.initiative.id,
-        tierId: form.value.tierId,
-        tierName: form.value.tierName,
-        amountCents: form.value.amountCents,
+        tierId: amountForm.value.tierId,
+        tierName: amountForm.value.tierName,
+        amountCents: amountForm.value.amountCents,
+        contact: contactForm.value,
       },
     });
     emit('submitted');
