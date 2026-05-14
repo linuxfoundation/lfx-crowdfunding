@@ -12,16 +12,18 @@ SPDX-License-Identifier: MIT
           label="Card number"
           :required="true"
         >
-          <lfx-input
-            :model-value="form.cardNumber"
-            placeholder="1234 5678 9123 4567"
-            :invalid="$v.cardNumber.$error"
-            @update:model-value="onCardNumberInput"
-            @keydown="onCardNumberKeydown"
-            @paste="onCardNumberPaste"
-            @blur="$v.cardNumber.$touch()"
-          />
-          <lfx-field-messages :validation="$v.cardNumber" />
+          <div
+            class="flex items-center border transition-all rounded-md shadow-xs"
+            :class="
+              cardNumberFocused ? 'border-neutral-900' : cardNumberError ? 'border-negative-600' : 'border-neutral-200'
+            "
+          >
+            <div
+              ref="cardNumberContainer"
+              class="w-full py-2 px-2"
+            />
+          </div>
+          <lfx-field-message v-if="cardNumberError">{{ cardNumberError }}</lfx-field-message>
         </lfx-field>
 
         <!-- Expiry + CVC -->
@@ -31,32 +33,40 @@ SPDX-License-Identifier: MIT
             label="Expiry"
             :required="true"
           >
-            <lfx-input
-              :model-value="form.expiry"
-              placeholder="MM/YY"
-              :invalid="$v.expiry.$error"
-              @update:model-value="onExpiryInput"
-              @keydown="onExpiryKeydown"
-              @paste="onExpiryPaste"
-              @blur="$v.expiry.$touch()"
-            />
-            <lfx-field-messages :validation="$v.expiry" />
+            <div
+              class="flex items-center border transition-all rounded-md shadow-xs"
+              :class="
+                cardExpiryFocused
+                  ? 'border-neutral-900'
+                  : cardExpiryError
+                    ? 'border-negative-600'
+                    : 'border-neutral-200'
+              "
+            >
+              <div
+                ref="cardExpiryContainer"
+                class="w-full py-2 px-2"
+              />
+            </div>
+            <lfx-field-message v-if="cardExpiryError">{{ cardExpiryError }}</lfx-field-message>
           </lfx-field>
 
           <lfx-field
             label="CVC"
             :required="true"
           >
-            <lfx-input
-              :model-value="form.cvc"
-              placeholder="123"
-              :invalid="$v.cvc.$error"
-              @update:model-value="onCvcInput"
-              @keydown="onCvcKeydown"
-              @paste="onCvcPaste"
-              @blur="$v.cvc.$touch()"
-            />
-            <lfx-field-messages :validation="$v.cvc" />
+            <div
+              class="flex items-center border transition-all rounded-md shadow-xs"
+              :class="
+                cardCvcFocused ? 'border-neutral-900' : cardCvcError ? 'border-negative-600' : 'border-neutral-200'
+              "
+            >
+              <div
+                ref="cardCvcContainer"
+                class="w-full py-2 px-2"
+              />
+            </div>
+            <lfx-field-message v-if="cardCvcError">{{ cardCvcError }}</lfx-field-message>
           </lfx-field>
         </div>
 
@@ -78,6 +88,9 @@ SPDX-License-Identifier: MIT
       </div>
     </div>
 
+    <!-- Stripe general error -->
+    <lfx-field-message v-if="stripeError">{{ stripeError }}</lfx-field-message>
+
     <!-- Tier note -->
     <div
       v-if="tierName"
@@ -96,142 +109,147 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { reactive, watch, computed } from 'vue';
-import { useVuelidate } from '@vuelidate/core';
-import { required } from '@vuelidate/validators';
-import type { DonatePaymentForm } from '#shared/types/donate.types';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import type { StripeCardNumberElement, StripeCardExpiryElement, StripeCardCvcElement } from '@stripe/stripe-js';
 import LfxField from '~/components/uikit/field/field.vue';
-import LfxFieldMessages from '~/components/uikit/field/field-messages.vue';
-import LfxInput from '~/components/uikit/input/input.vue';
+import LfxFieldMessage from '~/components/uikit/field/field-message.vue';
 
 const props = defineProps<{
-  modelValue: DonatePaymentForm;
   amountCents: number;
   tierName: string | null;
   initiativeName: string;
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: DonatePaymentForm): void;
+  (e: 'update:complete', value: boolean): void;
 }>();
 
-const form = reactive<DonatePaymentForm>({ ...props.modelValue });
+const { getStripe } = useStripe();
 
-watch(
-  () => props.modelValue,
-  (val) => Object.assign(form, val),
-  { deep: true },
-);
+// DOM refs for Stripe element mounts
+const cardNumberContainer = ref<HTMLElement | null>(null);
+const cardExpiryContainer = ref<HTMLElement | null>(null);
+const cardCvcContainer = ref<HTMLElement | null>(null);
 
-watch(form, (val) => emit('update:modelValue', { ...val }), { deep: true });
+// Stripe element instances
+let cardNumberEl: StripeCardNumberElement | null = null;
+let cardExpiryEl: StripeCardExpiryElement | null = null;
+let cardCvcEl: StripeCardCvcElement | null = null;
 
-const rules = {
-  cardNumber: { required },
-  expiry: { required },
-  cvc: { required },
-};
+// Per-field state
+const cardNumberFocused = ref(false);
+const cardExpiryFocused = ref(false);
+const cardCvcFocused = ref(false);
 
-const $v = useVuelidate(rules, form);
+const cardNumberError = ref('');
+const cardExpiryError = ref('');
+const cardCvcError = ref('');
+
+const cardNumberComplete = ref(false);
+const cardExpiryComplete = ref(false);
+const cardCvcComplete = ref(false);
+
+const stripeError = ref('');
+
+const allComplete = computed(() => cardNumberComplete.value && cardExpiryComplete.value && cardCvcComplete.value);
 
 const formattedAmount = computed(() => {
   const dollars = props.amountCents / 100;
   return dollars >= 1_000 ? `$${(dollars / 1_000).toLocaleString()}K` : `$${dollars.toLocaleString()}`;
 });
 
-// Keys that are always allowed regardless of field type
-const PASSTHROUGH_KEYS = new Set([
-  'Backspace',
-  'Delete',
-  'Tab',
-  'Enter',
-  'ArrowLeft',
-  'ArrowRight',
-  'ArrowUp',
-  'ArrowDown',
-  'Home',
-  'End',
-]);
+// Stripe element style — matches LfxInput: text-sm text-neutral-900, placeholder text-neutral-400
+const STRIPE_STYLE = {
+  base: {
+    color: '#0F172A',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize: '14px',
+    lineHeight: '20px',
+    '::placeholder': { color: '#94A3B8' },
+  },
+  invalid: {
+    // Let the container border convey the error; keep text colour neutral
+    color: '#0F172A',
+  },
+};
 
-const isNumericKey = (e: KeyboardEvent) => PASSTHROUGH_KEYS.has(e.key) || e.ctrlKey || e.metaKey || /^\d$/.test(e.key);
+onMounted(async () => {
+  const stripe = await getStripe();
+  if (!stripe || !cardNumberContainer.value || !cardExpiryContainer.value || !cardCvcContainer.value) return;
 
-// --- Card number ---
+  const elements = stripe.elements();
 
-const formatCardNumber = (digits: string) => digits.replace(/(.{4})(?=.)/g, '$1 ');
+  cardNumberEl = elements.create('cardNumber', { style: STRIPE_STYLE, placeholder: '1234 5678 9012 3456' });
+  cardExpiryEl = elements.create('cardExpiry', { style: STRIPE_STYLE });
+  cardCvcEl = elements.create('cardCvc', { style: STRIPE_STYLE });
 
-const onCardNumberKeydown = (e: KeyboardEvent) => {
-  if (!isNumericKey(e)) {
-    e.preventDefault();
-    return;
+  cardNumberEl.mount(cardNumberContainer.value);
+  cardExpiryEl.mount(cardExpiryContainer.value);
+  cardCvcEl.mount(cardCvcContainer.value);
+
+  cardNumberEl.on('change', (e) => {
+    cardNumberComplete.value = e.complete;
+    cardNumberError.value = e.error?.message ?? '';
+    emit('update:complete', allComplete.value);
+  });
+  cardNumberEl.on('focus', () => {
+    cardNumberFocused.value = true;
+  });
+  cardNumberEl.on('blur', () => {
+    cardNumberFocused.value = false;
+  });
+
+  cardExpiryEl.on('change', (e) => {
+    cardExpiryComplete.value = e.complete;
+    cardExpiryError.value = e.error?.message ?? '';
+    emit('update:complete', allComplete.value);
+  });
+  cardExpiryEl.on('focus', () => {
+    cardExpiryFocused.value = true;
+  });
+  cardExpiryEl.on('blur', () => {
+    cardExpiryFocused.value = false;
+  });
+
+  cardCvcEl.on('change', (e) => {
+    cardCvcComplete.value = e.complete;
+    cardCvcError.value = e.error?.message ?? '';
+    emit('update:complete', allComplete.value);
+  });
+  cardCvcEl.on('focus', () => {
+    cardCvcFocused.value = true;
+  });
+  cardCvcEl.on('blur', () => {
+    cardCvcFocused.value = false;
+  });
+});
+
+onBeforeUnmount(() => {
+  cardNumberEl?.destroy();
+  cardExpiryEl?.destroy();
+  cardCvcEl?.destroy();
+});
+
+const createPaymentMethod = async (): Promise<string> => {
+  const stripe = await getStripe();
+  if (!stripe || !cardNumberEl) throw new Error('Stripe not loaded');
+
+  stripeError.value = '';
+
+  const { paymentMethod, error } = await stripe.createPaymentMethod({
+    type: 'card',
+    card: cardNumberEl,
+  });
+
+  if (error) {
+    stripeError.value = error.message ?? 'Payment failed. Please try again.';
+    throw new Error(error.message);
   }
-  if (/^\d$/.test(e.key) && form.cardNumber.replace(/\D/g, '').length >= 16) {
-    e.preventDefault();
-  }
+
+  return paymentMethod!.id;
 };
 
-const onCardNumberInput = (val: string | number) => {
-  const digits = String(val).replace(/\D/g, '').slice(0, 16);
-  form.cardNumber = formatCardNumber(digits);
-};
-
-const onCardNumberPaste = (e: ClipboardEvent) => {
-  e.preventDefault();
-  const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 16);
-  form.cardNumber = formatCardNumber(digits);
-};
-
-// --- Expiry ---
-
-const applyExpiryFormat = (digits: string, isDeleting: boolean): string => {
-  if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  if (digits.length === 2 && !isDeleting) return `${digits}/`;
-  return digits;
-};
-
-const onExpiryKeydown = (e: KeyboardEvent) => {
-  if (!isNumericKey(e)) {
-    e.preventDefault();
-    return;
-  }
-  if (/^\d$/.test(e.key) && form.expiry.replace(/\D/g, '').length >= 4) {
-    e.preventDefault();
-  }
-};
-
-const onExpiryInput = (val: string | number) => {
-  const raw = String(val);
-  const isDeleting = raw.length < form.expiry.length;
-  const digits = raw.replace(/\D/g, '').slice(0, 4);
-  form.expiry = applyExpiryFormat(digits, isDeleting);
-};
-
-const onExpiryPaste = (e: ClipboardEvent) => {
-  e.preventDefault();
-  const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 4);
-  form.expiry = applyExpiryFormat(digits, false);
-};
-
-// --- CVC ---
-
-const onCvcKeydown = (e: KeyboardEvent) => {
-  if (!isNumericKey(e)) {
-    e.preventDefault();
-    return;
-  }
-  if (/^\d$/.test(e.key) && form.cvc.length >= 4) {
-    e.preventDefault();
-  }
-};
-
-const onCvcInput = (val: string | number) => {
-  form.cvc = String(val).replace(/\D/g, '').slice(0, 4);
-};
-
-const onCvcPaste = (e: ClipboardEvent) => {
-  e.preventDefault();
-  form.cvc = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 4);
-};
-
-defineExpose({ $v });
+defineExpose({ createPaymentMethod });
 </script>
 
 <script lang="ts">

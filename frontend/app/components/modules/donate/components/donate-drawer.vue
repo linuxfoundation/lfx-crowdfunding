@@ -88,10 +88,10 @@ SPDX-License-Identifier: MIT
           <donate-step-payment
             v-else-if="step === 2"
             ref="paymentStepRef"
-            v-model="paymentForm"
             :amount-cents="amountForm.amountCents"
             :tier-name="amountForm.tierName"
             :initiative-name="initiative.name"
+            @update:complete="paymentComplete = $event"
           />
         </div>
 
@@ -138,7 +138,7 @@ import DonateStepAmount from './donate-step-amount.vue';
 import DonateStepContact from './donate-step-contact.vue';
 import DonateStepPayment from './donate-step-payment.vue';
 import DonateStepSuccess from './donate-step-success.vue';
-import type { DonateAmountForm, DonateContactForm, DonatePaymentForm } from '#shared/types/donate.types';
+import type { DonateAmountForm, DonateContactForm } from '#shared/types/donate.types';
 import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
@@ -169,6 +169,7 @@ const step = ref(0);
 const isLastStep = computed(() => step.value === TOTAL_STEPS - 1);
 const submitting = ref(false);
 const submitted = ref(false);
+const paymentComplete = ref(false);
 
 const contactStepRef = ref<InstanceType<typeof DonateStepContact> | null>(null);
 const paymentStepRef = ref<InstanceType<typeof DonateStepPayment> | null>(null);
@@ -190,12 +191,6 @@ const contactForm = ref<DonateContactForm>({
   poNumber: '',
 });
 
-const paymentForm = ref<DonatePaymentForm>({
-  cardNumber: '',
-  expiry: '',
-  cvc: '',
-});
-
 const hasSelection = computed(() => amountForm.value.amountCents > 0);
 
 const isCurrentStepValid = computed(() => {
@@ -205,8 +200,7 @@ const isCurrentStepValid = computed(() => {
     if (f.donorType === 'individual') return f.fullName.trim().length > 0 && f.email.trim().length > 0;
     return f.companyName.trim().length > 0 && f.contactName.trim().length > 0 && f.email.trim().length > 0;
   }
-  const p = paymentForm.value;
-  return p.cardNumber.trim().length > 0 && p.expiry.trim().length > 0 && p.cvc.trim().length > 0;
+  return paymentComplete.value;
 });
 
 const continueLabel = computed(() => {
@@ -226,6 +220,7 @@ const close = () => {
   isOpen.value = false;
   step.value = 0;
   submitted.value = false;
+  paymentComplete.value = false;
   amountForm.value = { tierId: null, tierName: null, customAmountCents: null, amountCents: 0 };
   contactForm.value = {
     donorType: 'individual',
@@ -236,10 +231,10 @@ const close = () => {
     needsInvoice: false,
     poNumber: '',
   };
-  paymentForm.value = { cardNumber: '', expiry: '', cvc: '' };
 };
 
 const previousStep = () => {
+  if (step.value === 2) paymentComplete.value = false;
   if (step.value > 0) step.value--;
 };
 
@@ -247,7 +242,6 @@ const handleContinue = async () => {
   if (!hasSelection.value) return;
 
   if (!isLastStep.value) {
-    // Validate contact step before advancing to payment
     if (step.value === 1 && contactStepRef.value?.$v) {
       contactStepRef.value.$v.$touch();
       if (contactStepRef.value.$v.$invalid) return;
@@ -256,14 +250,11 @@ const handleContinue = async () => {
     return;
   }
 
-  // Validate payment step before submitting
-  if (paymentStepRef.value?.$v) {
-    paymentStepRef.value.$v.$touch();
-    if (paymentStepRef.value.$v.$invalid) return;
-  }
+  if (!paymentStepRef.value) return;
 
   submitting.value = true;
   try {
+    const paymentMethodId = await paymentStepRef.value.createPaymentMethod();
     await $fetch('/api/donate', {
       method: 'POST',
       body: {
@@ -272,11 +263,13 @@ const handleContinue = async () => {
         tierName: amountForm.value.tierName,
         amountCents: amountForm.value.amountCents,
         contact: contactForm.value,
-        payment: paymentForm.value,
+        paymentMethodId,
       },
     });
     submitted.value = true;
     emit('submitted');
+  } catch {
+    // Payment step displays its own Stripe error; API errors surface via $fetch
   } finally {
     submitting.value = false;
   }

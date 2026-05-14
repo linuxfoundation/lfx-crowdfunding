@@ -27,19 +27,13 @@ export interface DonateContactForm {
   poNumber: string;
 }
 
-export interface DonatePaymentForm {
-  cardNumber: string;
-  expiry: string;
-  cvc: string;
-}
-
 export interface DonateSubmission {
   initiativeId: string;
   tierId: string | null;
   tierName: string | null;
   amountCents: number;
   contact: DonateContactForm;
-  payment: DonatePaymentForm;
+  paymentMethodId: string;
 }
 
 export interface DonationRecord extends DonateSubmission {

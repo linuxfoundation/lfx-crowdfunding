@@ -28,6 +28,9 @@ importers:
       "@primevue/themes":
         specifier: ^4.5.4
         version: 4.5.4
+      "@stripe/stripe-js":
+        specifier: ^9.5.0
+        version: 9.5.0
       "@tanstack/vue-query":
         specifier: ^5.92.8
         version: 5.100.9(vue@3.5.34(typescript@5.9.3))
@@ -2847,6 +2850,13 @@ packages:
       {
         integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==,
       }
+
+  "@stripe/stripe-js@9.5.0":
+    resolution:
+      {
+        integrity: sha512-dTQWkJRw5lhcQipPuw6qZRBK2zY5eWWZ1Srw9mSjhIXSLdsNYO3uaIV+YRMkI0/tB/D7yQdHYStrcZrbeHI5Jg==,
+      }
+    engines: { node: ">=12.16" }
 
   "@stylistic/eslint-plugin@5.10.0":
     resolution:
@@ -11926,6 +11936,8 @@ snapshots:
   "@speed-highlight/core@1.2.15": {}
 
   "@standard-schema/spec@1.1.0": {}
+
+  "@stripe/stripe-js@9.5.0": {}
 
   "@stylistic/eslint-plugin@5.10.0(eslint@9.39.4(jiti@2.7.0))":
     dependencies:

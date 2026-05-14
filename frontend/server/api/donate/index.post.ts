@@ -9,10 +9,10 @@ const donations: DonationRecord[] = [];
 export default defineEventHandler(async (event) => {
   const body = await readBody<DonateSubmission>(event);
 
-  if (!body.initiativeId || !body.amountCents || body.amountCents <= 0) {
+  if (!body.initiativeId || !body.amountCents || body.amountCents <= 0 || !body.paymentMethodId) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'initiativeId and a positive amountCents are required',
+      statusMessage: 'initiativeId, a positive amountCents, and paymentMethodId are required',
     });
   }
 
