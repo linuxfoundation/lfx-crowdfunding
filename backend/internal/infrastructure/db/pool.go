@@ -6,6 +6,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,12 @@ func NewPool(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("parse DSN: %w", err)
+	}
+	if cfg.MaxConns > math.MaxInt32 {
+		return nil, fmt.Errorf("MaxConns %d exceeds int32 maximum", cfg.MaxConns)
+	}
+	if cfg.MinConns > math.MaxInt32 {
+		return nil, fmt.Errorf("MinConns %d exceeds int32 maximum", cfg.MinConns)
 	}
 	config.MaxConns = int32(cfg.MaxConns)
 	config.MinConns = int32(cfg.MinConns)
