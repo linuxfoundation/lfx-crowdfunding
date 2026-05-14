@@ -18,6 +18,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
+// DefaultAudience, DefaultIssuer, and DefaultClockSkew define the default JWT validation settings.
 const (
 	DefaultAudience  = "lfx-v2-initiatives-service"
 	DefaultIssuer    = "heimdall"
