@@ -95,49 +95,66 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	where := "WHERE 1=1"
 
 	if filter.OwnerID != "" {
-		where += fmt.Sprintf(" AND owner_id = $%d", argN)
+		where += fmt.Sprintf(" AND i.owner_id = $%d", argN)
 		args = append(args, filter.OwnerID)
 		argN++
 	}
 	if filter.InitiativeType != "" {
-		where += fmt.Sprintf(" AND initiative_type = $%d", argN)
+		where += fmt.Sprintf(" AND i.initiative_type = $%d", argN)
 		args = append(args, filter.InitiativeType)
 		argN++
 	}
 	if filter.Status != "" {
-		where += fmt.Sprintf(" AND status = $%d", argN)
+		where += fmt.Sprintf(" AND i.status = $%d", argN)
 		args = append(args, filter.Status)
 		argN++
 	}
 	if filter.Search != "" {
-		where += fmt.Sprintf(" AND (name ILIKE $%d OR description ILIKE $%d)", argN, argN)
+		where += fmt.Sprintf(" AND (i.name ILIKE $%d OR i.description ILIKE $%d)", argN, argN)
 		args = append(args, "%"+filter.Search+"%")
 		argN++
 	}
 
-	// Count query
-	countQuery := "SELECT COUNT(*) FROM initiatives " + where
+	// Count query — no JOIN needed for count
+	countQuery := "SELECT COUNT(*) FROM initiatives i " + where
 	var total int
 	if err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("count initiatives: %w", err)
 	}
 
-	// Data query
+	// Resolve sort column and direction.
+	// Only allow an explicit allowlist to prevent SQL injection.
+	orderCol := "i.created_on"
+	switch filter.SortBy {
+	case "supporters":
+		orderCol = "COALESCE(ls.supporters, 0)"
+	case "total_raised":
+		orderCol = "COALESCE(ls.total_raised_cents, 0)"
+	}
+	orderDir := "DESC"
+	if filter.SortDir == "asc" {
+		orderDir = "ASC"
+	}
+
+	// Data query — LEFT JOIN initiative_ledger_stats so sort works even
+	// when no ledger stats exist yet for an initiative.
 	args = append(args, limit, offset)
 	dataQuery := fmt.Sprintf(`
-		SELECT id, initiative_type, source_dynamo_table, owner_id,
-		       name, slug, status, industry, description, color,
-		       logo_url, website_url, coc_url,
-		       stripe_plan_id, stripe_product_id,
-		       amount_raised_in_cents, accept_funding,
-		       cii_project_id, jobspring_project_id, stacks_identifier,
-		       eventbrite_url, application_url, event_start_date, event_end_date,
-		       country, city, is_online,
-		       created_on, updated_on
-		FROM initiatives %s
-		ORDER BY created_on DESC
-		LIMIT $%d OFFSET $%d`, where, argN, argN+1)
+		SELECT i.id, i.initiative_type, i.source_dynamo_table, i.owner_id,
+		       i.name, i.slug, i.status, i.industry, i.description, i.color,
+		       i.logo_url, i.website_url, i.coc_url,
+		       i.stripe_plan_id, i.stripe_product_id,
+		       i.amount_raised_in_cents, i.accept_funding,
+		       i.cii_project_id, i.jobspring_project_id, i.stacks_identifier,
+		       i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
+		       i.country, i.city, i.is_online,
+		       i.created_on, i.updated_on
+		FROM initiatives i
+		LEFT JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id
+		%s
+		ORDER BY %s %s
+		LIMIT $%d OFFSET $%d`, where, orderCol, orderDir, argN, argN+1)
 
 	rows, err := r.pool.Query(ctx, dataQuery, args...)
 	if err != nil {

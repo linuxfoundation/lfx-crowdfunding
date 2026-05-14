@@ -35,6 +35,8 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	filter := models.InitiativeFilter{
 		InitiativeType: q.Get("type"),
 		Status:         q.Get("status"),
+		SortBy:         q.Get("sort_by"),
+		SortDir:        q.Get("sort_dir"),
 		Limit:          limit,
 		Offset:         offset,
 	}
