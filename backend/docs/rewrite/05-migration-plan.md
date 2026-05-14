@@ -18,7 +18,7 @@ This migration covers DynamoDB → Crowdfunding Postgres (`crowdfunding` schema)
 - Reimbursement Service data
 - OpenSearch data (old stack stays live for Reimbursement Service)
 
-Ledger DB migration is a separate post-release project. When it happens, the `ledger` schema is added to the Crowdfunding Postgres instance, the `project_funding_summary` view is activated, and CF API balance calls switch from HTTP to direct SQL.
+Ledger financial data is synced via the Ledger HTTP API — a `ledger-stats-sync` CronJob calls Ledger endpoints and stores pre-aggregated stats (amount raised, backer count, etc.) as cached columns on `crowdfunding.initiatives`. Raw table mirroring and Ledger DB co-location were both considered and rejected (see OQ-18 in `03-open-questions.md` and `02-decisions.md`).
 
 ### Phases
 
@@ -320,16 +320,19 @@ Document results of validation. Keep the validation report alongside migration l
 - [ ] Rollback procedure tested in staging
 - [ ] OQ-15 resolved — Ledger balance lookup mechanism for post-cutover initiatives confirmed
 - [ ] Ledger Service updated and deployed — auth headers fixed in `fundspring.go`: `x-ledger-auth` → `Authorization: Bearer` for `GetProject`/`GetUserName`; `Authorization: Bearer` added to `GetOrganizationName` (currently sends no auth — a Ledger bug); must be live before DNS cutover or donation confirmation emails break immediately
+- [ ] `STRIPE_WEBHOOK_SIGNING_SECRET` provisioned in new CF service (AWS Secrets Manager / ESO) — required to verify the `Stripe-Signature` HMAC on incoming `POST /v1/hooks/stripe` events via `webhook.ConstructEvent()`; this is a separate credential from the Stripe API key; the webhook URL itself does not change (same domain, DNS cutover swaps what is behind it)
 
 ### Cutover Steps
 
 1. Put old system in read-only mode (disable writes) — or accept brief dual-write window
 2. Run final incremental migration (any records created since the last full migration)
-3. **Run `amount_raised_in_cents` pre-population** — execute the `amount-raised-sync` CronJob manually against prod Ledger API to populate `amount_raised_in_cents` for all migrated initiatives before DNS switches. This ensures no published initiative card shows `$0 raised` incorrectly on day one.
-4. Switch DNS / K8s ingress from old Lambda API Gateway to new K8s service
+3. **Run `ledger-stats-sync` pre-population** — execute the `ledger-stats-sync` CronJob manually against prod Ledger API to populate stats columns (at minimum `amount_raised_in_cents`) for all migrated initiatives before DNS switches. This ensures no published initiative card shows `$0 raised` incorrectly on day one.
+4. Switch DNS / K8s ingress from old Lambda API Gateway to new K8s service — Stripe webhooks now land on the new service automatically (same URL, same domain)
 5. Smoke test: login, view projects, make a test donation (test card), check subscription list
 6. Monitor for errors (Go service logs, Postgres errors)
 7. Keep old Lambda running for 2 weeks minimum (rollback window)
+
+**Stripe webhook rollback caveat:** If DNS is switched back to the old Lambda, any `customer.subscription.deleted` events that Stripe delivered to the new service during the forward window will not be re-delivered to the old Lambda — Stripe delivers each event once. A subscription cancelled during the forward window may appear active in DynamoDB after rollback. Before decommission, cross-check active subscriptions against Stripe API to catch any such gaps (already a decommission step).
 
 ### Rollback
 
