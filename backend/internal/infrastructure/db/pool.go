@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package db provides PostgreSQL connection helpers and repositories.
 package db
 
 import (
