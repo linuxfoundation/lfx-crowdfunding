@@ -48,3 +48,8 @@ type UserRepository interface {
 	GetByUserID(ctx context.Context, userID string) (*models.User, error)
 	Upsert(ctx context.Context, user *models.User) (*models.User, error)
 }
+
+// StatisticsRepository defines persistence operations for platform-wide statistics.
+type StatisticsRepository interface {
+	GetPlatformStatistics(ctx context.Context) (*models.PlatformStatistics, error)
+}
