@@ -91,7 +91,7 @@ deploy-kind:
 	@echo "==> Ensuring namespace '$(NAMESPACE)' exists..."
 	@kubectl create namespace $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 	@echo "==> Seeding k8s Secret from .env (placeholder — ESO not present in kind)..."
-	@set -a; source .env; set +a; \
+	@set -a; . ./.env; set +a; \
 		KIND_DB_URL=$$(echo "$$DATABASE_URL" | sed 's/localhost/host.docker.internal/g'); \
 		kubectl -n $(NAMESPACE) create secret generic lfx-v2-initiatives-service-secrets \
 			--from-literal=DATABASE_URL="$$KIND_DB_URL" \
