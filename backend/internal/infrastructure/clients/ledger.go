@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
-	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -19,10 +18,19 @@ import (
 
 var ledgerTracer = otel.Tracer("ledger-client")
 
+// LedgerBalance is the per-initiative balance returned by the Ledger service.
+// Used by the transactions tab (future) — financial totals for list/detail
+// pages come from initiative_ledger_stats in CF DB instead.
+type LedgerBalance struct {
+	InitiativeID        string
+	TotalRaisedCents    int64
+	TotalDisbursedCents int64
+	AvailableCents      int64
+}
+
 // LedgerClient is the interface consumed by the service layer.
-// Balance and transaction data are NEVER stored in PostgreSQL — always fetched live.
 type LedgerClient interface {
-	GetBalance(ctx context.Context, initiativeID string) (*models.Balance, error)
+	GetBalance(ctx context.Context, initiativeID string) (*LedgerBalance, error)
 }
 
 // LedgerConfig holds Ledger service connection settings.
@@ -48,20 +56,19 @@ func NewLedgerClient(cfg LedgerConfig) LedgerClient {
 }
 
 type ledgerBalanceResponse struct {
-	InitiativeID        string `json:"projectId"`
-	TotalRaisedCents    int64  `json:"totalRaisedCents"`
-	TotalDisbursedCents int64  `json:"totalDisbursedCents"`
-	AvailableCents      int64  `json:"availableCents"`
+	TotalRaisedCents    int64 `json:"totalCredit"`
+	TotalDisbursedCents int64 `json:"totalDebit"`
+	AvailableCents      int64 `json:"availableBalance"`
 }
 
 // GetBalance fetches the current balance for an initiative from the Ledger service.
-func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) (*models.Balance, error) {
+func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) (*LedgerBalance, error) {
 	ctx, span := ledgerTracer.Start(ctx, "ledger.GetBalance")
 	defer span.End()
 	span.SetAttributes(attribute.String("ledger.initiative_id", initiativeID))
 
-	endpoint := fmt.Sprintf("%s/v1/projects/%s/balance", c.baseURL, initiativeID)
-	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
+	endpoint := fmt.Sprintf("%s/balance/%s", c.baseURL, initiativeID)
+	headers := map[string]string{"Authorization": c.apiKey}
 
 	var resp ledgerBalanceResponse
 	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
@@ -74,7 +81,7 @@ func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) 
 		span.RecordError(err)
 		return nil, fmt.Errorf("ledger balance: %w", err)
 	}
-	return &models.Balance{
+	return &LedgerBalance{
 		InitiativeID:        initiativeID,
 		TotalRaisedCents:    resp.TotalRaisedCents,
 		TotalDisbursedCents: resp.TotalDisbursedCents,
