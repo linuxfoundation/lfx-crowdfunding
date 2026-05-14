@@ -56,31 +56,42 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.dispatch(r, event)
-	w.WriteHeader(http.StatusOK)
+	h.dispatch(r, event, w)
 }
 
-func (h *WebhookHandler) dispatch(r *http.Request, event stripe.Event) {
+func (h *WebhookHandler) dispatch(r *http.Request, event stripe.Event, w http.ResponseWriter) {
 	h.logger.Info("stripe webhook event received",
 		"type", event.Type,
 		"id", event.ID,
 	)
+	var handled bool
 	switch event.Type {
 	case "payment_intent.succeeded":
-		h.handlePaymentIntentSucceeded(r, event)
+		handled = h.handlePaymentIntentSucceeded(r, event)
 	case "customer.subscription.deleted":
-		h.handleSubscriptionDeleted(r, event)
+		handled = h.handleSubscriptionDeleted(r, event)
 	default:
 		h.logger.Info("unhandled stripe event type", "type", event.Type)
+		w.WriteHeader(http.StatusOK) // unknown events are acknowledged immediately
+		return
+	}
+	if handled {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		// Return 501 so Stripe keeps the event in its retry queue until
+		// persistence is implemented.
+		http.Error(w, "event handler not yet implemented", http.StatusNotImplemented)
 	}
 }
 
-func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event stripe.Event) {
+func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event stripe.Event) bool {
 	h.logger.Info("payment_intent.succeeded", "event_id", event.ID)
 	// TODO: update donation status in DB to "succeeded" using metadata.initiative_id
+	return false
 }
 
-func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe.Event) {
+func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe.Event) bool {
 	h.logger.Info("customer.subscription.deleted", "event_id", event.ID)
 	// TODO: mark subscription as cancelled in DB
+	return false
 }

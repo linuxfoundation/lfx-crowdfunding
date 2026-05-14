@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,17 +39,13 @@ func (r *OrganizationRepository) GetByID(ctx context.Context, id string) (*model
 		SELECT id, owner_id, name, avatar_url, status, created_on, updated_on
 		FROM organizations WHERE id = $1`
 
-	o := &models.Organization{}
-	err := r.pool.QueryRow(ctx, q, id).Scan(
-		&o.ID, &o.OwnerID, &o.Name, &o.AvatarURL, &o.Status,
-		&o.CreatedOn, &o.UpdatedOn,
-	)
+	o, err := scanOrganization(r.pool.QueryRow(ctx, q, id))
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrOrganizationNotFound
+		if !errors.Is(err, domain.ErrOrganizationNotFound) {
+			span.RecordError(err)
+			err = fmt.Errorf("get organization: %w", err)
 		}
-		span.RecordError(err)
-		return nil, fmt.Errorf("get organization: %w", err)
+		return nil, err
 	}
 	return o, nil
 }
@@ -71,11 +68,33 @@ func (r *OrganizationRepository) ListByOwner(ctx context.Context, ownerID string
 
 	var orgs []models.Organization
 	for rows.Next() {
-		var o models.Organization
-		if err := rows.Scan(&o.ID, &o.OwnerID, &o.Name, &o.AvatarURL, &o.Status, &o.CreatedOn, &o.UpdatedOn); err != nil {
+		o, err := scanOrganization(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan organization: %w", err)
 		}
-		orgs = append(orgs, o)
+		orgs = append(orgs, *o)
 	}
 	return orgs, rows.Err()
+}
+
+func scanOrganization(row scanner) (*models.Organization, error) {
+	o := &models.Organization{}
+	var avatarURL, status *string
+	var createdOn, updatedOn *time.Time
+	err := row.Scan(&o.ID, &o.OwnerID, &o.Name, &avatarURL, &status, &createdOn, &updatedOn)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrOrganizationNotFound
+		}
+		return nil, err
+	}
+	o.AvatarURL = derefString(avatarURL)
+	o.Status = derefString(status)
+	if createdOn != nil {
+		o.CreatedOn = *createdOn
+	}
+	if updatedOn != nil {
+		o.UpdatedOn = *updatedOn
+	}
+	return o, nil
 }

@@ -1,0 +1,12 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
+  labels:
+    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
+data:
+  {{- range $key, $value := .Values.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

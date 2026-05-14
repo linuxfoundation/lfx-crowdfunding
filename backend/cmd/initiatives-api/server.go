@@ -76,6 +76,12 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("jwt authenticator: %w", err)
 	}
+	if jwtAuth.IsBypassActive() {
+		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		logger.Warn("!!! JWT AUTHENTICATION IS DISABLED — ALL REQUESTS ARE    !!!")
+		logger.Warn("!!! TREATED AS AUTHENTICATED. NEVER USE IN PRODUCTION.   !!!")
+		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	}
 
 	// Handlers
 	initiativeH := handler.NewInitiativeHandler(initiativeSvc)
@@ -88,7 +94,10 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.Timeout(cfg.Server.WriteTimeout))
+	// Chi's context timeout must be shorter than the HTTP WriteTimeout so the
+	// handler has time to write a graceful 504 before the server closes the
+	// connection. 80% of WriteTimeout is a safe margin.
+	r.Use(chimiddleware.Timeout(cfg.Server.WriteTimeout * 4 / 5))
 
 	// Health endpoints (no auth)
 	r.Get("/livez", handleLivez)

@@ -73,15 +73,23 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-# Externally managed secrets — populated from k8s Secrets or a secrets manager.
-env:
-  DATABASE_URL: ""
+# ── Non-secret environment variables ────────────────────────────────────────
+# These are rendered into a ConfigMap and mounted via envFrom.
+config:
   JWKS_URL: ""
   JWT_AUDIENCE: ""
   JWT_ISSUER: ""
-  STRIPE_SECRET_KEY: ""
-  STRIPE_WEBHOOK_SECRET: ""
   LEDGER_BASE_URL: ""
-  LEDGER_API_KEY: ""
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   OTEL_SERVICE_NAME: "lfx-v2-initiatives-service"
+
+# ── Secret environment variables ─────────────────────────────────────────────
+# These are sourced from a Kubernetes Secret via envFrom.secretRef.
+# The Secret itself is managed externally (e.g. External Secrets Operator
+# syncing from AWS Secrets Manager). The chart creates an empty placeholder
+# Secret so the Deployment can reference it; ESO or another operator is
+# expected to own the Secret's data in non-local environments.
+#
+# Expected keys in the Secret:
+#   DATABASE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LEDGER_API_KEY
+secretName: lfx-v2-initiatives-service-secrets

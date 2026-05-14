@@ -56,9 +56,22 @@ type JWTAuthenticator struct {
 // NewJWTAuthenticator creates and returns a JWTAuthenticator backed by the JWKS URL.
 // When DisabledMockLocalPrincipal is set the JWKS fetch is skipped entirely —
 // this allows local development without a real Auth0 domain.
+//
+// It is a configuration error to set both DisabledMockLocalPrincipal and JWKSURL
+// at the same time; this prevents the bypass from silently winning in a deployment
+// that also has a real JWKS URL configured.
 func NewJWTAuthenticator(cfg JWTAuthConfig) (*JWTAuthenticator, error) {
 	// Local dev bypass: skip remote JWKS fetch entirely.
 	if cfg.DisabledMockLocalPrincipal != "" {
+		// Reject ambiguous config: bypass + real JWKS URL set together is almost
+		// certainly a misconfiguration (e.g. a staging deployment with a leftover
+		// dev env var). Fail fast instead of silently bypassing auth.
+		if cfg.JWKSURL != "" {
+			return nil, fmt.Errorf(
+				"DISABLED_MOCK_LOCAL_PRINCIPAL and JWKS_URL are mutually exclusive: " +
+					"remove DISABLED_MOCK_LOCAL_PRINCIPAL before deploying to an environment with a real JWKS endpoint",
+			)
+		}
 		return &JWTAuthenticator{cfg: cfg}, nil
 	}
 
@@ -78,6 +91,12 @@ func NewJWTAuthenticator(cfg JWTAuthConfig) (*JWTAuthenticator, error) {
 // Close releases JWKS resources.
 func (a *JWTAuthenticator) Close() {
 	// keyfunc v3 manages its own goroutines; no explicit close required.
+}
+
+// IsBypassActive reports whether the JWT bypass mode is enabled.
+// Callers should log a prominent warning at startup when this returns true.
+func (a *JWTAuthenticator) IsBypassActive() bool {
+	return a.cfg.DisabledMockLocalPrincipal != ""
 }
 
 // Middleware returns an http.Handler middleware that validates the Bearer token
