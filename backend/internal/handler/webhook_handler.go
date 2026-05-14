@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package handler provides HTTP handlers for the initiatives API.
 package handler
 
 import (
@@ -93,13 +94,13 @@ func (h *WebhookHandler) dispatch(r *http.Request, event stripe.Event, w http.Re
 	}
 }
 
-func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event stripe.Event) bool {
+func (h *WebhookHandler) handlePaymentIntentSucceeded(_ *http.Request, event stripe.Event) bool {
 	h.logger.Info("payment_intent.succeeded", "event_id", event.ID)
 	// TODO: update donation status in DB to "succeeded" using metadata.initiative_id
 	return false
 }
 
-func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe.Event) bool {
+func (h *WebhookHandler) handleSubscriptionDeleted(_ *http.Request, event stripe.Event) bool {
 	h.logger.Info("customer.subscription.deleted", "event_id", event.ID)
 	// TODO: mark subscription as cancelled in DB
 	return false
