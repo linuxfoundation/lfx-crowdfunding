@@ -9,10 +9,12 @@ SPDX-License-Identifier: MIT
       <slot />
     </main>
     <crowdfunding-footer />
+    <donate-drawer-global />
   </div>
 </template>
 
 <script setup lang="ts">
 import CrowdfundingHeader from '~/components/shared/layout/header.vue';
 import CrowdfundingFooter from '~/components/shared/layout/footer.vue';
+import DonateDrawerGlobal from '~/components/modules/donate/components/donate-drawer-global.vue';
 </script>
