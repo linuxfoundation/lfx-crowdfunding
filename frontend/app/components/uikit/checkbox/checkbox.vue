@@ -4,20 +4,22 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <label class="c-checkbox">
-    <input
-      v-model="checked"
-      type="checkbox"
-      :value="props.value"
-      :disabled="props.disabled"
-    />
-    <lfx-icon
-      v-if="checked"
-      name="check"
-      type="regular"
-      :size="10"
-      class="text-white"
-      @click.stop
-    />
+    <span class="c-checkbox__box">
+      <input
+        v-model="checked"
+        type="checkbox"
+        :value="props.value"
+        :disabled="props.disabled"
+      />
+      <lfx-icon
+        v-if="checked"
+        name="check"
+        type="solid"
+        :size="9"
+        class="c-checkbox__check text-white"
+        @click.stop
+      />
+    </span>
     <span class="flex flex-col">
       <slot />
     </span>

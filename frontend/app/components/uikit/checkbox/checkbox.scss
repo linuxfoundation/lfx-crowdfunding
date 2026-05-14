@@ -1,11 +1,11 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 .c-checkbox {
-  @apply inline-flex items-center flex-wrap relative;
+  @apply inline-flex items-center flex-wrap relative gap-2;
 
   input {
-    @apply h-3.5 w-3.5 border border-solid border-neutral-300 rounded-sm bg-white;
-    @apply transition-all appearance-none p-0 my-0 ml-0 inline-block cursor-pointer;
+    @apply absolute inset-0 h-full w-full border border-solid border-neutral-300 rounded-sm bg-white;
+    @apply transition-all appearance-none p-0 m-0 cursor-pointer;
 
     // Checked
     &:checked {
@@ -42,8 +42,11 @@
     }
   }
 
-  // Icon
-  i.c-icon {
-    @apply absolute top-0.5 left-0.5;
+  &__box {
+    @apply relative flex items-center justify-center shrink-0 h-3.5 w-3.5;
+  }
+
+  &__check {
+    @apply absolute pointer-events-none;
   }
 }

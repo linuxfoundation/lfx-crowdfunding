@@ -45,5 +45,6 @@ export default {
     auth0ClientId: process.env.NUXT_PUBLIC_AUTH0_CLIENT_ID || '',
     auth0RedirectUri: `${appUrl}/auth/callback`,
     auth0Audience: `${appUrl}/api/`,
+    stripePublishableKey: '', // populated from NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   },
 };

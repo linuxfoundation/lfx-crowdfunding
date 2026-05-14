@@ -236,10 +236,30 @@ Wraps form inputs with label and validation messages.
 ## LfxDrawer
 
 ```vue
-<lfx-drawer v-model:visible="showDrawer" title="Filters">
-  <!-- drawer content -->
+<lfx-drawer
+  v-model="showDrawer"
+  position="right"
+  width="37.5rem"
+  :close-function="() => true"
+  :hide-close-button="false"
+>
+  <!-- default slot receives { close } -->
+  <template #default="{ close }">
+    <!-- drawer content -->
+  </template>
 </lfx-drawer>
 ```
+
+| Prop               | Type                        | Default      | Notes                                              |
+| ------------------ | --------------------------- | ------------ | -------------------------------------------------- |
+| `modelValue`       | `boolean`                   | —            | v-model open/closed state                          |
+| `position`         | `'left' \| 'right' \| 'bottom'` | `'right'`  | Slide direction                                    |
+| `width`            | `string`                    | `'37.5rem'`  | max-width for left/right positions                 |
+| `height`           | `string`                    | `'85vh'`     | max-height for bottom position                     |
+| `closeFunction`    | `() => boolean`             | `() => true` | Return false to veto close (e.g. unsaved changes)  |
+| `hideCloseButton`  | `boolean`                   | `false`      | Hide the built-in × button to add your own         |
+
+The `bottom` position adds `rounded-t-2xl` to the panel and fills the full viewport width.
 
 ---
 

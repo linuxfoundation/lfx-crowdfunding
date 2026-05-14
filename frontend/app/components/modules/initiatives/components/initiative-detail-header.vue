@@ -81,6 +81,7 @@ SPDX-License-Identifier: MIT
             icon="hand-heart"
             icon-position="left"
             class="!text-accent-500"
+            @click="openDonateDrawer({ id: initiative.id, name: initiative.name, logoUrl: initiative.logoUrl })"
           />
         </div>
       </div>
@@ -122,11 +123,14 @@ import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
+import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
 
 const props = defineProps<{
   initiative: InitiativeDetail;
   activeTab?: string;
 }>();
+
+const { openDonateDrawer } = useDonateDrawerStore();
 
 defineEmits<{ (e: 'update:activeTab', value: string): void }>();
 
