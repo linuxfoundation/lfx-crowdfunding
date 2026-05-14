@@ -41,17 +41,17 @@ The platform is split into two independently deployable services:
 
 Both are deployed as Kubernetes Deployments behind an Ingress. Background jobs run as K8s CronJobs.
 
-See [`docs/rewrite/04-target-architecture.md`](docs/rewrite/04-target-architecture.md) for the full system diagram and component breakdown.
+See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) for the full system diagram and component breakdown.
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [`docs/rewrite/01-current-system.md`](docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
-| [`docs/rewrite/02-decisions.md`](docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
-| [`docs/rewrite/03-open-questions.md`](docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
-| [`docs/rewrite/04-target-architecture.md`](docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
-| [`docs/rewrite/05-migration-plan.md`](docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
+| [`docs/rewrite/01-current-system.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
+| [`docs/rewrite/02-decisions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
+| [`docs/rewrite/03-open-questions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
+| [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
+| [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
 
 ## Tech Stack
 
@@ -108,11 +108,11 @@ See [`docs/rewrite/04-target-architecture.md`](docs/rewrite/04-target-architectu
 
 ## Database
 
-The `crowdfunding` schema lives on the shared LFX v2 RDS instance. The initial migration file is at [`db/migrations/001_initial.up.sql`](db/migrations/001_initial.up.sql).
+The `crowdfunding` schema lives on the shared LFX v2 RDS instance. The initial migration file is at [`db/migrations/001_initial.up.sql`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/db/migrations/001_initial.up.sql).
 
-One-time DynamoDB → Postgres data migration script: [`db/scripts/migrate_dynamo_to_postgres.py`](db/scripts/migrate_dynamo_to_postgres.py).
+One-time DynamoDB → Postgres data migration script: [`db/scripts/migrate_dynamo_to_postgres.py`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/db/scripts/migrate_dynamo_to_postgres.py).
 
-See [`docs/rewrite/05-migration-plan.md`](docs/rewrite/05-migration-plan.md) for cutover procedure.
+See [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/05-migration-plan.md) for cutover procedure.
 
 ## Development Setup
 
@@ -139,7 +139,7 @@ go run ./cmd/migrate
 go run ./cmd/api
 ```
 
-Required env vars: see [`docs/rewrite/04-target-architecture.md`](docs/rewrite/04-target-architecture.md) for the full inventory.
+Required env vars: see [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) for the full inventory.
 
 ## Contributing
 

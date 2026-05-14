@@ -30,6 +30,19 @@ DISABLE_ERRORS_LINTERS:
   - PYTHON_PYLINT
   - PYTHON_PYRIGHT
   - PYTHON_MYPY
+  # The Go module lives in backend/, not the repo root. Running golangci-lint /
+  # revive from the workspace root produces:
+  #   [linters_context] typechecking error: pattern ./...: directory prefix .
+  #   does not contain main module or its selected dependencies
+  # Treat these as non-fatal until GO_*_DIRECTORY scoping is supported.
+  - GO_GOLANGCI_LINT
+  - GO_REVIVE
 
 # Prevent cspell from flagging filenames (e.g. CODEOWNERS, mkdocs) as words.
 SPELL_CSPELL_ANALYZE_FILE_NAMES: false
+
+# The Go module lives in backend/ — run Go linters from there so they can
+# resolve the module graph and avoid "directory prefix . does not contain
+# main module" errors.
+GO_GOLANGCI_LINT_DIRECTORY: backend
+GO_REVIVE_DIRECTORY: backend

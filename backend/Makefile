@@ -8,8 +8,16 @@ IMAGE_NAME  := lfx-v2-initiatives-service
 IMAGE_TAG   ?= dev
 DOCKER_REG  ?= ghcr.io/linuxfoundation
 
+# kind / local deploy
+KIND_CLUSTER     ?= initiatives-dev
+NAMESPACE        ?= lfx-v2-initiatives-service
+RELEASE_NAME     ?= initiatives
+CHART_DIR        ?= charts/lfx-v2-initiatives-service
+DEPLOYMENT_NAME  ?= $(RELEASE_NAME)-lfx-v2-initiatives-service
+DEPLOY_TAG       ?= dev-$(shell date +%Y%m%d%H%M%S)
+
 .PHONY: all clean deps build run test fmt lint license-check \
-        docker-build docker-run helm-install
+        docker-build docker-run helm-install deploy-kind
 
 all: build
 
@@ -66,3 +74,53 @@ helm-install:
 	  charts/lfx-v2-initiatives-service \
 	  --namespace lfx --create-namespace \
 	  --values charts/lfx-v2-initiatives-service/values.yaml
+
+## deploy-kind: build image, load into kind, helm upgrade, wait, port-forward
+##   Requires: kind, kubectl, helm, docker, .env file
+##   Override cluster:   make deploy-kind KIND_CLUSTER=my-cluster
+##   Override namespace: make deploy-kind NAMESPACE=my-ns
+deploy-kind:
+	@echo "==> Ensuring kind cluster '$(KIND_CLUSTER)' exists..."
+	@kind get clusters | grep -q '^$(KIND_CLUSTER)$$' || kind create cluster --name $(KIND_CLUSTER)
+	@echo "==> Switching kubectl context to kind-$(KIND_CLUSTER)..."
+	@kubectl config use-context kind-$(KIND_CLUSTER)
+	@echo "==> Building Docker image $(IMAGE_NAME):$(DEPLOY_TAG)..."
+	@docker build -t $(IMAGE_NAME):$(DEPLOY_TAG) .
+	@echo "==> Loading image into kind cluster..."
+	@kind load docker-image $(IMAGE_NAME):$(DEPLOY_TAG) --name $(KIND_CLUSTER)
+	@echo "==> Ensuring namespace '$(NAMESPACE)' exists..."
+	@kubectl create namespace $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@echo "==> Seeding k8s Secret from .env (placeholder — ESO not present in kind)..."
+	@set -a; source .env; set +a; \
+		KIND_DB_URL=$$(echo "$$DATABASE_URL" | sed 's/localhost/host.docker.internal/g'); \
+		kubectl -n $(NAMESPACE) create secret generic lfx-v2-initiatives-service-secrets \
+			--from-literal=DATABASE_URL="$$KIND_DB_URL" \
+			--from-literal=STRIPE_SECRET_KEY="$$STRIPE_SECRET_KEY" \
+			--from-literal=STRIPE_WEBHOOK_SECRET="$$STRIPE_WEBHOOK_SECRET" \
+			--from-literal=LEDGER_API_KEY="$$LEDGER_API_KEY" \
+			--dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@echo "==> Running helm upgrade --install..."
+	@helm upgrade --install $(RELEASE_NAME) $(CHART_DIR) \
+		--namespace $(NAMESPACE) \
+		--create-namespace \
+		--set image.repository=$(IMAGE_NAME) \
+		--set image.tag=$(DEPLOY_TAG) \
+		--set image.pullPolicy=IfNotPresent \
+		--set autoscaling.enabled=false \
+		--set createPlaceholderSecret=false \
+		--set-string config.DISABLED_MOCK_LOCAL_PRINCIPAL=local-dev-user \
+		--set-string config.LEDGER_BASE_URL=https://ledger-api.lfx.dev
+	@echo "==> Waiting for rollout..."
+	@kubectl -n $(NAMESPACE) rollout status deploy/$(DEPLOYMENT_NAME) --timeout=180s
+	@echo "==> Setting up port-forward on :18080 -> svc :80..."
+	@existing_pid=$$(lsof -tiTCP:18080 -sTCP:LISTEN 2>/dev/null || true); \
+	if [ -n "$$existing_pid" ]; then \
+		echo "Stopping existing listener on 18080 (PID $$existing_pid)..."; \
+		kill $$existing_pid 2>/dev/null || true; \
+	fi
+	@nohup kubectl -n $(NAMESPACE) port-forward svc/$(DEPLOYMENT_NAME) 18080:80 \
+		>/tmp/$(RELEASE_NAME)-port-forward.log 2>&1 &
+	@sleep 2
+	@curl -sf http://127.0.0.1:18080/livez >/dev/null \
+		&& echo "==> Deployment ready. Local access: http://127.0.0.1:18080" \
+		|| echo "==> Port-forward started; verify with: tail -f /tmp/$(RELEASE_NAME)-port-forward.log"
