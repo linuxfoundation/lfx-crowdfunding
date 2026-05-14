@@ -329,7 +329,7 @@ CREATE TABLE IF NOT EXISTS initiative_ledger_stats (
   total_balance_cents     BIGINT  NOT NULL DEFAULT 0,  -- ledger: totalBalance
   available_balance_cents BIGINT  NOT NULL DEFAULT 0,  -- ledger: availableBalance
   fee_balance_cents       BIGINT  NOT NULL DEFAULT 0,  -- ledger: ABS(feeBalance)
-  backers                 INTEGER NOT NULL DEFAULT 0,  -- ledger: unique donor count
+  supporters              INTEGER NOT NULL DEFAULT 0,  -- ledger: unique contributor count (donors + subscribers)
   created_on              TIMESTAMPTZ DEFAULT NOW(),
   updated_on              TIMESTAMPTZ DEFAULT NOW()
 );
