@@ -482,4 +482,75 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_initiative_id          ON subscript
 CREATE INDEX IF NOT EXISTS idx_subscriptions_org_id                 ON subscriptions(organization_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status                 ON subscriptions(status);
 
+-- ============================================
+-- MATERIALIZED VIEW: initiative_financial_stats
+-- Aggregates goals, donations, and subscriptions from CF Postgres tables.
+-- No Ledger API call required — all fields derive from local tables.
+-- Refresh after bulk data changes with:
+--   REFRESH MATERIALIZED VIEW CONCURRENTLY crowdfunding.initiative_financial_stats;
+--
+-- Columns:
+--   initiative_id                          — FK to initiatives.id
+--   total_annual_goal_in_cents             — SUM of all goal budgets
+--   total_donation_count                   — completed donations
+--   total_subscription_count               — active subscriptions
+--   backers                                — distinct donors + distinct active subscribers
+--   sponsors                               — distinct orgs across donations + subscriptions
+--   annual_subscription_amount_in_cents    — annualised active sub total (monthly×12, annual×1)
+--   annual_subscription_remaining_in_cents — total_annual_goal − annual_subscription_amount
+--                                            NULL when no goals are defined
+-- ============================================
+CREATE MATERIALIZED VIEW IF NOT EXISTS initiative_financial_stats AS
+WITH goal_totals AS (
+    SELECT initiative_id,
+           COALESCE(SUM(amount_in_cents), 0) AS total_annual_goal_in_cents
+    FROM   initiative_goals
+    GROUP  BY initiative_id
+),
+donation_agg AS (
+    SELECT initiative_id,
+           COUNT(*)                        FILTER (WHERE status = 'completed')                                 AS total_donation_count,
+           COUNT(DISTINCT user_id)         FILTER (WHERE status = 'completed')                                 AS donor_count,
+           COUNT(DISTINCT organization_id) FILTER (WHERE status = 'completed' AND organization_id IS NOT NULL) AS donor_org_count
+    FROM   donations
+    GROUP  BY initiative_id
+),
+subscription_agg AS (
+    SELECT initiative_id,
+           COUNT(*)                        FILTER (WHERE status = 'active')                                    AS total_subscription_count,
+           COUNT(DISTINCT user_id)         FILTER (WHERE status = 'active')                                    AS subscriber_count,
+           COUNT(DISTINCT organization_id) FILTER (WHERE status = 'active' AND organization_id IS NOT NULL)    AS subscriber_org_count,
+           COALESCE(SUM(
+               CASE
+                   WHEN status = 'active' AND frequency = 'monthly'             THEN current_amount_in_cents * 12
+                   WHEN status = 'active' AND frequency IN ('annual', 'yearly') THEN current_amount_in_cents
+                   ELSE 0
+               END
+           ), 0) AS annual_subscription_amount_in_cents
+    FROM   subscriptions
+    GROUP  BY initiative_id
+)
+SELECT
+    i.id                                                                                          AS initiative_id,
+    COALESCE(gt.total_annual_goal_in_cents,          0)::BIGINT                                  AS total_annual_goal_in_cents,
+    COALESCE(da.total_donation_count,                0)::INTEGER                                 AS total_donation_count,
+    COALESCE(sa.total_subscription_count,            0)::INTEGER                                 AS total_subscription_count,
+    (COALESCE(da.donor_count,          0) + COALESCE(sa.subscriber_count,    0))::INTEGER        AS backers,
+    (COALESCE(da.donor_org_count,      0) + COALESCE(sa.subscriber_org_count, 0))::INTEGER       AS sponsors,
+    COALESCE(sa.annual_subscription_amount_in_cents, 0)::BIGINT                                  AS annual_subscription_amount_in_cents,
+    CASE
+        WHEN COALESCE(gt.total_annual_goal_in_cents, 0) > 0
+        THEN (COALESCE(gt.total_annual_goal_in_cents, 0) - COALESCE(sa.annual_subscription_amount_in_cents, 0))::BIGINT
+        ELSE NULL
+    END                                                                                           AS annual_subscription_remaining_in_cents
+FROM       initiatives               i
+LEFT JOIN  goal_totals               gt ON gt.initiative_id = i.id
+LEFT JOIN  donation_agg              da ON da.initiative_id = i.id
+LEFT JOIN  subscription_agg          sa ON sa.initiative_id = i.id
+WITH DATA;
+
+-- Required for REFRESH MATERIALIZED VIEW CONCURRENTLY
+CREATE UNIQUE INDEX IF NOT EXISTS idx_initiative_financial_stats_iid
+    ON initiative_financial_stats(initiative_id);
+
 COMMIT;

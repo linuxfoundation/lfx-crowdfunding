@@ -40,6 +40,26 @@ type Initiative struct {
 	IsOnline       bool       `json:"is_online"`
 	CreatedOn      time.Time  `json:"created_on"`
 	UpdatedOn      time.Time  `json:"updated_on"`
+	// Computed from initiative_financial_stats materialized view (nil on Create/Update responses).
+	Stats         *InitiativeStats `json:"initiative_stats,omitempty"`
+	FundingStatus *FundingStatus   `json:"funding_status,omitempty"`
+}
+
+// InitiativeStats holds engagement metrics derived from donations and subscriptions.
+// Populated from the initiative_financial_stats materialized view.
+type InitiativeStats struct {
+	Backers  int `json:"backers"`
+	Sponsors int `json:"sponsors"`
+}
+
+// FundingStatus holds subscription and goal aggregates from the initiative_financial_stats view.
+// AmountRaisedCents is NOT included here — it comes from the Ledger API (see Balance).
+type FundingStatus struct {
+	TotalAnnualGoalInCents             int64  `json:"total_annual_goal_in_cents"`
+	TotalDonationCount                 int    `json:"total_donation_count"`
+	TotalSubscriptionCount             int    `json:"total_subscription_count"`
+	AnnualSubscriptionAmountInCents    int64  `json:"annual_subscription_amount_in_cents"`
+	AnnualSubscriptionRemainingInCents *int64 `json:"annual_subscription_remaining_in_cents,omitempty"`
 }
 
 // InitiativeDetail enriches Initiative with live data computed at read time.

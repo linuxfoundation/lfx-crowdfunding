@@ -37,20 +37,25 @@ func (r *InitiativeRepository) GetByID(ctx context.Context, id string) (*models.
 	span.SetAttributes(attribute.String("db.initiative_id", id))
 
 	const q = `
-		SELECT id, initiative_type, source_dynamo_table, owner_id,
-		       name, slug, status, industry, description, color,
-		       logo_url, website_url, coc_url,
-		       stripe_plan_id, stripe_product_id,
-		       amount_raised_in_cents, accept_funding,
-		       cii_project_id, jobspring_project_id, stacks_identifier,
-		       eventbrite_url, application_url, event_start_date, event_end_date,
-		       country, city, is_online,
-		       created_on, updated_on
-		FROM initiatives
-		WHERE id = $1`
+		SELECT i.id, i.initiative_type, i.source_dynamo_table, i.owner_id,
+		       i.name, i.slug, i.status, i.industry, i.description, i.color,
+		       i.logo_url, i.website_url, i.coc_url,
+		       i.stripe_plan_id, i.stripe_product_id,
+		       i.amount_raised_in_cents, i.accept_funding,
+		       i.cii_project_id, i.jobspring_project_id, i.stacks_identifier,
+		       i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
+		       i.country, i.city, i.is_online,
+		       i.created_on, i.updated_on,
+		       fs.total_annual_goal_in_cents, fs.total_donation_count,
+		       fs.total_subscription_count, fs.backers, fs.sponsors,
+		       fs.annual_subscription_amount_in_cents,
+		       fs.annual_subscription_remaining_in_cents
+		FROM initiatives i
+		LEFT JOIN initiative_financial_stats fs ON fs.initiative_id = i.id
+		WHERE i.id = $1`
 
 	row := r.pool.QueryRow(ctx, q, id)
-	return scanInitiative(row)
+	return scanInitiativeWithStats(row)
 }
 
 // GetBySlug retrieves a single initiative by its URL slug.
@@ -60,20 +65,25 @@ func (r *InitiativeRepository) GetBySlug(ctx context.Context, slug string) (*mod
 	span.SetAttributes(attribute.String("db.initiative_slug", slug))
 
 	const q = `
-		SELECT id, initiative_type, source_dynamo_table, owner_id,
-		       name, slug, status, industry, description, color,
-		       logo_url, website_url, coc_url,
-		       stripe_plan_id, stripe_product_id,
-		       amount_raised_in_cents, accept_funding,
-		       cii_project_id, jobspring_project_id, stacks_identifier,
-		       eventbrite_url, application_url, event_start_date, event_end_date,
-		       country, city, is_online,
-		       created_on, updated_on
-		FROM initiatives
-		WHERE slug = $1`
+		SELECT i.id, i.initiative_type, i.source_dynamo_table, i.owner_id,
+		       i.name, i.slug, i.status, i.industry, i.description, i.color,
+		       i.logo_url, i.website_url, i.coc_url,
+		       i.stripe_plan_id, i.stripe_product_id,
+		       i.amount_raised_in_cents, i.accept_funding,
+		       i.cii_project_id, i.jobspring_project_id, i.stacks_identifier,
+		       i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
+		       i.country, i.city, i.is_online,
+		       i.created_on, i.updated_on,
+		       fs.total_annual_goal_in_cents, fs.total_donation_count,
+		       fs.total_subscription_count, fs.backers, fs.sponsors,
+		       fs.annual_subscription_amount_in_cents,
+		       fs.annual_subscription_remaining_in_cents
+		FROM initiatives i
+		LEFT JOIN initiative_financial_stats fs ON fs.initiative_id = i.id
+		WHERE i.slug = $1`
 
 	row := r.pool.QueryRow(ctx, q, slug)
-	return scanInitiative(row)
+	return scanInitiativeWithStats(row)
 }
 
 // List retrieves initiatives matching the filter with pagination.
@@ -95,48 +105,54 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	where := "WHERE 1=1"
 
 	if filter.OwnerID != "" {
-		where += fmt.Sprintf(" AND owner_id = $%d", argN)
+		where += fmt.Sprintf(" AND i.owner_id = $%d", argN)
 		args = append(args, filter.OwnerID)
 		argN++
 	}
 	if filter.InitiativeType != "" {
-		where += fmt.Sprintf(" AND initiative_type = $%d", argN)
+		where += fmt.Sprintf(" AND i.initiative_type = $%d", argN)
 		args = append(args, filter.InitiativeType)
 		argN++
 	}
 	if filter.Status != "" {
-		where += fmt.Sprintf(" AND status = $%d", argN)
+		where += fmt.Sprintf(" AND i.status = $%d", argN)
 		args = append(args, filter.Status)
 		argN++
 	}
 	if filter.Search != "" {
-		where += fmt.Sprintf(" AND (name ILIKE $%d OR description ILIKE $%d)", argN, argN)
+		where += fmt.Sprintf(" AND (i.name ILIKE $%d OR i.description ILIKE $%d)", argN, argN)
 		args = append(args, "%"+filter.Search+"%")
 		argN++
 	}
 
-	// Count query
-	countQuery := "SELECT COUNT(*) FROM initiatives " + where
+	// Count query (no join needed for counting)
+	countQuery := "SELECT COUNT(*) FROM initiatives i " + where
 	var total int
 	if err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("count initiatives: %w", err)
 	}
 
-	// Data query
+	// Data query — LEFT JOIN brings in financial stats from the materialized view
 	args = append(args, limit, offset)
 	dataQuery := fmt.Sprintf(`
-		SELECT id, initiative_type, source_dynamo_table, owner_id,
-		       name, slug, status, industry, description, color,
-		       logo_url, website_url, coc_url,
-		       stripe_plan_id, stripe_product_id,
-		       amount_raised_in_cents, accept_funding,
-		       cii_project_id, jobspring_project_id, stacks_identifier,
-		       eventbrite_url, application_url, event_start_date, event_end_date,
-		       country, city, is_online,
-		       created_on, updated_on
-		FROM initiatives %s
-		ORDER BY created_on DESC
+		SELECT i.id, i.initiative_type, i.source_dynamo_table, i.owner_id,
+		       i.name, i.slug, i.status, i.industry, i.description, i.color,
+		       i.logo_url, i.website_url, i.coc_url,
+		       i.stripe_plan_id, i.stripe_product_id,
+		       i.amount_raised_in_cents, i.accept_funding,
+		       i.cii_project_id, i.jobspring_project_id, i.stacks_identifier,
+		       i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
+		       i.country, i.city, i.is_online,
+		       i.created_on, i.updated_on,
+		       fs.total_annual_goal_in_cents, fs.total_donation_count,
+		       fs.total_subscription_count, fs.backers, fs.sponsors,
+		       fs.annual_subscription_amount_in_cents,
+		       fs.annual_subscription_remaining_in_cents
+		FROM initiatives i
+		LEFT JOIN initiative_financial_stats fs ON fs.initiative_id = i.id
+		%s
+		ORDER BY i.created_on DESC
 		LIMIT $%d OFFSET $%d`, where, argN, argN+1)
 
 	rows, err := r.pool.Query(ctx, dataQuery, args...)
@@ -148,7 +164,7 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 
 	var initiatives []models.Initiative
 	for rows.Next() {
-		i, err := scanInitiativeRow(rows)
+		i, err := scanInitiativeWithStats(rows)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scan initiative: %w", err)
 		}
@@ -365,11 +381,107 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	return i, nil
 }
 
+// scanInitiativeWithStats scans an initiative row that includes the 7 extra columns
+// projected from a LEFT JOIN on initiative_financial_stats.
+func scanInitiativeWithStats(row scanner) (*models.Initiative, error) {
+	i := &models.Initiative{}
+	var (
+		sourceDynamoTable, slug, status, industry, description, color *string
+		logoURL, websiteURL, cocURL, stripePlanID, stripeProductID    *string
+		ciiProjectID, jobspringProjectID, stacksIdentifier            *string
+		eventbriteURL, applicationURL, country, city                  *string
+		acceptFunding, isOnline                                       *bool
+		createdOn, updatedOn                                          *time.Time
+		// financial stats (NULL when the view row is absent for a newly-created initiative)
+		totalAnnualGoal, annualSubAmount, annualSubRemaining *int64
+		totalDonations, totalSubs, backers, sponsors         *int32
+	)
+	err := row.Scan(
+		&i.ID, &i.InitiativeType, &sourceDynamoTable, &i.OwnerID,
+		&i.Name, &slug, &status, &industry, &description, &color,
+		&logoURL, &websiteURL, &cocURL,
+		&stripePlanID, &stripeProductID,
+		&i.AmountRaisedCents, &acceptFunding,
+		&ciiProjectID, &jobspringProjectID, &stacksIdentifier,
+		&eventbriteURL, &applicationURL, &i.EventStartDate, &i.EventEndDate,
+		&country, &city, &isOnline,
+		&createdOn, &updatedOn,
+		&totalAnnualGoal, &totalDonations,
+		&totalSubs, &backers, &sponsors,
+		&annualSubAmount, &annualSubRemaining,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrInitiativeNotFound
+		}
+		return nil, err
+	}
+	i.SourceDynamoTable = derefString(sourceDynamoTable)
+	i.Slug = derefString(slug)
+	i.Status = derefString(status)
+	i.Industry = derefString(industry)
+	i.Description = derefString(description)
+	i.Color = derefString(color)
+	i.LogoURL = derefString(logoURL)
+	i.WebsiteURL = derefString(websiteURL)
+	i.CocURL = derefString(cocURL)
+	i.StripePlanID = derefString(stripePlanID)
+	i.StripeProductID = derefString(stripeProductID)
+	i.CiiProjectID = derefString(ciiProjectID)
+	i.JobspringProjectID = derefString(jobspringProjectID)
+	i.StacksIdentifier = derefString(stacksIdentifier)
+	i.EventbriteURL = derefString(eventbriteURL)
+	i.ApplicationURL = derefString(applicationURL)
+	i.Country = derefString(country)
+	i.City = derefString(city)
+	if acceptFunding != nil {
+		i.AcceptFunding = *acceptFunding
+	}
+	if isOnline != nil {
+		i.IsOnline = *isOnline
+	}
+	if createdOn != nil {
+		i.CreatedOn = *createdOn
+	}
+	if updatedOn != nil {
+		i.UpdatedOn = *updatedOn
+	}
+	// Populate financial sub-structs only when the view row exists.
+	if backers != nil {
+		i.Stats = &models.InitiativeStats{
+			Backers:  int(derefInt32(backers)),
+			Sponsors: int(derefInt32(sponsors)),
+		}
+		i.FundingStatus = &models.FundingStatus{
+			TotalAnnualGoalInCents:             derefInt64(totalAnnualGoal),
+			TotalDonationCount:                 int(derefInt32(totalDonations)),
+			TotalSubscriptionCount:             int(derefInt32(totalSubs)),
+			AnnualSubscriptionAmountInCents:    derefInt64(annualSubAmount),
+			AnnualSubscriptionRemainingInCents: annualSubRemaining,
+		}
+	}
+	return i, nil
+}
+
 func derefString(s *string) string {
 	if s == nil {
 		return ""
 	}
 	return *s
+}
+
+func derefInt64(n *int64) int64 {
+	if n == nil {
+		return 0
+	}
+	return *n
+}
+
+func derefInt32(n *int32) int32 {
+	if n == nil {
+		return 0
+	}
+	return *n
 }
 
 func scanInitiativeRow(row pgx.Rows) (*models.Initiative, error) {
