@@ -10,5 +10,8 @@ rules:
     max: 120
 
 # pnpm-lock.yaml is auto-generated and contains lines that exceed 120 chars.
+# Helm chart templates use Go template syntax ({{ }}, {{-) that yamllint
+# cannot parse as plain YAML — skip the entire charts directory.
 ignore: |
   frontend/pnpm-lock.yaml
+  backend/charts/**

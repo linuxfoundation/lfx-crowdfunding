@@ -1,10 +1,13 @@
 # Copyright The Linux Foundation and each contributor to LFX.
 # SPDX-License-Identifier: MIT
-{{- if .Values.autoscaling.enabled }}
+# prettier-ignore
+{{ if .Values.autoscaling.enabled }}
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "lfx-v2-initiatives-service.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
 spec:
@@ -21,4 +24,6 @@ spec:
         target:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
-{{- end }}
+---
+# prettier-ignore
+{{ end }}

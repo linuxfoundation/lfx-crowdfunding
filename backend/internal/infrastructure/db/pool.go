@@ -1,11 +1,13 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package db provides PostgreSQL connection helpers and repositories.
 package db
 
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,8 +16,8 @@ import (
 // PoolConfig holds connection pool settings, all sourced from environment variables.
 type PoolConfig struct {
 	DSN             string
-	MaxOpenConns    int
-	MaxIdleConns    int
+	MaxConns        int
+	MinConns        int
 	ConnMaxLifetime time.Duration
 }
 
@@ -25,8 +27,17 @@ func NewPool(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse DSN: %w", err)
 	}
-	config.MaxConns = int32(cfg.MaxOpenConns)
-	config.MinConns = int32(cfg.MaxIdleConns)
+	if cfg.MaxConns < 0 || cfg.MaxConns > math.MaxInt32 {
+		return nil, fmt.Errorf("MaxConns %d is out of valid range [0, %d]", cfg.MaxConns, math.MaxInt32)
+	}
+	if cfg.MinConns < 0 || cfg.MinConns > math.MaxInt32 {
+		return nil, fmt.Errorf("MinConns %d is out of valid range [0, %d]", cfg.MinConns, math.MaxInt32)
+	}
+	if cfg.MaxConns > 0 && cfg.MinConns > cfg.MaxConns {
+		return nil, fmt.Errorf("invalid pool configuration: DB_MIN_CONNS (%d) must be less than or equal to DB_MAX_CONNS (%d)", cfg.MinConns, cfg.MaxConns)
+	}
+	config.MaxConns = int32(cfg.MaxConns)
+	config.MinConns = int32(cfg.MinConns)
 	config.MaxConnLifetime = cfg.ConnMaxLifetime
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)

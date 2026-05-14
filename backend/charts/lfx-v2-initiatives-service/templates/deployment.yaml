@@ -5,6 +5,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "lfx-v2-initiatives-service.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
 spec:
@@ -28,6 +29,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "lfx-v2-initiatives-service.serviceAccountName" . }}
+      automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -40,11 +42,12 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
-          env:
-            {{- range $key, $value := .Values.env }}
-            - name: {{ $key }}
-              value: {{ $value | quote }}
-            {{- end }}
+          env: []
+          envFrom:
+            - configMapRef:
+                name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
+            - secretRef:
+                name: {{ .Values.secretName }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:

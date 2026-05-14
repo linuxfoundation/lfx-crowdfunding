@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package domain defines shared domain errors and repository contracts.
 package domain
 
 import "errors"

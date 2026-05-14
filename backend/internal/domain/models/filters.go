@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package models defines the domain model types shared across the application.
 package models
 
 // PaginationMeta carries cursor/page information returned alongside list results.

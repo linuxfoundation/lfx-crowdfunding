@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package models defines the domain model types shared across the application.
 package models
 
 // StripeProduct is a read-only view of a Stripe Product, used when enriching initiative data.
