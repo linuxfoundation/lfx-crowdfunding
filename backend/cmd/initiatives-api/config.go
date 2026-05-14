@@ -54,6 +54,11 @@ type StripeConfig struct {
 	SecretKey     string
 	WebhookSecret string
 	Timeout       time.Duration
+	// AckUnimplementedWebhooks, when true, responds with HTTP 200 for
+	// recognised-but-unimplemented event types instead of 501. Useful in
+	// pre-production environments where real Stripe deliveries are active but
+	// DB persistence has not yet landed. Set STRIPE_WEBHOOK_ACK_UNIMPLEMENTED=true.
+	AckUnimplementedWebhooks bool
 }
 
 // LedgerConfig holds the upstream Ledger service settings.
@@ -149,6 +154,10 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	stripeAckUnimplemented, err := getBoolEnv("STRIPE_WEBHOOK_ACK_UNIMPLEMENTED", false)
+	if err != nil {
+		return nil, err
+	}
 	ledgerTimeout, err := getDurationEnv("LEDGER_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return nil, err
@@ -175,9 +184,10 @@ func LoadConfig() (*Config, error) {
 			ClockSkew: auth.DefaultClockSkew,
 		},
 		Stripe: StripeConfig{
-			SecretKey:     stripeKey,
-			WebhookSecret: stripeWebhookSecret,
-			Timeout:       stripeTimeout,
+			SecretKey:                stripeKey,
+			WebhookSecret:            stripeWebhookSecret,
+			Timeout:                  stripeTimeout,
+			AckUnimplementedWebhooks: stripeAckUnimplemented,
 		},
 		Ledger: LedgerConfig{
 			BaseURL: ledgerBaseURL,
@@ -224,4 +234,16 @@ func getDurationEnv(key string, fallback time.Duration) (time.Duration, error) {
 		return 0, fmt.Errorf("env %s: invalid duration %q: %w", key, v, err)
 	}
 	return d, nil
+}
+
+func getBoolEnv(key string, fallback bool) (bool, error) {
+	v := getEnv(key, "")
+	if v == "" {
+		return fallback, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("env %s: invalid boolean %q: %w", key, v, err)
+	}
+	return b, nil
 }

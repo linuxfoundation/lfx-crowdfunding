@@ -15,17 +15,19 @@ import (
 // WebhookHandler handles inbound Stripe webhook events.
 // Signature validation is ALWAYS performed before processing — never skip this check.
 type WebhookHandler struct {
-	stripeClient  clients.StripeClient
-	webhookSecret string
-	logger        *slog.Logger
+	stripeClient     clients.StripeClient
+	webhookSecret    string
+	logger           *slog.Logger
+	ackUnimplemented bool // when true, reply 200 for known-but-unimplemented events
 }
 
 // NewWebhookHandler creates a WebhookHandler.
-func NewWebhookHandler(stripeClient clients.StripeClient, webhookSecret string, logger *slog.Logger) *WebhookHandler {
+func NewWebhookHandler(stripeClient clients.StripeClient, webhookSecret string, logger *slog.Logger, ackUnimplemented bool) *WebhookHandler {
 	return &WebhookHandler{
-		stripeClient:  stripeClient,
-		webhookSecret: webhookSecret,
-		logger:        logger,
+		stripeClient:     stripeClient,
+		webhookSecret:    webhookSecret,
+		logger:           logger,
+		ackUnimplemented: ackUnimplemented,
 	}
 }
 
@@ -76,6 +78,13 @@ func (h *WebhookHandler) dispatch(r *http.Request, event stripe.Event, w http.Re
 		return
 	}
 	if handled {
+		w.WriteHeader(http.StatusOK)
+	} else if h.ackUnimplemented {
+		// STRIPE_WEBHOOK_ACK_UNIMPLEMENTED=true: silently ack so Stripe does not
+		// retry. Use this in pre-production environments receiving real events
+		// before DB persistence is implemented.
+		h.logger.Warn("acknowledging unimplemented stripe event to suppress retries",
+			"type", event.Type, "id", event.ID)
 		w.WriteHeader(http.StatusOK)
 	} else {
 		// Return 501 so Stripe keeps the event in its retry queue until

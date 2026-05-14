@@ -86,10 +86,23 @@ config:
 # ── Secret environment variables ─────────────────────────────────────────────
 # These are sourced from a Kubernetes Secret via envFrom.secretRef.
 # The Secret itself is managed externally (e.g. External Secrets Operator
-# syncing from AWS Secrets Manager). The chart creates an empty placeholder
-# Secret so the Deployment can reference it; ESO or another operator is
-# expected to own the Secret's data in non-local environments.
+# syncing from AWS Secrets Manager).
 #
 # Expected keys in the Secret:
 #   DATABASE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LEDGER_API_KEY
 secretName: lfx-v2-initiatives-service-secrets
+
+# createPlaceholderSecret — opt-in, defaults to false.
+#
+# When false (default): the Secret must already exist before helm install runs.
+# ESO (or another operator) creates and owns it with the default
+# creationPolicy: Owner. This is the correct setting for all non-local
+# environments.
+#
+# When true: the chart creates an empty Secret placeholder via a pre-install
+# hook so the Deployment's envFrom.secretRef resolves on a brand-new cluster
+# with no pre-existing Secret (e.g. local development with kind/minikube).
+# WARNING: if ESO is also managing this Secret it MUST be configured with
+# creationPolicy: Merge — otherwise ESO will refuse to take ownership of a
+# Secret it did not create and the sync will fail silently.
+createPlaceholderSecret: false

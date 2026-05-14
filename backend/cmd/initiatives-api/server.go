@@ -87,7 +87,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	initiativeH := handler.NewInitiativeHandler(initiativeSvc)
 	donationH := handler.NewDonationHandler(donationSvc)
 	subscriptionH := handler.NewSubscriptionHandler(subscriptionSvc)
-	webhookH := handler.NewWebhookHandler(stripeClient, cfg.Stripe.WebhookSecret, logger)
+	webhookH := handler.NewWebhookHandler(stripeClient, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 
 	// Router
 	r := chi.NewRouter()
@@ -97,7 +97,11 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	// Chi's context timeout must be shorter than the HTTP WriteTimeout so the
 	// handler has time to write a graceful 504 before the server closes the
 	// connection. 80% of WriteTimeout is a safe margin.
-	r.Use(chimiddleware.Timeout(cfg.Server.WriteTimeout * 4 / 5))
+	// When WriteTimeout is 0 (disabled) the computed value is also 0, which
+	// causes chimiddleware.Timeout to panic. Skip the middleware in that case.
+	if chiTimeout := cfg.Server.WriteTimeout * 4 / 5; chiTimeout > 0 {
+		r.Use(chimiddleware.Timeout(chiTimeout))
+	}
 
 	// Health endpoints (no auth)
 	r.Get("/livez", handleLivez)
