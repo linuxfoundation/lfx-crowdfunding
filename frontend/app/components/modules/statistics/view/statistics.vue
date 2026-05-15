@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
   <div class="bg-white">
     <div class="container">
       <!-- Hero header -->
-      <div class="px-35">
+      <div class="md:px-35 px-0">
         <statistics-header
           :overview="overviewData"
           :is-loading="overviewLoading"
@@ -14,10 +14,10 @@ SPDX-License-Identifier: MIT
       </div>
 
       <!-- Body -->
-      <div class="pb-30 px-35">
+      <div class="md:pb-30 pb-20 md:px-35 px-0">
         <div class="flex flex-col lg:flex-row gap-8 items-start">
           <!-- Left column -->
-          <div class="flex-1 min-w-0 flex flex-col gap-6">
+          <div class="flex-1 min-w-0 flex flex-col md:gap-6 gap-8 w-full">
             <statistics-funding-by-category
               :categories="categoryData?.data ?? []"
               :is-loading="categoryLoading"
@@ -50,7 +50,7 @@ SPDX-License-Identifier: MIT
           </div>
 
           <!-- Right column -->
-          <div class="w-full lg:w-[360px] shrink-0">
+          <div class="w-full lg:w-[340px] shrink-0 md:sticky md:top-21 relative">
             <statistics-recent-donations />
           </div>
         </div>

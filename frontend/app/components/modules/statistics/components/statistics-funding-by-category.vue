@@ -76,11 +76,11 @@ SPDX-License-Identifier: MIT
                 class="text-white"
               />
             </div>
-            <span class="text-sm font-semibold text-neutral-900">{{ category.name }}</span>
+            <span class="md:text-sm text-xs font-semibold text-neutral-900">{{ category.name }}</span>
           </div>
 
           <!-- Percent + donated -->
-          <span class="text-sm text-neutral-600 whitespace-nowrap">
+          <span class="md:text-sm text-xs text-neutral-600 whitespace-nowrap">
             {{ categoryPercent(category) }}% ・ {{ formatShort(category.raisedCents) }} donated
           </span>
         </div>

@@ -49,10 +49,10 @@ SPDX-License-Identifier: MIT
 
     <div
       v-else-if="monthly"
-      class="flex items-start justify-between gap-4"
+      class="flex items-start justify-between md:gap-4 gap-8 md:flex-row flex-col"
     >
       <!-- Left: raised amount + label + change indicator -->
-      <div class="flex-1 flex flex-col min-w-0">
+      <div class="flex-1 w-full flex flex-col min-w-0">
         <p class="text-4xl font-normal leading-[56px] text-neutral-900 whitespace-nowrap">
           {{ totalFormatted }}
         </p>
@@ -72,7 +72,7 @@ SPDX-License-Identifier: MIT
       </div>
 
       <!-- Middle: new supporters -->
-      <div class="flex-1 flex flex-col min-w-0">
+      <div class="flex-1 w-full flex flex-col min-w-0">
         <p class="text-4xl font-normal leading-[56px] text-neutral-900">
           {{ monthly.newSupporters }}
         </p>

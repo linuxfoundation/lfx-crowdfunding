@@ -23,7 +23,7 @@ SPDX-License-Identifier: MIT
     </template>
     <h1
       v-else
-      class="font-secondary font-light text-5xl leading-[72px] text-black"
+      class="font-secondary font-light md:text-5xl text-4xl leading-[72px] text-black"
     >
       {{ headline }}
     </h1>
