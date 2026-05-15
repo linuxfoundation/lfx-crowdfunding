@@ -3,19 +3,29 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container pt-21 pb-10 flex flex-col gap-8 sticky top-0 bg-white z-10">
+  <section
+    class="container pt-15 pb-10 flex flex-col sticky gap-8 top-8 bg-white z-10"
+    :class="{ 'border-b border-neutral-200 !pb-5': isScrolled }"
+  >
     <!-- Eyebrow + headline -->
-    <div class="flex flex-col gap-6">
-      <div class="flex items-center gap-2 text-primary-600">
-        <lfx-icon
-          name="hand-heart"
-          type="light"
-          :size="20"
-        />
-        <span class="text-sm font-semibold leading-4">Initiatives</span>
+    <Transition name="header-eyebrow">
+      <div
+        v-show="!isScrolled"
+        class="flex flex-col gap-6"
+      >
+        <div class="flex items-center gap-2 text-primary-600">
+          <lfx-icon
+            name="folder-heart"
+            type="light"
+            :size="16"
+          />
+          <span class="text-lg font-medium leading-7 text-accent-800">Initiatives</span>
+        </div>
+        <h1 class="font-secondary font-light text-5xl leading-normal text-neutral-900">
+          Fund the future of open source
+        </h1>
       </div>
-      <h1 class="font-secondary font-light text-5xl leading-normal text-neutral-900">Fund the future of open source</h1>
-    </div>
+    </Transition>
 
     <!-- Search -->
     <lfx-input
@@ -35,13 +45,39 @@ SPDX-License-Identifier: MIT
 
     <!-- Filter tabs + sort -->
     <div class="flex items-center justify-between gap-4">
-      <lfx-tabs
-        :model-value="activeType"
-        :tabs="filterTabs"
-        tab-style="pill"
-        width-type="inline"
-        @update:model-value="$emit('update:activeType', $event)"
-      />
+      <div class="hidden md:block">
+        <lfx-tabs
+          :model-value="activeType"
+          :tabs="filterTabs"
+          tab-style="pill"
+          width-type="inline"
+          @update:model-value="$emit('update:activeType', $event)"
+        />
+      </div>
+      <div class="md:hidden block">
+        <lfx-dropdown-select
+          :model-value="activeType"
+          width="180px"
+          placement="bottom-end"
+          @update:model-value="$emit('update:activeType', $event)"
+        >
+          <template #trigger="{ selectedOption }">
+            <lfx-button
+              :label="selectedOption?.label ?? 'All Initiatives'"
+              type="outline"
+              button-style="pill"
+              size="small"
+              icon="arrow-up-arrow-down"
+            />
+          </template>
+          <lfx-dropdown-item
+            v-for="tab in filterTabs"
+            :key="tab.value"
+            :value="tab.value"
+            :label="tab.value === 'all' ? 'All Initiatives' : tab.label"
+          />
+        </lfx-dropdown-select>
+      </div>
 
       <lfx-dropdown-select
         :model-value="sortBy"
@@ -52,7 +88,7 @@ SPDX-License-Identifier: MIT
         <template #trigger="{ selectedOption }">
           <lfx-button
             :label="selectedOption?.label ?? 'Sort'"
-            type="transparent"
+            type="outline"
             button-style="pill"
             size="small"
             icon="arrow-up-arrow-down"
@@ -76,18 +112,23 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxInput from '~/components/uikit/input/input.vue';
 import LfxTabs from '~/components/uikit/tabs/tabs.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxDropdownSelect from '~/components/uikit/dropdown/dropdown-select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
+import useScroll from '~/utils/scroll';
 
 defineProps<{
   searchTerm: string;
   activeType: string;
   sortBy: string;
 }>();
+
+const { scrollTop } = useScroll();
+const isScrolled = computed(() => scrollTop.value > 10);
 
 defineEmits<{
   (e: 'update:searchTerm', value: string): void;
@@ -110,3 +151,22 @@ export default {
   name: 'InitiativesHeader',
 };
 </script>
+
+<style scoped>
+.header-eyebrow-enter-active,
+.header-eyebrow-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    max-height 0.25s ease;
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.header-eyebrow-enter-from,
+.header-eyebrow-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+  max-height: 0;
+}
+</style>
