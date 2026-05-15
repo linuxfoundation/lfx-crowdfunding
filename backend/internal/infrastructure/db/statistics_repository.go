@@ -25,7 +25,8 @@ func NewStatisticsRepository(pool *pgxpool.Pool) *StatisticsRepository {
 }
 
 // GetPlatformStatistics returns platform-wide aggregates from initiative_ledger_stats.
-// total_initiatives counts only published initiatives that have a ledger stats row.
+// Uses LEFT JOIN so published initiatives without a stats row (before first cron run)
+// are counted in total_initiatives but contribute 0 to financial totals.
 func (r *StatisticsRepository) GetPlatformStatistics(ctx context.Context) (*models.PlatformStatistics, error) {
 	ctx, span := statisticsTracer.Start(ctx, "db.statistics.GetPlatformStatistics")
 	defer span.End()
@@ -36,7 +37,7 @@ func (r *StatisticsRepository) GetPlatformStatistics(ctx context.Context) (*mode
 			COALESCE(SUM(ls.supporters), 0)::bigint         AS total_supporters,
 			COUNT(i.id)::bigint                             AS total_initiatives
 		FROM initiatives i
-		INNER JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id
+		LEFT JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id
 		WHERE i.status = 'published'`
 
 	var s models.PlatformStatistics

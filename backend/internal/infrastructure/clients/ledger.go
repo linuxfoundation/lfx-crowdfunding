@@ -81,10 +81,14 @@ func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) 
 		span.RecordError(err)
 		return nil, fmt.Errorf("ledger balance: %w", err)
 	}
+	disbursed := resp.TotalDisbursedCents
+	if disbursed < 0 {
+		disbursed = -disbursed
+	}
 	return &LedgerBalance{
 		InitiativeID:        initiativeID,
 		TotalRaisedCents:    resp.TotalRaisedCents,
-		TotalDisbursedCents: resp.TotalDisbursedCents,
+		TotalDisbursedCents: disbursed,
 		AvailableCents:      resp.AvailableCents,
 	}, nil
 }
