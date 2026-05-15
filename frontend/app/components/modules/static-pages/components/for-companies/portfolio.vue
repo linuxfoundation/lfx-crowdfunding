@@ -75,7 +75,7 @@ SPDX-License-Identifier: MIT
 
           <!-- Get started link pinned to bottom -->
           <NuxtLink
-            to="/contact"
+            :to="AppRoute.Contact"
             class="flex items-center gap-1.5 text-sm font-medium leading-5 text-accent-500"
           >
             Get started
@@ -94,6 +94,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import { portfolios } from '~/config/pages/for-companies-portfolio.config';
+import { AppRoute } from '~/config/routes';
 </script>
 
 <script lang="ts">

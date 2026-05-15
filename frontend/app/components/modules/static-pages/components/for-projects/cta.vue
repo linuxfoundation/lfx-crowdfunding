@@ -13,7 +13,7 @@ SPDX-License-Identifier: MIT
         </p>
       </div>
       <NuxtLink
-        to="/start-fundraise"
+        :to="AppRoute.StartFundraise"
         class="shrink-0"
       >
         <lfx-button
@@ -30,6 +30,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import LfxButton from '~/components/uikit/button/button.vue';
+import { AppRoute } from '~/config/routes';
 </script>
 
 <script lang="ts">

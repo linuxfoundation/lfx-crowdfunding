@@ -7,14 +7,16 @@ SPDX-License-Identifier: MIT
     <!-- Section header -->
     <div class="flex items-center justify-between border-t border-neutral-200 pt-16 pb-8">
       <h2 class="text-xl font-semibold text-neutral-900">Trending initiatives</h2>
-      <lfx-button
-        label="View all"
-        type="transparent"
-        button-style="pill"
-        size="small"
-        icon="angle-right"
-        icon-position="right"
-      />
+      <NuxtLink :to="AppRoute.Initiatives">
+        <lfx-button
+          label="View all"
+          type="transparent"
+          button-style="pill"
+          size="small"
+          icon="angle-right"
+          icon-position="right"
+        />
+      </NuxtLink>
     </div>
 
     <!-- Loading skeletons -->
@@ -61,6 +63,7 @@ import LfxIcon from '~/components/uikit/icon/icon.vue';
 import InitiativeCard from '~/components/shared/components/initiative-card/initiative-card.vue';
 import InitiativeCardLoading from '~/components/shared/components/initiative-card/initiative-card-loading.vue';
 import type { Initiative } from '~/types/initiative.types';
+import { AppRoute } from '~/config/routes';
 
 defineProps<{
   initiatives: Initiative[];

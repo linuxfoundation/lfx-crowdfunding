@@ -25,7 +25,7 @@ SPDX-License-Identifier: MIT
     <template #content>
       <div class="c-dropdown w-60">
         <NuxtLink
-          to="/my-donations"
+          :to="AppRoute.MyDonations"
           class="c-dropdown__item"
         >
           <lfx-icon
@@ -36,7 +36,7 @@ SPDX-License-Identifier: MIT
           My donations
         </NuxtLink>
         <NuxtLink
-          to="/my-initiatives"
+          :to="AppRoute.MyInitiatives"
           class="c-dropdown__item"
         >
           <lfx-icon
@@ -64,6 +64,7 @@ SPDX-License-Identifier: MIT
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxPopover from '~/components/uikit/popover/popover.vue';
+import { AppRoute } from '~/config/routes';
 
 // ---------------------------------------------------------------------------
 // Mock auth — change MOCK_LOGGED_IN to true to preview the logged-in state

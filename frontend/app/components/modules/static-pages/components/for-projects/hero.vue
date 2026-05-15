@@ -26,7 +26,7 @@ SPDX-License-Identifier: MIT
 
     <!-- CTAs -->
     <div class="flex items-center gap-6">
-      <NuxtLink to="/start-fundraise">
+      <NuxtLink :to="AppRoute.StartFundraise">
         <lfx-button
           icon="box-dollar"
           label="Start a Fundraise"
@@ -35,7 +35,7 @@ SPDX-License-Identifier: MIT
           size="small"
         />
       </NuxtLink>
-      <NuxtLink to="/initiatives">
+      <NuxtLink :to="AppRoute.Initiatives">
         <lfx-button
           icon="folder-heart"
           label="Explore Initiatives"
@@ -51,6 +51,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
+import { AppRoute } from '~/config/routes';
 </script>
 
 <script lang="ts">

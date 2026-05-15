@@ -14,7 +14,7 @@ SPDX-License-Identifier: MIT
       </div>
       <div class="flex items-center gap-4">
         <NuxtLink
-          to="/initiatives"
+          :to="AppRoute.Initiatives"
           class="shrink-0"
         >
           <lfx-button
@@ -26,7 +26,7 @@ SPDX-License-Identifier: MIT
           />
         </NuxtLink>
         <NuxtLink
-          to="/contact"
+          :to="AppRoute.Contact"
           class="shrink-0"
         >
           <lfx-button
@@ -44,6 +44,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import LfxButton from '~/components/uikit/button/button.vue';
+import { AppRoute } from '~/config/routes';
 </script>
 
 <script lang="ts">

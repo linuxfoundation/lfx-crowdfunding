@@ -22,7 +22,7 @@ SPDX-License-Identifier: MIT
           <lfx-tools class="hidden md:block" />
 
           <NuxtLink
-            to="/"
+            :to="AppRoute.Home"
             class="flex items-center gap-2"
           >
             <img
@@ -71,6 +71,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { AppRoute } from '~/config/routes';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxDesktopNav from '~/components/shared/layout/components/desktop-nav.vue';

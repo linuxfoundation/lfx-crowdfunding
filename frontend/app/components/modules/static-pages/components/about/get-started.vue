@@ -34,7 +34,7 @@ SPDX-License-Identifier: MIT
         </div>
       </div>
 
-      <NuxtLink to="/for-projects">
+      <NuxtLink :to="AppRoute.ForProjects">
         <lfx-button
           icon="laptop-code"
           label="Learn more for Projects"
@@ -50,6 +50,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import LfxButton from '~/components/uikit/button/button.vue';
 import bullet from '~/assets/images/get-started-bullet.svg';
+import { AppRoute } from '~/config/routes';
 
 const steps = [
   {
