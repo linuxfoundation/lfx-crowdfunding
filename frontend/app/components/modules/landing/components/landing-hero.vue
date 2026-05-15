@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
     <!-- Top row: copy (left) + ring stat (right) -->
     <div class="flex items-center justify-between gap-10 md:flex-row flex-col">
       <!-- Left: badges + headline + subtitle -->
-      <div class="flex flex-col gap-10 justify-center basis-4/6">
+      <div class="flex flex-col gap-10 justify-center md:basis-4/6 w-full">
         <!-- Chips row -->
         <div class="flex items-center gap-4">
           <!-- "Powered by LF" chip -->
@@ -39,7 +39,7 @@ SPDX-License-Identifier: MIT
 
         <!-- Headline + subtitle -->
         <div class="flex flex-col gap-5">
-          <h1 class="font-secondary font-light text-5xl leading-normal text-neutral-900">
+          <h1 class="font-secondary font-light md:text-5xl text-4xl leading-normal text-neutral-900">
             Fund the open source<br />
             <span class="text-accent-500 font-secondary font-light">software that powers</span> the world
           </h1>
@@ -47,10 +47,9 @@ SPDX-License-Identifier: MIT
             Non-profit crowdfunding platform sustaining the open source ecosystem.
           </p>
         </div>
+        <!-- Trust signals -->
+        <trust-badge class="md:hidden flex flex-col !items-start w-full" />
       </div>
-
-      <!-- Trust signals -->
-      <trust-badge class="md:hidden flex flex-col !items-start w-full" />
 
       <!-- Right: circular funds-raised stat -->
       <div class="py-10">

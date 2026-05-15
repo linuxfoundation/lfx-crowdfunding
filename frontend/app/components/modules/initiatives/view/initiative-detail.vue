@@ -21,11 +21,11 @@ SPDX-License-Identifier: MIT
         @update:active-tab="activeTab = $event"
       />
 
-      <div class="bg-white py-10">
+      <div class="bg-white pt-10 pb-30">
         <div class="container">
-          <div class="flex gap-8 items-start">
+          <div class="flex lg:gap-8 gap-20 items-start lg:flex-row flex-col">
             <!-- Left column -->
-            <div class="flex-1 min-w-0 flex flex-col gap-8">
+            <div class="flex-1 min-w-0 flex flex-col gap-8 w-full">
               <initiative-detail-overview
                 v-if="activeTab === 'overview'"
                 :initiative="data"
@@ -41,7 +41,7 @@ SPDX-License-Identifier: MIT
             </div>
 
             <!-- Right column -->
-            <div class="w-[360px] shrink-0 flex flex-col gap-10">
+            <div class="md:w-[360px] w-full shrink-0 flex flex-col gap-10">
               <initiative-detail-sponsors
                 v-if="data.sponsors?.length"
                 :sponsors="data.sponsors"

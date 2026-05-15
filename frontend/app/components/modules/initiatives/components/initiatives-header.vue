@@ -21,7 +21,7 @@ SPDX-License-Identifier: MIT
           />
           <span class="text-lg font-medium leading-7 text-accent-800">Initiatives</span>
         </div>
-        <h1 class="font-secondary font-light text-5xl leading-normal text-neutral-900">
+        <h1 class="font-secondary font-light md:text-5xl text-4xl leading-normal text-neutral-900">
           Fund the future of open source
         </h1>
       </div>
@@ -30,6 +30,7 @@ SPDX-License-Identifier: MIT
     <!-- Search -->
     <lfx-input
       :model-value="searchTerm"
+      class="!rounded-full"
       placeholder="Search initiatives..."
       @update:model-value="$emit('update:searchTerm', String($event))"
     >
@@ -44,7 +45,7 @@ SPDX-License-Identifier: MIT
     </lfx-input>
 
     <!-- Filter tabs + sort -->
-    <div class="flex items-center justify-between gap-4">
+    <div class="flex items-center md:justify-between justify-start gap-4">
       <div class="hidden md:block">
         <lfx-tabs
           :model-value="activeType"

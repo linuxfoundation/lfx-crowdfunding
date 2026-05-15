@@ -44,7 +44,7 @@ SPDX-License-Identifier: MIT
     >
       <p class="text-base font-semibold text-neutral-900 leading-6">Funding allocation</p>
 
-      <div class="grid grid-cols-2 gap-8">
+      <div class="grid md:grid-cols-2 grid-cols-1 gap-8">
         <div
           v-for="goal in initiative.fundingGoals"
           :key="goal.id"
@@ -66,38 +66,40 @@ SPDX-License-Identifier: MIT
             />
           </lfx-donut-chart>
 
-          <!-- Info -->
-          <div class="flex flex-1 min-w-0 flex-col gap-2">
-            <p class="text-sm font-semibold text-neutral-900 leading-5">
-              {{ goal.name }}
-            </p>
-            <div class="flex flex-col gap-2">
-              <div class="flex items-center gap-1">
-                <lfx-icon
-                  name="circle-small"
-                  type="solid"
-                  :size="12"
-                  class="text-accent-500 shrink-0"
-                />
-                <span class="text-xs font-semibold text-neutral-900 leading-4">Donated</span>
-                <span class="text-xs text-neutral-600 leading-4">{{ formatAmount(goal.donatedCents) }}</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <lfx-icon
-                  name="circle-small"
-                  type="solid"
-                  :size="12"
-                  class="text-[#002741] shrink-0"
-                />
-                <span class="text-xs font-semibold text-neutral-900 leading-4">Spent</span>
-                <span class="text-xs text-neutral-600 leading-4">{{ formatAmount(goal.spentCents) }}</span>
+          <div class="flex md:gap-4 gap-3 items-start w-full md:flex-row flex-col">
+            <!-- Info -->
+            <div class="flex flex-1 min-w-0 flex-col gap-2">
+              <p class="text-sm font-semibold text-neutral-900 leading-5">
+                {{ goal.name }}
+              </p>
+              <div class="flex md:flex-col flex-row gap-2">
+                <div class="flex items-center gap-1">
+                  <lfx-icon
+                    name="circle-small"
+                    type="solid"
+                    :size="12"
+                    class="text-accent-500 shrink-0"
+                  />
+                  <span class="text-xs font-semibold text-neutral-900 leading-4">Donated</span>
+                  <span class="text-xs text-neutral-600 leading-4">{{ formatAmount(goal.donatedCents) }}</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <lfx-icon
+                    name="circle-small"
+                    type="solid"
+                    :size="12"
+                    class="text-[#002741] shrink-0"
+                  />
+                  <span class="text-xs font-semibold text-neutral-900 leading-4">Spent</span>
+                  <span class="text-xs text-neutral-600 leading-4">{{ formatAmount(goal.spentCents) }}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <p class="text-sm text-neutral-500 leading-5 text-right shrink-0 whitespace-nowrap">
-            Goal: {{ formatAmount(goal.goalCents) }}
-          </p>
+            <p class="text-sm text-neutral-500 leading-5 text-right shrink-0 whitespace-nowrap">
+              Goal: {{ formatAmount(goal.goalCents) }}
+            </p>
+          </div>
         </div>
       </div>
     </div>
