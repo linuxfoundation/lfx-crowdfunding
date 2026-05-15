@@ -159,8 +159,15 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	}
 
 	args = append(args, limit, offset)
-	dataQuery := fmt.Sprintf("%s %s ORDER BY %s %s, i.created_on DESC, i.id LIMIT $%d OFFSET $%d",
-		initiativeSelect, where, orderCol, orderDir, argN, argN+1)
+	// When sorting by a financial metric, append created_on+id as tiebreakers for
+	// deterministic pagination. When using the default created_on sort, i.id alone
+	// is sufficient to break ties (avoids repeating the same column).
+	secondarySort := ", i.created_on DESC, i.id"
+	if filter.SortBy == "" {
+		secondarySort = ", i.id"
+	}
+	dataQuery := fmt.Sprintf("%s %s ORDER BY %s %s%s LIMIT $%d OFFSET $%d",
+		initiativeSelect, where, orderCol, orderDir, secondarySort, argN, argN+1)
 
 	rows, err := r.pool.Query(ctx, dataQuery, args...)
 	if err != nil {
@@ -190,7 +197,9 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 			return nil, nil, err
 		}
 		for _, i := range initiatives {
-			i.Goals = goalsByID[i.ID]
+			if goals, ok := goalsByID[i.ID]; ok {
+				i.Goals = goals
+			}
 		}
 	}
 

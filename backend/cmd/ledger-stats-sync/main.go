@@ -104,6 +104,10 @@ func loadConfig() (*config, error) {
 	if ledgerBaseURL == "" {
 		return nil, fmt.Errorf("LEDGER_BASE_URL is required")
 	}
+	ledgerAPIKey := os.Getenv("LEDGER_API_KEY")
+	if ledgerAPIKey == "" {
+		return nil, fmt.Errorf("LEDGER_API_KEY is required")
+	}
 
 	ledgerTimeout := 30 * time.Second
 	if v := os.Getenv("LEDGER_TIMEOUT"); v != "" {
@@ -117,7 +121,7 @@ func loadConfig() (*config, error) {
 	return &config{
 		DatabaseURL:   dbURL,
 		LedgerBaseURL: ledgerBaseURL,
-		LedgerAPIKey:  os.Getenv("LEDGER_API_KEY"),
+		LedgerAPIKey:  ledgerAPIKey,
 		LedgerTimeout: ledgerTimeout,
 	}, nil
 }

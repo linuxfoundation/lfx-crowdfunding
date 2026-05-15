@@ -43,7 +43,7 @@ type Initiative struct {
 	EventEndDate   *time.Time `json:"event_end_date,omitempty"`
 	Country        string     `json:"country,omitempty"`
 	City           string     `json:"city,omitempty"`
-	IsOnline       bool       `json:"is_online,omitempty"`
+	IsOnline       bool       `json:"is_online"`
 
 	// Always populated — cheap indexed query, needed by every consumer
 	Goals []Goal `json:"goals"`

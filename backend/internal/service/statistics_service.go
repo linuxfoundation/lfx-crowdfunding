@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package service contains the orchestration layer for the initiatives domain.
 package service
 
 import (

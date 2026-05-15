@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+// Package handler provides HTTP handlers for the initiatives API.
 package handler
 
 import (
