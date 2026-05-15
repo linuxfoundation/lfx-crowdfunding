@@ -163,7 +163,7 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	// deterministic pagination. When using the default created_on sort, i.id alone
 	// is sufficient to break ties (avoids repeating the same column).
 	secondarySort := ", i.created_on DESC, i.id"
-	if filter.SortBy == "" {
+	if filter.SortBy == "" || filter.SortBy == "created_on" {
 		secondarySort = ", i.id"
 	}
 	dataQuery := fmt.Sprintf("%s %s ORDER BY %s %s%s LIMIT $%d OFFSET $%d",
@@ -351,7 +351,7 @@ func (r *InitiativeRepository) listGoalsForIDs(ctx context.Context, ids []string
 }
 
 func scanGoals(rows pgx.Rows) ([]models.Goal, error) {
-	var goals []models.Goal
+	goals := []models.Goal{}
 	for rows.Next() {
 		var g models.Goal
 		if err := rows.Scan(
