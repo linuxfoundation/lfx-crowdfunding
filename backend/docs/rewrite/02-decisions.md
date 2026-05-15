@@ -65,7 +65,7 @@ Ledger Service keeps its own separate Postgres DB (Ledger DB) in a separate AWS 
 
 Ledger DB co-location and raw table mirroring (cross-account DB access) were both considered and rejected by the architect (Eric, May 2026) — see OQ-18. The confirmed approach is stats-sync via Ledger HTTP API.
 
-**Confirmed approach:** a `ledger-stats-sync` K8s CronJob calls the Ledger HTTP API to sync pre-aggregated financial stats per initiative and stores them as cached columns on `crowdfunding.initiatives`. Cached columns enable sorting and filtering by financial metrics (most funded, close to goal) at query time with a simple index scan. The full set of stats columns (amount raised, backer count, subscription totals, etc.) must be defined after UI design review — see OQ-19 and OQ-11.
+**Confirmed approach:** a `ledger-stats-sync` K8s CronJob calls the Ledger HTTP API to sync pre-aggregated financial stats per initiative and stores them in the `initiative_ledger_stats` table in CF DB. This enables sorting and filtering by financial metrics (most funded, most supporters) at query time with a simple index scan. See the `ledger-stats-sync` section under Backend for full specification.
 
 ### `projects` + `entities` → unified `initiatives` table
 
@@ -127,19 +127,17 @@ Rationale: max donation is $999,999.99 = 99,999,999 cents, which fits in `int4` 
 
 Rationale: they represent different Stripe object types (`Subscription` vs `Charge`), have different lifecycles (recurring vs one-time), different cancellation/update logic, and different fields (frequency, stripe_subscription_id on subscriptions; stripe_charge_id on donations). Merging would create nullable columns and make queries less obvious.
 
-### Ledger-derived financial fields — stats-sync cached columns
+### Ledger-derived financial fields — `initiative_ledger_stats` table
 
-Ledger-derived financial data is stored as cached columns on `crowdfunding.initiatives`, kept fresh by the `ledger-stats-sync` CronJob (hourly) that calls the Ledger HTTP API. The full set of stats columns must be defined after UI design review (see OQ-11 and OQ-19) — at minimum `amount_raised_in_cents` via `GET /balance/{id}`. Additional fields (backer count, subscription totals, etc.) require new Ledger API endpoints, new cached columns, and CronJob changes.
+Ledger-derived financial data is stored in the `initiative_ledger_stats` table (one row per initiative), kept fresh by the `ledger-stats-sync` CronJob. See the `ledger-stats-sync` section under Backend for the full specification.
 
-`amount_raised_in_cents` is the only stats column defined for the initial release. It is the only mechanism that reflects Expensify debit-side disbursements (no Stripe event), donations/renewals, and manual Ledger corrections.
+The `initiative_stats` table that existed in an earlier schema version has been removed entirely. `initiative_ledger_stats` is its replacement — see the `initiative_stats` removal entry in this document.
 
 The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
 **Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SIGNING_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
 
-The cron UPDATE must **not** touch `updated_on` — background reconciliation must not produce false-positive change signals for Fivetran, RS, or audit logs.
-
-**Cutover:** run `ledger-stats-sync` once manually before DNS cutover to pre-populate stats columns for all migrated published initiatives. See migration plan Phase 4. Stats columns are `NULL` before the first run — display as `0`. See OQ-15 for post-cutover ID strategy.
+**Cutover:** run `ledger-stats-sync` once manually before DNS cutover to pre-populate `initiative_ledger_stats` for all migrated initiatives. Rows are absent before the first run — the `initiative_repository` LEFT JOINs `initiative_ledger_stats` and COALESCEs all financial values to `0`, so missing rows display cleanly as zero. See OQ-15 for post-cutover ID strategy.
 
 
 ### No ORM — raw pgx with explicit query functions
@@ -386,6 +384,59 @@ The ID placed in Stripe object metadata fields `projectID` / `entityID` at charg
 For post-cutover initiatives (no DynamoDB origin), the recommended approach is to use the Postgres UUID directly as the project ID: CF puts the UUID in Stripe metadata at charge-creation time; Ledger stores it verbatim; `GET /balance/{uuid}` finds it because Ledger's regex (`^[0-9a-zA-Z\_\-]+$`) accepts UUIDs and the `WHERE project_id = $1` query matches. No Ledger code changes required. Lewis must confirm no Ledger code path assumes `project_id` is in a non-UUID format before this is adopted — see OQ-15.
 
 This is an implementation constraint on the new CF Go API Stripe integration — must be enforced at code review.
+
+### `ledger-stats-sync` CronJob — specification
+
+**What it is:** a standalone Go binary at `cmd/ledger-stats-sync/`, deployed as a K8s CronJob. It runs on a schedule, pulls balance data from the Ledger HTTP API, and upserts rows into `initiative_ledger_stats` in CF Postgres. It has no HTTP server — it runs, syncs, logs a summary, and exits.
+
+**Schedule:** hourly. Stats are at most 1 hour stale, acceptable for funding totals displayed in the UI.
+
+**Algorithm:**
+
+1. **Load initiatives to sync** — query CF DB for all initiatives where `status NOT IN ('archived', 'draft')`. Sync all active initiatives (not just published) so that when an initiative is published its stats are already populated and don't show as zero on first load.
+
+2. **Fetch all balances from Ledger** — call `GET /balance` (bulk endpoint) once. This returns all project balances in a single HTTP response regardless of initiative count (~2,000 rows). Do not call `GET /balance/{id}` per initiative in a loop.
+
+3. **Build a lookup map** — index the Ledger response by `projectID` so each CF initiative ID resolves in O(1).
+
+4. **Upsert into `initiative_ledger_stats`** — for each initiative that has a matching Ledger entry, run:
+   ```sql
+   INSERT INTO initiative_ledger_stats
+     (initiative_id, total_raised_cents, total_debited_cents,
+      total_balance_cents, available_balance_cents, fee_balance_cents,
+      supporters, updated_on)
+   VALUES (...)
+   ON CONFLICT (initiative_id) DO UPDATE SET
+     total_raised_cents      = EXCLUDED.total_raised_cents,
+     total_debited_cents     = EXCLUDED.total_debited_cents,
+     total_balance_cents     = EXCLUDED.total_balance_cents,
+     available_balance_cents = EXCLUDED.available_balance_cents,
+     fee_balance_cents       = EXCLUDED.fee_balance_cents,
+     supporters              = EXCLUDED.supporters,
+     updated_on              = NOW()
+   ```
+
+   Column mapping from the Ledger `Balance` struct:
+   | `initiative_ledger_stats` column | Ledger field | Notes |
+   |---|---|---|
+   | `total_raised_cents` | `totalCredit` | always positive |
+   | `total_debited_cents` | `ABS(totalDebit)` | Ledger stores debits as negative integers |
+   | `total_balance_cents` | `totalBalance` | |
+   | `available_balance_cents` | `availableBalance` | stored as-is; Ledger computes this as `totalBalance + feeBalance` (feeBalance is negative) |
+   | `fee_balance_cents` | `ABS(feeBalance)` | Ledger stores fee balance as negative |
+   | `supporters` | `supporters` | count of distinct user IDs with `amount > 0` |
+
+5. **Skip initiatives with no Ledger entry** — new initiatives not yet in the Ledger are silently skipped. Their `initiative_ledger_stats` row either doesn't exist yet (COALESCE to 0 in queries) or retains the last known values from a previous sync.
+
+6. **Log a sync summary** — at completion, log: total initiatives in CF DB, how many had a Ledger match, how many were upserted, how many were skipped, and total wall-clock duration.
+
+7. **Exit cleanly** — exit 0 on success, non-zero on any error. K8s uses the exit code to determine CronJob success or failure and will alert/retry accordingly.
+
+**ID mapping constraint (OQ-15):** The Ledger `projectID` field must match `initiatives.id` (UUID) in CF DB for the lookup to work. This must be validated before the CronJob goes live — see OQ-15.
+
+**Skeleton:** `cmd/ledger-stats-sync/main.go` exists in the repo as a documented skeleton for Lewis to implement.
+
+---
 
 ### Mentorship sync — Snowflake pull, not SNS/SQS
 
