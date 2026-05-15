@@ -324,12 +324,13 @@ CREATE TABLE IF NOT EXISTS initiative_github_stats (
 -- ============================================
 CREATE TABLE IF NOT EXISTS initiative_ledger_stats (
   initiative_id           UUID    PRIMARY KEY REFERENCES initiatives(id) ON DELETE CASCADE,
-  total_raised_cents      BIGINT  NOT NULL DEFAULT 0,  -- ledger: totalCredit
-  total_debited_cents     BIGINT  NOT NULL DEFAULT 0,  -- ledger: ABS(totalDebit)
-  total_balance_cents     BIGINT  NOT NULL DEFAULT 0,  -- ledger: totalBalance
-  available_balance_cents BIGINT  NOT NULL DEFAULT 0,  -- ledger: availableBalance
-  fee_balance_cents       BIGINT  NOT NULL DEFAULT 0,  -- ledger: ABS(feeBalance)
-  supporters              INTEGER NOT NULL DEFAULT 0,  -- ledger: unique contributor count (donors + subscribers)
+  total_raised_cents      BIGINT  NOT NULL DEFAULT 0,     -- ledger: totalCredit
+  total_debited_cents     BIGINT  NOT NULL DEFAULT 0,     -- ledger: ABS(totalDebit)
+  total_balance_cents     BIGINT  NOT NULL DEFAULT 0,     -- ledger: totalBalance
+  available_balance_cents BIGINT  NOT NULL DEFAULT 0,     -- ledger: availableBalance
+  fee_balance_cents       BIGINT  NOT NULL DEFAULT 0,     -- ledger: ABS(feeBalance)
+  supporters              INTEGER NOT NULL DEFAULT 0,     -- ledger: unique contributor count (donors + subscribers)
+  sponsors                JSONB   NOT NULL DEFAULT '{}',  -- ledger: Sponsors
   created_on              TIMESTAMPTZ DEFAULT NOW(),
   updated_on              TIMESTAMPTZ DEFAULT NOW()
 );

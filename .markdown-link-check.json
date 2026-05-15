@@ -7,6 +7,10 @@
     {
       "pattern": "^https://nuxt.com/modules",
       "comment": "nuxt.com/modules times out in CI (Status: 0) but is a valid page"
+    },
+    {
+      "pattern": "^https://img.shields.io/",
+      "comment": "shields.io badge URLs time out in CI (Status: 0) but are valid"
     }
   ]
 }

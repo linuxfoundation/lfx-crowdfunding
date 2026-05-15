@@ -53,3 +53,25 @@ type UserRepository interface {
 type StatisticsRepository interface {
 	GetPlatformStatistics(ctx context.Context) (*models.PlatformStatistics, error)
 }
+
+// LedgerStatsRepository defines the persistence operations used exclusively by
+// the ledger-stats-sync CronJob.  All methods are scoped to the batch read/write
+// pattern of that job and should not be used by the HTTP API.
+type LedgerStatsRepository interface {
+	// ListActiveSyncIDs returns the UUIDs of all initiatives whose status is
+	// not 'archived' or 'draft'.  These are the initiatives the CronJob must
+	// attempt to sync on every run.
+	ListActiveSyncIDs(ctx context.Context) ([]string, error)
+
+	// BulkUpsertLedgerStats inserts or updates rows in initiative_ledger_stats.
+	// Returns the number of rows successfully upserted.
+	BulkUpsertLedgerStats(ctx context.Context, stats []models.LedgerStats) (int, error)
+
+	// GetOrganizationsByIDs returns a map of org UUID → Organization for all
+	// IDs in the slice.  Missing IDs are simply absent from the map.
+	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
+
+	// GetUsersByIDs returns a map of user_id (Auth0 subject) → User for all
+	// IDs in the slice.  Missing IDs are simply absent from the map.
+	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
+}

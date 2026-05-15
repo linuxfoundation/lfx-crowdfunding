@@ -17,6 +17,9 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/db"
 )
 
 func main() {
@@ -29,7 +32,7 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
-	_ = context.Background() // TODO(lewis): pass ctx into DB and HTTP calls
+	ctx := context.Background()
 	start := time.Now()
 
 	cfg, err := loadConfig()
@@ -37,62 +40,55 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	// TODO(lewis): connect to CF Postgres using cfg.DatabaseURL.
-	// Recommended: use pgx/v5 pgxpool, same as the initiatives API.
-	_ = cfg
+	// Database pool — shared pgxpool, same pattern as the initiatives API.
+	pool, err := db.NewPool(ctx, db.PoolConfig{
+		DSN:             cfg.DatabaseURL,
+		MaxConns:        cfg.DBMaxConns,
+		MinConns:        cfg.DBMinConns,
+		ConnMaxLifetime: cfg.DBConnMaxLifetime,
+	})
+	if err != nil {
+		return fmt.Errorf("database pool: %w", err)
+	}
+	defer pool.Close()
 
-	// Step 1: Load all non-archived, non-draft initiative IDs from CF DB.
-	//
-	// SELECT id FROM initiatives WHERE status NOT IN ('archived', 'draft')
-	//
-	// Sync all active initiatives (not just published) so that when an
-	// initiative is published its stats are already populated.
-	logger.Info("loading initiatives from CF DB")
-	// TODO(lewis): implement — query CF DB, collect []string of initiative IDs.
+	// Ledger HTTP client.
+	ledgerClient := clients.NewLedgerClient(clients.LedgerConfig{
+		BaseURL: cfg.LedgerBaseURL,
+		APIKey:  cfg.LedgerAPIKey,
+		Timeout: cfg.LedgerTimeout,
+	})
 
-	// Step 2: Fetch all balances from the Ledger service in one bulk call.
-	//
-	// GET <LEDGER_BASE_URL>/balance
-	// Authorization: <LEDGER_API_KEY>
-	//
-	// Returns AllBalances{Balances: []Balance{...}} — one entry per project_id.
-	// See ledger-service/balance/balance.go for the Balance struct.
-	logger.Info("fetching all balances from Ledger")
-	// TODO(lewis): implement — call Ledger GET /balance, decode into AllBalances.
+	// Repository and syncer.
+	repo := db.NewLedgerStatsRepository(pool)
+	syncer := newSyncer(repo, ledgerClient, logger)
 
-	// Step 3: Build a map[projectID]Balance for O(1) lookup.
-	// TODO(lewis): implement.
+	logger.Info("ledger-stats-sync starting")
 
-	// Step 4: For each initiative, look up its Ledger entry and upsert.
-	//
-	// Column mapping (see 02-decisions.md for rationale):
-	//   total_raised_cents      = totalCredit           (always positive)
-	//   total_debited_cents     = ABS(totalDebit)       (Ledger stores as negative)
-	//   total_balance_cents     = totalBalance
-	//   available_balance_cents = availableBalance      (Ledger computes this)
-	//   fee_balance_cents       = ABS(feeBalance)       (Ledger stores as negative)
-	//   supporters              = backers               (distinct user_id count, Ledger field name)
-	//
-	// Use INSERT ... ON CONFLICT (initiative_id) DO UPDATE SET ...
-	// Always set updated_on = NOW() on upsert.
-	// Skip initiatives with no Ledger entry — do not delete or zero out rows.
-	logger.Info("upserting initiative_ledger_stats")
-	// TODO(lewis): implement upsert loop. Collect upserted/skipped counts.
+	result, err := syncer.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("sync run: %w", err)
+	}
 
-	// Step 5: Log summary.
 	logger.Info("ledger-stats-sync complete",
 		"duration", time.Since(start).String(),
-		// TODO(lewis): add total, matched, upserted, skipped counts.
+		"total_initiatives", result.total,
+		"matched", result.matched,
+		"upserted", result.upserted,
+		"skipped", result.skipped,
 	)
 	return nil
 }
 
 // config holds the runtime configuration for ledger-stats-sync.
 type config struct {
-	DatabaseURL   string
-	LedgerBaseURL string
-	LedgerAPIKey  string
-	LedgerTimeout time.Duration
+	DatabaseURL       string
+	DBMaxConns        int
+	DBMinConns        int
+	DBConnMaxLifetime time.Duration
+	LedgerBaseURL     string
+	LedgerAPIKey      string
+	LedgerTimeout     time.Duration
 }
 
 func loadConfig() (*config, error) {
@@ -118,10 +114,17 @@ func loadConfig() (*config, error) {
 		ledgerTimeout = d
 	}
 
+	dbMaxConns := 5
+	dbMinConns := 1
+	dbConnMaxLifetime := 5 * time.Minute
+
 	return &config{
-		DatabaseURL:   dbURL,
-		LedgerBaseURL: ledgerBaseURL,
-		LedgerAPIKey:  ledgerAPIKey,
-		LedgerTimeout: ledgerTimeout,
+		DatabaseURL:       dbURL,
+		DBMaxConns:        dbMaxConns,
+		DBMinConns:        dbMinConns,
+		DBConnMaxLifetime: dbConnMaxLifetime,
+		LedgerBaseURL:     ledgerBaseURL,
+		LedgerAPIKey:      ledgerAPIKey,
+		LedgerTimeout:     ledgerTimeout,
 	}, nil
 }
