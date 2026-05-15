@@ -47,6 +47,8 @@ export interface InitiativesParams {
   search?: string;
   type?: string;
   sort?: string;
+  page?: string;
+  pageSize?: string;
 }
 
 export interface InitiativesResponse {

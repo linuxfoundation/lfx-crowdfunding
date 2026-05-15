@@ -1,6 +1,8 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+import { AppRoute } from '~/config/routes';
+
 export interface FooterMenuLink {
   name: string;
   link: string;
@@ -15,17 +17,17 @@ export const lfxFooterMenu: FooterMenuSection[] = [
   {
     title: 'Platform',
     links: [
-      { name: 'Explore initiatives', link: '/initiatives' },
-      { name: 'Statistics', link: '/statistics' },
-      { name: 'Start a Fundraise', link: '/start-fundraise' },
-      { name: 'About', link: '/about' },
+      { name: 'Explore initiatives', link: AppRoute.Initiatives },
+      { name: 'Statistics', link: AppRoute.Statistics },
+      { name: 'Start a Fundraise', link: AppRoute.StartFundraise },
+      { name: 'About', link: AppRoute.About },
     ],
   },
   {
     title: 'Solutions',
     links: [
-      { name: 'For Projects', link: '/for-projects' },
-      { name: 'For Companies', link: '/for-companies' },
+      { name: 'For Projects', link: AppRoute.ForProjects },
+      { name: 'For Companies', link: AppRoute.ForCompanies },
     ],
   },
   {

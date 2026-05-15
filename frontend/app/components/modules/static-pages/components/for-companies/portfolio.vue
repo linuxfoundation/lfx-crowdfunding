@@ -5,13 +5,13 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="border-t border-neutral-200 py-16 flex flex-col gap-10">
     <div class="flex flex-col gap-3">
-      <h2 class="text-2xl font-semibold leading-9 text-neutral-900">Portfolio giving</h2>
-      <p class="text-base font-normal leading-6 text-neutral-900">
+      <h2 class="md:text-2xl text-xl font-semibold leading-9 text-neutral-900">Portfolio giving</h2>
+      <p class="md:text-base text-sm font-normal leading-6 text-neutral-900">
         Don't pick one project — fund a portfolio. Spread your investment across related initiatives for maximum impact.
       </p>
     </div>
 
-    <div class="border border-neutral-200 rounded-xl flex items-stretch">
+    <div class="border border-neutral-200 rounded-xl flex items-stretch md:flex-row flex-col">
       <template
         v-for="(portfolio, index) in portfolios"
         :key="portfolio.id"
@@ -19,7 +19,7 @@ SPDX-License-Identifier: MIT
         <!-- Vertical divider between columns -->
         <div
           v-if="index > 0"
-          class="w-px bg-neutral-200 shrink-0"
+          class="md:w-px md:h-auto w-full h-px bg-neutral-200 shrink-0"
         />
 
         <!-- Portfolio card -->
@@ -75,7 +75,7 @@ SPDX-License-Identifier: MIT
 
           <!-- Get started link pinned to bottom -->
           <NuxtLink
-            to="/contact"
+            :to="AppRoute.Contact"
             class="flex items-center gap-1.5 text-sm font-medium leading-5 text-accent-500"
           >
             Get started
@@ -94,6 +94,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import { portfolios } from '~/config/pages/for-companies-portfolio.config';
+import { AppRoute } from '~/config/routes';
 </script>
 
 <script lang="ts">

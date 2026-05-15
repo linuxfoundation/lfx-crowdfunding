@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <div
-    class="flex-1 flex flex-col min-w-0"
+    class="flex-1 w-full flex flex-col min-w-0"
     :aria-label="`Monthly donations bar chart. Peak day: ${peakLabel} with ${peakAmount}.`"
     role="img"
   >

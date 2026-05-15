@@ -5,17 +5,17 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="border-t border-neutral-200 py-16 flex flex-col gap-10">
     <div class="flex flex-col gap-3">
-      <h2 class="text-2xl font-semibold leading-9 text-neutral-900">Why projects choose LFX CrowdFunding</h2>
-      <p class="text-base font-normal leading-6 text-neutral-900">
+      <h2 class="md:text-2xl text-xl font-semibold leading-9 text-neutral-900">Why projects choose LFX CrowdFunding</h2>
+      <p class="md:text-base text-sm font-normal leading-6 text-neutral-900">
         Built for open source, by the Linux Foundation. No hidden fees, no platform lock-in, no surprises.
       </p>
     </div>
 
-    <div class="grid grid-cols-3 gap-10">
+    <div class="grid md:grid-cols-3 grid-cols-1 gap-10">
       <div
         v-for="feature in FEATURES"
         :key="feature.icon"
-        class="flex flex-col gap-3"
+        class="flex md:flex-col flex-row gap-3"
       >
         <div class="size-10 rounded-full border border-neutral-200 shadow-sm flex items-center justify-center shrink-0">
           <lfx-icon

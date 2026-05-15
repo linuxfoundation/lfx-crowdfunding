@@ -156,11 +156,13 @@ export default defineEventHandler(async (event): Promise<InitiativesResponse> =>
   // TODO: replace with a proxy call to the Go backend API once wired up.
   // In our architecture Nuxt's server layer owns auth only — business data comes
   // from the Go microservice. This handler returns fixture data for scaffolding.
-  const { search, type, sort } = getQuery(event);
+  const { search, type, sort, page, pageSize } = getQuery(event);
 
   const query = typeof search === 'string' ? search.trim().toLowerCase() : '';
   const typeFilter = typeof type === 'string' && type !== 'all' ? type : '';
   const sortBy = typeof sort === 'string' ? sort : 'recent';
+  const pageNum = typeof page === 'string' ? Math.max(1, parseInt(page, 10) || 1) : 1;
+  const pageSizeNum = typeof pageSize === 'string' ? Math.max(1, parseInt(pageSize, 10) || 12) : 12;
 
   let result = ALL_INITIATIVES.filter((i) => {
     const matchesSearch =
@@ -185,5 +187,7 @@ export default defineEventHandler(async (event): Promise<InitiativesResponse> =>
     );
   }
 
-  return { data: result, total: result.length };
+  const total = result.length;
+  const start = (pageNum - 1) * pageSizeNum;
+  return { data: result.slice(start, start + pageSizeNum), total };
 });

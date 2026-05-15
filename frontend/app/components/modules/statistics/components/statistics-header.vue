@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="pt-21 pb-16 flex flex-col gap-5">
+  <section class="pb-16 flex flex-col gap-5">
     <!-- Eyebrow -->
     <div class="flex items-center gap-2 text-accent-800">
       <lfx-icon
@@ -23,7 +23,7 @@ SPDX-License-Identifier: MIT
     </template>
     <h1
       v-else
-      class="font-secondary font-light text-5xl leading-[72px] text-black"
+      class="font-secondary font-light md:text-5xl text-4xl leading-[72px] text-black"
     >
       {{ headline }}
     </h1>

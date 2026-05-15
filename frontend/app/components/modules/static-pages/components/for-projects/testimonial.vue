@@ -11,14 +11,14 @@ SPDX-License-Identifier: MIT
     >
       <p class="text-2xl font-light leading-9 text-neutral-900">"{{ testimonial.quote }}"</p>
 
-      <div class="flex items-center gap-5">
+      <div class="flex md:items-center items-start gap-5 md:flex-row flex-col">
         <div class="flex items-center gap-4 shrink-0">
           <img
             :src="testimonial.logoSrc"
             :alt="testimonial.logoAlt"
             class="h-8 w-auto"
           />
-          <div class="h-6 w-px bg-neutral-200 shrink-0" />
+          <div class="h-6 w-px bg-neutral-200 shrink-0 md:block hidden" />
         </div>
         <div class="flex flex-col">
           <p class="text-base font-semibold leading-6 text-neutral-900">{{ testimonial.authorName }}</p>

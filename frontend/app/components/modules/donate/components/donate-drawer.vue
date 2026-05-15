@@ -11,7 +11,7 @@ SPDX-License-Identifier: MIT
     <div class="relative">
       <lfx-icon-button
         class="absolute top-0 right-0 mr-5 mt-5 z-[999]"
-        type="transparent"
+        type="outline"
         icon="xmark"
         @click="close()"
       />
@@ -19,7 +19,7 @@ SPDX-License-Identifier: MIT
       <!-- Success state -->
       <div
         v-if="submitted"
-        class="flex flex-col max-h-[85vh] w-[70vw] mx-auto"
+        class="flex flex-col max-h-[85vh] md:w-[70vw] w-full mx-auto"
       >
         <div class="flex-1 overflow-y-auto px-8 py-6">
           <donate-step-success
@@ -33,7 +33,7 @@ SPDX-License-Identifier: MIT
       <!-- Multi-step layout -->
       <div
         v-else
-        class="flex flex-col max-h-[85vh] w-[70vw] mx-auto"
+        class="flex flex-col max-h-[85vh] md:w-[70vw] w-full mx-auto"
       >
         <!-- Header -->
         <div class="flex items-center justify-between border-b border-neutral-200 px-8 py-6">

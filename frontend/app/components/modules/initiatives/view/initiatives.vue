@@ -9,11 +9,16 @@ SPDX-License-Identifier: MIT
       v-model:active-type="activeType"
       v-model:sort-by="sortBy"
     />
-    <initiatives-grid
-      :initiatives="data?.data ?? []"
-      :is-loading="isLoading"
-      :error="initiativeError"
-    />
+    <div
+      class="transition-all ease-linear"
+      :class="{ 'pt-8': isScrolled }"
+    >
+      <initiatives-grid
+        :initiatives="data?.data ?? []"
+        :is-loading="isLoading"
+        :error="initiativeError"
+      />
+    </div>
   </div>
 </template>
 
@@ -22,6 +27,9 @@ import { ref, computed } from 'vue';
 import InitiativesHeader from '../components/initiatives-header.vue';
 import InitiativesGrid from '../components/initiatives-grid.vue';
 import { useInitiatives } from '~/composables/initiatives/useInitiatives';
+import useScroll from '~/utils/scroll';
+
+const { scrollTop } = useScroll();
 
 const searchTerm = ref('');
 const activeType = ref('all');
@@ -34,6 +42,8 @@ const { data, isLoading, error } = useInitiatives({
 });
 
 const initiativeError = computed(() => error.value as Error | null);
+
+const isScrolled = computed(() => scrollTop.value > 10);
 </script>
 
 <script lang="ts">
