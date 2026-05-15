@@ -11,11 +11,11 @@ SPDX-License-Identifier: MIT
     </div>
 
     <!-- Story cards -->
-    <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 pb-16">
+    <div class="flex flex-wrap items-start gap-8 pb-16">
       <div
         v-for="story in impactStories"
         :key="story.id"
-        class="flex flex-col gap-5 p-6 rounded-2xl border border-neutral-200 bg-white"
+        class="grow basis-80 flex flex-col gap-5 p-6 rounded-2xl border border-neutral-200 bg-white"
       >
         <!-- Header: logo + initiative name -->
         <div class="flex items-center gap-3">

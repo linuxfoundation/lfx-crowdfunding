@@ -3,18 +3,12 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <header class="sticky top-0 z-50 border-b border-neutral-200 bg-white">
+  <header class="sticky top-0 z-50 border-b border-neutral-100 bg-white">
     <div class="container flex items-center justify-between px-10 py-4">
       <!-- Left: app-switcher + logo + nav -->
       <div class="flex items-center gap-10">
         <div class="flex items-center gap-4">
-          <lfx-icon-button
-            type="transparent"
-            icon="grid-round"
-            icon-type="solid"
-            :icon-size="18"
-            aria-label="App switcher"
-          />
+          <lfx-tools />
           <NuxtLink
             to="/"
             class="flex items-center gap-2"
@@ -95,7 +89,7 @@ SPDX-License-Identifier: MIT
       <div class="flex items-center gap-4">
         <lfx-button
           label="Start Fundraise"
-          type="tertiary"
+          type="transparent"
           button-style="pill"
           icon="box-dollar"
           size="small"
@@ -173,8 +167,8 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import LfxButton from '~/components/uikit/button/button.vue';
-import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
+import LfxTools from '~/components/shared/layout/tools.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxDropdown from '~/components/uikit/dropdown/dropdown.vue';
 import LfxDropdownGroupTitle from '~/components/uikit/dropdown/dropdown-group-title.vue';

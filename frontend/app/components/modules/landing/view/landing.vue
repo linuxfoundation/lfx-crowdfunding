@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div>
+  <div class="pb-30">
     <landing-hero />
     <landing-initiatives
       :initiatives="data?.data ?? []"
@@ -23,7 +23,7 @@ import LandingImpactStories from '../components/landing-impact-stories.vue';
 import LandingNavCards from '../components/landing-nav-cards.vue';
 import { useInitiatives } from '~/composables/initiatives/useInitiatives';
 
-const { data, isLoading, error } = useInitiatives();
+const { data, isLoading, error } = useInitiatives({ pageSize: '3' });
 const initiativeError = computed(() => error.value as Error | null);
 </script>
 

@@ -3,8 +3,8 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container pb-16">
-    <div class="border-t border-neutral-200 pt-16 pb-8" />
+  <section class="container">
+    <div class="border-t border-neutral-200 pt-16" />
     <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
       <nuxt-link
         v-for="card in navCards"

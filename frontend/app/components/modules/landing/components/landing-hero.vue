@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container pt-21 pb-16 flex flex-col gap-16">
+  <section class="container pt-18 pb-16 flex flex-col gap-16">
     <!-- Top row: copy (left) + ring stat (right) -->
     <div class="flex items-center justify-between gap-10">
       <!-- Left: badges + headline + subtitle -->
@@ -50,18 +50,21 @@ SPDX-License-Identifier: MIT
       </div>
 
       <!-- Right: circular funds-raised stat -->
-      <lfx-donut-chart
-        :value="progressPercent"
-        :color="{ from: '#009AFF', to: '#10B981' }"
-      >
-        <div class="flex flex-col items-center text-center gap-1">
-          <span class="text-sm font-semibold text-neutral-900 leading-6">Funds raised</span>
-          <span class="text-[60px] font-normal text-neutral-900 leading-[72px]">$5.8M</span>
-          <span class="text-xs text-neutral-600 leading-5 max-w-[184px]">
-            Help us reach $10M to sustain the open source ecosystem
-          </span>
-        </div>
-      </lfx-donut-chart>
+      <div class="py-10">
+        <lfx-donut-chart
+          :value="progressPercent"
+          :color="{ from: '#009AFF', to: '#10B981' }"
+          :stroke-width="8"
+        >
+          <div class="flex flex-col items-center text-center gap-1">
+            <span class="text-sm font-semibold text-neutral-900 leading-6">Funds raised</span>
+            <span class="text-[60px] font-normal text-neutral-900 leading-[72px]">$5.8M</span>
+            <span class="text-xs text-neutral-600 leading-5 max-w-[184px]">
+              Help us reach $10M to sustain the open source ecosystem
+            </span>
+          </div>
+        </lfx-donut-chart>
+      </div>
     </div>
 
     <!-- Bottom bar: trust signals (left) + CTAs (right) -->
