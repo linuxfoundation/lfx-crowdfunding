@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="bg-white">
     <div class="container">
-      <div class="px-35">
+      <div class="md:pt-18 pt-10 md:px-35 px-0">
         <about-hero />
         <about-mission />
         <about-offer />
