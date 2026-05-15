@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 <template>
   <section class="container pt-18 pb-16 flex flex-col gap-16">
     <!-- Top row: copy (left) + ring stat (right) -->
-    <div class="flex items-center justify-between gap-10">
+    <div class="flex items-center justify-between gap-10 md:flex-row flex-col">
       <!-- Left: badges + headline + subtitle -->
       <div class="flex flex-col gap-10 justify-center basis-4/6">
         <!-- Chips row -->
@@ -70,24 +70,7 @@ SPDX-License-Identifier: MIT
     <!-- Bottom bar: trust signals (left) + CTAs (right) -->
     <div class="flex items-center justify-between">
       <!-- Trust signals -->
-      <div class="flex items-center gap-8">
-        <div
-          v-for="badge in trustBadges"
-          :key="badge.label"
-          class="flex items-center gap-3"
-        >
-          <div
-            class="size-10 rounded-full bg-white border border-neutral-200 shadow-sm flex items-center justify-center shrink-0"
-          >
-            <lfx-icon
-              :name="badge.icon"
-              type="light"
-              :size="18"
-            />
-          </div>
-          <span class="text-sm font-medium leading-5">{{ badge.label }}</span>
-        </div>
-      </div>
+      <trust-badge />
 
       <!-- CTAs -->
       <div class="flex items-center gap-6">
@@ -111,8 +94,8 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import TrustBadge from './trust-badge.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
-import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxAvatarGroup from '~/components/uikit/avatar-group/avatar-group.vue';
 import LfxDonutChart from '~/components/uikit/donut-chart/donut-chart.vue';
@@ -128,12 +111,6 @@ const supporterAvatars = [
   'https://i.pravatar.cc/40?img=3',
   'https://i.pravatar.cc/40?img=4',
   'https://i.pravatar.cc/40?img=5',
-];
-
-const trustBadges = [
-  { icon: 'circle-dollar', label: '0% fees' },
-  { icon: 'building-columns', label: '501(c)(6) fiscal host' },
-  { icon: 'eye', label: 'Full financial transparency' },
 ];
 </script>
 
