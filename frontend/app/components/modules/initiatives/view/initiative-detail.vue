@@ -44,7 +44,7 @@ SPDX-License-Identifier: MIT
             </div>
 
             <!-- Right column -->
-            <div class="md:w-[360px] w-full shrink-0 flex flex-col gap-10">
+            <div class="lg:w-[360px] w-full shrink-0 flex flex-col gap-10">
               <initiative-detail-sponsors
                 v-if="data.sponsors?.length"
                 :sponsors="data.sponsors"

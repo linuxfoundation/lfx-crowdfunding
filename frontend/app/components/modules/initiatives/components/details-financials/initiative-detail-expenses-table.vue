@@ -9,8 +9,8 @@ SPDX-License-Identifier: MIT
     <table class="w-full">
       <thead>
         <tr>
-          <th class="text-xs font-medium text-neutral-500 text-left py-2 w-[140px]">Date</th>
-          <th class="text-xs font-medium text-neutral-500 text-left py-2 px-3 w-[140px]">Category</th>
+          <th class="text-xs font-medium text-neutral-500 text-left py-2 w-[140px] md:visible hidden">Date</th>
+          <th class="text-xs font-medium text-neutral-500 text-left py-2 px-3 w-[140px] md:visible hidden">Category</th>
           <th class="text-xs font-medium text-neutral-500 text-left py-2 px-3">Description</th>
           <th class="text-xs font-medium text-neutral-500 text-right py-2 w-[140px]">Amount</th>
         </tr>
@@ -21,17 +21,23 @@ SPDX-License-Identifier: MIT
           :key="record.id"
           class="border-t border-neutral-200"
         >
-          <td class="text-xs text-neutral-900 py-4 w-[140px]">{{ record.date }}</td>
-          <td class="py-4 px-3 w-[140px]">
+          <td class="text-xs text-neutral-900 py-4 w-[140px] md:visible hidden">{{ record.date }}</td>
+          <td class="py-4 px-3 w-[140px] md:visible hidden">
             <lfx-tag
               variation="neutral"
               size="small"
               >{{ record.category }}</lfx-tag
             >
           </td>
-          <td class="text-xs text-neutral-900 py-4 px-3">{{ record.description }}</td>
+          <td class="text-xs text-neutral-900 py-4 px-3 flex flex-col">
+            {{ record.description }}
+            <span class="text-xs text-neutral-500 font-normal">{{ record.category }}</span>
+          </td>
           <td class="text-xs font-semibold text-neutral-900 text-right py-4 w-[140px]">
-            {{ formatAmount(record.amountCents) }}
+            <div class="flex flex-col">
+              {{ formatAmount(record.amountCents) }}
+              <span class="text-xs text-neutral-500 font-normal">{{ record.date }}</span>
+            </div>
           </td>
         </tr>
       </tbody>
