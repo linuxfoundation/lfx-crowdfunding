@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 import type { ToolsItem } from '~/config/menu/tools';
 
-const crowdfunding: ToolsItem = {
-  name: 'Crowdfunding',
+const insights: ToolsItem = {
+  name: 'Insights',
   description: 'Support open technologies',
-  icon: 'chart-pie',
-  link: 'https://crowdfunding.lfx.linuxfoundation.org/',
+  icon: 'chart-area',
+  link: 'https://insights.linuxfoundation.org/',
 };
 
-export default crowdfunding;
+export default insights;

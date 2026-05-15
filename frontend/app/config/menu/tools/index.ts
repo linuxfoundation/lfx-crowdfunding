@@ -6,8 +6,8 @@ import projectControlCenter from '~/config/menu/tools/project-control-center';
 import security from '~/config/menu/tools/security';
 import easycla from '~/config/menu/tools/easy-cla';
 import mentorship from '~/config/menu/tools/mentorship';
-import crowdfunding from '~/config/menu/tools/crowdfunding';
 import communityManagement from '~/config/menu/tools/community-management';
+import insights from '~/config/menu/tools/insights';
 
 export interface ToolsItem {
   name: string;
@@ -23,6 +23,6 @@ export const lfxTools: Record<string, ToolsItem> = {
   security,
   easycla,
   mentorship,
-  crowdfunding,
   communityManagement,
+  insights,
 };
