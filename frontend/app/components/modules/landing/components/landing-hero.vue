@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <section class="container pt-18 pb-16 flex flex-col gap-16">
+  <section class="container pt-18 pb-16 flex flex-col md:gap-16 gap-0">
     <!-- Top row: copy (left) + ring stat (right) -->
     <div class="flex items-center justify-between gap-10 md:flex-row flex-col">
       <!-- Left: badges + headline + subtitle -->
@@ -49,6 +49,9 @@ SPDX-License-Identifier: MIT
         </div>
       </div>
 
+      <!-- Trust signals -->
+      <trust-badge class="md:hidden flex flex-col !items-start w-full" />
+
       <!-- Right: circular funds-raised stat -->
       <div class="py-10">
         <lfx-donut-chart
@@ -70,16 +73,17 @@ SPDX-License-Identifier: MIT
     <!-- Bottom bar: trust signals (left) + CTAs (right) -->
     <div class="flex items-center justify-between">
       <!-- Trust signals -->
-      <trust-badge />
+      <trust-badge class="md:flex hidden" />
 
       <!-- CTAs -->
-      <div class="flex items-center gap-6">
+      <div class="flex md:flex-row flex-col md:items-center items-stretch md:w-auto w-full gap-6">
         <lfx-button
           label="Start Fundraise"
           type="tertiary"
           button-style="pill"
           icon="box-dollar"
           size="small"
+          class="md:justify-start justify-center"
         />
         <lfx-button
           label="Explore initiatives"
@@ -87,6 +91,7 @@ SPDX-License-Identifier: MIT
           button-style="pill"
           icon="hand-heart"
           size="small"
+          class="md:justify-start justify-center"
         />
       </div>
     </div>

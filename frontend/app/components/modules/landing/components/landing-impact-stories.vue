@@ -11,7 +11,7 @@ SPDX-License-Identifier: MIT
     </div>
 
     <!-- Story cards -->
-    <div class="flex flex-wrap items-start gap-8 pb-16">
+    <div class="flex flex-wrap items-start md:gap-8 gap-5 pb-16">
       <div
         v-for="story in impactStories"
         :key="story.id"

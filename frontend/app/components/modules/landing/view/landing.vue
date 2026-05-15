@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="pb-30">
+  <div class="md:pb-30 pb-20">
     <landing-hero />
     <landing-initiatives
       :initiatives="data?.data ?? []"

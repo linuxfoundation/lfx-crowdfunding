@@ -20,7 +20,7 @@ SPDX-License-Identifier: MIT
     <!-- Loading skeletons -->
     <div
       v-if="isLoading"
-      class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
+      class="grid grid-cols-1 md:gap-8 gap-5 sm:grid-cols-2 lg:grid-cols-3"
     >
       <initiative-card-loading
         v-for="n in 3"
@@ -44,7 +44,7 @@ SPDX-License-Identifier: MIT
     <!-- Initiative cards -->
     <div
       v-else-if="initiatives.length"
-      class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
+      class="grid grid-cols-1 md:gap-8 gap-5 sm:grid-cols-2 lg:grid-cols-3"
     >
       <initiative-card
         v-for="initiative in initiatives"
