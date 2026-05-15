@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
   <div class="bg-white">
     <div class="container">
       <!-- Hero header -->
-      <div class="md:px-35 px-0">
+      <div class="md:pt-21 pt-10 md:px-35 px-0">
         <statistics-header
           :overview="overviewData"
           :is-loading="overviewLoading"

@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="pt-18 pb-16 flex flex-col gap-10">
+  <div class="pb-16 flex flex-col gap-10">
     <!-- Eyebrow -->
     <div class="flex flex-col gap-5">
       <div class="flex items-center gap-2">
@@ -16,7 +16,7 @@ SPDX-License-Identifier: MIT
         <span class="text-lg font-medium leading-7 text-accent-800">For Projects</span>
       </div>
 
-      <h1 class="text-5xl font-light leading-tight text-black">Raise funds for your open source project</h1>
+      <h1 class="md:text-5xl text-4xl font-light leading-tight text-black">Raise funds for your open source project</h1>
 
       <p class="text-base font-normal leading-6 text-neutral-900">
         Whether you need to fund a security audit, support infrastructure, sponsor travel, or grow your community — LFX
@@ -25,23 +25,31 @@ SPDX-License-Identifier: MIT
     </div>
 
     <!-- CTAs -->
-    <div class="flex items-center gap-6">
-      <NuxtLink :to="AppRoute.StartFundraise">
+    <div class="flex md:items-center items-start gap-6 md:flex-row flex-col">
+      <NuxtLink
+        :to="AppRoute.StartFundraise"
+        class="md:w-auto w-full"
+      >
         <lfx-button
           icon="box-dollar"
           label="Start a Fundraise"
           type="primary"
           button-style="pill"
           size="small"
+          class="w-full justify-center"
         />
       </NuxtLink>
-      <NuxtLink :to="AppRoute.Initiatives">
+      <NuxtLink
+        :to="AppRoute.Initiatives"
+        class="md:w-auto w-full"
+      >
         <lfx-button
           icon="folder-heart"
           label="Explore Initiatives"
           type="transparent"
           button-style="pill"
           size="small"
+          class="w-full justify-center"
         />
       </NuxtLink>
     </div>

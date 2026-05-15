@@ -6,26 +6,25 @@ SPDX-License-Identifier: MIT
   <div class="border-t border-neutral-200 py-16 flex flex-col gap-10">
     <div class="flex items-start gap-3">
       <div class="flex-1 flex flex-col gap-3 min-w-0">
-        <h2 class="text-2xl font-semibold leading-9 text-neutral-900">How LFX CrowdFunding works</h2>
-        <p class="text-base font-normal leading-6 text-neutral-900">
+        <h2 class="md:text-2xl text-xl font-semibold leading-9 text-neutral-900">How LFX CrowdFunding works</h2>
+        <p class="md:text-base text-sm font-normal leading-6 text-neutral-900">
           Get started in minutes. No long applications, no gatekeeping.
         </p>
       </div>
       <NuxtLink
         :to="AppRoute.StartFundraise"
-        class="shrink-0"
+        class="shrink-0 md:block hidden"
       >
         <lfx-button
           icon="box-dollar"
           label="Start a Fundraise"
           type="primary"
           button-style="pill"
-          size="small"
         />
       </NuxtLink>
     </div>
 
-    <div class="flex gap-10 items-start">
+    <div class="flex gap-10 items-start md:flex-row flex-col">
       <div
         v-for="step in STEPS"
         :key="step.number"
@@ -48,6 +47,19 @@ SPDX-License-Identifier: MIT
         </div>
       </div>
     </div>
+
+    <NuxtLink
+      :to="AppRoute.StartFundraise"
+      class="shrink-0 md:hidden block w-full"
+    >
+      <lfx-button
+        icon="box-dollar"
+        label="Start a Fundraise"
+        type="primary"
+        button-style="pill"
+        class="w-full justify-center"
+      />
+    </NuxtLink>
   </div>
 </template>
 

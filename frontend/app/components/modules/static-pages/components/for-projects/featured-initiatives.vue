@@ -67,11 +67,11 @@ SPDX-License-Identifier: MIT
           v-for="(initiative, index) in initiatives"
           :key="initiative.id"
           :to="`/initiatives/${initiative.id}`"
-          class="flex gap-8 items-center p-6 hover:bg-neutral-50 transition-colors"
+          class="flex gap-8 md:items-center items-start p-6 hover:bg-neutral-50 transition-colors md:flex-row flex-col"
           :class="{ 'border-b border-neutral-200': index < initiatives.length - 1 }"
         >
           <!-- Left: logo + name -->
-          <div class="flex-1 flex items-center gap-3 min-w-0">
+          <div class="flex-1 w-full flex items-center gap-3 min-w-0">
             <lfx-avatar
               type="organization"
               :src="initiative.logoUrl"
@@ -84,7 +84,7 @@ SPDX-License-Identifier: MIT
           </div>
 
           <!-- Middle: amounts + progress bar -->
-          <div class="flex-1 flex flex-col gap-2 min-w-0">
+          <div class="flex-1 w-full flex flex-col gap-2 min-w-0">
             <div class="flex gap-4 items-start">
               <span class="flex-1 text-xs font-semibold leading-4 text-neutral-900">
                 {{ formatRaised(initiative.raisedCents) }} fundraised
@@ -104,7 +104,7 @@ SPDX-License-Identifier: MIT
             name="angle-right"
             type="light"
             :size="16"
-            class="text-neutral-400 shrink-0"
+            class="text-neutral-400 shrink-0 md:block hidden md:relative absolute"
           />
         </NuxtLink>
       </template>
