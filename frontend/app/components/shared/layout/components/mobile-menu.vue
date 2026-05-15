@@ -76,7 +76,6 @@ SPDX-License-Identifier: MIT
             type="transparent"
             button-style="pill"
             icon="box-dollar"
-            size="small"
             class="w-full justify-center"
           />
           <lfx-button
@@ -84,7 +83,6 @@ SPDX-License-Identifier: MIT
             type="primary"
             button-style="pill"
             icon="hand-heart"
-            size="small"
             class="w-full justify-center"
           />
         </div>

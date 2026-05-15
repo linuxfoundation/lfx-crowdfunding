@@ -46,14 +46,12 @@ SPDX-License-Identifier: MIT
             type="transparent"
             button-style="pill"
             icon="box-dollar"
-            size="small"
           />
           <lfx-button
             label="Donate"
             type="primary"
             button-style="pill"
             icon="hand-heart"
-            size="small"
           />
         </div>
 
