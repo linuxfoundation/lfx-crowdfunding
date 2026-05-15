@@ -5,18 +5,18 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="border-t border-neutral-200 py-16 flex flex-col gap-10">
     <div class="flex flex-col gap-3">
-      <h2 class="text-2xl font-semibold leading-9 text-neutral-900">Why companies fund through LFX</h2>
-      <p class="text-base font-normal leading-6 text-neutral-900">
+      <h2 class="md:text-2xl text-xl font-semibold leading-9 text-neutral-900">Why companies fund through LFX</h2>
+      <p class="md:text-base text-sm font-normal leading-6 text-neutral-900">
         The Linux Foundation provides the operational infrastructure so your contribution is secure, compliant, and
         impactful.
       </p>
     </div>
 
-    <div class="grid grid-cols-2 gap-10">
+    <div class="grid md:grid-cols-2 grid-cols-1 gap-10">
       <div
         v-for="feature in FEATURES"
         :key="feature.icon"
-        class="flex flex-col gap-3"
+        class="flex md:flex-col flex-row gap-3"
       >
         <div class="size-10 rounded-full border border-neutral-200 shadow-sm flex items-center justify-center shrink-0">
           <lfx-icon

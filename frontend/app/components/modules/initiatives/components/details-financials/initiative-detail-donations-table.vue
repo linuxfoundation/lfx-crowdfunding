@@ -9,9 +9,9 @@ SPDX-License-Identifier: MIT
     <table class="w-full">
       <thead>
         <tr>
-          <th class="text-xs font-medium text-neutral-500 text-left py-2 w-[140px]">Date</th>
-          <th class="text-xs font-medium text-neutral-500 text-left py-2 px-3">Supporter</th>
-          <th class="text-xs font-medium text-neutral-500 text-left py-2 px-3 w-[140px]">Type</th>
+          <th class="text-xs font-medium text-neutral-500 text-left py-2 w-[140px] md:visible hidden">Date</th>
+          <th class="text-xs font-medium text-neutral-500 text-left py-2 md:px-3 pr-3">Supporter</th>
+          <th class="text-xs font-medium text-neutral-500 text-left py-2 px-3 w-[140px] md:visible hidden">Type</th>
           <th class="text-xs font-medium text-neutral-500 text-right py-2 w-[140px]">Amount</th>
         </tr>
       </thead>
@@ -21,8 +21,8 @@ SPDX-License-Identifier: MIT
           :key="record.id"
           class="border-t border-neutral-200"
         >
-          <td class="text-xs text-neutral-900 py-4 w-[140px]">{{ record.date }}</td>
-          <td class="py-4 px-3">
+          <td class="text-xs text-neutral-900 py-4 w-[140px] md:visible hidden">{{ record.date }}</td>
+          <td class="py-4 md:px-3 pr-3">
             <div class="flex items-center gap-2">
               <lfx-avatar
                 :type="record.supporterType"
@@ -33,15 +33,16 @@ SPDX-License-Identifier: MIT
               <span class="text-xs text-neutral-900 truncate">{{ record.supporterName }}</span>
             </div>
           </td>
-          <td class="py-4 px-3 w-[140px]">
+          <td class="py-4 px-3 w-[140px] md:visible hidden">
             <lfx-tag
               variation="neutral"
               size="small"
               >{{ record.donorCategory }}</lfx-tag
             >
           </td>
-          <td class="text-xs font-semibold text-neutral-900 text-right py-4 w-[140px]">
+          <td class="text-xs font-semibold text-neutral-900 text-right py-4 w-[140px] flex flex-col">
             {{ formatAmount(record.amountCents) }}
+            <span class="text-xs text-neutral-500 font-normal">{{ record.date }}</span>
           </td>
         </tr>
       </tbody>
@@ -52,6 +53,7 @@ SPDX-License-Identifier: MIT
         label="Load more"
         type="outline"
         size="small"
+        button-style="pill"
       />
     </div>
   </lfx-card>

@@ -1,5 +1,5 @@
 <!--
-Copyright (c) 2025 The Linux Foundation and each contributor.
+Copyright The Linux Foundation and each contributor to LFX.
 SPDX-License-Identifier: MIT
 -->
 <template>
@@ -7,11 +7,11 @@ SPDX-License-Identifier: MIT
     <!-- Sponsorship tiers -->
     <div>
       <p class="text-sm font-medium text-neutral-700 mb-4">Select a sponsorship tier</p>
-      <div class="grid grid-cols-4 rounded-xl border border-neutral-200 border-solid">
+      <div class="grid grid-cols-1 sm:grid-cols-4 rounded-xl border border-neutral-200 border-solid">
         <div
           v-for="tier in SPONSORSHIP_TIERS"
           :key="tier.id"
-          class="flex flex-col gap-3 p-4 text-left transition-colors cursor-pointer border-neutral-200 border-solid first:rounded-l-xl last:rounded-r-xl border-r last:border-r-0"
+          class="flex flex-col gap-3 p-4 text-left transition-colors cursor-pointer border-neutral-200 border-solid first:rounded-t-xl last:rounded-b-xl sm:first:rounded-t-none sm:last:rounded-b-none sm:first:rounded-l-xl sm:last:rounded-r-xl border-b last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"
           :class="
             form.tierId === tier.id
               ? 'border-accent-500 bg-accent-50'

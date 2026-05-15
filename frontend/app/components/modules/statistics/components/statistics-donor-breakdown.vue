@@ -45,7 +45,9 @@ SPDX-License-Identifier: MIT
           />
 
           <!-- Legend -->
-          <div class="flex items-center justify-between">
+          <div
+            class="flex md:items-center items-start md:justify-between justify-center md:flex-row flex-col md:gap-0 gap-2"
+          >
             <div class="flex items-center gap-2">
               <lfx-icon
                 name="circle-small"

@@ -3,8 +3,10 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="pt-16 pb-30">
-    <div class="bg-gradient-to-b from-white to-accent-100 rounded-xl p-16 flex items-end justify-between gap-10">
+  <div class="pt-16 md:pb-30 pb-20">
+    <div
+      class="bg-gradient-to-b from-white to-accent-100 rounded-xl md:p-16 p-6 flex md:items-end items-start justify-between gap-10 md:flex-row flex-col"
+    >
       <div class="flex-1 flex flex-col gap-3 min-w-0">
         <h2 class="text-3xl font-light leading-11 text-neutral-900">Ready to invest in open source?</h2>
         <p class="text-base font-normal leading-6 text-neutral-900">
@@ -12,29 +14,29 @@ SPDX-License-Identifier: MIT
           impact.
         </p>
       </div>
-      <div class="flex items-center gap-4">
+      <div class="flex md:items-center items-start md:flex-row flex-col gap-4 md:w-auto w-full">
         <NuxtLink
-          to="/initiatives"
-          class="shrink-0"
+          :to="AppRoute.Initiatives"
+          class="md:w-auto w-full md:shrink-0"
         >
           <lfx-button
             icon="folder-heart"
             label="Browse initiatives"
             type="outline"
             button-style="pill"
-            size="small"
+            class="w-full justify-center"
           />
         </NuxtLink>
         <NuxtLink
-          to="/contact"
-          class="shrink-0"
+          :to="AppRoute.Contact"
+          class="md:w-auto w-full md:shrink-0"
         >
           <lfx-button
             icon="envelope"
             label="Contact our team"
             type="primary"
             button-style="pill"
-            size="small"
+            class="w-full justify-center"
           />
         </NuxtLink>
       </div>
@@ -44,6 +46,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import LfxButton from '~/components/uikit/button/button.vue';
+import { AppRoute } from '~/config/routes';
 </script>
 
 <script lang="ts">

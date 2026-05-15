@@ -7,22 +7,28 @@ import type { InitiativesParams, InitiativesResponse } from '#shared/types/initi
 
 export type { InitiativesParams, InitiativesResponse };
 
-export function useInitiatives(params?: { [K in keyof InitiativesParams]: MaybeRef<string> }) {
+export function useInitiatives(params?: { [K in keyof InitiativesParams]?: MaybeRef<string> }) {
   return useQuery<InitiativesResponse>({
     queryKey: [
       'initiatives',
       params?.search ?? '',
       params?.type ?? '',
       params?.sort ?? '',
+      params?.page ?? '',
+      params?.pageSize ?? '',
     ] as const,
     queryFn: () => {
       const query = new URLSearchParams();
       const search = toValue(params?.search ?? '');
       const type = toValue(params?.type ?? '');
       const sort = toValue(params?.sort ?? '');
+      const page = toValue(params?.page ?? '');
+      const pageSize = toValue(params?.pageSize ?? '');
       if (search) query.set('search', search);
       if (type) query.set('type', type);
       if (sort) query.set('sort', sort);
+      if (page) query.set('page', page);
+      if (pageSize) query.set('pageSize', pageSize);
       const qs = query.toString();
       return $fetch<InitiativesResponse>(`/api/initiatives${qs ? `?${qs}` : ''}`);
     },

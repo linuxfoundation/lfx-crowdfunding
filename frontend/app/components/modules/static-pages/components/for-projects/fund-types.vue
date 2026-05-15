@@ -5,13 +5,13 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="border-t border-neutral-200 py-16 flex flex-col gap-10">
     <div class="flex flex-col gap-3">
-      <h2 class="text-2xl font-semibold leading-9 text-neutral-900">Fund what matters to your project</h2>
-      <p class="text-base font-normal leading-6 text-neutral-900">
+      <h2 class="md:text-2xl text-xl font-semibold leading-9 text-neutral-900">Fund what matters to your project</h2>
+      <p class="md:text-base text-sm font-normal leading-6 text-neutral-900">
         LFX CrowdFunding supports four fund types, so you can raise funds for exactly what your project needs.
       </p>
     </div>
 
-    <div class="grid grid-cols-2 gap-10">
+    <div class="grid md:grid-cols-2 grid-cols-1 gap-10">
       <div
         v-for="item in FUND_TYPES"
         :key="item.icon"

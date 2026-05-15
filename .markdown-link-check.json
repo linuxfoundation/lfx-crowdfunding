@@ -5,12 +5,8 @@
       "comment": "Private LFX repos return 404 to unauthenticated link checkers"
     },
     {
-      "pattern": "^https://nuxt.com/modules",
-      "comment": "nuxt.com/modules times out in CI (Status: 0) but is a valid page"
-    },
-    {
-      "pattern": "^https://img.shields.io/",
-      "comment": "shields.io badge URLs time out in CI (Status: 0) but are valid"
+      "pattern": "^https://nuxt.com/",
+      "comment": "nuxt.com times out in CI (Status: 0) but pages are valid"
     }
   ]
 }

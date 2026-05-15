@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT
       <div class="flex items-start justify-between gap-10">
         <!-- Brand -->
         <div class="flex flex-col gap-3">
-          <NuxtLink to="/">
+          <NuxtLink :to="AppRoute.Home">
             <img
               src="~/assets/images/logo.svg"
               alt="LFX Crowdfunding"
@@ -74,6 +74,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
 import { lfxFooterMenu } from '~/config/menu/footer';
+import { AppRoute } from '~/config/routes';
 
 const lfxFooterRef = ref<HTMLElement | null>(null);
 

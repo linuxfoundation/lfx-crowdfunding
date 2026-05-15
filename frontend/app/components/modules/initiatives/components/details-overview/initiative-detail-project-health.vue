@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
   <lfx-card class="p-6 flex flex-col gap-8">
     <!-- Header -->
     <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 md:justify-start justify-between w-full">
         <p class="text-base font-semibold text-neutral-900 leading-6">Project Health</p>
         <lfx-tag
           v-if="rating"
@@ -18,7 +18,7 @@ SPDX-License-Identifier: MIT
       </div>
       <a
         href="#"
-        class="flex items-center gap-1.5 text-sm font-medium text-accent-500 hover:text-accent-600 leading-5"
+        class="flex items-center gap-1.5 text-sm font-medium text-accent-500 hover:text-accent-600 leading-5 md:visible hidden"
       >
         View on LFX Insights
         <lfx-icon
@@ -30,7 +30,7 @@ SPDX-License-Identifier: MIT
     </div>
 
     <!-- Stats -->
-    <div class="flex gap-4 items-start">
+    <div class="flex gap-4 items-start md:flex-row flex-col">
       <div
         v-for="stat in stats"
         :key="stat.label"

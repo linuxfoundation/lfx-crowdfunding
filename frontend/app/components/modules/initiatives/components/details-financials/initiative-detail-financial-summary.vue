@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <lfx-card class="p-6">
-    <div class="flex gap-4 items-start">
+    <div class="flex gap-6 items-start md:flex-row flex-col md:gap-4">
       <div
         v-for="stat in stats"
         :key="stat.label"
@@ -51,7 +51,7 @@ const stats = computed(() => [
   {
     label: 'Total received',
     icon: 'arrow-trend-up',
-    iconBg: 'bg-success-500',
+    iconBg: 'bg-positive-500',
     value: formatAmount(props.summary.totalReceivedCents),
   },
   {

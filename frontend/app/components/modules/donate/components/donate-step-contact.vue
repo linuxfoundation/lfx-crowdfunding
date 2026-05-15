@@ -59,7 +59,7 @@ SPDX-License-Identifier: MIT
 
     <!-- Company fields -->
     <template v-else>
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid md:grid-cols-2 grid-cols-1 gap-4">
         <lfx-field
           label="Company name"
           :required="true"
