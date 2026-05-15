@@ -63,7 +63,7 @@ All surrogate PKs are generated deterministically via `uuid5(UUID_NS, "{scope}:{
 
 ### Migration phases
 
-```
+```text
 Phase 1 — users
 Phase 2 — organizations
 Phase 3 — initiatives + 15 child tables

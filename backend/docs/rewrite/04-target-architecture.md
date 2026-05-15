@@ -12,7 +12,7 @@ This document describes the intended architecture for the rewritten LFX Crowdfun
 Architecture validated against diagram (May 2026). The purple "NEW" box is everything
 deployed to Kubernetes. Everything outside the box is unchanged for the initial release.
 
-```
+```text
 ━━━━━━━━━━━━━━━━━━━━━━━ NEW (Kubernetes) ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Beneficiary / Donor / CF Admin
@@ -93,7 +93,7 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
 
 ### Project Structure (follow Insights)
 
-```
+```text
 frontend/
 ├── app/
 │   ├── assets/            # Images, icons, styles
@@ -128,7 +128,7 @@ Auth0 tenants — **new Auth0 application required** (see OQ-8). Tenants are unc
 
 ### Pages / Routes (Nuxt file-based)
 
-```
+```text
 pages/
 ├── index.vue                          # Discovery (project + fund listing)
 ├── auth/

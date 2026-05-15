@@ -257,7 +257,7 @@ Some code in the initial release is intentionally temporary — legacy shims, co
 
 ### Tag convention
 
-```
+```go
 // TODO(<label>): <one-line reason>
 // <what to do when the trigger is met and any context needed to act on it>
 ```
