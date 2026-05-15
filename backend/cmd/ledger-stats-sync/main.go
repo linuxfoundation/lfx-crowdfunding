@@ -71,7 +71,7 @@ func run(logger *slog.Logger) error {
 	//   total_balance_cents     = totalBalance
 	//   available_balance_cents = availableBalance      (Ledger computes this)
 	//   fee_balance_cents       = ABS(feeBalance)       (Ledger stores as negative)
-	//   supporters              = supporters            (distinct user_id count)
+	//   supporters              = backers               (distinct user_id count, Ledger field name)
 	//
 	// Use INSERT ... ON CONFLICT (initiative_id) DO UPDATE SET ...
 	// Always set updated_on = NOW() on upsert.
