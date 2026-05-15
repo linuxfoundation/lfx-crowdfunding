@@ -117,15 +117,15 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 
 	// Public API (no auth)
 	r.Get("/v1/statistics", statisticsH.GetPlatform)
+	r.Get("/v1/initiatives", initiativeH.List)
+	r.Get("/v1/initiatives/{id}", initiativeH.GetByID)
 
 	// Protected API
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(jwtAuth.Middleware)
 
 		r.Route("/initiatives", func(r chi.Router) {
-			r.Get("/", initiativeH.List)
 			r.Post("/", initiativeH.Create)
-			r.Get("/{id}", initiativeH.GetByID)
 			r.Patch("/{id}", initiativeH.Update)
 			r.Delete("/{id}", initiativeH.Delete)
 			r.Get("/{id}/donations", donationH.List)
