@@ -3,8 +3,11 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="border-b border-neutral-200">
-    <div class="container pt-16 pb-6 flex flex-col md:gap-16 gap-8">
+  <div class="border-b border-neutral-200 sticky top-8 bg-white z-10">
+    <div
+      class="container pt-16 pb-6 flex flex-col transition-all ease-linear"
+      :class="{ 'gap-8': isScrolled, 'md:gap-16 gap-8': !isScrolled }"
+    >
       <!-- Initiative info row -->
       <div class="flex gap-6 items-start w-full">
         <!-- Logo + info -->
@@ -12,8 +15,8 @@ SPDX-License-Identifier: MIT
           <div class="flex items-center justify-between md:w-auto w-full">
             <lfx-avatar
               type="organization"
-              size="xlarge"
-              class="md:!size-40 !size-11 !rounded-2xl shrink-0"
+              class="!size-11 !rounded-xl"
+              :class="{ 'md:!size-11': isScrolled, 'md:!size-40': !isScrolled }"
               :src="initiative.logoUrl"
             />
             <div class="md:hidden flex items-center gap-3">
@@ -30,7 +33,10 @@ SPDX-License-Identifier: MIT
           </div>
 
           <div class="flex flex-col h-full justify-between">
-            <div class="flex flex-col md:gap-1 gap-4">
+            <div
+              class="flex flex-col"
+              :class="{ 'gap-0': isScrolled, 'md:gap-1 gap-4': !isScrolled }"
+            >
               <!-- Type badge -->
               <div
                 class="flex items-center gap-2"
@@ -46,12 +52,21 @@ SPDX-License-Identifier: MIT
 
               <!-- Title -->
               <div class="flex gap-1 flex-col">
-                <h1 class="font-secondary font-light md:text-3xl text-2xl md:leading-[44px] leading-9 text-black">
+                <h1
+                  class="font-secondary font-light text-black"
+                  :class="{
+                    'text-xl leading-8': isScrolled,
+                    'md:text-3xl text-2xl md:leading-[44px] leading-9': !isScrolled,
+                  }"
+                >
                   {{ initiative.name }}
                 </h1>
 
                 <!-- Description -->
-                <p class="text-sm text-neutral-600 leading-5">
+                <p
+                  class="text-sm text-neutral-600 leading-5"
+                  :class="{ hidden: isScrolled }"
+                >
                   {{ initiative.description }}
                 </p>
               </div>
@@ -61,6 +76,7 @@ SPDX-License-Identifier: MIT
             <div
               v-if="tags.length"
               class="flex flex-wrap gap-2 md:mt-9 mt-4"
+              :class="{ hidden: isScrolled }"
             >
               <lfx-chip
                 v-for="tag in tags"
@@ -140,6 +156,7 @@ import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
+import useScroll from '~/utils/scroll';
 
 const props = defineProps<{
   initiative: InitiativeDetail;
@@ -147,6 +164,9 @@ const props = defineProps<{
 }>();
 
 const { openDonateDrawer } = useDonateDrawerStore();
+
+const { scrollTop } = useScroll();
+const isScrolled = computed(() => scrollTop.value > 10);
 
 defineEmits<{ (e: 'update:activeTab', value: string): void }>();
 

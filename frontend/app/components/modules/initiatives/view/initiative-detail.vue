@@ -21,7 +21,10 @@ SPDX-License-Identifier: MIT
         @update:active-tab="activeTab = $event"
       />
 
-      <div class="bg-white pt-10 pb-30">
+      <div
+        class="bg-white pt-10 pb-30 transition-all ease-linear"
+        :class="{ 'pt-18': isScrolled }"
+      >
         <div class="container">
           <div class="flex lg:gap-8 gap-20 items-start lg:flex-row flex-col">
             <!-- Left column -->
@@ -70,11 +73,15 @@ import InitiativeDetailAbout from '../components/details-about/initiative-detail
 import { useInitiative } from '~/composables/initiatives/useInitiative';
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
+import useScroll from '~/utils/scroll';
 
 const props = defineProps<{ initiativeId: string }>();
 
 const { data, isLoading, error } = useInitiative(computed(() => props.initiativeId));
 const activeTab = ref('overview');
+
+const { scrollTop } = useScroll();
+const isScrolled = computed(() => scrollTop.value > 10);
 </script>
 
 <script lang="ts">
