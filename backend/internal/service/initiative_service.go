@@ -17,7 +17,10 @@ import (
 
 var initiativeSvcTracer = otel.Tracer("initiatives-service")
 
-// InitiativeService orchestrates initiative reads and writes, enriching with Ledger balance data.
+// InitiativeService orchestrates initiative reads and writes.
+// Financial data is sourced from initiative_ledger_stats (populated by the
+// ledger-stats-sync CronJob) — no live Ledger API calls on read paths.
+// The LedgerClient is retained for future use by the transactions tab.
 type InitiativeService struct {
 	repo   domain.InitiativeRepository
 	ledger clients.LedgerClient
@@ -33,9 +36,8 @@ func NewInitiativeService(
 	return &InitiativeService{repo: repo, ledger: ledger, stripe: stripe}
 }
 
-// GetByID retrieves an initiative enriched with goals and live Ledger balance.
-// Balance fetch failure is non-fatal — returns zero balance and logs via span.
-func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.InitiativeDetail, error) {
+// GetByID retrieves an initiative with goals and financials from CF DB.
+func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetByID")
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.id", id))
@@ -45,29 +47,11 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 		span.RecordError(err)
 		return nil, fmt.Errorf("get initiative: %w", err)
 	}
-
-	goals, err := s.repo.ListGoals(ctx, id)
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("list goals: %w", err)
-	}
-
-	// Balance is computed at read time — never stored in PostgreSQL.
-	balance, err := s.ledger.GetBalance(ctx, id)
-	if err != nil {
-		span.RecordError(err) // non-fatal: degraded response with zero balance
-		balance = &models.Balance{InitiativeID: id}
-	}
-
-	return &models.InitiativeDetail{
-		Initiative: *initiative,
-		Goals:      goals,
-		Balance:    balance,
-	}, nil
+	return initiative, nil
 }
 
 // GetBySlug retrieves an initiative by its URL slug.
-func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models.InitiativeDetail, error) {
+func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetBySlug")
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.slug", slug))
@@ -77,11 +61,11 @@ func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models
 		span.RecordError(err)
 		return nil, fmt.Errorf("get initiative by slug: %w", err)
 	}
-	return s.GetByID(ctx, initiative.ID)
+	return initiative, nil
 }
 
 // List retrieves a filtered, paginated list of initiatives.
-func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFilter) ([]models.Initiative, *models.PaginationMeta, error) {
+func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.List")
 	defer span.End()
 
@@ -143,7 +127,6 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		return nil, domain.ErrForbidden
 	}
 
-	// Apply partial updates
 	if input.Name != nil {
 		existing.Name = *input.Name
 	}

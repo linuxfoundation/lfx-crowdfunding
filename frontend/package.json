@@ -77,6 +77,11 @@
       "autoprefixer": {}
     }
   },
+  "pnpm": {
+    "overrides": {
+      "devalue": "^5.8.1"
+    }
+  },
   "lint-staged": {
     "*.{js,ts,vue}": [
       "eslint --fix",

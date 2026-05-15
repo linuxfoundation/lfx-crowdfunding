@@ -117,6 +117,10 @@ func LoadConfig() (*Config, error) {
 	if ledgerBaseURL == "" {
 		return nil, fmt.Errorf("LEDGER_BASE_URL is required")
 	}
+	ledgerAPIKey := getEnv("LEDGER_API_KEY", "")
+	if ledgerAPIKey == "" {
+		return nil, fmt.Errorf("LEDGER_API_KEY is required")
+	}
 
 	port, err := getIntEnv("PORT", 8080)
 	if err != nil {
@@ -191,7 +195,7 @@ func LoadConfig() (*Config, error) {
 		},
 		Ledger: LedgerConfig{
 			BaseURL: ledgerBaseURL,
-			APIKey:  getEnv("LEDGER_API_KEY", ""),
+			APIKey:  ledgerAPIKey,
 			Timeout: ledgerTimeout,
 		},
 		OTel: OTelConfig{

@@ -30,6 +30,9 @@ DISABLE_ERRORS_LINTERS:
   - PYTHON_PYLINT
   - PYTHON_PYRIGHT
   - PYTHON_MYPY
+  # devskim crashes with XML parse errors on non-XML files (tool bug, not a real
+  # security finding). Treat as non-fatal until upstream fixes it.
+  - REPOSITORY_DEVSKIM
   # The Go module lives in backend/, not the repo root. Running golangci-lint /
   # revive from the workspace root produces:
   #   [linters_context] typechecking error: pattern ./...: directory prefix .
@@ -46,3 +49,7 @@ SPELL_CSPELL_ANALYZE_FILE_NAMES: false
 # main module" errors.
 GO_GOLANGCI_LINT_DIRECTORY: backend
 GO_REVIVE_DIRECTORY: backend
+
+# Exclude .claude/ skill files — these are tool configuration, not application
+# code, and contain markdown with intentional bare fences (example snippets).
+FILTER_REGEX_EXCLUDE: (\.claude/)

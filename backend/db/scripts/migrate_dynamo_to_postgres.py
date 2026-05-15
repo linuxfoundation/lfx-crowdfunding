@@ -27,7 +27,7 @@ Source → Target mapping
                                                  → initiative_ostif_detail
                                                  → initiative_contacts
                                                  → initiative_github_stats
-                                                 → initiative_stats
+                                                 (initiative_ledger_stats populated by CronJob)
                                                  → initiative_entity_details
   lff-prod-donations + lff-prod-entity-donations → donations     (merged)
   lff-prod-subscriptions
@@ -373,7 +373,6 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
     ostif_detail_rows:        list = []
     contacts_rows:            list = []
     github_stats_rows:        list = []
-    stats_rows:               list = []
     entity_details_rows:      list = []
 
     known_initiative_ids: set = set()
@@ -548,13 +547,6 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
                 _as_int(gh.get("openIssues")),
             ))
 
-        # ── Project stats (backers only — totalRaised excluded) ──────────
-        ps: dict = cd.get("projectStats") or {}
-        stats_rows.append((
-            pg_id,
-            _as_int(ps.get("backers")),
-        ))
-
     # ── Entities ─────────────────────────────────────────────────────────
     for e in entities:
         owner_id = e.get("ownerId")
@@ -722,7 +714,6 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
     _insert_ostif_detail(cur, ostif_detail_rows)
     _insert_contacts(cur, contacts_rows)
     _insert_github_stats(cur, github_stats_rows)
-    _insert_stats(cur, stats_rows)
     _insert_entity_details(cur, entity_details_rows)
 
     # ── Phase 3: Classify mentorship projects ────────────────────────────
@@ -1010,20 +1001,6 @@ def _insert_github_stats(cur, rows: list) -> None:
     """
     psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
     log.info("    initiative_github_stats: %d rows", len(rows))
-
-
-def _insert_stats(cur, rows: list) -> None:
-    if not rows:
-        return
-    sql = """
-        INSERT INTO initiative_stats (initiative_id, backers)
-        VALUES (%s,%s)
-        ON CONFLICT (initiative_id) DO UPDATE SET
-            backers    = EXCLUDED.backers,
-            updated_on = NOW()
-    """
-    psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
-    log.info("    initiative_stats   : %d rows", len(rows))
 
 
 def _insert_entity_details(cur, rows: list) -> None:

@@ -30,27 +30,51 @@ func NewInitiativeRepository(pool *pgxpool.Pool) *InitiativeRepository {
 	return &InitiativeRepository{pool: pool}
 }
 
+// initiativeSelect is the common SELECT + JOIN used by both GetByID and List.
+// It joins initiative_ledger_stats for financial data and uses a subquery for
+// goals_total_cents to avoid row multiplication from a direct goals JOIN.
+const initiativeSelect = `
+	SELECT
+		i.id, i.initiative_type, i.source_dynamo_table, i.owner_id,
+		i.name, i.slug, i.status, i.industry, i.description, i.color,
+		i.logo_url, i.website_url, i.coc_url,
+		i.stripe_plan_id, i.stripe_product_id,
+		i.accept_funding,
+		i.cii_project_id, i.jobspring_project_id, i.stacks_identifier,
+		i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
+		i.country, i.city, i.is_online,
+		i.created_on, i.updated_on,
+		COALESCE(ls.total_raised_cents, 0)      AS total_raised_cents,
+		COALESCE(ls.total_debited_cents, 0)     AS total_disbursed_cents,
+		COALESCE(ls.available_balance_cents, 0) AS available_balance_cents,
+		COALESCE(ls.supporters, 0)              AS supporters,
+		COALESCE((
+			SELECT SUM(amount_in_cents)::bigint
+			FROM initiative_goals
+			WHERE initiative_id = i.id
+		), 0)::bigint AS goals_total_cents
+	FROM initiatives i
+	LEFT JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id`
+
 // GetByID retrieves a single initiative by its UUID primary key.
 func (r *InitiativeRepository) GetByID(ctx context.Context, id string) (*models.Initiative, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.GetByID")
 	defer span.End()
 	span.SetAttributes(attribute.String("db.initiative_id", id))
 
-	const q = `
-		SELECT id, initiative_type, source_dynamo_table, owner_id,
-		       name, slug, status, industry, description, color,
-		       logo_url, website_url, coc_url,
-		       stripe_plan_id, stripe_product_id,
-		       amount_raised_in_cents, accept_funding,
-		       cii_project_id, jobspring_project_id, stacks_identifier,
-		       eventbrite_url, application_url, event_start_date, event_end_date,
-		       country, city, is_online,
-		       created_on, updated_on
-		FROM initiatives
-		WHERE id = $1`
-
+	q := initiativeSelect + " WHERE i.id = $1"
 	row := r.pool.QueryRow(ctx, q, id)
-	return scanInitiative(row)
+	initiative, err := scanInitiative(row)
+	if err != nil {
+		return nil, err
+	}
+
+	goals, err := r.listGoals(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	initiative.Goals = goals
+	return initiative, nil
 }
 
 // GetBySlug retrieves a single initiative by its URL slug.
@@ -59,25 +83,23 @@ func (r *InitiativeRepository) GetBySlug(ctx context.Context, slug string) (*mod
 	defer span.End()
 	span.SetAttributes(attribute.String("db.initiative_slug", slug))
 
-	const q = `
-		SELECT id, initiative_type, source_dynamo_table, owner_id,
-		       name, slug, status, industry, description, color,
-		       logo_url, website_url, coc_url,
-		       stripe_plan_id, stripe_product_id,
-		       amount_raised_in_cents, accept_funding,
-		       cii_project_id, jobspring_project_id, stacks_identifier,
-		       eventbrite_url, application_url, event_start_date, event_end_date,
-		       country, city, is_online,
-		       created_on, updated_on
-		FROM initiatives
-		WHERE slug = $1`
-
+	q := initiativeSelect + " WHERE i.slug = $1"
 	row := r.pool.QueryRow(ctx, q, slug)
-	return scanInitiative(row)
+	initiative, err := scanInitiative(row)
+	if err != nil {
+		return nil, err
+	}
+
+	goals, err := r.listGoals(ctx, initiative.ID)
+	if err != nil {
+		return nil, err
+	}
+	initiative.Goals = goals
+	return initiative, nil
 }
 
 // List retrieves initiatives matching the filter with pagination.
-func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]models.Initiative, *models.PaginationMeta, error) {
+func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")
 	defer span.End()
 
@@ -95,49 +117,57 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	where := "WHERE 1=1"
 
 	if filter.OwnerID != "" {
-		where += fmt.Sprintf(" AND owner_id = $%d", argN)
+		where += fmt.Sprintf(" AND i.owner_id = $%d", argN)
 		args = append(args, filter.OwnerID)
 		argN++
 	}
 	if filter.InitiativeType != "" {
-		where += fmt.Sprintf(" AND initiative_type = $%d", argN)
+		where += fmt.Sprintf(" AND i.initiative_type = $%d", argN)
 		args = append(args, filter.InitiativeType)
 		argN++
 	}
 	if filter.Status != "" {
-		where += fmt.Sprintf(" AND status = $%d", argN)
+		where += fmt.Sprintf(" AND i.status = $%d", argN)
 		args = append(args, filter.Status)
 		argN++
 	}
 	if filter.Search != "" {
-		where += fmt.Sprintf(" AND (name ILIKE $%d OR description ILIKE $%d)", argN, argN)
+		where += fmt.Sprintf(" AND (i.name ILIKE $%d OR i.description ILIKE $%d)", argN, argN)
 		args = append(args, "%"+filter.Search+"%")
 		argN++
 	}
 
-	// Count query
-	countQuery := "SELECT COUNT(*) FROM initiatives " + where
+	// Count — no JOIN needed
+	countQuery := "SELECT COUNT(*) FROM initiatives i " + where
 	var total int
 	if err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("count initiatives: %w", err)
 	}
 
-	// Data query
+	// Sort — allowlist prevents SQL injection
+	orderCol := "i.created_on"
+	switch filter.SortBy {
+	case "supporters":
+		orderCol = "COALESCE(ls.supporters, 0)"
+	case "total_raised":
+		orderCol = "COALESCE(ls.total_raised_cents, 0)"
+	}
+	orderDir := "DESC"
+	if filter.SortDir == "asc" {
+		orderDir = "ASC"
+	}
+
 	args = append(args, limit, offset)
-	dataQuery := fmt.Sprintf(`
-		SELECT id, initiative_type, source_dynamo_table, owner_id,
-		       name, slug, status, industry, description, color,
-		       logo_url, website_url, coc_url,
-		       stripe_plan_id, stripe_product_id,
-		       amount_raised_in_cents, accept_funding,
-		       cii_project_id, jobspring_project_id, stacks_identifier,
-		       eventbrite_url, application_url, event_start_date, event_end_date,
-		       country, city, is_online,
-		       created_on, updated_on
-		FROM initiatives %s
-		ORDER BY created_on DESC
-		LIMIT $%d OFFSET $%d`, where, argN, argN+1)
+	// When sorting by a financial metric, append created_on+id as tiebreakers for
+	// deterministic pagination. When using the default created_on sort, i.id alone
+	// is sufficient to break ties (avoids repeating the same column).
+	secondarySort := ", i.created_on DESC, i.id"
+	if filter.SortBy == "" || filter.SortBy == "created_on" {
+		secondarySort = ", i.id"
+	}
+	dataQuery := fmt.Sprintf("%s %s ORDER BY %s %s%s LIMIT $%d OFFSET $%d",
+		initiativeSelect, where, orderCol, orderDir, secondarySort, argN, argN+1)
 
 	rows, err := r.pool.Query(ctx, dataQuery, args...)
 	if err != nil {
@@ -146,16 +176,31 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	}
 	defer rows.Close()
 
-	var initiatives []models.Initiative
+	var initiatives []*models.Initiative
+	var ids []string
 	for rows.Next() {
-		i, err := scanInitiativeRow(rows)
+		i, err := scanInitiative(rows)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scan initiative: %w", err)
 		}
-		initiatives = append(initiatives, *i)
+		initiatives = append(initiatives, i)
+		ids = append(ids, i.ID)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("iterate initiatives: %w", err)
+	}
+
+	// Fetch all goals for the returned initiatives in one query
+	if len(ids) > 0 {
+		goalsByID, err := r.listGoalsForIDs(ctx, ids)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, i := range initiatives {
+			if goals, ok := goalsByID[i.ID]; ok {
+				i.Goals = goals
+			}
+		}
 	}
 
 	meta := &models.PaginationMeta{Total: total, Limit: limit, Offset: offset}
@@ -171,32 +216,23 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative)
 		INSERT INTO initiatives
 		       (initiative_type, owner_id, name, slug, status, industry,
 		        description, color, logo_url, website_url, coc_url,
-		        stripe_plan_id, stripe_product_id,
-		        amount_raised_in_cents, accept_funding)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-		RETURNING id, initiative_type, source_dynamo_table, owner_id,
-		          name, slug, status, industry, description, color,
-		          logo_url, website_url, coc_url,
-		          stripe_plan_id, stripe_product_id,
-		          amount_raised_in_cents, accept_funding,
-		          cii_project_id, jobspring_project_id, stacks_identifier,
-		          eventbrite_url, application_url, event_start_date, event_end_date,
-		          country, city, is_online,
-		          created_on, updated_on`
+		        stripe_plan_id, stripe_product_id, accept_funding)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		RETURNING id`
 
-	row := r.pool.QueryRow(ctx, q,
+	var id string
+	err := r.pool.QueryRow(ctx, q,
 		i.InitiativeType, i.OwnerID, i.Name, nullableString(i.Slug), nullableString(i.Status),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
 		nullableString(i.StripePlanID), nullableString(i.StripeProductID),
-		i.AmountRaisedCents, i.AcceptFunding,
-	)
-	created, err := scanInitiative(row)
+		i.AcceptFunding,
+	).Scan(&id)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
-	return created, nil
+	return r.GetByID(ctx, id)
 }
 
 // Update applies changes to an existing initiative.
@@ -217,32 +253,22 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative)
 		    website_url    = $9,
 		    coc_url        = $10,
 		    accept_funding = $11
-		WHERE id = $1
-		RETURNING id, initiative_type, source_dynamo_table, owner_id,
-		          name, slug, status, industry, description, color,
-		          logo_url, website_url, coc_url,
-		          stripe_plan_id, stripe_product_id,
-		          amount_raised_in_cents, accept_funding,
-		          cii_project_id, jobspring_project_id, stacks_identifier,
-		          eventbrite_url, application_url, event_start_date, event_end_date,
-		          country, city, is_online,
-		          created_on, updated_on`
+		WHERE id = $1`
 
-	row := r.pool.QueryRow(ctx, q,
+	tag, err := r.pool.Exec(ctx, q,
 		i.ID, i.Name, nullableString(i.Slug), nullableString(i.Status),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
 		i.AcceptFunding,
 	)
-	updated, err := scanInitiative(row)
 	if err != nil {
-		if !errors.Is(err, domain.ErrInitiativeNotFound) {
-			span.RecordError(err)
-			err = fmt.Errorf("update initiative: %w", err)
-		}
-		return nil, err
+		span.RecordError(err)
+		return nil, fmt.Errorf("update initiative: %w", err)
 	}
-	return updated, nil
+	if tag.RowsAffected() == 0 {
+		return nil, domain.ErrInitiativeNotFound
+	}
+	return r.GetByID(ctx, i.ID)
 }
 
 // Delete removes an initiative by ID.
@@ -262,12 +288,9 @@ func (r *InitiativeRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListGoals retrieves all goals for an initiative, ordered by sort_order.
-func (r *InitiativeRepository) ListGoals(ctx context.Context, initiativeID string) ([]models.Goal, error) {
-	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.ListGoals")
-	defer span.End()
-	span.SetAttributes(attribute.String("db.initiative_id", initiativeID))
+// ── private helpers ──────────────────────────────────────────────────────────
 
+func (r *InitiativeRepository) listGoals(ctx context.Context, initiativeID string) ([]models.Goal, error) {
 	const q = `
 		SELECT id, initiative_id, name, amount_in_cents, allocation,
 		       repo_link, description, color, icon, sort_order,
@@ -278,12 +301,57 @@ func (r *InitiativeRepository) ListGoals(ctx context.Context, initiativeID strin
 
 	rows, err := r.pool.Query(ctx, q, initiativeID)
 	if err != nil {
-		span.RecordError(err)
 		return nil, fmt.Errorf("list goals: %w", err)
 	}
 	defer rows.Close()
+	return scanGoals(rows)
+}
 
-	var goals []models.Goal
+// listGoalsForIDs fetches goals for a set of initiative IDs in one query,
+// returning a map of initiativeID → []Goal.
+func (r *InitiativeRepository) listGoalsForIDs(ctx context.Context, ids []string) (map[string][]models.Goal, error) {
+	// Build $1,$2,... placeholders
+	args := make([]any, len(ids))
+	placeholders := ""
+	for i, id := range ids {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+
+	q := fmt.Sprintf(`
+		SELECT id, initiative_id, name, amount_in_cents, allocation,
+		       repo_link, description, color, icon, sort_order,
+		       created_on, updated_on
+		FROM initiative_goals
+		WHERE initiative_id IN (%s)
+		ORDER BY initiative_id, sort_order ASC`, placeholders)
+
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list goals for ids: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]models.Goal)
+	for rows.Next() {
+		var g models.Goal
+		if err := rows.Scan(
+			&g.ID, &g.InitiativeID, &g.Name, &g.AmountInCents, &g.Allocation,
+			&g.RepoLink, &g.Description, &g.Color, &g.Icon, &g.SortOrder,
+			&g.CreatedOn, &g.UpdatedOn,
+		); err != nil {
+			return nil, fmt.Errorf("scan goal: %w", err)
+		}
+		result[g.InitiativeID] = append(result[g.InitiativeID], g)
+	}
+	return result, rows.Err()
+}
+
+func scanGoals(rows pgx.Rows) ([]models.Goal, error) {
+	goals := []models.Goal{}
 	for rows.Next() {
 		var g models.Goal
 		if err := rows.Scan(
@@ -298,15 +366,12 @@ func (r *InitiativeRepository) ListGoals(ctx context.Context, initiativeID strin
 	return goals, rows.Err()
 }
 
-// ── helpers ─────────────────────────────────────────────────────────────────
-
 type scanner interface {
 	Scan(dest ...any) error
 }
 
 func scanInitiative(row scanner) (*models.Initiative, error) {
-	i := &models.Initiative{}
-	// Use pointer intermediaries for all nullable columns so pgx v5 can scan NULLs.
+	i := &models.Initiative{Goals: []models.Goal{}}
 	var (
 		sourceDynamoTable, slug, status, industry, description, color *string
 		logoURL, websiteURL, cocURL, stripePlanID, stripeProductID    *string
@@ -320,11 +385,16 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		&i.Name, &slug, &status, &industry, &description, &color,
 		&logoURL, &websiteURL, &cocURL,
 		&stripePlanID, &stripeProductID,
-		&i.AmountRaisedCents, &acceptFunding,
+		&acceptFunding,
 		&ciiProjectID, &jobspringProjectID, &stacksIdentifier,
 		&eventbriteURL, &applicationURL, &i.EventStartDate, &i.EventEndDate,
 		&country, &city, &isOnline,
 		&createdOn, &updatedOn,
+		&i.Financials.TotalRaisedCents,
+		&i.Financials.TotalDisbursedCents,
+		&i.Financials.AvailableBalanceCents,
+		&i.Financials.Supporters,
+		&i.Financials.GoalsTotalCents,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -332,6 +402,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		}
 		return nil, err
 	}
+
 	i.SourceDynamoTable = derefString(sourceDynamoTable)
 	i.Slug = derefString(slug)
 	i.Status = derefString(status)
@@ -362,6 +433,11 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	if updatedOn != nil {
 		i.UpdatedOn = *updatedOn
 	}
+
+	if i.Financials.GoalsTotalCents > 0 {
+		i.Financials.FundedPercent = int(i.Financials.TotalRaisedCents * 100 / i.Financials.GoalsTotalCents)
+	}
+
 	return i, nil
 }
 
@@ -370,10 +446,6 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
-}
-
-func scanInitiativeRow(row pgx.Rows) (*models.Initiative, error) {
-	return scanInitiative(row)
 }
 
 func nullableString(s string) any {
