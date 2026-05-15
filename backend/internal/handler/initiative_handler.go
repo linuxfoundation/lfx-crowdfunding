@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -37,8 +38,8 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 		InitiativeType: q.Get("type"),
 		Status:         q.Get("status"),
 		Search:         q.Get("search"),
-		SortBy:         q.Get("sort_by"),
-		SortDir:        q.Get("sort_dir"),
+		SortBy:         strings.ToLower(q.Get("sort_by")),
+		SortDir:        strings.ToLower(q.Get("sort_dir")),
 		Limit:          limit,
 		Offset:         offset,
 	}

@@ -468,6 +468,10 @@ CREATE INDEX IF NOT EXISTS idx_initiatives_status                   ON initiativ
 CREATE INDEX IF NOT EXISTS idx_initiatives_type                     ON initiatives(initiative_type);
 CREATE INDEX IF NOT EXISTS idx_initiatives_amount_raised            ON initiatives(amount_raised_in_cents DESC);
 
+-- initiative_ledger_stats (sort support)
+CREATE INDEX IF NOT EXISTS idx_ledger_stats_supporters              ON initiative_ledger_stats(supporters DESC);
+CREATE INDEX IF NOT EXISTS idx_ledger_stats_total_raised            ON initiative_ledger_stats(total_raised_cents DESC);
+
 -- initiative child tables
 CREATE INDEX IF NOT EXISTS idx_initiative_goals_iid                 ON initiative_goals(initiative_id);
 CREATE INDEX IF NOT EXISTS idx_initiative_beneficiaries_iid         ON initiative_beneficiaries(initiative_id);

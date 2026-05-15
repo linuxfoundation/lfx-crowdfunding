@@ -49,10 +49,10 @@ const initiativeSelect = `
 		COALESCE(ls.available_balance_cents, 0) AS available_balance_cents,
 		COALESCE(ls.supporters, 0)              AS supporters,
 		COALESCE((
-			SELECT SUM(amount_in_cents)
+			SELECT SUM(amount_in_cents)::bigint
 			FROM initiative_goals
 			WHERE initiative_id = i.id
-		), 0) AS goals_total_cents
+		), 0)::bigint AS goals_total_cents
 	FROM initiatives i
 	LEFT JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id`
 
@@ -159,7 +159,7 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	}
 
 	args = append(args, limit, offset)
-	dataQuery := fmt.Sprintf("%s %s ORDER BY %s %s LIMIT $%d OFFSET $%d",
+	dataQuery := fmt.Sprintf("%s %s ORDER BY %s %s, i.created_on DESC, i.id LIMIT $%d OFFSET $%d",
 		initiativeSelect, where, orderCol, orderDir, argN, argN+1)
 
 	rows, err := r.pool.Query(ctx, dataQuery, args...)
@@ -362,7 +362,7 @@ type scanner interface {
 }
 
 func scanInitiative(row scanner) (*models.Initiative, error) {
-	i := &models.Initiative{}
+	i := &models.Initiative{Goals: []models.Goal{}}
 	var (
 		sourceDynamoTable, slug, status, industry, description, color *string
 		logoURL, websiteURL, cocURL, stripePlanID, stripeProductID    *string

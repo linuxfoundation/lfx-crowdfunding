@@ -32,9 +32,9 @@ func (r *StatisticsRepository) GetPlatformStatistics(ctx context.Context) (*mode
 
 	const q = `
 		SELECT
-			COALESCE(SUM(ls.total_raised_cents), 0) AS total_raised_cents,
-			COALESCE(SUM(ls.supporters), 0)         AS total_supporters,
-			COUNT(i.id)                             AS total_initiatives
+			COALESCE(SUM(ls.total_raised_cents), 0)::bigint AS total_raised_cents,
+			COALESCE(SUM(ls.supporters), 0)::bigint         AS total_supporters,
+			COUNT(i.id)::bigint                             AS total_initiatives
 		FROM initiatives i
 		INNER JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id
 		WHERE i.status = 'published'`
