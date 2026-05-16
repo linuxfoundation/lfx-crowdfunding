@@ -6,6 +6,29 @@ package models
 
 import "time"
 
+// ValidInitiativeTypes is the set of accepted initiative_type values.
+// Includes legacy migrated types (other, community, travel_fund, ostif) that exist
+// in production data but are not expected for new rows created via the API.
+var ValidInitiativeTypes = map[string]bool{
+	"project":       true,
+	"event":         true,
+	"mentorship":    true,
+	"security_audit": true,
+	"general_fund":  true,
+	"ostif":         true,
+	"other":         true,
+	"community":     true,
+	"travel_fund":   true,
+}
+
+// ValidInitiativeStatuses is the set of accepted status values.
+var ValidInitiativeStatuses = map[string]bool{
+	"submitted": true,
+	"published": true,
+	"declined":  true,
+	"hidden":    true,
+}
+
 // Financials holds funding statistics sourced from initiative_ledger_stats,
 // populated by the ledger-stats-sync CronJob. All fields are zero when the
 // cron has not yet run for this initiative.
@@ -51,16 +74,23 @@ type Initiative struct {
 	// Populated from initiative_ledger_stats; zero when cron has not yet run
 	Financials Financials `json:"financials"`
 
+	// Populated from initiative_ledger_stats.sponsors; flat list sorted by total descending
+	Sponsors []Sponsor `json:"sponsors"`
+
+	// Transient — fetched live from Ledger at request time; nil when Ledger is unavailable
+	Balance *LedgerBalanceSummary `json:"balance"`
+
 	CreatedOn time.Time `json:"created_on"`
 	UpdatedOn time.Time `json:"updated_on"`
 
 	// Internal fields — never serialised
-	SourceDynamoTable  string `json:"-"`
-	StripePlanID       string `json:"-"`
-	StripeProductID    string `json:"-"`
-	CiiProjectID       string `json:"-"`
-	JobspringProjectID string `json:"-"`
-	StacksIdentifier   string `json:"-"`
+	SourceDynamoTable  string            `json:"-"`
+	StripePlanID       string            `json:"-"`
+	StripeProductID    string            `json:"-"`
+	CiiProjectID       string            `json:"-"`
+	JobspringProjectID string            `json:"-"`
+	StacksIdentifier   string            `json:"-"`
+	RawSponsors        LedgerSponsorList `json:"-"` // set by DB layer; flattened into Sponsors by service layer
 }
 
 // InitiativeCreateInput is the request body for creating an initiative.

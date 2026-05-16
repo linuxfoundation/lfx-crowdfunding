@@ -17,7 +17,7 @@ DEPLOYMENT_NAME  ?= $(RELEASE_NAME)-lfx-v2-initiatives-service
 DEPLOY_TAG       ?= dev-$(shell date +%Y%m%d%H%M%S)
 
 .PHONY: all clean deps build run test fmt lint license-check \
-        docker-build docker-run helm-install deploy-kind
+        docker-build docker-run helm-install deploy-kind db-seed
 
 all: build
 
@@ -59,6 +59,12 @@ license-check:
 ## clean: remove build artefacts
 clean:
 	rm -rf bin/
+
+## db-seed: load development seed data into the local database (localhost only)
+db-seed:
+	@echo "$$DATABASE_URL" | grep -qE "localhost|127\.0\.0\.1" || \
+		{ echo "ERROR: db-seed refused — DATABASE_URL does not point to localhost"; exit 1; }
+	psql "$$DATABASE_URL" -f db/seed.sql
 
 ## docker-build: build the Docker image
 docker-build:

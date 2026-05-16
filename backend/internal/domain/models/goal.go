@@ -20,4 +20,8 @@ type Goal struct {
 	SortOrder     int       `json:"sort_order"`
 	CreatedOn     time.Time `json:"created_on"`
 	UpdatedOn     time.Time `json:"updated_on"`
+
+	// Transient — populated from Ledger subTotals at request time; absent when Ledger is unavailable.
+	DonatedCents *int64 `json:"donated_cents,omitempty"`
+	SpentCents   *int64 `json:"spent_cents,omitempty"`
 }

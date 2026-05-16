@@ -48,7 +48,7 @@ SPDX-License-Identifier: MIT
               <initiative-detail-sponsors
                 v-if="data.sponsors?.length"
                 :sponsors="data.sponsors"
-                :initiative-id="data.initiativeId"
+                :initiative-id="data.slug"
               />
               <div class="border-t border-neutral-200 pt-10">
                 <recent-donations

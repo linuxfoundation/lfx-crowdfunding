@@ -5,8 +5,12 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
+	"slices"
+	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -36,7 +40,7 @@ func NewInitiativeService(
 	return &InitiativeService{repo: repo, ledger: ledger, stripe: stripe}
 }
 
-// GetByID retrieves an initiative with goals and financials from CF DB.
+// GetByID retrieves an initiative with goals, financials, sponsors, and live balance.
 func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetByID")
 	defer span.End()
@@ -47,7 +51,48 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 		span.RecordError(err)
 		return nil, fmt.Errorf("get initiative: %w", err)
 	}
+
+	balance, err := s.ledger.GetBalance(ctx, id)
+	if err != nil {
+		slog.Warn("ledger balance unavailable", "initiative_id", id, "error", err)
+	} else {
+		initiative.Balance = &models.LedgerBalanceSummary{
+			TotalRaisedCents:    balance.TotalRaisedCents,
+			TotalDisbursedCents: balance.TotalDisbursedCents,
+			AvailableCents:      balance.AvailableCents,
+		}
+		for i := range initiative.Goals {
+			g := &initiative.Goals[i]
+			for category, sub := range balance.SubTotals {
+				if strings.EqualFold(g.Name, category) {
+					donated := sub.Credit
+					spent := sub.Debit
+					g.DonatedCents = &donated
+					g.SpentCents = &spent
+					break
+				}
+			}
+		}
+	}
+
+	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
 	return initiative, nil
+}
+
+// flattenSponsors merges orgs and individuals from the cached sponsor list into a
+// single flat slice sorted by total descending.
+func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
+	sponsors := make([]models.Sponsor, 0, len(list.Orgs)+len(list.Individuals))
+	for _, o := range list.Orgs {
+		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: o.AvatarURL, TotalCents: o.Total})
+	}
+	for _, u := range list.Individuals {
+		sponsors = append(sponsors, models.Sponsor{ID: u.ID, Name: u.Name, AvatarURL: u.AvatarURL, TotalCents: u.Total})
+	}
+	slices.SortFunc(sponsors, func(a, b models.Sponsor) int {
+		return cmp.Compare(b.TotalCents, a.TotalCents) // descending
+	})
+	return sponsors
 }
 
 // GetBySlug retrieves an initiative by its URL slug.
@@ -87,6 +132,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 	}
 	if input.InitiativeType == "" {
 		return nil, fmt.Errorf("%w: initiative_type is required", domain.ErrInvalidInput)
+	}
+	if !models.ValidInitiativeTypes[input.InitiativeType] {
+		return nil, fmt.Errorf("%w: unknown initiative_type %q", domain.ErrInvalidInput, input.InitiativeType)
 	}
 
 	initiative := &models.Initiative{
@@ -134,6 +182,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		existing.Slug = *input.Slug
 	}
 	if input.Status != nil {
+		if !models.ValidInitiativeStatuses[*input.Status] {
+			return nil, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, *input.Status)
+		}
 		existing.Status = *input.Status
 	}
 	if input.Description != nil {

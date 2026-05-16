@@ -48,6 +48,9 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	if initiatives == nil {
+		initiatives = []*models.Initiative{}
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"data": initiatives,
 		"meta": meta,
@@ -62,6 +65,7 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
 	JSON(w, http.StatusOK, initiative)
 }
 

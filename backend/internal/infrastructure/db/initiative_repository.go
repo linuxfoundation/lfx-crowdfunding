@@ -6,6 +6,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -52,7 +53,8 @@ const initiativeSelect = `
 			SELECT SUM(amount_in_cents)::bigint
 			FROM initiative_goals
 			WHERE initiative_id = i.id
-		), 0)::bigint AS goals_total_cents
+		), 0)::bigint AS goals_total_cents,
+		COALESCE(ls.sponsors, '{}')::jsonb      AS sponsors
 	FROM initiatives i
 	LEFT JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id`
 
@@ -337,12 +339,8 @@ func (r *InitiativeRepository) listGoalsForIDs(ctx context.Context, ids []string
 
 	result := make(map[string][]models.Goal)
 	for rows.Next() {
-		var g models.Goal
-		if err := rows.Scan(
-			&g.ID, &g.InitiativeID, &g.Name, &g.AmountInCents, &g.Allocation,
-			&g.RepoLink, &g.Description, &g.Color, &g.Icon, &g.SortOrder,
-			&g.CreatedOn, &g.UpdatedOn,
-		); err != nil {
+		g, err := scanGoal(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan goal: %w", err)
 		}
 		result[g.InitiativeID] = append(result[g.InitiativeID], g)
@@ -353,17 +351,32 @@ func (r *InitiativeRepository) listGoalsForIDs(ctx context.Context, ids []string
 func scanGoals(rows pgx.Rows) ([]models.Goal, error) {
 	goals := []models.Goal{}
 	for rows.Next() {
-		var g models.Goal
-		if err := rows.Scan(
-			&g.ID, &g.InitiativeID, &g.Name, &g.AmountInCents, &g.Allocation,
-			&g.RepoLink, &g.Description, &g.Color, &g.Icon, &g.SortOrder,
-			&g.CreatedOn, &g.UpdatedOn,
-		); err != nil {
+		g, err := scanGoal(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan goal: %w", err)
 		}
 		goals = append(goals, g)
 	}
 	return goals, rows.Err()
+}
+
+func scanGoal(row scanner) (models.Goal, error) {
+	var g models.Goal
+	var allocation, repoLink, description, color, icon *string
+	err := row.Scan(
+		&g.ID, &g.InitiativeID, &g.Name, &g.AmountInCents, &allocation,
+		&repoLink, &description, &color, &icon, &g.SortOrder,
+		&g.CreatedOn, &g.UpdatedOn,
+	)
+	if err != nil {
+		return g, err
+	}
+	g.Allocation = derefString(allocation)
+	g.RepoLink = derefString(repoLink)
+	g.Description = derefString(description)
+	g.Color = derefString(color)
+	g.Icon = derefString(icon)
+	return g, nil
 }
 
 type scanner interface {
@@ -379,6 +392,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		eventbriteURL, applicationURL, country, city                  *string
 		acceptFunding, isOnline                                       *bool
 		createdOn, updatedOn                                          *time.Time
+		sponsorsJSON                                                  []byte
 	)
 	err := row.Scan(
 		&i.ID, &i.InitiativeType, &sourceDynamoTable, &i.OwnerID,
@@ -395,12 +409,17 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		&i.Financials.AvailableBalanceCents,
 		&i.Financials.Supporters,
 		&i.Financials.GoalsTotalCents,
+		&sponsorsJSON,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrInitiativeNotFound
 		}
 		return nil, err
+	}
+
+	if len(sponsorsJSON) > 0 {
+		_ = json.Unmarshal(sponsorsJSON, &i.RawSponsors)
 	}
 
 	i.SourceDynamoTable = derefString(sourceDynamoTable)

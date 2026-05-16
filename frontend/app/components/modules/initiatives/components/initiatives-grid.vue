@@ -49,7 +49,7 @@ SPDX-License-Identifier: MIT
       <NuxtLink
         v-for="initiative in initiatives"
         :key="initiative.id"
-        :to="`/initiatives/${initiative.initiativeId}`"
+        :to="`/initiatives/${initiative.slug}`"
         class="block"
       >
         <initiative-card :initiative="initiative" />

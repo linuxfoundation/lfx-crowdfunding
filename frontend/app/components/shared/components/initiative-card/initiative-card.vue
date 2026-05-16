@@ -125,7 +125,7 @@ const totalGoalFormatted = computed(() =>
 const percentFundedLabel = computed(() => `${progressPercent.value}% funded`);
 
 const supportersLabel = computed(() => {
-  const count = props.initiative.initiativeStats?.backers ?? 0;
+  const count = props.initiative.initiativeStats?.supporters ?? 0;
   return `${count.toLocaleString()} supporters`;
 });
 </script>

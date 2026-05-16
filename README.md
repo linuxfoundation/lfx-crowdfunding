@@ -116,30 +116,57 @@ See [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx
 
 ## Development Setup
 
-### Frontend
+### Prerequisites
+
+- Go (latest stable)
+- Node.js + pnpm
+- Docker (for Postgres)
+
+### 1. Start Postgres
+
+```bash
+docker compose up -d
+```
+
+### 2. Backend
+
+```bash
+cd backend
+cp .env.example .env   # then fill in values — see below
+go run ./cmd/initiatives-api
+```
+
+**Required env vars:**
+
+| Var | Notes |
+|-----|-------|
+| `DATABASE_URL` | `postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding` (matches docker-compose) |
+| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Set to any string (e.g. `local-dev`) to skip JWT validation locally |
+| `STRIPE_SECRET_KEY` | Stripe test key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe test webhook secret |
+| `LEDGER_BASE_URL` | Ledger service URL |
+| `LEDGER_API_KEY` | Ledger API key |
+
+`JWKS_URL` is not required when `DISABLED_MOCK_LOCAL_PRINCIPAL` is set.
+
+### 3. Frontend
 
 ```bash
 cd frontend
 pnpm install
-cp .env.example .env.local   # fill in Auth0, Stripe, API URL
+cp .env.example .env   # then fill in values — see below
 pnpm dev
 ```
 
-Required env vars (server-side): `NUXT_AUTH0_CLIENT_SECRET`, `NUXT_JWT_SECRET`, `NUXT_API_URL`, `NUXT_STRIPE_SECRET_KEY`, `NUXT_GITHUB_OAUTH_CLIENT_SECRET`
+**Required env vars:**
 
-Public env vars: `NUXT_PUBLIC_AUTH0_DOMAIN`, `NUXT_PUBLIC_AUTH0_CLIENT_ID`, `NUXT_PUBLIC_STRIPE_PUBLIC_KEY`, `NUXT_PUBLIC_APP_ENV`
+| Var | Notes |
+|-----|-------|
+| `NUXT_PUBLIC_AUTH0_CLIENT_ID` | Auth0 client ID for the dev tenant |
+| `NUXT_AUTH0_CLIENT_SECRET` | Auth0 client secret for the dev tenant |
+| `NUXT_JWT_SECRET` | Any random string for local session signing |
 
-### Backend
-
-```bash
-# Run DB migrations
-go run ./cmd/migrate
-
-# Start API server
-go run ./cmd/api
-```
-
-Required env vars: see [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) for the full inventory.
+Auth0 domain is set automatically to `linuxfoundation-dev.auth0.com` when `NUXT_APP_ENV=development` (the default).
 
 ## Contributing
 

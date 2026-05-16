@@ -146,7 +146,7 @@ const percentFunded = computed(() => {
 });
 
 const supportersLabel = computed(() => {
-  const count = props.initiative.initiativeStats?.backers ?? 0;
+  const count = props.initiative.initiativeStats?.supporters ?? 0;
   return `${count.toLocaleString()} supporters`;
 });
 

@@ -20,14 +20,21 @@ import (
 
 var ledgerTracer = otel.Tracer("ledger-client")
 
+// LedgerSubTotal holds the per-category credit/debit breakdown from the Ledger
+// GET /api/balance/{id} response. Used to populate donated_cents/spent_cents on goals.
+type LedgerSubTotal struct {
+	Credit int64 // total donated to this category (positive)
+	Debit  int64 // total spent from this category (negative)
+}
+
 // LedgerBalance is the per-initiative balance returned by the Ledger service.
-// Used by the transactions tab (future) — financial totals for list/detail
-// pages come from initiative_ledger_stats in CF DB instead.
+// SubTotals maps txnCategory strings to their credit/debit breakdown.
 type LedgerBalance struct {
 	InitiativeID        string
 	TotalRaisedCents    int64
 	TotalDisbursedCents int64
 	AvailableCents      int64
+	SubTotals           map[string]*LedgerSubTotal // keyed by txnCategory as returned by Ledger
 }
 
 // LedgerClient is the interface consumed by the service layer and the
@@ -64,10 +71,16 @@ func NewLedgerClient(cfg LedgerConfig) LedgerClient {
 	}
 }
 
+type ledgerSubTotalRaw struct {
+	Credit int64 `json:"credit"`
+	Debit  int64 `json:"debit"`
+}
+
 type ledgerBalanceResponse struct {
-	TotalRaisedCents    int64 `json:"totalCredit"`
-	TotalDisbursedCents int64 `json:"totalDebit"`
-	AvailableCents      int64 `json:"availableBalance"`
+	TotalRaisedCents    int64                          `json:"totalCredit"`
+	TotalDisbursedCents int64                          `json:"totalDebit"`
+	AvailableCents      int64                          `json:"availableBalance"`
+	SubTotals           map[string]*ledgerSubTotalRaw  `json:"subTotals"`
 }
 
 // GetBalance fetches the current balance for an initiative from the Ledger service.
@@ -94,11 +107,18 @@ func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) 
 	if disbursed < 0 {
 		disbursed = -disbursed
 	}
+	subTotals := make(map[string]*LedgerSubTotal, len(resp.SubTotals))
+	for category, raw := range resp.SubTotals {
+		if raw != nil {
+			subTotals[category] = &LedgerSubTotal{Credit: raw.Credit, Debit: raw.Debit}
+		}
+	}
 	return &LedgerBalance{
 		InitiativeID:        initiativeID,
 		TotalRaisedCents:    resp.TotalRaisedCents,
 		TotalDisbursedCents: disbursed,
 		AvailableCents:      resp.AvailableCents,
+		SubTotals:           subTotals,
 	}, nil
 }
 
