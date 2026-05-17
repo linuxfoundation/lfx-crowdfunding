@@ -8,6 +8,8 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"hash/fnv"
+	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
@@ -65,14 +67,14 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	for _, o := range list.Orgs {
 		avatarURL := o.AvatarURL
 		if avatarURL == "" {
-			avatarURL = generatedAvatarURL(o.Name)
+			avatarURL = generatedAvatarURL(o.ID, o.Name)
 		}
 		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: avatarURL, TotalCents: o.Total})
 	}
 	for _, u := range list.Individuals {
 		avatarURL := u.AvatarURL
 		if avatarURL == "" {
-			avatarURL = generatedAvatarURL(u.Name)
+			avatarURL = generatedAvatarURL(u.ID, u.Name)
 		}
 		sponsors = append(sponsors, models.Sponsor{ID: u.ID, Name: u.Name, AvatarURL: avatarURL, TotalCents: u.Total})
 	}
@@ -276,8 +278,16 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 		}
 	}
 
-	users, _ := repo.GetUsersByIDs(ctx, userIDs)
-	orgs, _ := repo.GetOrganizationsByIDs(ctx, orgIDs)
+	users, err := repo.GetUsersByIDs(ctx, userIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
+		users = map[string]models.User{}
+	}
+	orgs, err := repo.GetOrganizationsByIDs(ctx, orgIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to look up donor organizations", "error", err)
+		orgs = map[string]models.Organization{}
+	}
 
 	for i := range txns {
 		t := &txns[i]
@@ -287,7 +297,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 				t.DonorLogoURL = org.AvatarURL
 			}
 			if t.DonorLogoURL == "" {
-				t.DonorLogoURL = generatedAvatarURL(t.DonorName)
+				t.DonorLogoURL = generatedAvatarURL(t.LedgerOrgID, t.DonorName)
 			}
 		} else if t.LedgerUserID != "" {
 			if user, ok := users[t.LedgerUserID]; ok {
@@ -297,17 +307,25 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 				t.DonorLogoURL = user.AvatarURL
 			}
 			if t.DonorLogoURL == "" {
-				t.DonorLogoURL = generatedAvatarURL(t.DonorName)
+				t.DonorLogoURL = generatedAvatarURL(t.LedgerUserID, t.DonorName)
 			}
 		}
 	}
 }
 
-// generatedAvatarURL returns a deterministic UI Avatars URL for the given name.
-// Used as a fallback when no avatar is stored in the CF DB.
-func generatedAvatarURL(name string) string {
-	return fmt.Sprintf("https://ui-avatars.com/api/?name=%s&background=random&color=fff&size=128&bold=true",
-		url.QueryEscape(name))
+// avatarPalette is the set of background colors used for generated avatars.
+// Chosen to be visually distinct and accessible against white text.
+var avatarPalette = []string{"326CE5", "E6522C", "425CC7", "2E7D32", "6A1B9A", "00838F", "C62828", "558B2F"}
+
+// generatedAvatarURL returns a deterministic UI Avatars URL for the given id and name.
+// The background color is derived from a hash of id so the same entity always
+// gets the same color across requests.
+func generatedAvatarURL(id, name string) string {
+	h := fnv.New32a()
+	h.Write([]byte(id))
+	color := avatarPalette[h.Sum32()%uint32(len(avatarPalette))]
+	return fmt.Sprintf("https://ui-avatars.com/api/?name=%s&background=%s&color=fff&size=128&bold=true",
+		url.QueryEscape(name), color)
 }
 
 // Delete removes an initiative, enforcing owner authorisation.
