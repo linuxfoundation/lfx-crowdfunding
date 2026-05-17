@@ -10,8 +10,8 @@ SPDX-License-Identifier: MIT
     />
 
     <initiative-detail-donations-table
-      v-if="initiative.donationRecords?.length"
-      :donations="initiative.donationRecords"
+      :donations="donationRecords"
+      :is-loading="isLoadingDonations"
     />
 
     <initiative-detail-expenses-table
@@ -25,9 +25,13 @@ SPDX-License-Identifier: MIT
 import InitiativeDetailFinancialSummary from './initiative-detail-financial-summary.vue';
 import InitiativeDetailDonationsTable from './initiative-detail-donations-table.vue';
 import InitiativeDetailExpensesTable from './initiative-detail-expenses-table.vue';
-import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
+import type { InitiativeDetail, DonationRecord } from '#shared/types/initiative-detail.types';
 
-defineProps<{ initiative: InitiativeDetail }>();
+defineProps<{
+  initiative: InitiativeDetail;
+  donationRecords: DonationRecord[];
+  isLoadingDonations?: boolean;
+}>();
 </script>
 
 <script lang="ts">

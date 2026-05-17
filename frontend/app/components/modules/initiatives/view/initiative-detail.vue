@@ -36,6 +36,8 @@ SPDX-License-Identifier: MIT
               <initiative-detail-financials
                 v-else-if="activeTab === 'financials'"
                 :initiative="data"
+                :donation-records="donationRecords"
+                :is-loading-donations="transactionsLoading"
               />
               <initiative-detail-about
                 v-else-if="activeTab === 'about'"
@@ -77,7 +79,7 @@ import { useInitiativeTransactions } from '~/composables/initiatives/useInitiati
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useScroll from '~/utils/scroll';
-import type { RecentDonation } from '#shared/types/initiative-detail.types';
+import type { RecentDonation, DonationRecord } from '#shared/types/initiative-detail.types';
 
 const props = defineProps<{ initiativeId: string }>();
 
@@ -92,6 +94,18 @@ const recentDonations = computed<RecentDonation[]>(() =>
     donorType: t.donorType === 'organization' ? 'organization' : 'member',
     amountCents: t.amountCents,
     timeAgo: formatTimeAgo(t.date),
+  })),
+);
+
+const donationRecords = computed<DonationRecord[]>(() =>
+  (txnData.value?.data ?? []).map((t) => ({
+    id: t.id,
+    date: new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    supporterName: t.donorName ?? 'Anonymous',
+    supporterLogoUrl: t.donorLogoUrl,
+    supporterType: t.donorType === 'organization' ? 'organization' : 'member',
+    donorCategory: t.donorType === 'organization' ? 'Company' : 'Individual',
+    amountCents: t.amountCents,
   })),
 );
 
