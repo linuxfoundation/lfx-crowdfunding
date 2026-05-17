@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -20,9 +21,8 @@ import (
 var initiativeSvcTracer = otel.Tracer("initiatives-service")
 
 // InitiativeService orchestrates initiative reads and writes.
-// Financial data is sourced from initiative_ledger_stats (populated by the
-// ledger-stats-sync CronJob) — no live Ledger API calls on read paths.
-// The LedgerClient is retained for future use by the transactions tab.
+// Cached financials come from initiative_ledger_stats (CronJob); per-goal
+// donated/spent is enriched live from Ledger GetBalance on each detail request.
 type InitiativeService struct {
 	repo   domain.InitiativeRepository
 	ledger clients.LedgerClient
@@ -39,7 +39,8 @@ func NewInitiativeService(
 }
 
 // GetByID retrieves an initiative with goals, financials, and sponsors.
-// Per-goal donated/spent requires a live Ledger call — deferred until Ledger integration is wired.
+// Per-goal donated/spent is enriched from a live Ledger balance call; Ledger
+// unavailability is non-fatal — goals are returned with zero donated/spent.
 func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetByID")
 	defer span.End()
@@ -52,6 +53,7 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 	}
 
 	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
+	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
 }
 
@@ -84,7 +86,39 @@ func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models
 	}
 
 	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
+	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
+}
+
+// enrichGoalsFromLedger populates donated_cents/spent_cents on each goal by
+// matching the goal name (case-insensitive) against Ledger subTotal categories.
+// Ledger uses PascalCase keys ("Mentorship", "BugBounty"); our goal names are
+// lowercase ("mentorship", "bugbounty"). Errors are non-fatal — goals keep zero values.
+func enrichGoalsFromLedger(ctx context.Context, ledger clients.LedgerClient, initiative *models.Initiative) {
+	if len(initiative.Goals) == 0 {
+		return
+	}
+	balance, err := ledger.GetBalance(ctx, initiative.ID)
+	if err != nil || len(balance.SubTotals) == 0 {
+		return
+	}
+	// Build a normalised lookup: lowercase(category) → subTotal
+	lookup := make(map[string]*clients.LedgerSubTotal, len(balance.SubTotals))
+	for k, v := range balance.SubTotals {
+		lookup[strings.ToLower(k)] = v
+	}
+	for i := range initiative.Goals {
+		key := strings.ToLower(strings.ReplaceAll(initiative.Goals[i].Name, "_", ""))
+		if sub, ok := lookup[key]; ok {
+			donated := sub.Credit
+			spent := -sub.Debit
+			if spent < 0 {
+				spent = 0
+			}
+			initiative.Goals[i].DonatedCents = &donated
+			initiative.Goals[i].SpentCents = &spent
+		}
+	}
 }
 
 // List retrieves a filtered, paginated list of initiatives.

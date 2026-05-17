@@ -6,12 +6,16 @@ import type { MaybeRef } from 'vue';
 import { toValue } from 'vue';
 import type { TransactionList } from '#shared/types/transaction.types';
 
-export function useInitiativeTransactions(id: MaybeRef<string>, size = 5) {
+export function useInitiativeTransactions(
+  id: MaybeRef<string>,
+  type: 'donations' | 'expenses' = 'donations',
+  size = 5,
+) {
   return useQuery<TransactionList>({
-    queryKey: ['initiative-transactions', id] as const,
+    queryKey: ['initiative-transactions', id, type] as const,
     queryFn: () =>
       $fetch<TransactionList>(`/api/initiatives/${toValue(id)}/transactions`, {
-        params: { type: 'donations', size },
+        params: { type, size },
       }),
     enabled: computed(() => !!toValue(id)),
   });

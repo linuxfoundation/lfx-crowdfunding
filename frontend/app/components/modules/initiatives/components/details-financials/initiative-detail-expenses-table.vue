@@ -6,7 +6,37 @@ SPDX-License-Identifier: MIT
   <lfx-card class="p-6 flex flex-col gap-6">
     <p class="text-base font-semibold text-neutral-900 leading-6">Expense breakdown</p>
 
-    <table class="w-full">
+    <!-- Loading skeleton -->
+    <div
+      v-if="isLoading"
+      class="flex flex-col gap-4"
+    >
+      <div
+        v-for="n in 5"
+        :key="n"
+        class="flex items-center gap-3 border-t border-neutral-200 pt-4"
+      >
+        <lfx-skeleton
+          height="0.875rem"
+          width="15%"
+        />
+        <lfx-skeleton
+          height="0.875rem"
+          width="55%"
+          class="ml-3"
+        />
+        <lfx-skeleton
+          height="0.875rem"
+          width="15%"
+          class="ml-auto"
+        />
+      </div>
+    </div>
+
+    <table
+      v-else
+      class="w-full"
+    >
       <thead>
         <tr>
           <th class="text-xs font-medium text-neutral-500 text-left py-2 w-[140px] md:visible hidden">Date</th>
@@ -49,8 +79,9 @@ SPDX-License-Identifier: MIT
 import type { ExpenseRecord } from '#shared/types/initiative-detail.types';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxTag from '~/components/uikit/tag/tag.vue';
+import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 
-defineProps<{ expenses: ExpenseRecord[] }>();
+defineProps<{ expenses: ExpenseRecord[]; isLoading?: boolean }>();
 
 const formatAmount = (cents: number): string => {
   const dollars = cents / 100;

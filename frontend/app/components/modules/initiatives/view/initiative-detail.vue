@@ -38,6 +38,8 @@ SPDX-License-Identifier: MIT
                 :initiative="data"
                 :donation-records="donationRecords"
                 :is-loading-donations="transactionsLoading"
+                :expense-records="expenseRecords"
+                :is-loading-expenses="expensesLoading"
               />
               <initiative-detail-about
                 v-else-if="activeTab === 'about'"
@@ -79,12 +81,20 @@ import { useInitiativeTransactions } from '~/composables/initiatives/useInitiati
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useScroll from '~/utils/scroll';
-import type { RecentDonation, DonationRecord } from '#shared/types/initiative-detail.types';
+import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/types/initiative-detail.types';
 
 const props = defineProps<{ initiativeId: string }>();
 
 const { data, isLoading, error } = useInitiative(computed(() => props.initiativeId));
-const { data: txnData, isLoading: transactionsLoading } = useInitiativeTransactions(computed(() => props.initiativeId));
+const { data: txnData, isLoading: transactionsLoading } = useInitiativeTransactions(
+  computed(() => props.initiativeId),
+  'donations',
+);
+const { data: expenseData, isLoading: expensesLoading } = useInitiativeTransactions(
+  computed(() => props.initiativeId),
+  'expenses',
+  10,
+);
 
 const recentDonations = computed<RecentDonation[]>(() =>
   (txnData.value?.data ?? []).map((t) => ({
@@ -105,6 +115,16 @@ const donationRecords = computed<DonationRecord[]>(() =>
     supporterLogoUrl: t.donorLogoUrl,
     supporterType: t.donorType === 'organization' ? 'organization' : 'member',
     donorCategory: t.donorType === 'organization' ? 'Company' : 'Individual',
+    amountCents: t.amountCents,
+  })),
+);
+
+const expenseRecords = computed<ExpenseRecord[]>(() =>
+  (expenseData.value?.data ?? []).map((t) => ({
+    id: t.id,
+    date: new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    category: t.category ?? 'Other',
+    description: t.category ?? 'Other',
     amountCents: t.amountCents,
   })),
 );

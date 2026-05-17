@@ -9,6 +9,46 @@ Questions that must be answered before or during implementation. Update status a
 
 ## Open
 
+### OQ-20: GitHub URL storage — where does it live?
+
+**Status:** Open
+**Owner:** Michal / PM
+
+**Question:** The initiative overview header shows a "GitHub" button linking to the project's GitHub org/repo. Currently the GitHub URL is stored in `initiative_custom_websites` (name = 'GitHub'), which is a freeform table not surfaced by the API. The `initiatives` table has no dedicated `github_url` column.
+
+Options:
+1. **Add `github_url` column to `initiatives`** — clean, typed, indexed, matches the prominence of the field in the UI.
+2. **Query `initiative_custom_websites` by name = 'GitHub'** — no schema change, but fragile (case-sensitive name match, no uniqueness constraint).
+3. **Keep it in `initiative_custom_websites` and add a unique partial index** — compromise; still requires a JOIN on every initiative detail fetch.
+
+The old DynamoDB model stored it under `projectDetails.GithubURL` (projects) and had no equivalent on entities. A dedicated column likely makes the most sense for a field this prominent, but needs PM confirmation on whether entities (events, mentorship programs) also have GitHub URLs.
+
+**Action:** PM to confirm whether GitHub URL applies to all initiative types or projects only. Then decide schema approach.
+
+**Blocking:** GitHub button in the initiative header is always hidden.
+
+---
+
+### OQ-21: Ledger txnCategory ↔ CF goal name — case and spelling mismatch
+
+**Status:** Open
+**Owner:** Michal / Lewis
+
+**Question:** The Ledger `/balance/{id}` response returns `subTotals` keyed by PascalCase category names (`"Mentorship"`, `"Development"`, `"BugBounty"`, `"Uncategorised"`). The Ledger `/transactions/` response returns `txnCategory` in lowercase (`"mentorship"`, `"other"`). Our `initiative_goals` table uses the `name` column to identify goals (e.g. `"mentorship"`, `"development"`, `"travel"`).
+
+The matching logic needed to populate per-goal `donated_cents`/`spent_cents` from Ledger `subTotals` must normalise casing. This is implemented with a case-insensitive match (lowercasing both sides) — but there are still potential mismatches:
+
+- Ledger uses `"BugBounty"` (no space); CF uses `"bug_bounty"` or `"bugbounty"` depending on how goals were created
+- Ledger uses `"Uncategorised"` for transactions with no category set; these cannot map to any CF goal
+- Ledger uses `"Mentee"` in some contexts, CF uses `"mentee"` as goal name — needs verification
+- Future goal names added via the UI must match exactly one Ledger category or their subTotal will always be zero
+
+**Action:** Lewis to confirm the canonical list of Ledger `txnCategory` values and whether they are stable. CF to document the mapping table and enforce it at goal creation time.
+
+**Blocking:** Per-goal donated/spent donut charts on the initiative overview screen.
+
+---
+
 ### OQ-7: Reimbursement Service OpenSearch dependency — long-term plan
 
 **Status:** Partially resolved — Phase 1 plan confirmed; Phase 2 blocked on RS moving to K8s.
