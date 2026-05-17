@@ -460,6 +460,73 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	return i, nil
 }
 
+// GetUsersByIDs returns a map of Auth0 user_id → User for all IDs provided.
+// Missing IDs are absent from the map.
+func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetUsersByIDs")
+	defer span.End()
+
+	result := make(map[string]models.User, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, user_id, name, avatar_url FROM users WHERE user_id = ANY($1)`
+	rows, err := r.pool.Query(ctx, q, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get users by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var u models.User
+		var name, avatarURL *string
+		if err := rows.Scan(&u.ID, &u.UserID, &name, &avatarURL); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		if name != nil {
+			u.Name = *name
+		}
+		if avatarURL != nil {
+			u.AvatarURL = *avatarURL
+		}
+		result[u.UserID] = u
+	}
+	return result, rows.Err()
+}
+
+// GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs provided.
+// Missing IDs are absent from the map.
+func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetOrganizationsByIDs")
+	defer span.End()
+
+	result := make(map[string]models.Organization, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, name, avatar_url FROM organizations WHERE id = ANY($1::uuid[])`
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		return nil, fmt.Errorf("get organizations by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var o models.Organization
+		var avatarURL *string
+		if err := rows.Scan(&o.ID, &o.Name, &avatarURL); err != nil {
+			return nil, fmt.Errorf("scan organization: %w", err)
+		}
+		if avatarURL != nil {
+			o.AvatarURL = *avatarURL
+		}
+		result[o.ID] = o
+	}
+	return result, rows.Err()
+}
+
 func derefString(s *string) string {
 	if s == nil {
 		return ""

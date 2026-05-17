@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -62,10 +63,18 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	sponsors := make([]models.Sponsor, 0, len(list.Orgs)+len(list.Individuals))
 	for _, o := range list.Orgs {
-		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: o.AvatarURL, TotalCents: o.Total})
+		avatarURL := o.AvatarURL
+		if avatarURL == "" {
+			avatarURL = generatedAvatarURL(o.Name)
+		}
+		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: avatarURL, TotalCents: o.Total})
 	}
 	for _, u := range list.Individuals {
-		sponsors = append(sponsors, models.Sponsor{ID: u.ID, Name: u.Name, AvatarURL: u.AvatarURL, TotalCents: u.Total})
+		avatarURL := u.AvatarURL
+		if avatarURL == "" {
+			avatarURL = generatedAvatarURL(u.Name)
+		}
+		sponsors = append(sponsors, models.Sponsor{ID: u.ID, Name: u.Name, AvatarURL: avatarURL, TotalCents: u.Total})
 	}
 	slices.SortFunc(sponsors, func(a, b models.Sponsor) int {
 		return cmp.Compare(b.TotalCents, a.TotalCents) // descending
@@ -226,18 +235,79 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 	return updated, nil
 }
 
-// GetTransactions proxies a paginated transaction request to the Ledger service.
-// The initiative must exist; its ID is looked up by slug or UUID before calling Ledger.
+// GetTransactions fetches transactions from Ledger and enriches each with donor
+// name and avatar from the CF DB (users / organizations tables).
+// When no CF DB record matches, a generated avatar URL is returned as fallback.
 func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, size, from int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
 	defer span.End()
 
-	return s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
 		ProjectID: initiativeID,
 		TxnType:   txnType,
 		Size:      size,
 		From:      from,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	return list, nil
+}
+
+// enrichTransactionsFromDB batch-looks up users and organizations from the CF DB
+// and merges name + avatar_url onto each transaction.
+// Falls back to a deterministic generated avatar when no DB record is found.
+func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeRepository, txns []models.Transaction) {
+	// Collect unique IDs to look up.
+	userIDs := make([]string, 0, len(txns))
+	orgIDs := make([]string, 0, len(txns))
+	seenUsers := map[string]bool{}
+	seenOrgs := map[string]bool{}
+	for _, t := range txns {
+		if t.LedgerUserID != "" && !seenUsers[t.LedgerUserID] {
+			userIDs = append(userIDs, t.LedgerUserID)
+			seenUsers[t.LedgerUserID] = true
+		}
+		if t.LedgerOrgID != "" && !seenOrgs[t.LedgerOrgID] {
+			orgIDs = append(orgIDs, t.LedgerOrgID)
+			seenOrgs[t.LedgerOrgID] = true
+		}
+	}
+
+	users, _ := repo.GetUsersByIDs(ctx, userIDs)
+	orgs, _ := repo.GetOrganizationsByIDs(ctx, orgIDs)
+
+	for i := range txns {
+		t := &txns[i]
+		if t.LedgerOrgID != "" {
+			if org, ok := orgs[t.LedgerOrgID]; ok {
+				t.DonorName = org.Name
+				t.DonorLogoURL = org.AvatarURL
+			}
+			if t.DonorLogoURL == "" {
+				t.DonorLogoURL = generatedAvatarURL(t.DonorName)
+			}
+		} else if t.LedgerUserID != "" {
+			if user, ok := users[t.LedgerUserID]; ok {
+				if user.Name != "" {
+					t.DonorName = user.Name
+				}
+				t.DonorLogoURL = user.AvatarURL
+			}
+			if t.DonorLogoURL == "" {
+				t.DonorLogoURL = generatedAvatarURL(t.DonorName)
+			}
+		}
+	}
+}
+
+// generatedAvatarURL returns a deterministic UI Avatars URL for the given name.
+// Used as a fallback when no avatar is stored in the CF DB.
+func generatedAvatarURL(name string) string {
+	return fmt.Sprintf("https://ui-avatars.com/api/?name=%s&background=random&color=fff&size=128&bold=true",
+		url.QueryEscape(name))
 }
 
 // Delete removes an initiative, enforcing owner authorisation.

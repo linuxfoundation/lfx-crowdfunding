@@ -18,6 +18,14 @@ type InitiativeRepository interface {
 	Create(ctx context.Context, initiative *models.Initiative) (*models.Initiative, error)
 	Update(ctx context.Context, initiative *models.Initiative) (*models.Initiative, error)
 	Delete(ctx context.Context, id string) error
+
+	// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
+	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
+	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
+
+	// GetOrganizationsByIDs returns a map of org UUID → Organization for the given IDs.
+	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
+	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
 }
 
 // DonationRepository defines persistence operations for donations.

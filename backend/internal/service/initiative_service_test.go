@@ -37,6 +37,12 @@ func (m *mockInitiativeRepo) Update(_ context.Context, i *models.Initiative) (*m
 	return i, nil
 }
 func (m *mockInitiativeRepo) Delete(_ context.Context, _ string) error { return nil }
+func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	return map[string]models.User{}, nil
+}
+func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
+	return map[string]models.Organization{}, nil
+}
 
 type mockLedgerClient struct {
 	balance *clients.LedgerBalance

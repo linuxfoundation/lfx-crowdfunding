@@ -16,7 +16,15 @@ INSERT INTO users (id, user_id, email, given_name, family_name, name, avatar_url
   ('a0000000-0000-0000-0000-000000000001', 'auth0|dev-user-001', 'alice@example.com',  'Alice',  'Smith',   'Alice Smith',   'https://i.pravatar.cc/150?u=alice'),
   ('a0000000-0000-0000-0000-000000000002', 'auth0|dev-user-002', 'bob@example.com',    'Bob',    'Johnson', 'Bob Johnson',   'https://i.pravatar.cc/150?u=bob'),
   ('a0000000-0000-0000-0000-000000000003', 'auth0|dev-user-003', 'carol@example.com',  'Carol',  'Williams','Carol Williams','https://i.pravatar.cc/150?u=carol'),
-  ('a0000000-0000-0000-0000-000000000004', 'auth0|dev-user-004', 'dave@example.com',   'Dave',   'Brown',   'Dave Brown',    'https://i.pravatar.cc/150?u=dave')
+  ('a0000000-0000-0000-0000-000000000004', 'auth0|dev-user-004', 'dave@example.com',   'Dave',   'Brown',   'Dave Brown',    'https://i.pravatar.cc/150?u=dave'),
+  -- Real Ledger dev userIDs — match auth0 subjects in Ledger transactions so JOIN returns real data.
+  ('a0000000-0000-0000-0000-000000000010', 'auth0|lewisoj',        'lewisojile01@gmail.com',              'Lewis',  'Ojile',  'Lewis Ojile',   'https://i.pravatar.cc/150?u=lewisoj'),
+  ('a0000000-0000-0000-0000-000000000011', 'auth0|lewisojile',     'lewisojile01@gmail.com',              'Lewis',  'Ojile',  'Lewis Ojile',   'https://i.pravatar.cc/150?u=lewisojile'),
+  ('a0000000-0000-0000-0000-000000000012', 'auth0|kelo',           'lojile@contractor.linuxfoundation.org','Kelo',  'Ojile',  'Kelo Ojile',    'https://i.pravatar.cc/150?u=kelo'),
+  ('a0000000-0000-0000-0000-000000000013', 'auth0|simk68',         'simritik+068@proximabiz.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk68'),
+  ('a0000000-0000-0000-0000-000000000014', 'auth0|simk61',         'simritik+061@proximabiz.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk61'),
+  ('a0000000-0000-0000-0000-000000000015', 'auth0|simk.ment.admin','simritik+admin@proximabiz.com',       'Simrit', 'Admin',  'Simrit Admin',  'https://i.pravatar.cc/150?u=simkadmin'),
+  ('a0000000-0000-0000-0000-000000000016', 'auth0|simk43',         'simritik+043@proximabiz.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk43')
 ON CONFLICT (user_id) DO NOTHING;
 
 -- ============================================
@@ -24,7 +32,9 @@ ON CONFLICT (user_id) DO NOTHING;
 -- ============================================
 INSERT INTO organizations (id, owner_id, name, avatar_url, status) VALUES
   ('b0000000-0000-0000-0000-000000000001', 'auth0|dev-user-001', 'Acme Corp',       'https://i.pravatar.cc/150?u=acme',  'Active'),
-  ('b0000000-0000-0000-0000-000000000002', 'auth0|dev-user-002', 'Open Source Inc', 'https://i.pravatar.cc/150?u=ossinc','Active')
+  ('b0000000-0000-0000-0000-000000000002', 'auth0|dev-user-002', 'Open Source Inc', 'https://i.pravatar.cc/150?u=ossinc','Active'),
+  -- Real Ledger dev org UUID — matches organizationID on Kubernetes transactions from auth0|kelo.
+  ('09b68fe3-12ae-4a7f-b021-7b522e87ae3d', 'auth0|kelo',         'Google Cloud',    'https://logo.clearbit.com/cloud.google.com', 'Active')
 ON CONFLICT DO NOTHING;
 
 -- ============================================

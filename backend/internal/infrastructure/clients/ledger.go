@@ -136,14 +136,16 @@ func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) 
 
 // ledgerTransactionRaw is one row from the Ledger GET /transactions/ response (Postgres-backed).
 type ledgerTransactionRaw struct {
-	TxnID        string `json:"txnID"`
-	ProjectID    string `json:"projectID"`
-	UserID       string `json:"userID"`
-	AccountEmail string `json:"accountEmail"`
-	TxnType      string `json:"txnType"`   // "credit" | "debit"
-	TxnCategory  string `json:"txnCategory"`
-	Amount       int64  `json:"amount"`    // cents
-	TxnDate      int64  `json:"txnDate"`   // unix seconds
+	TxnID          string `json:"txnID"`
+	ProjectID      string `json:"projectID"`
+	UserID         string `json:"userID"`
+	OrganizationID string `json:"organizationID"`
+	AccountEmail   string `json:"accountEmail"`
+	SubmitterName  string `json:"submitterName"`
+	TxnType        string `json:"txnType"`      // "credit" | "debit"
+	TxnCategory    string `json:"txnCategory"`
+	Amount         int64  `json:"amount"`       // cents
+	TxnDate        int64  `json:"txnDate"`      // unix seconds
 }
 
 type ledgerTransactionsResponse struct {
@@ -206,24 +208,25 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 		if raw.TxnType == "debit" {
 			txnType = "reimbursement"
 		}
-		// Derive a display name from userID (e.g. "auth0|aj.maintainer" → "aj.maintainer")
-		donorName := raw.AccountEmail
+		// Best-effort display name from Ledger data; will be overwritten by CF DB lookup in service.
+		donorName := raw.SubmitterName
 		if donorName == "" {
-			parts := strings.SplitN(raw.UserID, "|", 2)
-			if len(parts) == 2 {
-				donorName = parts[1]
-			} else {
-				donorName = raw.UserID
-			}
+			donorName = raw.AccountEmail
+		}
+		donorType := "individual"
+		if raw.OrganizationID != "" {
+			donorType = "organization"
 		}
 		txns = append(txns, models.Transaction{
-			ID:          raw.TxnID,
-			Type:        txnType,
-			AmountCents: raw.Amount,
-			Date:        time.Unix(raw.TxnDate, 0).UTC(),
-			Category:    raw.TxnCategory,
-			DonorName:   donorName,
-			DonorType:   "individual", // Postgres endpoint doesn't distinguish org vs individual
+			ID:           raw.TxnID,
+			Type:         txnType,
+			AmountCents:  raw.Amount,
+			Date:         time.Unix(raw.TxnDate, 0).UTC(),
+			Category:     raw.TxnCategory,
+			DonorName:    donorName,
+			DonorType:    donorType,
+			LedgerUserID: raw.UserID,
+			LedgerOrgID:  raw.OrganizationID,
 		})
 	}
 

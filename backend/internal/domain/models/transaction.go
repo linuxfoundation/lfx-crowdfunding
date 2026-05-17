@@ -18,6 +18,10 @@ type Transaction struct {
 	DonorType     string `json:"donor_type,omitempty"` // "organization" | "individual"
 	DonorLogoURL  string `json:"donor_logo_url,omitempty"`
 	DonorUsername string `json:"donor_username,omitempty"`
+
+	// Internal: used by the service to look up CF DB records. Not serialised.
+	LedgerUserID string `json:"-"`
+	LedgerOrgID  string `json:"-"`
 }
 
 // TransactionList wraps a paginated list of transactions.
