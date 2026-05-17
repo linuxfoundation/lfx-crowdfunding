@@ -195,6 +195,20 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 	return updated, nil
 }
 
+// GetTransactions proxies a paginated transaction request to the Ledger service.
+// The initiative must exist; its ID is looked up by slug or UUID before calling Ledger.
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, size, from int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
+	defer span.End()
+
+	return s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		ProjectID: initiativeID,
+		TxnType:   txnType,
+		Size:      size,
+		From:      from,
+	})
+}
+
 // Delete removes an initiative, enforcing owner authorisation.
 func (s *InitiativeService) Delete(ctx context.Context, id, callerID string) error {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.Delete")

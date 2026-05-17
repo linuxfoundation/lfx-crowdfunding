@@ -49,6 +49,9 @@ func (m *mockLedgerClient) GetBalance(_ context.Context, _ string) (*clients.Led
 func (m *mockLedgerClient) GetAllBalances(_ context.Context) ([]models.LedgerRawBalance, error) {
 	return nil, nil
 }
+func (m *mockLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
+	return nil, nil
+}
 
 type mockStripeClient struct{}
 

@@ -126,6 +126,46 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, updated)
 }
 
+// GetTransactions handles GET /v1/initiatives/{id}/transactions
+// Accepts ?type=donations|expenses&size=N&from=N
+// Resolves the initiative by slug or UUID to obtain its ID before calling Ledger.
+func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
+	value := chi.URLParam(r, "id")
+	q := r.URL.Query()
+
+	txnTypeParam := strings.ToLower(q.Get("type"))
+	var ledgerTxnType string
+	switch txnTypeParam {
+	case "donations":
+		ledgerTxnType = "donation"
+	case "expenses":
+		ledgerTxnType = "reimbursement"
+	}
+
+	size, _ := strconv.Atoi(q.Get("size"))
+	from, _ := strconv.Atoi(q.Get("from"))
+
+	// Resolve initiative to get its UUID (Ledger uses UUID as projectId).
+	var initiativeID string
+	if uuidPattern.MatchString(value) {
+		initiativeID = value
+	} else {
+		initiative, err := h.svc.GetBySlug(r.Context(), value)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = initiative.ID
+	}
+
+	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, size, from)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, list)
+}
+
 // Delete handles DELETE /v1/initiatives/{id} — requires JWT.
 func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,16 +38,27 @@ type LedgerBalance struct {
 	SubTotals           map[string]*LedgerSubTotal // keyed by txnCategory as returned by Ledger
 }
 
+// TransactionFilter holds query parameters for the Ledger paginate endpoint.
+type TransactionFilter struct {
+	ProjectID string
+	TxnType   string // "donation" | "reimbursement" — empty = all
+	Size      int    // page size; 0 defaults to 10
+	From      int    // offset for pagination
+}
+
 // LedgerClient is the interface consumed by the service layer and the
 // ledger-stats-sync CronJob.
 type LedgerClient interface {
 	// GetBalance fetches the current balance for a single initiative.
-	// Used by the transactions tab.
 	GetBalance(ctx context.Context, initiativeID string) (*LedgerBalance, error)
 
 	// GetAllBalances fetches the full bulk balance snapshot from the Ledger
 	// service in one HTTP call.  Used exclusively by ledger-stats-sync.
 	GetAllBalances(ctx context.Context) ([]models.LedgerRawBalance, error)
+
+	// GetTransactions returns a paginated list of transactions for an initiative
+	// from the Ledger service's Elasticsearch-backed paginate endpoint.
+	GetTransactions(ctx context.Context, filter TransactionFilter) (*models.TransactionList, error)
 }
 
 // LedgerConfig holds Ledger service connection settings.
@@ -119,6 +131,90 @@ func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) 
 		TotalDisbursedCents: disbursed,
 		AvailableCents:      resp.AvailableCents,
 		SubTotals:           subTotals,
+	}, nil
+}
+
+// ledgerTransactionHit is one document from the Ledger paginate response.
+type ledgerTransactionHit struct {
+	ID        string `json:"_id"`
+	Source    struct {
+		TxnType     string  `json:"txnType"`
+		Amount      float64 `json:"amount"`
+		TxnDate     string  `json:"txnDate"`
+		TxnCategory string  `json:"txnCategory"`
+		Donor       struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"` // "organization" | "individual"
+			LogoURL  string `json:"logoUrl"`
+			Username string `json:"username"`
+		} `json:"donor"`
+	} `json:"_source"`
+}
+
+type ledgerPaginateResponse struct {
+	Total struct {
+		Value int `json:"value"`
+	} `json:"total"`
+	Hits []ledgerTransactionHit `json:"hits"`
+}
+
+// GetTransactions fetches a paginated list of transactions from the Ledger
+// service's Elasticsearch-backed paginate endpoint.
+func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter TransactionFilter) (*models.TransactionList, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetTransactions")
+	defer span.End()
+	span.SetAttributes(attribute.String("ledger.project_id", filter.ProjectID))
+
+	size := filter.Size
+	if size <= 0 {
+		size = 10
+	}
+
+	q := url.Values{}
+	q.Set("projectId", filter.ProjectID)
+	q.Set("size", fmt.Sprintf("%d", size))
+	q.Set("from", fmt.Sprintf("%d", filter.From))
+	if filter.TxnType != "" {
+		q.Set("txnType", filter.TxnType)
+	}
+
+	endpoint := fmt.Sprintf("%s/transactions/v1/paginate?%s", c.baseURL, q.Encode())
+
+	var resp ledgerPaginateResponse
+	err := c.httpClient.GetJSON(ctx, endpoint, nil, &resp, func(r *http.Response) error {
+		if r.StatusCode == http.StatusNotFound {
+			return domain.ErrInitiativeNotFound
+		}
+		return fmt.Errorf("ledger paginate returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger transactions: %w", err)
+	}
+
+	txns := make([]models.Transaction, 0, len(resp.Hits))
+	for _, hit := range resp.Hits {
+		src := hit.Source
+		amountCents := int64(src.Amount * 100)
+		date, _ := time.Parse(time.RFC3339, src.TxnDate)
+		txns = append(txns, models.Transaction{
+			ID:            hit.ID,
+			Type:          src.TxnType,
+			AmountCents:   amountCents,
+			Date:          date,
+			Category:      src.TxnCategory,
+			DonorName:     src.Donor.Name,
+			DonorType:     src.Donor.Type,
+			DonorLogoURL:  src.Donor.LogoURL,
+			DonorUsername: src.Donor.Username,
+		})
+	}
+
+	return &models.TransactionList{
+		Data:       txns,
+		TotalCount: resp.Total.Value,
+		From:       filter.From,
+		Size:       size,
 	}, nil
 }
 

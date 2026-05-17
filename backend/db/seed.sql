@@ -29,6 +29,8 @@ ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Initiatives — Projects
+-- Real Ledger project IDs so ledger-stats-sync can pull live financials.
+-- IDs sourced from GET /balance on the dev Ledger instance.
 -- ============================================
 INSERT INTO initiatives (
   id, initiative_type, source_dynamo_table, owner_id,
@@ -37,27 +39,27 @@ INSERT INTO initiatives (
   cii_project_id, stacks_identifier
 ) VALUES
   (
-    'c0000000-0000-0000-0000-000000000001', 'project', 'projects', 'auth0|dev-user-001',
+    'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'project', 'projects', 'auth0|dev-user-001',
     'Kubernetes', 'kubernetes', 'published', 'Technology',
     'Production-Grade Container Orchestration — automate deployment, scaling, and management of containerized applications.',
     '#326CE5', 'https://kubernetes.io/images/favicon.png', 'https://kubernetes.io',
-    'plan_dev_kubernetes', 'prod_dev_kubernetes', 4850000, true,
+    'plan_dev_kubernetes', 'prod_dev_kubernetes', 478500, true,
     'cii-001', 'kubernetes'
   ),
   (
-    'c0000000-0000-0000-0000-000000000002', 'project', 'projects', 'auth0|dev-user-002',
+    '57135156-cb73-4896-bbd3-8d503b568b3b', 'project', 'projects', 'auth0|dev-user-002',
     'Prometheus', 'prometheus', 'published', 'Technology',
     'An open-source systems monitoring and alerting toolkit originally built at SoundCloud.',
     '#E6522C', 'https://prometheus.io/assets/favicons/favicon.ico', 'https://prometheus.io',
-    'plan_dev_prometheus', 'prod_dev_prometheus', 1230000, true,
+    'plan_dev_prometheus', 'prod_dev_prometheus', 99000000, true,
     'cii-002', 'prometheus'
   ),
   (
-    'c0000000-0000-0000-0000-000000000003', 'project', 'projects', 'auth0|dev-user-003',
-    'OpenTelemetry', 'opentelemetry', 'Pending', 'Technology',
+    '5f478c13-d72b-4f25-960a-a09249a5fc16', 'project', 'projects', 'auth0|dev-user-003',
+    'OpenTelemetry', 'opentelemetry', 'published', 'Technology',
     'High-quality, ubiquitous, and portable telemetry to enable effective observability.',
     '#425CC7', NULL, 'https://opentelemetry.io',
-    NULL, NULL, 0, false,
+    NULL, NULL, 156500, true,
     NULL, 'opentelemetry'
   )
 ON CONFLICT DO NOTHING;
@@ -169,12 +171,12 @@ ON CONFLICT DO NOTHING;
 -- Initiative Goals
 -- ============================================
 INSERT INTO initiative_goals (initiative_id, name, amount_in_cents, allocation, repo_link, sort_order) VALUES
-  ('c0000000-0000-0000-0000-000000000001', 'development',   2000000, 'Core development work',   'https://github.com/kubernetes/kubernetes', 0),
-  ('c0000000-0000-0000-0000-000000000001', 'documentation', 500000,  'Docs and tutorials',       NULL, 1),
-  ('c0000000-0000-0000-0000-000000000001', 'travel',        300000,  'Conference travel grants', NULL, 2),
-  ('c0000000-0000-0000-0000-000000000001', 'mentee',        800000,  'Mentorship stipends',      NULL, 3),
-  ('c0000000-0000-0000-0000-000000000002', 'development',   800000,  'Exporter development',    'https://github.com/prometheus/prometheus', 0),
-  ('c0000000-0000-0000-0000-000000000002', 'marketing',     250000,  'Community outreach',       NULL, 1),
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'development',   2000000, 'Core development work',   'https://github.com/kubernetes/kubernetes', 0),
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'documentation', 500000,  'Docs and tutorials',       NULL, 1),
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'travel',        300000,  'Conference travel grants', NULL, 2),
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'mentee',        800000,  'Mentorship stipends',      NULL, 3),
+  ('57135156-cb73-4896-bbd3-8d503b568b3b', 'development',   800000,  'Exporter development',    'https://github.com/prometheus/prometheus', 0),
+  ('57135156-cb73-4896-bbd3-8d503b568b3b', 'marketing',     250000,  'Community outreach',       NULL, 1),
   ('c0000000-0000-0000-0000-000000000020', 'stipends',      600000,  'Mentee stipends',          NULL, 0),
   ('c0000000-0000-0000-0000-000000000020', 'honorariums',   200000,  'Mentor honorariums',       NULL, 1),
   ('c0000000-0000-0000-0000-000000000021', 'stipends',      400000,  'Mentee stipends',          NULL, 0),
@@ -196,33 +198,33 @@ ON CONFLICT (initiative_id, name) DO NOTHING;
 -- Initiative Beneficiaries
 -- ============================================
 INSERT INTO initiative_beneficiaries (initiative_id, name, email) VALUES
-  ('c0000000-0000-0000-0000-000000000001', 'Alice Smith',   'alice@example.com'),
-  ('c0000000-0000-0000-0000-000000000001', 'Bob Johnson',   'bob@example.com'),
-  ('c0000000-0000-0000-0000-000000000002', 'Carol Williams','carol@example.com')
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Alice Smith',   'alice@example.com'),
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Bob Johnson',   'bob@example.com'),
+  ('57135156-cb73-4896-bbd3-8d503b568b3b', 'Carol Williams','carol@example.com')
 ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Initiative Custom Websites
 -- ============================================
 INSERT INTO initiative_custom_websites (initiative_id, name, url) VALUES
-  ('c0000000-0000-0000-0000-000000000001', 'GitHub',     'https://github.com/kubernetes'),
-  ('c0000000-0000-0000-0000-000000000001', 'Slack',      'https://slack.k8s.io'),
-  ('c0000000-0000-0000-0000-000000000002', 'GitHub',     'https://github.com/prometheus')
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'GitHub',     'https://github.com/kubernetes'),
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Slack',      'https://slack.k8s.io'),
+  ('57135156-cb73-4896-bbd3-8d503b568b3b', 'GitHub',     'https://github.com/prometheus')
 ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Initiative Contributors
 -- ============================================
 INSERT INTO initiative_contributors (initiative_id, name, email) VALUES
-  ('c0000000-0000-0000-0000-000000000001', 'Dave Brown',  'dave@example.com'),
-  ('c0000000-0000-0000-0000-000000000002', 'Alice Smith', 'alice@example.com')
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Dave Brown',  'dave@example.com'),
+  ('57135156-cb73-4896-bbd3-8d503b568b3b', 'Alice Smith', 'alice@example.com')
 ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Initiative Mentors
 -- ============================================
 INSERT INTO initiative_mentors (initiative_id, name, email, avatar_url, introduction) VALUES
-  ('c0000000-0000-0000-0000-000000000001', 'Bob Johnson', 'bob@example.com',
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Bob Johnson', 'bob@example.com',
    'https://i.pravatar.cc/150?u=bob',
    'Kubernetes contributor since 2016. Focused on scheduler and autoscaler.'),
   ('c0000000-0000-0000-0000-000000000020', 'Carol Williams', 'carol@example.com',
@@ -237,9 +239,9 @@ ON CONFLICT DO NOTHING;
 -- Initiative GitHub Stats
 -- ============================================
 INSERT INTO initiative_github_stats (initiative_id, forks, stars, open_issues) VALUES
-  ('c0000000-0000-0000-0000-000000000001', 41200, 108000, 2300),
-  ('c0000000-0000-0000-0000-000000000002', 9800,  54000,  780),
-  ('c0000000-0000-0000-0000-000000000003', 3100,  21000,  410),
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 41200, 108000, 2300),
+  ('57135156-cb73-4896-bbd3-8d503b568b3b', 9800,  54000,  780),
+  ('5f478c13-d72b-4f25-960a-a09249a5fc16', 3100,  21000,  410),
   ('c0000000-0000-0000-0000-000000000021', 2800,  12000,  190),
   ('c0000000-0000-0000-0000-000000000030', 41200, 108000, 2300)
 ON CONFLICT (initiative_id) DO UPDATE
@@ -252,8 +254,11 @@ INSERT INTO initiative_ledger_stats (
   initiative_id, total_raised_cents, total_debited_cents,
   total_balance_cents, available_balance_cents, fee_balance_cents, supporters
 ) VALUES
-  ('c0000000-0000-0000-0000-000000000001', 5200000,  350000, 4850000, 4700000, 150000, 312),
-  ('c0000000-0000-0000-0000-000000000002', 1400000,  170000, 1230000, 1180000,  50000,  87),
+  -- Real Ledger data (synced from dev Ledger instance)
+  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b',  478500,       0,  478500,  478500,      0,   6),
+  ('57135156-cb73-4896-bbd3-8d503b568b3b', 99000000,      0, 99000000, 99000000,    0,   2),
+  ('5f478c13-d72b-4f25-960a-a09249a5fc16',  156500,       0,  156500,  156500,      0,   1),
+  -- Fabricated data for non-Ledger initiatives
   ('c0000000-0000-0000-0000-000000000010',  800000,   50000,  750000,  720000,  30000,  44),
   ('c0000000-0000-0000-0000-000000000011',  350000,   30000,  320000,  305000,  15000,  28),
   ('c0000000-0000-0000-0000-000000000020', 1050000,   70000,  980000,  940000,  40000,  63),
@@ -290,19 +295,19 @@ INSERT INTO donations (
 ) VALUES
   (
     'd0000000-0000-0000-0000-000000000001',
-    'auth0|dev-user-002', 'c0000000-0000-0000-0000-000000000001', NULL,
+    'auth0|dev-user-002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
     'development', 10000, 'card', 'Processed', 'ch_dev_001',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000002',
-    'auth0|dev-user-003', 'c0000000-0000-0000-0000-000000000001', NULL,
+    'auth0|dev-user-003', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
     'travel', 5000, 'card', 'Processed', 'ch_dev_002',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000003',
-    'auth0|dev-user-004', 'c0000000-0000-0000-0000-000000000002', NULL,
+    'auth0|dev-user-004', '57135156-cb73-4896-bbd3-8d503b568b3b', NULL,
     'development', 2500, 'card', 'Processed', 'ch_dev_003',
     '{"initiative_name": "Prometheus", "initiative_slug": "prometheus"}'
   ),
@@ -314,7 +319,7 @@ INSERT INTO donations (
   ),
   (
     'd0000000-0000-0000-0000-000000000005',
-    'auth0|dev-user-002', 'c0000000-0000-0000-0000-000000000001', NULL,
+    'auth0|dev-user-002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
     'mentee', 7500, 'card', 'Pending', NULL,
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
@@ -349,21 +354,21 @@ INSERT INTO subscriptions (
 ) VALUES
   (
     'e0000000-0000-0000-0000-000000000001',
-    'auth0|dev-user-003', 'c0000000-0000-0000-0000-000000000001', NULL,
+    'auth0|dev-user-003', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
     'development', 1000, 'monthly', 'Active',
     'sub_dev_001', 'si_dev_001',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'e0000000-0000-0000-0000-000000000002',
-    'auth0|dev-user-004', 'c0000000-0000-0000-0000-000000000002', NULL,
+    'auth0|dev-user-004', '57135156-cb73-4896-bbd3-8d503b568b3b', NULL,
     'development', 500, 'monthly', 'Active',
     'sub_dev_002', 'si_dev_002',
     '{"initiative_name": "Prometheus", "initiative_slug": "prometheus"}'
   ),
   (
     'e0000000-0000-0000-0000-000000000003',
-    'auth0|dev-user-002', 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002',
+    'auth0|dev-user-002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'b0000000-0000-0000-0000-000000000002',
     'travel', 2500, 'monthly', 'Cancelled',
     'sub_dev_003', 'si_dev_003',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
