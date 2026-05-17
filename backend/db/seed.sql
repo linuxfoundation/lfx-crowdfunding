@@ -170,6 +170,9 @@ ON CONFLICT DO NOTHING;
 -- ============================================
 -- Initiative Goals
 -- ============================================
+-- Remove legacy 'mentee' goal name (renamed to 'mentorship' to match Ledger txnCategory).
+DELETE FROM initiative_goals WHERE initiative_id = 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b' AND name = 'mentee';
+
 INSERT INTO initiative_goals (initiative_id, name, amount_in_cents, allocation, repo_link, sort_order) VALUES
   ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'development',   2000000, 'Core development work',   'https://github.com/kubernetes/kubernetes', 0),
   ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'documentation', 500000,  'Docs and tutorials',       NULL, 1),
