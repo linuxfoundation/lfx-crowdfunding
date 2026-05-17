@@ -5,6 +5,7 @@
 megalinter-reports/
 .env
 backend/bin/
+backend/initiatives-api
 .claude/skills/speckit-*
 settings.json
 specs
