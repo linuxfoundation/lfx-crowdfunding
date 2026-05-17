@@ -137,7 +137,7 @@ the user already has one (either migrated from LFF or created in a previous CF s
 If the user exists in LFF's DynamoDB with a Stripe Customer ID, that ID is valid in CF.
 
 **How to obtain existing Customer IDs from LFF:** The data migration (see
-`docs/rewrite/data-design_and_migration.pdf`) should pre-populate `users.stripe_customer_id`
+`docs/rewrite/data-design_and_migration.md`) should pre-populate `users.stripe_customer_id`
 from LFF's `lff-{stage}-users` DynamoDB table as part of the migration step. If it does not,
 CF would need direct read access to that DynamoDB table at runtime — which is undesirable.
 **Confirm with Lewis/data migration owner that `stripe_customer_id` is populated during
@@ -327,10 +327,11 @@ func (s *WebhookService) handlePaymentIntentSucceeded(ctx context.Context, event
       return err
     }
     initiativeID := pi.Metadata["initiative_id"]
-    return tx.Exec(ctx,
+    _, err := tx.Exec(ctx,
       `UPDATE donations SET status = 'active' WHERE stripe_payment_intent_id = $1`,
       pi.ID,
     )
+    return err
   })
 }
 ```
@@ -488,7 +489,7 @@ The implementation above assumes 3DS support (client-side confirmation via
 server-side confirm, but this creates tech debt that will need to be addressed before
 significant EU traffic.
 
-See open question in [03-open-questions.md](../../../LFF/docs/rewrite/03-open-questions.md) once confirmed.
+See open question in [03-open-questions.md](03-open-questions.md) once confirmed.
 
 ---
 
