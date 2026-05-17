@@ -50,12 +50,14 @@ SPDX-License-Identifier: MIT
                 :sponsors="data.sponsors"
                 :initiative-id="data.slug"
               />
-              <div class="border-t border-neutral-200 pt-10">
-                <recent-donations
-                  v-if="data.recentDonations?.length"
-                  :donations="data.recentDonations"
-                />
-              </div>
+              <div
+                v-if="data.sponsors?.length"
+                class="border-t border-neutral-200"
+              />
+              <RecentDonations
+                :donations="recentDonations"
+                :is-loading="transactionsLoading"
+              />
             </div>
           </div>
         </div>
@@ -71,13 +73,39 @@ import InitiativeDetailSponsors from '../components/details-overview/initiative-
 import InitiativeDetailFinancials from '../components/details-financials/initiative-detail-financials.vue';
 import InitiativeDetailAbout from '../components/details-about/initiative-detail-about.vue';
 import { useInitiative } from '~/composables/initiatives/useInitiative';
+import { useInitiativeTransactions } from '~/composables/initiatives/useInitiativeTransactions';
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useScroll from '~/utils/scroll';
+import type { RecentDonation } from '#shared/types/initiative-detail.types';
 
 const props = defineProps<{ initiativeId: string }>();
 
 const { data, isLoading, error } = useInitiative(computed(() => props.initiativeId));
+const { data: txnData, isLoading: transactionsLoading } = useInitiativeTransactions(computed(() => props.initiativeId));
+
+const recentDonations = computed<RecentDonation[]>(() =>
+  (txnData.value?.data ?? []).map((t) => ({
+    id: t.id,
+    donorName: t.donorName ?? 'Anonymous',
+    donorLogoUrl: t.donorLogoUrl,
+    donorType: t.donorType === 'organization' ? 'organization' : 'member',
+    amountCents: t.amountCents,
+    timeAgo: formatTimeAgo(t.date),
+  })),
+);
+
+function formatTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / 86_400_000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
 const activeTab = ref('overview');
 
 const { scrollTop } = useScroll();

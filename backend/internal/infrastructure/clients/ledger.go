@@ -134,32 +134,29 @@ func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) 
 	}, nil
 }
 
-// ledgerTransactionHit is one document from the Ledger paginate response.
-type ledgerTransactionHit struct {
-	ID        string `json:"_id"`
-	Source    struct {
-		TxnType     string  `json:"txnType"`
-		Amount      float64 `json:"amount"`
-		TxnDate     string  `json:"txnDate"`
-		TxnCategory string  `json:"txnCategory"`
-		Donor       struct {
-			Name     string `json:"name"`
-			Type     string `json:"type"` // "organization" | "individual"
-			LogoURL  string `json:"logoUrl"`
-			Username string `json:"username"`
-		} `json:"donor"`
-	} `json:"_source"`
+// ledgerTransactionRaw is one row from the Ledger GET /transactions/ response (Postgres-backed).
+type ledgerTransactionRaw struct {
+	TxnID        string `json:"txnID"`
+	ProjectID    string `json:"projectID"`
+	UserID       string `json:"userID"`
+	AccountEmail string `json:"accountEmail"`
+	TxnType      string `json:"txnType"`   // "credit" | "debit"
+	TxnCategory  string `json:"txnCategory"`
+	Amount       int64  `json:"amount"`    // cents
+	TxnDate      int64  `json:"txnDate"`   // unix seconds
 }
 
-type ledgerPaginateResponse struct {
-	Total struct {
-		Value int `json:"value"`
-	} `json:"total"`
-	Hits []ledgerTransactionHit `json:"hits"`
+type ledgerTransactionsResponse struct {
+	TransactionsPerPage int                    `json:"transactionsPerPage"`
+	CurrentPage         int                    `json:"currentPage"`
+	HasNext             bool                   `json:"hasNext"`
+	Transactions        []ledgerTransactionRaw `json:"transactions"`
 }
 
-// GetTransactions fetches a paginated list of transactions from the Ledger
-// service's Elasticsearch-backed paginate endpoint.
+// GetTransactions fetches a paginated list of transactions for an initiative
+// from the Ledger service's Postgres-backed GET /transactions/ endpoint.
+// startDate=0 retrieves all-time transactions.
+// Page is 1-based; filter.From is converted to page number using filter.Size.
 func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter TransactionFilter) (*models.TransactionList, error) {
 	ctx, span := ledgerTracer.Start(ctx, "ledger.GetTransactions")
 	defer span.End()
@@ -169,50 +166,76 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 	if size <= 0 {
 		size = 10
 	}
-
-	q := url.Values{}
-	q.Set("projectId", filter.ProjectID)
-	q.Set("size", fmt.Sprintf("%d", size))
-	q.Set("from", fmt.Sprintf("%d", filter.From))
-	if filter.TxnType != "" {
-		q.Set("txnType", filter.TxnType)
+	page := 1
+	if size > 0 && filter.From > 0 {
+		page = filter.From/size + 1
 	}
 
-	endpoint := fmt.Sprintf("%s/transactions/v1/paginate?%s", c.baseURL, q.Encode())
-
-	var resp ledgerPaginateResponse
-	err := c.httpClient.GetJSON(ctx, endpoint, nil, &resp, func(r *http.Response) error {
-		if r.StatusCode == http.StatusNotFound {
-			return domain.ErrInitiativeNotFound
+	q := url.Values{}
+	q.Set("projectID", filter.ProjectID)
+	q.Set("startDate", "0")
+	q.Set("perPage", fmt.Sprintf("%d", size))
+	q.Set("page", fmt.Sprintf("%d", page))
+	if filter.TxnType != "" {
+		// Ledger uses "credit"/"debit"; our API accepts "donation"/"reimbursement"
+		switch filter.TxnType {
+		case "donation":
+			q.Set("txnType", "credit")
+		case "reimbursement":
+			q.Set("txnType", "debit")
+		default:
+			q.Set("txnType", filter.TxnType)
 		}
-		return fmt.Errorf("ledger paginate returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	}
+
+	endpoint := fmt.Sprintf("%s/transactions?%s", c.baseURL, q.Encode())
+	headers := map[string]string{"Authorization": c.apiKey}
+
+	var resp ledgerTransactionsResponse
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger transactions returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
 	})
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("ledger transactions: %w", err)
 	}
 
-	txns := make([]models.Transaction, 0, len(resp.Hits))
-	for _, hit := range resp.Hits {
-		src := hit.Source
-		amountCents := int64(src.Amount * 100)
-		date, _ := time.Parse(time.RFC3339, src.TxnDate)
+	txns := make([]models.Transaction, 0, len(resp.Transactions))
+	for _, raw := range resp.Transactions {
+		txnType := "donation"
+		if raw.TxnType == "debit" {
+			txnType = "reimbursement"
+		}
+		// Derive a display name from userID (e.g. "auth0|aj.maintainer" → "aj.maintainer")
+		donorName := raw.AccountEmail
+		if donorName == "" {
+			parts := strings.SplitN(raw.UserID, "|", 2)
+			if len(parts) == 2 {
+				donorName = parts[1]
+			} else {
+				donorName = raw.UserID
+			}
+		}
 		txns = append(txns, models.Transaction{
-			ID:            hit.ID,
-			Type:          src.TxnType,
-			AmountCents:   amountCents,
-			Date:          date,
-			Category:      src.TxnCategory,
-			DonorName:     src.Donor.Name,
-			DonorType:     src.Donor.Type,
-			DonorLogoURL:  src.Donor.LogoURL,
-			DonorUsername: src.Donor.Username,
+			ID:          raw.TxnID,
+			Type:        txnType,
+			AmountCents: raw.Amount,
+			Date:        time.Unix(raw.TxnDate, 0).UTC(),
+			Category:    raw.TxnCategory,
+			DonorName:   donorName,
+			DonorType:   "individual", // Postgres endpoint doesn't distinguish org vs individual
 		})
+	}
+
+	// Ledger doesn't return a total count on this endpoint; use HasNext to signal more pages.
+	totalCount := filter.From + len(txns)
+	if resp.HasNext {
+		totalCount += size // at least one more page
 	}
 
 	return &models.TransactionList{
 		Data:       txns,
-		TotalCount: resp.Total.Value,
+		TotalCount: totalCount,
 		From:       filter.From,
 		Size:       size,
 	}, nil

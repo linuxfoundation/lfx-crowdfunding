@@ -8,3 +8,5 @@ backend/bin/
 .claude/skills/speckit-*
 settings.json
 specs
+.playwright-mcp/
+*.png
