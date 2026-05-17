@@ -111,10 +111,7 @@ func enrichGoalsFromLedger(ctx context.Context, ledger clients.LedgerClient, ini
 		key := strings.ToLower(strings.ReplaceAll(initiative.Goals[i].Name, "_", ""))
 		if sub, ok := lookup[key]; ok {
 			donated := sub.Credit
-			spent := -sub.Debit
-			if spent < 0 {
-				spent = 0
-			}
+			spent := sub.Debit
 			initiative.Goals[i].DonatedCents = &donated
 			initiative.Goals[i].SpentCents = &spent
 		}

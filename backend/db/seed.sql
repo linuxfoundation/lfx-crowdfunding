@@ -41,16 +41,16 @@ INSERT INTO initiatives (
   (
     'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'project', 'projects', 'auth0|dev-user-001',
     'Kubernetes', 'kubernetes', 'published', 'Technology',
-    'Production-Grade Container Orchestration — automate deployment, scaling, and management of containerized applications.',
-    '#326CE5', 'https://kubernetes.io/images/favicon.png', 'https://kubernetes.io',
+    'Kubernetes (K8s) is an open-source system for automating deployment, scaling, and management of containerized applications. It groups containers that make up an application into logical units for easy management and discovery. Kubernetes builds upon 15 years of experience of running production workloads at Google, combined with best-of-breed ideas and practices from the community.',
+    '#326CE5', 'https://jobspring-prod-uploads.s3.amazonaws.com/97f183f1-157e-4dd9-981d-fd3712ffe66c-.png', 'https://kubernetes.io',
     'plan_dev_kubernetes', 'prod_dev_kubernetes', 478500, true,
     'cii-001', 'kubernetes'
   ),
   (
     '57135156-cb73-4896-bbd3-8d503b568b3b', 'project', 'projects', 'auth0|dev-user-002',
     'Prometheus', 'prometheus', 'published', 'Technology',
-    'An open-source systems monitoring and alerting toolkit originally built at SoundCloud.',
-    '#E6522C', 'https://prometheus.io/assets/favicons/favicon.ico', 'https://prometheus.io',
+    'Prometheus is an open-source systems monitoring and alerting toolkit originally built at SoundCloud. Since its inception in 2012, many companies and organizations have adopted Prometheus, and the project has a very active developer and user community. It is now a standalone open source project and maintained independently of any company. To emphasize this, and to clarify the project''s governance structure, Prometheus joined the Cloud Native Computing Foundation in 2016 as the second hosted project, after Kubernetes.',
+    '#E6522C', 'https://jobspring-prod-uploads.s3.amazonaws.com/8b76b332-0137-44b3-bd6f-d2c8db04101d-.png', 'https://prometheus.io',
     'plan_dev_prometheus', 'prod_dev_prometheus', 99000000, true,
     'cii-002', 'prometheus'
   ),
