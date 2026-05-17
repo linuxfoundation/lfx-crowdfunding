@@ -66,115 +66,51 @@ func (m *mockStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.
 	return stripe.Event{}, nil
 }
 
-// --- T006: TestGetByID_LedgerSuccess ---
+// --- TestGetByID_FlattensSponsorsList ---
 
-func TestGetByID_LedgerSuccess(t *testing.T) {
+func TestGetByID_FlattensSponsorsList(t *testing.T) {
 	initiative := &models.Initiative{
 		ID: "test-id",
-		Goals: []models.Goal{
-			{Name: "Member Stipends"},
-		},
-	}
-	balance := &clients.LedgerBalance{
-		TotalRaisedCents:    7000000,
-		TotalDisbursedCents: 2000000,
-		AvailableCents:      5000000,
-		SubTotals: map[string]*clients.LedgerSubTotal{
-			"Member Stipends": {Credit: 1800000, Debit: -900000},
+		RawSponsors: models.LedgerSponsorList{
+			Orgs: []models.LedgerSponsorOrg{
+				{ID: "org-1", Name: "Big Corp", Total: 3_000_000},
+			},
+			Individuals: []models.LedgerSponsorUser{
+				{ID: "user-1", Name: "Top Donor", Total: 15_000_000},
+			},
 		},
 	}
 
 	svc := NewInitiativeService(
 		&mockInitiativeRepo{initiative: initiative},
-		&mockLedgerClient{balance: balance},
+		&mockLedgerClient{},
 		&mockStripeClient{},
 	)
 
 	result, err := svc.GetByID(context.Background(), "test-id")
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Balance == nil {
-		t.Fatal("expected Balance to be set, got nil")
+	if len(result.Sponsors) != 2 {
+		t.Fatalf("expected 2 sponsors, got %d", len(result.Sponsors))
 	}
-	if len(result.Goals) == 0 {
-		t.Fatal("expected goals to be present")
-	}
-	goal := result.Goals[0]
-	if goal.DonatedCents == nil || *goal.DonatedCents != 1800000 {
-		t.Errorf("expected DonatedCents=1800000, got %v", goal.DonatedCents)
-	}
-	if goal.SpentCents == nil || *goal.SpentCents != -900000 {
-		t.Errorf("expected SpentCents=-900000, got %v", goal.SpentCents)
+	if result.Sponsors[0].ID != "user-1" {
+		t.Errorf("expected user-1 first (highest total), got %s", result.Sponsors[0].ID)
 	}
 }
 
-// --- T007: TestGetByID_LedgerFailure ---
+// --- TestGetByID_RepoError ---
 
-func TestGetByID_LedgerFailure(t *testing.T) {
-	initiative := &models.Initiative{
-		ID: "test-id",
-		Goals: []models.Goal{
-			{Name: "Member Stipends"},
-		},
-	}
-
+func TestGetByID_RepoError(t *testing.T) {
 	svc := NewInitiativeService(
-		&mockInitiativeRepo{initiative: initiative},
-		&mockLedgerClient{err: errors.New("ledger unavailable")},
+		&mockInitiativeRepo{err: errors.New("not found")},
+		&mockLedgerClient{},
 		&mockStripeClient{},
 	)
 
-	result, err := svc.GetByID(context.Background(), "test-id")
-	if err != nil {
-		t.Fatalf("expected no error on Ledger failure, got %v", err)
-	}
-	if result == nil {
-		t.Fatal("expected non-nil initiative on Ledger failure")
-	}
-	if result.Balance != nil {
-		t.Errorf("expected Balance=nil on Ledger failure, got %+v", result.Balance)
-	}
-	for _, g := range result.Goals {
-		if g.DonatedCents != nil {
-			t.Errorf("expected DonatedCents=nil on Ledger failure, got %v", *g.DonatedCents)
-		}
-		if g.SpentCents != nil {
-			t.Errorf("expected SpentCents=nil on Ledger failure, got %v", *g.SpentCents)
-		}
-	}
-}
-
-// --- T008: TestGetByID_GoalNameMatchingCaseInsensitive ---
-
-func TestGetByID_GoalNameMatchingCaseInsensitive(t *testing.T) {
-	initiative := &models.Initiative{
-		ID: "test-id",
-		Goals: []models.Goal{
-			{Name: "Development"},
-		},
-	}
-	balance := &clients.LedgerBalance{
-		SubTotals: map[string]*clients.LedgerSubTotal{
-			"development": {Credit: 500000, Debit: 0},
-		},
-	}
-
-	svc := NewInitiativeService(
-		&mockInitiativeRepo{initiative: initiative},
-		&mockLedgerClient{balance: balance},
-		&mockStripeClient{},
-	)
-
-	result, err := svc.GetByID(context.Background(), "test-id")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(result.Goals) == 0 {
-		t.Fatal("expected goals")
-	}
-	if result.Goals[0].DonatedCents == nil || *result.Goals[0].DonatedCents != 500000 {
-		t.Errorf("expected case-insensitive match: DonatedCents=500000, got %v", result.Goals[0].DonatedCents)
+	_, err := svc.GetByID(context.Background(), "missing-id")
+	if err == nil {
+		t.Fatal("expected error from repo, got nil")
 	}
 }
 

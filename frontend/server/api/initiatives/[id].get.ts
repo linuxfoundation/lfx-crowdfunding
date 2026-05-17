@@ -6,7 +6,7 @@ import type { FundingGoal, InitiativeDetail } from '#shared/types/initiative-det
 interface BackendGoal {
   id: string;
   name: string;
-  amount_in_cents: number;
+  goal_amount_cents: number;
   description?: string;
   donated_cents?: number;
   spent_cents?: number;
@@ -58,7 +58,7 @@ function toInitiativeDetail(b: BackendInitiative): InitiativeDetail {
   const fundingGoals: FundingGoal[] = (b.goals ?? []).map((g) => ({
     id: g.id,
     name: g.name,
-    goalCents: g.amount_in_cents,
+    goalCents: g.goal_amount_cents,
     donatedCents: g.donated_cents ?? 0,
     spentCents: g.spent_cents ?? 0,
   }));

@@ -102,7 +102,7 @@ const tags = computed(() => {
 });
 
 const progressPercent = computed(() => {
-  const goal = props.initiative.fundingStatus?.totalAnnualGoalInCents ?? 0;
+  const goal = props.initiative.fundingStatus?.goalsTotalCents ?? 0;
   const raised = props.initiative.fundingStatus?.amountRaisedCents ?? 0;
   return goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
 });
@@ -118,9 +118,7 @@ const amountRaisedFormatted = computed(() =>
   formatAmountAbbrev(props.initiative.fundingStatus?.amountRaisedCents ?? 0),
 );
 
-const totalGoalFormatted = computed(() =>
-  formatAmountAbbrev(props.initiative.fundingStatus?.totalAnnualGoalInCents ?? 0),
-);
+const totalGoalFormatted = computed(() => formatAmountAbbrev(props.initiative.fundingStatus?.goalsTotalCents ?? 0));
 
 const percentFundedLabel = computed(() => `${progressPercent.value}% funded`);
 

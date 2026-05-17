@@ -57,10 +57,11 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetByID handles GET /v1/initiatives/{id}
+// GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
+// The frontend always passes slugs; GetBySlug is the primary lookup path.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	initiative, err := h.svc.GetByID(r.Context(), id)
+	initiative, err := h.svc.GetBySlug(r.Context(), id)
 	if err != nil {
 		Error(w, err)
 		return

@@ -47,7 +47,7 @@ type Financials struct {
 type Initiative struct {
 	ID             string `json:"id"`
 	InitiativeType string `json:"initiative_type"`
-	OwnerID        string `json:"owner_id"`
+	OwnerID        string `json:"-"`
 	Name           string `json:"name"`
 	Slug           string `json:"slug,omitempty"`
 	Status         string `json:"status,omitempty"`
@@ -76,9 +76,6 @@ type Initiative struct {
 
 	// Populated from initiative_ledger_stats.sponsors; flat list sorted by total descending
 	Sponsors []Sponsor `json:"sponsors"`
-
-	// Transient — fetched live from Ledger at request time; nil when Ledger is unavailable
-	Balance *LedgerBalanceSummary `json:"balance"`
 
 	CreatedOn time.Time `json:"created_on"`
 	UpdatedOn time.Time `json:"updated_on"`

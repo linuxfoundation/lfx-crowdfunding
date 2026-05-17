@@ -8,9 +8,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"log/slog"
 	"slices"
-	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -40,7 +38,8 @@ func NewInitiativeService(
 	return &InitiativeService{repo: repo, ledger: ledger, stripe: stripe}
 }
 
-// GetByID retrieves an initiative with goals, financials, sponsors, and live balance.
+// GetByID retrieves an initiative with goals, financials, and sponsors.
+// Per-goal donated/spent requires a live Ledger call — deferred until Ledger integration is wired.
 func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetByID")
 	defer span.End()
@@ -50,29 +49,6 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("get initiative: %w", err)
-	}
-
-	balance, err := s.ledger.GetBalance(ctx, id)
-	if err != nil {
-		slog.Warn("ledger balance unavailable", "initiative_id", id, "error", err)
-	} else {
-		initiative.Balance = &models.LedgerBalanceSummary{
-			TotalRaisedCents:    balance.TotalRaisedCents,
-			TotalDisbursedCents: balance.TotalDisbursedCents,
-			AvailableCents:      balance.AvailableCents,
-		}
-		for i := range initiative.Goals {
-			g := &initiative.Goals[i]
-			for category, sub := range balance.SubTotals {
-				if strings.EqualFold(g.Name, category) {
-					donated := sub.Credit
-					spent := sub.Debit
-					g.DonatedCents = &donated
-					g.SpentCents = &spent
-					break
-				}
-			}
-		}
 	}
 
 	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
@@ -95,7 +71,7 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	return sponsors
 }
 
-// GetBySlug retrieves an initiative by its URL slug.
+// GetBySlug retrieves an initiative by its URL slug, with the same enrichment as GetByID.
 func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetBySlug")
 	defer span.End()
@@ -106,6 +82,8 @@ func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models
 		span.RecordError(err)
 		return nil, fmt.Errorf("get initiative by slug: %w", err)
 	}
+
+	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
 	return initiative, nil
 }
 
