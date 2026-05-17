@@ -7,6 +7,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // InitiativeHandler holds Chi handlers for the /v1/initiatives resource.
 type InitiativeHandler struct {
@@ -58,10 +61,18 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
-// The frontend always passes slugs; GetBySlug is the primary lookup path.
+// Slugs are the canonical public identifier; UUIDs are supported as a fallback.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	initiative, err := h.svc.GetBySlug(r.Context(), id)
+	var (
+		initiative *models.Initiative
+		err        error
+	)
+	if uuidPattern.MatchString(id) {
+		initiative, err = h.svc.GetByID(r.Context(), id)
+	} else {
+		initiative, err = h.svc.GetBySlug(r.Context(), id)
+	}
 	if err != nil {
 		Error(w, err)
 		return
