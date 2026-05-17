@@ -34,7 +34,7 @@ INSERT INTO organizations (id, owner_id, name, avatar_url, status) VALUES
   ('b0000000-0000-0000-0000-000000000001', 'auth0|dev-user-001', 'Acme Corp',       'https://i.pravatar.cc/150?u=acme',  'Active'),
   ('b0000000-0000-0000-0000-000000000002', 'auth0|dev-user-002', 'Open Source Inc', 'https://i.pravatar.cc/150?u=ossinc','Active'),
   -- Real Ledger dev org UUID — matches organizationID on Kubernetes transactions from auth0|kelo.
-  ('09b68fe3-12ae-4a7f-b021-7b522e87ae3d', 'auth0|kelo',         'Google Cloud',    'https://logo.clearbit.com/cloud.google.com', 'Active')
+  ('09b68fe3-12ae-4a7f-b021-7b522e87ae3d', 'auth0|kelo',         'Google Cloud',    'https://ui-avatars.com/api/?name=Google+Cloud&background=4285F4&color=fff&size=128&bold=true', 'Active')
 ON CONFLICT DO NOTHING;
 
 -- ============================================
@@ -271,26 +271,26 @@ INSERT INTO initiative_ledger_stats (
   -- sponsors JSONB is pre-enriched here because the CronJob requires org/user
   -- rows in the local DB to resolve names — not present in dev seed.
   ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b',  478500,       0,  478500,  478500,      0,   6,
-   '{"orgs":[{"id":"09b68fe3-12ae-4a7f-b021-7b522e87ae3d","name":"Google Cloud","avatarUrl":"https://logo.clearbit.com/cloud.google.com","total":250000}],"individuals":[{"id":"auth0|simk68","name":"Siim Kallas","total":113000},{"id":"auth0|simk.ment.admin","name":"Siim Admin","total":110500},{"id":"auth0|simk61","name":"Siim K","total":2500},{"id":"auth0|lewisoj","name":"Lewis O","total":2000},{"id":"auth0|lewisojile","name":"Lewis Ojile","total":500}]}'::jsonb),
+   '{"orgs":[{"id":"09b68fe3-12ae-4a7f-b021-7b522e87ae3d","name":"Google Cloud","avatarUrl":"https://ui-avatars.com/api/?name=Google+Cloud&background=4285F4&color=fff&size=128&bold=true","total":250000}],"individuals":[{"id":"auth0|simk68","name":"Siim Kallas","avatarUrl":"https://i.pravatar.cc/128?u=simk68","total":113000},{"id":"auth0|simk.ment.admin","name":"Siim Admin","avatarUrl":"https://i.pravatar.cc/128?u=simkadmin","total":110500},{"id":"auth0|simk61","name":"Siim K","avatarUrl":"https://i.pravatar.cc/128?u=simk61","total":2500},{"id":"auth0|lewisoj","name":"Lewis O","avatarUrl":"https://i.pravatar.cc/128?u=lewisoj","total":2000},{"id":"auth0|lewisojile","name":"Lewis Ojile","avatarUrl":"https://i.pravatar.cc/128?u=lewisojile","total":500}]}'::jsonb),
   ('57135156-cb73-4896-bbd3-8d503b568b3b', 99000000,      0, 99000000, 99000000,    0,   2,
-   '{"orgs":[{"id":"a5df9992-9374-445c-8b88-545f6178bb11","name":"Grafana Labs","avatarUrl":"https://logo.clearbit.com/grafana.com","total":90000000},{"id":"da78ebed-3c32-49ca-80db-234761b01979","name":"Weaveworks","avatarUrl":"https://logo.clearbit.com/weave.works","total":9000000}],"individuals":[]}'::jsonb),
+   '{"orgs":[{"id":"a5df9992-9374-445c-8b88-545f6178bb11","name":"Grafana Labs","avatarUrl":"https://ui-avatars.com/api/?name=Grafana+Labs&background=F46800&color=fff&size=128&bold=true","total":90000000},{"id":"da78ebed-3c32-49ca-80db-234761b01979","name":"Weaveworks","avatarUrl":"https://ui-avatars.com/api/?name=Weaveworks&background=0077CC&color=fff&size=128&bold=true","total":9000000}],"individuals":[]}'::jsonb),
   ('5f478c13-d72b-4f25-960a-a09249a5fc16',  156500,       0,  156500,  156500,      0,   1,
-   '{"orgs":[],"individuals":[{"id":"auth0|aj.maintainer","name":"AJ Maintainer","total":156500}]}'::jsonb),
+   '{"orgs":[],"individuals":[{"id":"auth0|aj.maintainer","name":"AJ Maintainer","avatarUrl":"https://i.pravatar.cc/128?u=ajmaintainer","total":156500}]}'::jsonb),
   -- Fabricated data for non-Ledger initiatives
   ('c0000000-0000-0000-0000-000000000010',  800000,   50000,  750000,  720000,  30000,  44,
-   '{"orgs":[{"id":"org-001","name":"Red Hat","avatarUrl":"https://logo.clearbit.com/redhat.com","total":400000},{"id":"org-002","name":"IBM","avatarUrl":"https://logo.clearbit.com/ibm.com","total":200000}],"individuals":[]}'::jsonb),
+   '{"orgs":[{"id":"org-001","name":"Red Hat","avatarUrl":"https://ui-avatars.com/api/?name=Red+Hat&background=EE0000&color=fff&size=128&bold=true","total":400000},{"id":"org-002","name":"IBM","avatarUrl":"https://ui-avatars.com/api/?name=IBM&background=006699&color=fff&size=128&bold=true","total":200000}],"individuals":[]}'::jsonb),
   ('c0000000-0000-0000-0000-000000000011',  350000,   30000,  320000,  305000,  15000,  28,
-   '{"orgs":[{"id":"org-003","name":"VMware","avatarUrl":"https://logo.clearbit.com/vmware.com","total":200000}],"individuals":[]}'::jsonb),
+   '{"orgs":[{"id":"org-003","name":"VMware","avatarUrl":"https://ui-avatars.com/api/?name=VMware&background=607078&color=fff&size=128&bold=true","total":200000}],"individuals":[]}'::jsonb),
   ('c0000000-0000-0000-0000-000000000020', 1050000,   70000,  980000,  940000,  40000,  63,
-   '{"orgs":[{"id":"org-004","name":"Microsoft","avatarUrl":"https://logo.clearbit.com/microsoft.com","total":500000}],"individuals":[]}'::jsonb),
+   '{"orgs":[{"id":"org-004","name":"Microsoft","avatarUrl":"https://ui-avatars.com/api/?name=Microsoft&background=00A4EF&color=fff&size=128&bold=true","total":500000}],"individuals":[]}'::jsonb),
   ('c0000000-0000-0000-0000-000000000021',  580000,   40000,  540000,  510000,  30000,  41,
    '{"orgs":[],"individuals":[]}'::jsonb),
   ('c0000000-0000-0000-0000-000000000030', 1320000,   70000, 1250000, 1200000,  50000,  98,
-   '{"orgs":[{"id":"org-005","name":"Snyk","avatarUrl":"https://logo.clearbit.com/snyk.io","total":600000},{"id":"org-006","name":"Trail of Bits","avatarUrl":"https://logo.clearbit.com/trailofbits.com","total":400000}],"individuals":[]}'::jsonb),
+   '{"orgs":[{"id":"org-005","name":"Snyk","avatarUrl":"https://ui-avatars.com/api/?name=Snyk&background=4C4A73&color=fff&size=128&bold=true","total":600000},{"id":"org-006","name":"Trail of Bits","avatarUrl":"https://ui-avatars.com/api/?name=Trail+of+Bits&background=1A1A2E&color=fff&size=128&bold=true","total":400000}],"individuals":[]}'::jsonb),
   ('c0000000-0000-0000-0000-000000000031',  920000,   50000,  870000,  840000,  30000,  74,
    '{"orgs":[],"individuals":[]}'::jsonb),
   ('c0000000-0000-0000-0000-000000000040', 3380000,  180000, 3200000, 3080000, 120000, 215,
-   '{"orgs":[{"id":"org-007","name":"Amazon Web Services","avatarUrl":"https://logo.clearbit.com/aws.amazon.com","total":1500000},{"id":"org-008","name":"Google Cloud","avatarUrl":"https://logo.clearbit.com/cloud.google.com","total":900000}],"individuals":[]}'::jsonb)
+   '{"orgs":[{"id":"org-007","name":"Amazon Web Services","avatarUrl":"https://ui-avatars.com/api/?name=AWS&background=FF9900&color=fff&size=128&bold=true","total":1500000},{"id":"org-008","name":"Google Cloud","avatarUrl":"https://ui-avatars.com/api/?name=Google+Cloud&background=4285F4&color=fff&size=128&bold=true","total":900000}],"individuals":[]}'::jsonb)
 ON CONFLICT (initiative_id) DO UPDATE
   SET total_raised_cents      = EXCLUDED.total_raised_cents,
       total_debited_cents     = EXCLUDED.total_debited_cents,
