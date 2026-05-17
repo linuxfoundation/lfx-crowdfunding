@@ -9,4 +9,3 @@ backend/bin/
 settings.json
 specs
 .playwright-mcp/
-*.png
