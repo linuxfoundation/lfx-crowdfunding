@@ -58,10 +58,9 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		Timeout: cfg.Ledger.Timeout,
 	})
 	stripeClient := clients.NewStripeClient(clients.StripeConfig{
-		SecretKey:     cfg.Stripe.SecretKey,
-		WebhookSecret: cfg.Stripe.WebhookSecret,
-		Timeout:       cfg.Stripe.Timeout,
-		ReturnURL:     cfg.Stripe.ReturnURL,
+		SecretKey: cfg.Stripe.SecretKey,
+		Timeout:   cfg.Stripe.Timeout,
+		ReturnURL: cfg.Stripe.ReturnURL,
 	})
 
 	// Services

@@ -58,7 +58,7 @@ func (c *wbStripeClient) GetPaymentMethod(_ context.Context, _ string) (*models.
 	return nil, nil
 }
 func (c *wbStripeClient) DetachPaymentMethod(_ context.Context, _ string) error { return nil }
-func (c *wbStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64, _ string) (string, error) {
+func (c *wbStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64, _ string, _ string) (string, error) {
 	return "", nil
 }
 

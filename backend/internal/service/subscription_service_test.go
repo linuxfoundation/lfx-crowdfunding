@@ -91,7 +91,7 @@ func TestSubscriptionService_Create_NewCustomerActive(t *testing.T) {
 			customerCreated = true
 			return "cus_new", nil
 		},
-		onGetOrCreatePrice: func(_ context.Context, productID string, amountCents int64, frequency string) (string, error) {
+		onGetOrCreatePrice: func(_ context.Context, productID string, amountCents int64, frequency string, idempotencyKey string) (string, error) {
 			if productID != "prod-test" {
 				t.Errorf("GetOrCreatePrice productID = %q, want prod-test", productID)
 			}
@@ -131,6 +131,7 @@ func TestSubscriptionService_Create_NewCustomerActive(t *testing.T) {
 			AmountCents:           1000,
 			Frequency:             "monthly",
 			StripePaymentMethodID: "pm_test",
+			IdempotencyKey:        "idem-key-sub",
 		})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -170,7 +171,7 @@ func TestSubscriptionService_Create_ExistingCustomer3DS(t *testing.T) {
 			customerCreated = true
 			return "cus_unexpected", nil
 		},
-		onGetOrCreatePrice: func(_ context.Context, _ string, _ int64, _ string) (string, error) {
+		onGetOrCreatePrice: func(_ context.Context, _ string, _ int64, _ string, _ string) (string, error) {
 			return "price_1", nil
 		},
 		onCreateSubscription: func(_ context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error) {
@@ -188,7 +189,7 @@ func TestSubscriptionService_Create_ExistingCustomer3DS(t *testing.T) {
 
 	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), userRepo, stripe)
 	sub, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.SubscriptionCreateInput{AmountCents: 2000, Frequency: "monthly", StripePaymentMethodID: "pm_test"})
+		models.SubscriptionCreateInput{AmountCents: 2000, Frequency: "monthly", StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-sub"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -216,7 +217,7 @@ func TestSubscriptionService_Create_StripeError(t *testing.T) {
 			onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
 				return "cus_1", nil
 			},
-			onGetOrCreatePrice: func(_ context.Context, _ string, _ int64, _ string) (string, error) {
+			onGetOrCreatePrice: func(_ context.Context, _ string, _ int64, _ string, _ string) (string, error) {
 				return "price_1", nil
 			},
 			onCreateSubscription: func(_ context.Context, _ models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error) {
@@ -226,7 +227,7 @@ func TestSubscriptionService_Create_StripeError(t *testing.T) {
 	)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.SubscriptionCreateInput{AmountCents: 500, Frequency: "monthly", StripePaymentMethodID: "pm_test"})
+		models.SubscriptionCreateInput{AmountCents: 500, Frequency: "monthly", StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-sub"})
 	if !errors.Is(err, stripeErr) {
 		t.Errorf("error = %v, want to wrap %v", err, stripeErr)
 	}
@@ -245,13 +246,34 @@ func TestSubscriptionService_Create_UserRepoTransientError(t *testing.T) {
 	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), userRepo, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "monthly", StripePaymentMethodID: "pm_test"})
+		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "monthly", StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-sub"})
 	if !errors.Is(err, dbErr) {
 		t.Errorf("error = %v, want to wrap %v", err, dbErr)
 	}
 }
 
 // --- Cancel ---
+
+func TestSubscriptionService_Create_MissingIdempotencyKey(t *testing.T) {
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	// All fields valid except IdempotencyKey — must fail before Stripe calls.
+	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
+		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "monthly", StripePaymentMethodID: "pm_test"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("expected ErrInvalidInput for missing idempotency key, got %v", err)
+	}
+}
+
+func TestSubscriptionService_Create_InvalidFrequency(t *testing.T) {
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
+		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "biweekly", StripePaymentMethodID: "pm_test"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("expected ErrInvalidInput for unsupported frequency, got %v", err)
+	}
+}
 
 func TestSubscriptionService_Cancel_WrongOwner(t *testing.T) {
 	subRepo := &testSubscriptionRepo{

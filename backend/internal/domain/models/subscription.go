@@ -33,4 +33,7 @@ type SubscriptionCreateInput struct {
 	Category              string `json:"category,omitempty"`
 	OrganizationID        string `json:"organization_id,omitempty"`
 	StripePaymentMethodID string `json:"stripe_payment_method_id"`
+	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.
+	// Not decoded from the JSON body (json:"-").
+	IdempotencyKey string `json:"-"`
 }

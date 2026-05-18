@@ -57,7 +57,9 @@ type StripeClient interface {
 	// variable-amount subscriptions rather than reusing prices. Using an
 	// existing Product keeps the Stripe catalog manageable (one Product per
 	// initiative, many Prices).
-	GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, interval string) (string, error)
+	// idempotencyKey is forwarded to Stripe so retries of the same request
+	// return the cached Price rather than creating a duplicate.
+	GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, interval string, idempotencyKey string) (string, error)
 	// CreateSubscription creates a subscription with payment_behavior=default_incomplete
 	// so the first invoice's PaymentIntent can require 3DS before the subscription activates.
 	CreateSubscription(ctx context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
@@ -71,9 +73,8 @@ type StripeClient interface {
 
 // StripeConfig holds Stripe API connection settings.
 type StripeConfig struct {
-	SecretKey     string
-	WebhookSecret string
-	Timeout       time.Duration
+	SecretKey string
+	Timeout   time.Duration
 	// ReturnURL is the frontend URL Stripe redirects to after a 3DS challenge.
 	// Required when Confirm=true on a PaymentIntent.
 	ReturnURL string
@@ -317,7 +318,9 @@ func stripeInterval(frequency string) (string, error) {
 // Product (productID = initiative.StripeProductID). A new Price is created on
 // each call — Stripe recommends this pattern for variable-amount subscriptions.
 // Using an existing Product avoids spamming Stripe with one Product per price.
-func (c *stripeClientImpl) GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, frequency string) (string, error) {
+// idempotencyKey is passed to Stripe so that a client retry of the same request
+// returns the cached Price rather than creating a duplicate.
+func (c *stripeClientImpl) GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, frequency string, idempotencyKey string) (string, error) {
 	_, span := stripeTracer.Start(ctx, "stripe.GetOrCreatePrice")
 	defer span.End()
 	span.SetAttributes(
@@ -341,6 +344,8 @@ func (c *stripeClientImpl) GetOrCreatePrice(ctx context.Context, productID strin
 		// Product per Price — keeps the Stripe catalog clean.
 		Product: stripe.String(productID),
 		Params: stripe.Params{
+			// Prefix the key so price and subscription calls never share a key.
+			IdempotencyKey: stripe.String(fmt.Sprintf("sub-price:%s", idempotencyKey)),
 			Metadata: map[string]string{
 				"product_id": productID,
 			},
@@ -370,11 +375,12 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 		params.DefaultPaymentMethod = stripe.String(req.PaymentMethodID)
 	}
 	// Expand latest_invoice so we can read ConfirmationSecret.ClientSecret.
-	// Idempotency key: customerID+priceID is unique per logical request because
-	// GetOrCreatePrice always creates a fresh price — so a retry with the same
-	// priceID will be returned from Stripe's idempotency cache unchanged.
+	// Use the client-supplied idempotency key (prefixed) so retries of the
+	// same logical request return the cached Subscription rather than creating
+	// a duplicate. The price key (sub-price:) uses the same base key so a
+	// retry also returns the cached Price.
 	params.Params = stripe.Params{
-		IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s:%s", req.StripeCustomerID, req.StripePriceID)),
+		IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s", req.IdempotencyKey)),
 		Expand:         []*string{stripe.String("latest_invoice")},
 		Metadata: map[string]string{
 			"initiative_id": req.InitiativeID,

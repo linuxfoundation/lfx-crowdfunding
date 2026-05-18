@@ -58,6 +58,9 @@ type StripeSubscriptionRequest struct {
 	StripeCustomerID string
 	StripePriceID    string
 	PaymentMethodID  string
+	// IdempotencyKey is the client-supplied key forwarded to Stripe so that
+	// retries of the same logical request are de-duped at the Stripe layer.
+	IdempotencyKey string
 }
 
 // StripeSubscriptionResult holds the IDs needed to record the subscription in Postgres.

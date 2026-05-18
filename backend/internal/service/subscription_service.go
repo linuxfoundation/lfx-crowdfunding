@@ -69,6 +69,14 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	if input.Frequency == "" {
 		return nil, fmt.Errorf("%w: frequency is required", domain.ErrInvalidInput)
 	}
+	// Validate the frequency value before hitting Stripe so the client gets a
+	// 400 (ErrInvalidInput) rather than a 500 for an unsupported billing interval.
+	switch input.Frequency {
+	case "monthly", "month", "yearly", "year", "annual", "weekly", "week", "daily", "day":
+		// valid
+	default:
+		return nil, fmt.Errorf("%w: unsupported frequency %q; supported: monthly, yearly", domain.ErrInvalidInput, input.Frequency)
+	}
 	if input.StripePaymentMethodID == "" {
 		return nil, fmt.Errorf("%w: stripe_payment_method_id is required", domain.ErrInvalidInput)
 	}
@@ -85,6 +93,11 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	// and cheaply when an initiative hasn't been fully configured yet.
 	if initiative.StripeProductID == "" {
 		return nil, fmt.Errorf("%w: initiative has no Stripe product configured", domain.ErrInvalidInput)
+	}
+	// Idempotency key is required so that retries of the same logical request
+	// are de-duped by Stripe for both the Price and the Subscription call.
+	if input.IdempotencyKey == "" {
+		return nil, fmt.Errorf("%w: idempotency_key is required", domain.ErrInvalidInput)
 	}
 
 	// Resolve the Stripe customer for this user (create if first payment).
@@ -121,7 +134,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 
 	// Attach the Price to the initiative's existing Stripe Product rather than
 	// creating a new Product per Price — keeps the Stripe catalog manageable.
-	priceID, err := s.stripe.GetOrCreatePrice(ctx, initiative.StripeProductID, input.AmountCents, input.Frequency)
+	priceID, err := s.stripe.GetOrCreatePrice(ctx, initiative.StripeProductID, input.AmountCents, input.Frequency, input.IdempotencyKey)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("stripe price: %w", err)
@@ -133,6 +146,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 		StripeCustomerID: customerID,
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
+		IdempotencyKey:   input.IdempotencyKey,
 	})
 	if err != nil {
 		span.RecordError(err)

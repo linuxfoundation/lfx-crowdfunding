@@ -25,7 +25,7 @@ type configStripeClient struct {
 	onAttachPaymentMethod func(context.Context, string, string) (*models.CardDetails, error)
 	onGetPaymentMethod    func(context.Context, string) (*models.CardDetails, error)
 	onDetachPaymentMethod func(context.Context, string) error
-	onGetOrCreatePrice    func(context.Context, string, int64, string) (string, error)
+	onGetOrCreatePrice    func(context.Context, string, int64, string, string) (string, error)
 }
 
 func (c *configStripeClient) GetProduct(ctx context.Context, id string) (*models.StripeProduct, error) {
@@ -88,9 +88,9 @@ func (c *configStripeClient) DetachPaymentMethod(ctx context.Context, pmID strin
 	}
 	panic("DetachPaymentMethod not expected")
 }
-func (c *configStripeClient) GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, frequency string) (string, error) {
+func (c *configStripeClient) GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, frequency string, idempotencyKey string) (string, error) {
 	if c.onGetOrCreatePrice != nil {
-		return c.onGetOrCreatePrice(ctx, productID, amountCents, frequency)
+		return c.onGetOrCreatePrice(ctx, productID, amountCents, frequency, idempotencyKey)
 	}
 	panic("GetOrCreatePrice not expected")
 }

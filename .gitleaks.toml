@@ -3,11 +3,10 @@
 
 title = "LFX Crowdfunding Gitleaks Config"
 
-# Documentation files intentionally contain example API response shapes that
-# include field names like "client_secret". These are never real credentials.
+# The Stripe integration guide contains intentional example API response shapes
+# (e.g. "client_secret": "pi_xxx_secret_xxx") that are never real credentials.
 [allowlist]
-  description = "Example values in documentation are not secrets"
+  description = "Example Stripe values in the integration guide are not real secrets"
   paths = [
-    '''backend/docs/''',
-    '''docs/''',
+    '''backend/docs/rewrite/stripe_api_integration\.md''',
   ]
