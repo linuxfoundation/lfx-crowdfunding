@@ -1,5 +1,12 @@
 # False positives: example placeholder values in API documentation.
 # These are clearly-fake strings used as JSON response examples, not real secrets.
+
+# commit 27ceb7e — original example values
 d76f263f02cb1861e8fb15044c354361bfaabf89:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:54
 d76f263f02cb1861e8fb15044c354361bfaabf89:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:188
 d76f263f02cb1861e8fb15044c354361bfaabf89:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:254
+
+# commit 4446ea7 — angle-bracket placeholder values
+4446ea7c1f8cbd8489d52231294551675d593d1f:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:54
+4446ea7c1f8cbd8489d52231294551675d593d1f:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:188
+4446ea7c1f8cbd8489d52231294551675d593d1f:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:254
