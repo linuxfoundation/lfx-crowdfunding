@@ -109,7 +109,7 @@ func (r *InitiativeRepository) GetIDBySlug(ctx context.Context, slug string) (st
 	span.SetAttributes(attribute.String("db.initiative_slug", slug))
 
 	var id string
-	err := r.pool.QueryRow(ctx, `SELECT id FROM initiatives WHERE slug = $1`, slug).Scan(&id)
+	err := r.pool.QueryRow(ctx, `SELECT id FROM initiatives WHERE slug = $1 AND status = 'published'`, slug).Scan(&id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", domain.ErrInitiativeNotFound

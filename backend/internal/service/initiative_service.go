@@ -84,6 +84,25 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	return sponsors
 }
 
+// CheckPublishedByID verifies that a UUID identifies a published initiative.
+// It does not trigger Ledger enrichment — use instead of GetByID when only
+// status validation is needed (e.g. the transactions handler).
+func (s *InitiativeService) CheckPublishedByID(ctx context.Context, id string) error {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.CheckPublishedByID")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.id", id))
+
+	initiative, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("get initiative: %w", err)
+	}
+	if initiative.Status != "published" {
+		return domain.ErrInitiativeNotFound
+	}
+	return nil
+}
+
 // GetIDBySlug returns only the UUID for the given slug.
 // Used by handlers that need to resolve a slug without triggering Ledger enrichment.
 func (s *InitiativeService) GetIDBySlug(ctx context.Context, slug string) (string, error) {

@@ -181,29 +181,21 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Resolve identifier to a UUID, verifying the initiative exists and is published.
+	// Use lightweight lookups (no Ledger enrichment) since transactions come from Ledger directly.
 	var initiativeID string
 	if uuidPattern.MatchString(value) {
-		initiative, err := h.svc.GetByID(r.Context(), value)
-		if err != nil {
+		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
 			Error(w, err)
 			return
 		}
-		if initiative.Status != "published" {
-			Error(w, domain.ErrInitiativeNotFound)
-			return
-		}
-		initiativeID = initiative.ID
+		initiativeID = value
 	} else {
-		initiative, err := h.svc.GetBySlug(r.Context(), value)
+		id, err := h.svc.GetIDBySlug(r.Context(), value)
 		if err != nil {
 			Error(w, err)
 			return
 		}
-		if initiative.Status != "published" {
-			Error(w, domain.ErrInitiativeNotFound)
-			return
-		}
-		initiativeID = initiative.ID
+		initiativeID = id
 	}
 
 	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, size, page)
@@ -211,7 +203,22 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, list)
+
+	body, err := json.Marshal(list)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	etag := etagOf(body)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 // Delete handles DELETE /v1/initiatives/{id} — requires JWT.
