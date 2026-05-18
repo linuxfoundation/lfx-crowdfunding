@@ -46,7 +46,7 @@ The platform is split into two independently deployable services:
 
 Both are deployed as Kubernetes Deployments behind an Ingress. Background jobs run as K8s CronJobs.
 
-See [`backend/docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/04-target-architecture.md) for the full system diagram and component breakdown.
+See [`docs/architecture.md`](docs/architecture.md) for the full system diagram and component breakdown.
 
 ## Documentation
 
