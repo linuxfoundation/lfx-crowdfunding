@@ -39,10 +39,10 @@ func (r *StatisticsRepository) GetPlatformStatistics(ctx context.Context) (*mode
 			COUNT(i.id)::bigint                             AS total_initiatives
 		FROM initiatives i
 		LEFT JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id
-		WHERE i.status = 'published'`
+			WHERE LOWER(i.status) = $1`
 
 	var s models.PlatformStatistics
-	if err := r.pool.QueryRow(ctx, q).Scan(
+	if err := r.pool.QueryRow(ctx, q, models.StatusPublished).Scan(
 		&s.TotalRaisedCents,
 		&s.TotalSupporters,
 		&s.TotalInitiatives,
