@@ -160,10 +160,13 @@ func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, 
 			updated_on      = NOW()
 		WHERE stripe_payment_intent_id = $1`
 
-	_, err := r.pool.Exec(ctx, q, piID, status, chargeID)
+	tag, err := r.pool.Exec(ctx, q, piID, status, chargeID)
 	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("update donation by payment intent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrDonationNotFound
 	}
 	return nil
 }

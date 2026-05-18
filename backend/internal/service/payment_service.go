@@ -101,6 +101,7 @@ func (s *PaymentService) AttachPaymentMethod(ctx context.Context, userID, email,
 }
 
 // GetPaymentAccount returns the saved card details for the authenticated user.
+// Returns ErrPaymentMethodNotFound (HTTP 404) when no card is on file.
 func (s *PaymentService) GetPaymentAccount(ctx context.Context, userID string) (*models.CardDetails, error) {
 	ctx, span := paymentSvcTracer.Start(ctx, "PaymentService.GetPaymentAccount")
 	defer span.End()
@@ -112,7 +113,7 @@ func (s *PaymentService) GetPaymentAccount(ctx context.Context, userID string) (
 		return nil, err
 	}
 	if user.StripeDefaultPaymentMethod == "" {
-		return nil, fmt.Errorf("%w: no payment method on file", domain.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: no payment method on file", domain.ErrPaymentMethodNotFound)
 	}
 
 	card, err := s.stripe.GetPaymentMethod(ctx, user.StripeDefaultPaymentMethod)
@@ -124,8 +125,8 @@ func (s *PaymentService) GetPaymentAccount(ctx context.Context, userID string) (
 }
 
 // DeletePaymentMethod detaches the user's saved card from Stripe and clears
-// the reference in the database. Blocked when the user has active subscriptions
-// since those would lose their payment method.
+// the reference in the database.
+// Returns ErrPaymentMethodNotFound (HTTP 404) when no card is on file.
 func (s *PaymentService) DeletePaymentMethod(ctx context.Context, userID string) error {
 	ctx, span := paymentSvcTracer.Start(ctx, "PaymentService.DeletePaymentMethod")
 	defer span.End()
@@ -137,7 +138,7 @@ func (s *PaymentService) DeletePaymentMethod(ctx context.Context, userID string)
 		return err
 	}
 	if user.StripeDefaultPaymentMethod == "" {
-		return fmt.Errorf("%w: no payment method on file", domain.ErrInvalidInput)
+		return fmt.Errorf("%w: no payment method on file", domain.ErrPaymentMethodNotFound)
 	}
 
 	if err := s.stripe.DetachPaymentMethod(ctx, user.StripeDefaultPaymentMethod); err != nil {

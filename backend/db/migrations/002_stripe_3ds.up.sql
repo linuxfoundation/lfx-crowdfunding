@@ -63,4 +63,8 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_sub_id
   ON subscriptions(stripe_subscription_id)
   WHERE stripe_subscription_id IS NOT NULL;
 
+CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_price_id
+  ON subscriptions(stripe_price_id)
+  WHERE stripe_price_id IS NOT NULL;
+
 COMMIT;

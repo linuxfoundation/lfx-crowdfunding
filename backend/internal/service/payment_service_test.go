@@ -211,8 +211,8 @@ func TestPaymentService_GetPaymentAccount_NoCard(t *testing.T) {
 	)
 
 	_, err := svc.GetPaymentAccount(context.Background(), "u1")
-	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Errorf("expected ErrInvalidInput, got %v", err)
+	if !errors.Is(err, domain.ErrPaymentMethodNotFound) {
+		t.Errorf("expected ErrPaymentMethodNotFound, got %v", err)
 	}
 }
 
@@ -257,8 +257,8 @@ func TestPaymentService_DeletePaymentMethod_NoCard(t *testing.T) {
 	)
 
 	err := svc.DeletePaymentMethod(context.Background(), "u1")
-	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Errorf("expected ErrInvalidInput, got %v", err)
+	if !errors.Is(err, domain.ErrPaymentMethodNotFound) {
+		t.Errorf("expected ErrPaymentMethodNotFound, got %v", err)
 	}
 }
 

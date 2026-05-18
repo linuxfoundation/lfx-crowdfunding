@@ -180,10 +180,13 @@ func (r *SubscriptionRepository) UpdateByStripeSubscriptionID(ctx context.Contex
 		UPDATE subscriptions SET status = $2, updated_on = NOW()
 		WHERE stripe_subscription_id = $1`
 
-	_, err := r.pool.Exec(ctx, q, stripeSubID, status)
+	tag, err := r.pool.Exec(ctx, q, stripeSubID, status)
 	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("update subscription by stripe id: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrSubscriptionNotFound
 	}
 	return nil
 }

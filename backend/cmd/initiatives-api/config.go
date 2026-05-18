@@ -165,7 +165,10 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	stripeReturnURL := getEnv("STRIPE_RETURN_URL", "http://localhost:3000/payment/complete")
+	stripeReturnURL, ok := os.LookupEnv("STRIPE_RETURN_URL")
+	if !ok || stripeReturnURL == "" {
+		stripeReturnURL = "http://localhost:3000/payment/complete"
+	}
 	ledgerTimeout, err := getDurationEnv("LEDGER_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return nil, err

@@ -16,6 +16,7 @@ import (
 
 	stripe "github.com/stripe/stripe-go/v82"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 )
@@ -379,8 +380,46 @@ func TestWebhookHandler_PaymentIntentSucceeded_DBError_Returns500(t *testing.T) 
 	}
 
 	rr := postWebhook(t, newTestWebhookHandler(sc, dr, &wbSubscriptionRepo{}), "t=1,v1=sig", `{}`)
-	if rr.Code != http.StatusNotImplemented {
-		// ackUnimplemented=false → handler returns 501 when handled=false
-		t.Errorf("status = %d, want 501 on DB error with ackUnimplemented=false", rr.Code)
+	if rr.Code != http.StatusInternalServerError {
+		// ackUnimplemented=false → handler returns 500 on processing error so Stripe retries
+		t.Errorf("status = %d, want 500 on DB error with ackUnimplemented=false", rr.Code)
+	}
+}
+
+// --- not-found: no local row for Stripe ID → non-200 so Stripe retries ---
+
+func TestWebhookHandler_PaymentIntentSucceeded_DonationNotFound_Returns500(t *testing.T) {
+	dr := &wbDonationRepo{
+		onUpdateByPaymentIntentID: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrDonationNotFound
+		},
+	}
+	event := buildEvent("payment_intent.succeeded",
+		`{"id":"pi_orphan","latest_charge":{"id":"ch_orphan"}}`)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandler(sc, dr, &wbSubscriptionRepo{}), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 when donation row not found (so Stripe retries)", rr.Code)
+	}
+}
+
+func TestWebhookHandler_InvoicePaymentSucceeded_SubscriptionNotFound_Returns500(t *testing.T) {
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, _, _ string) error {
+			return domain.ErrSubscriptionNotFound
+		},
+	}
+	body := `{"parent":{"type":"subscription","subscription_details":{"subscription":{"id":"sub_orphan"}}}}`
+	event := buildEvent("invoice.payment_succeeded", body)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 when subscription row not found (so Stripe retries)", rr.Code)
 	}
 }

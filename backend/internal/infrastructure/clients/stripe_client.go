@@ -51,8 +51,9 @@ type StripeClient interface {
 	CreatePaymentIntent(ctx context.Context, req models.PaymentIntentRequest) (*models.PaymentIntent, error)
 
 	// Recurring payments
-	// GetOrCreatePrice finds or creates a recurring Stripe Price for the given
-	// initiative / amount / interval combination.
+	// GetOrCreatePrice creates a new recurring Stripe Price for the given
+	// initiative / amount / interval. A fresh Price is always created — Stripe
+	// recommends this for variable-amount subscriptions rather than reusing prices.
 	GetOrCreatePrice(ctx context.Context, initiativeID string, amountCents int64, interval string) (string, error)
 	// CreateSubscription creates a subscription with payment_behavior=default_incomplete
 	// so the first invoice's PaymentIntent can require 3DS before the subscription activates.
