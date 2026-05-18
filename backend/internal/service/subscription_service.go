@@ -75,7 +75,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	case "monthly", "month", "yearly", "year", "annual", "weekly", "week", "daily", "day":
 		// valid
 	default:
-		return nil, fmt.Errorf("%w: unsupported frequency %q; supported: monthly, yearly", domain.ErrInvalidInput, input.Frequency)
+		return nil, fmt.Errorf("%w: unsupported frequency %q; supported: monthly, yearly, weekly, daily", domain.ErrInvalidInput, input.Frequency)
 	}
 	if input.StripePaymentMethodID == "" {
 		return nil, fmt.Errorf("%w: stripe_payment_method_id is required", domain.ErrInvalidInput)
