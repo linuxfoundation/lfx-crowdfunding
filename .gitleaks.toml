@@ -1,0 +1,13 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+
+title = "LFX Crowdfunding Gitleaks Config"
+
+# Documentation files intentionally contain example API response shapes that
+# include field names like "client_secret". These are never real credentials.
+[allowlist]
+  description = "Example values in documentation are not secrets"
+  paths = [
+    '''backend/docs/''',
+    '''docs/''',
+  ]
