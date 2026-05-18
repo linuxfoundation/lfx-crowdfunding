@@ -99,6 +99,22 @@
     }
   }
 
+  &-dark {
+    @apply bg-neutral-900 text-white font-semibold;
+
+    &:hover {
+      @apply bg-neutral-800;
+    }
+
+    &:active {
+      @apply bg-neutral-900 outline outline-neutral-700 outline-3;
+    }
+
+    &:disabled {
+      @apply bg-neutral-300 cursor-not-allowed;
+    }
+  }
+
   &-nav {
     @apply bg-transparent text-neutral-500 font-medium;
 

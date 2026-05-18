@@ -41,12 +41,7 @@ SPDX-License-Identifier: MIT
       <!-- Right: CTAs (desktop) + divider (desktop) + user -->
       <div class="flex items-center gap-4">
         <div class="hidden items-center gap-4 md:flex">
-          <lfx-button
-            label="Start Fundraise"
-            type="transparent"
-            button-style="pill"
-            icon="box-dollar"
-          />
+          <start-fundraise-button />
           <lfx-button
             label="Donate"
             type="primary"
@@ -70,8 +65,9 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { ref } from 'vue';
 import { AppRoute } from '~/config/routes';
-import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
+import LfxButton from '~/components/uikit/button/button.vue';
+import StartFundraiseButton from '~/components/shared/components/start-fundraise-button.vue';
 import LfxDesktopNav from '~/components/shared/layout/components/desktop-nav.vue';
 import LfxMobileMenu from '~/components/shared/layout/components/mobile-menu.vue';
 import LfxUserLogin from '~/components/shared/layout/components/user-login.vue';

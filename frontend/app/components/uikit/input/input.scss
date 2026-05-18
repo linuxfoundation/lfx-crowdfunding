@@ -1,7 +1,11 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 .c-input {
-  @apply border px-1 flex items-center transition-all border-neutral-200 rounded-md shadow-xs text-sm;
+  @apply border px-1 flex items-center transition-all border-neutral-200 rounded-full shadow-xs text-sm;
+
+  &--textarea {
+    @apply rounded-2xl;
+  }
 
   &:focus-within {
     @apply border-neutral-900;
