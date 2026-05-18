@@ -7,31 +7,10 @@ SPDX-License-Identifier: MIT
     <p class="text-base font-semibold text-neutral-900 leading-6">Expense breakdown</p>
 
     <!-- Loading skeleton -->
-    <div
+    <initiative-detail-table-skeleton
       v-if="isLoading"
-      class="flex flex-col gap-4"
-    >
-      <div
-        v-for="n in 5"
-        :key="n"
-        class="flex items-center gap-3 border-t border-neutral-200 pt-4"
-      >
-        <lfx-skeleton
-          height="0.875rem"
-          width="15%"
-        />
-        <lfx-skeleton
-          height="0.875rem"
-          width="55%"
-          class="ml-3"
-        />
-        <lfx-skeleton
-          height="0.875rem"
-          width="15%"
-          class="ml-auto"
-        />
-      </div>
-    </div>
+      :columns="[{ width: '15%' }, { width: '55%', class: 'ml-3' }, { width: '15%', class: 'ml-auto' }]"
+    />
 
     <table
       v-else
@@ -76,10 +55,10 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import InitiativeDetailTableSkeleton from './initiative-detail-table-skeleton.vue';
 import type { ExpenseRecord } from '#shared/types/initiative-detail.types';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxTag from '~/components/uikit/tag/tag.vue';
-import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 
 defineProps<{ expenses: ExpenseRecord[]; isLoading?: boolean }>();
 

@@ -81,6 +81,7 @@ import { useInitiativeTransactions } from '~/composables/initiatives/useInitiati
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useScroll from '~/utils/scroll';
+import { formatTimeAgo, formatShortDate } from '~/utils/date';
 import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/types/initiative-detail.types';
 
 const props = defineProps<{ initiativeId: string }>();
@@ -110,7 +111,7 @@ const recentDonations = computed<RecentDonation[]>(() =>
 const donationRecords = computed<DonationRecord[]>(() =>
   (txnData.value?.data ?? []).map((t) => ({
     id: t.id,
-    date: new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    date: formatShortDate(t.date),
     supporterName: t.donorName ?? 'Anonymous',
     supporterLogoUrl: t.donorLogoUrl,
     supporterType: t.donorType === 'organization' ? 'organization' : 'member',
@@ -122,23 +123,12 @@ const donationRecords = computed<DonationRecord[]>(() =>
 const expenseRecords = computed<ExpenseRecord[]>(() =>
   (expenseData.value?.data ?? []).map((t) => ({
     id: t.id,
-    date: new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    date: formatShortDate(t.date),
     category: t.category ?? 'Other',
     description: t.category ?? 'Other',
     amountCents: t.amountCents,
   })),
 );
-
-function formatTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const days = Math.floor(diff / 86_400_000);
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.floor(months / 12)}y ago`;
-}
 
 const activeTab = ref('overview');
 

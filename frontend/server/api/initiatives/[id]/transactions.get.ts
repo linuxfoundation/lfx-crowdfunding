@@ -1,40 +1,9 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import type { Transaction, TransactionList } from '#shared/types/transaction.types';
-
-interface BackendTransaction {
-  id: string;
-  type: string;
-  amount_cents: number;
-  date: string;
-  category?: string;
-  donor_name?: string;
-  donor_type?: string;
-  donor_logo_url?: string;
-  donor_username?: string;
-}
-
-interface BackendTransactionList {
-  data: BackendTransaction[];
-  total_count: number;
-  from: number;
-  size: number;
-}
-
-function toTransaction(b: BackendTransaction): Transaction {
-  return {
-    id: b.id,
-    type: b.type as Transaction['type'],
-    amountCents: b.amount_cents,
-    date: b.date,
-    category: b.category,
-    donorName: b.donor_name,
-    donorType: b.donor_type as Transaction['donorType'],
-    donorLogoUrl: b.donor_logo_url,
-    donorUsername: b.donor_username,
-  };
-}
+import type { BackendTransactionList } from '../../../types/transactions.types';
+import { mapToTransaction } from '../../../services/transactions.services';
+import type { TransactionList } from '#shared/types/transaction.types';
 
 export default defineEventHandler(async (event): Promise<TransactionList> => {
   const id = getRouterParam(event, 'id');
@@ -51,7 +20,7 @@ export default defineEventHandler(async (event): Promise<TransactionList> => {
   );
 
   return {
-    data: (res.data ?? []).map(toTransaction),
+    data: (res.data ?? []).map(mapToTransaction),
     totalCount: res.total_count,
     from: res.from,
     size: res.size,

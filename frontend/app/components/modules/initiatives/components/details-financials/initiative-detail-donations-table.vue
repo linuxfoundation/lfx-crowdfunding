@@ -7,31 +7,14 @@ SPDX-License-Identifier: MIT
     <p class="text-base font-semibold text-neutral-900 leading-6">Donations received</p>
 
     <!-- Loading skeleton -->
-    <div
+    <initiative-detail-table-skeleton
       v-if="isLoading"
-      class="flex flex-col gap-4"
-    >
-      <div
-        v-for="n in 5"
-        :key="n"
-        class="flex items-center gap-3 border-t border-neutral-200 pt-4"
-      >
-        <lfx-skeleton
-          :rounded="true"
-          width="1.5rem"
-          height="1.5rem"
-        />
-        <lfx-skeleton
-          height="0.875rem"
-          width="60%"
-        />
-        <lfx-skeleton
-          height="0.875rem"
-          width="15%"
-          class="ml-auto"
-        />
-      </div>
-    </div>
+      :columns="[
+        { width: '1.5rem', height: '1.5rem', rounded: true },
+        { width: '60%' },
+        { width: '15%', class: 'ml-auto' },
+      ]"
+    />
 
     <!-- Empty state -->
     <p
@@ -98,12 +81,12 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import InitiativeDetailTableSkeleton from './initiative-detail-table-skeleton.vue';
 import type { DonationRecord } from '#shared/types/initiative-detail.types';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxTag from '~/components/uikit/tag/tag.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
-import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 
 defineProps<{ donations: DonationRecord[]; isLoading?: boolean }>();
 
