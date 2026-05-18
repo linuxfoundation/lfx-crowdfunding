@@ -30,9 +30,9 @@ lfx-crowdfunding/
 │   │   ├── scripts/            # One-time DynamoDB → Postgres migration (Python)
 │   │   └── seed.sql            # Development seed data
 │   └── charts/                 # Helm chart
-├── frontend/                   # Nuxt 3 frontend (Vue 3, TypeScript, Tailwind, PrimeVue)
+├── frontend/                   # Nuxt 4 frontend (Vue 3, TypeScript, Tailwind, PrimeVue)
 ├── docker-compose.yml          # Local Postgres
-└── docs/
+└── backend/docs/
     └── rewrite/                # Architecture decisions, open questions, migration plan
 ```
 
@@ -40,23 +40,23 @@ lfx-crowdfunding/
 
 The platform is split into two independently deployable services:
 
-**Frontend** — Nuxt 3 BFF. Handles Auth0 PKCE authentication, HTTP-only session cookies, and Stripe.js. Calls the Go API to serve pages.
+**Frontend** — Nuxt 4 BFF. Handles Auth0 PKCE authentication, HTTP-only session cookies, and Stripe.js. Calls the Go API to serve pages.
 
 **Go HTTP API** — Chi router. Owns all business logic: initiative CRUD, Stripe payment processing, webhook handling, email, and read-only Ledger integration.
 
 Both are deployed as Kubernetes Deployments behind an Ingress. Background jobs run as K8s CronJobs.
 
-See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) for the full system diagram and component breakdown.
+See [`backend/docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/04-target-architecture.md) for the full system diagram and component breakdown.
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [`docs/rewrite/01-current-system.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
-| [`docs/rewrite/02-decisions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
-| [`docs/rewrite/03-open-questions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
-| [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
-| [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
+| [`backend/docs/rewrite/01-current-system.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
+| [`backend/docs/rewrite/02-decisions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
+| [`backend/docs/rewrite/03-open-questions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
+| [`backend/docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
+| [`backend/docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
 
 ## Tech Stack
 
@@ -64,7 +64,7 @@ See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundatio
 
 | Concern | Choice |
 |---|---|
-| Framework | Nuxt 3 + Vue 3 |
+| Framework | Nuxt 4 + Vue 3 |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS + PrimeVue v4 |
 | State | Pinia + Vue Query |
@@ -117,7 +117,7 @@ The `crowdfunding` schema lives on the shared LFX v2 RDS instance. The initial m
 
 One-time DynamoDB → Postgres data migration script: [`backend/db/scripts/migrate_dynamo_to_postgres.py`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/db/scripts/migrate_dynamo_to_postgres.py).
 
-See [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/05-migration-plan.md) for cutover procedure.
+See [`backend/docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/05-migration-plan.md) for cutover procedure.
 
 ## Development Setup
 
