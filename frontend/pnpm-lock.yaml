@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  devalue: ^5.8.1
+
 importers:
   .:
     dependencies:
@@ -28,6 +31,9 @@ importers:
       "@primevue/themes":
         specifier: ^4.5.4
         version: 4.5.4
+      "@stripe/stripe-js":
+        specifier: ^9.5.0
+        version: 9.5.0
       "@tanstack/vue-query":
         specifier: ^5.92.8
         version: 5.100.9(vue@3.5.34(typescript@5.9.3))
@@ -2848,6 +2854,13 @@ packages:
         integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==,
       }
 
+  "@stripe/stripe-js@9.5.0":
+    resolution:
+      {
+        integrity: sha512-dTQWkJRw5lhcQipPuw6qZRBK2zY5eWWZ1Srw9mSjhIXSLdsNYO3uaIV+YRMkI0/tB/D7yQdHYStrcZrbeHI5Jg==,
+      }
+    engines: { node: ">=12.16" }
+
   "@stylistic/eslint-plugin@5.10.0":
     resolution:
       {
@@ -4783,10 +4796,10 @@ packages:
       }
     engines: { node: ">=8" }
 
-  devalue@5.8.0:
+  devalue@5.8.1:
     resolution:
       {
-        integrity: sha512-2zA9pFEsnp7vWBZbXF5JAgAq0fsUIt/1XPbRiAmRV3lp/2C3upzH+sADiyy66aFCihoLEsrQHxNM5w1gIDfsBg==,
+        integrity: sha512-4CXDYRBGqN+57wVJkuXBYmpAVUSg3L6JAQa/DFqm238G73E1wuyc/JhGQJzN7vUf/CMphYau2zXbfWzDR5aTEw==,
       }
 
   didyoumean@1.2.2:
@@ -11208,7 +11221,7 @@ snapshots:
       consola: 3.4.2
       defu: 6.1.7
       destr: 2.0.5
-      devalue: 5.8.0
+      devalue: 5.8.1
       errx: 0.1.0
       escape-string-regexp: 5.0.0
       exsolve: 1.0.8
@@ -11926,6 +11939,8 @@ snapshots:
   "@speed-highlight/core@1.2.15": {}
 
   "@standard-schema/spec@1.1.0": {}
+
+  "@stripe/stripe-js@9.5.0": {}
 
   "@stylistic/eslint-plugin@5.10.0(eslint@9.39.4(jiti@2.7.0))":
     dependencies:
@@ -13113,7 +13128,7 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
-  devalue@5.8.0: {}
+  devalue@5.8.1: {}
 
   didyoumean@1.2.2: {}
 
@@ -14852,7 +14867,7 @@ snapshots:
       consola: 3.4.2
       cookie-es: 2.0.1
       defu: 6.1.7
-      devalue: 5.8.0
+      devalue: 5.8.1
       errx: 0.1.0
       escape-string-regexp: 5.0.0
       exsolve: 1.0.8

@@ -5,8 +5,8 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="border-t border-neutral-200 pt-16 flex flex-col gap-10">
     <div class="flex flex-col gap-3">
-      <h2 class="text-2xl font-semibold leading-9 text-neutral-900">Companies already investing</h2>
-      <p class="text-base font-normal leading-6 text-neutral-900">
+      <h2 class="md:text-2xl text-xl font-semibold leading-9 text-neutral-900">Companies already investing</h2>
+      <p class="md:text-base text-sm font-normal leading-6 text-neutral-900">
         Industry leaders funding the open source projects they depend on.
       </p>
     </div>
@@ -14,13 +14,13 @@ SPDX-License-Identifier: MIT
     <!-- Loading -->
     <div
       v-if="isLoading"
-      class="border border-neutral-200 rounded-xl flex"
+      class="border border-neutral-200 rounded-xl flex md:flex-row flex-col"
     >
       <div
         v-for="col in 4"
         :key="col"
         class="flex-1 flex flex-col"
-        :class="{ 'border-l border-neutral-200': col > 1 }"
+        :class="{ 'md:border-l border-t md:border-t-0 border-neutral-200': col > 1 }"
       >
         <div
           v-for="row in 4"
@@ -63,17 +63,24 @@ SPDX-License-Identifier: MIT
     <!-- 3-column grid -->
     <div
       v-else
-      class="border border-neutral-200 rounded-xl grid grid-cols-3"
+      class="border border-neutral-200 rounded-xl grid md:grid-cols-3 grid-cols-1"
     >
       <div
         v-for="(company, index) in companies"
         :key="company.id"
         class="flex gap-4 items-center p-6 min-w-0"
-        :class="{
-          // 'border-l border-neutral-200': index % 3 !== 0,
-          'border-r border-neutral-200': index % 3 < 2,
-          'border-b border-neutral-200': index < companies.length - (companies.length % 3 || 3),
-        }"
+        :class="[
+          // Mobile (1-col): bottom border between items
+          index < companies.length - 1 ? 'border-b border-neutral-200' : '',
+          // Remove that mobile bottom border on desktop where desktop logic says no bottom border
+          index < companies.length - 1 && !(index < companies.length - (companies.length % 3 || 3))
+            ? 'md:border-b-0'
+            : '',
+          // Desktop (3-col): right border between columns
+          index % 3 < 2 ? 'md:border-r md:border-neutral-200' : '',
+          // Desktop: bottom border between rows
+          index < companies.length - (companies.length % 3 || 3) ? 'md:border-b md:border-neutral-200' : '',
+        ]"
       >
         <lfx-avatar
           type="organization"

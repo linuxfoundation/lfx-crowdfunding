@@ -7,16 +7,17 @@ SPDX-License-Identifier: MIT
     <teleport to="body">
       <div
         class="c-drawer"
-        :class="props.position === 'left' ? 'c-drawer--left' : 'c-drawer--right'"
+        :class="`c-drawer--${props.position}`"
         @click="clickOutsideClose()"
       >
         <div
           class="c-drawer__content"
-          :style="{ 'max-width': props.width }"
+          :style="props.position === 'bottom' ? { 'max-height': props.height } : { 'max-width': props.width }"
           v-bind="$attrs"
           @click.stop
         >
           <lfx-icon-button
+            v-if="!props.hideCloseButton"
             type="transparent"
             icon="xmark"
             class="absolute top-0 right-0 mr-5 mt-5 z-[999]"
@@ -37,13 +38,17 @@ const props = withDefaults(
   defineProps<{
     modelValue: boolean;
     width?: string;
+    height?: string;
     closeFunction?: () => boolean;
-    position?: 'left' | 'right';
+    position?: 'left' | 'right' | 'bottom';
+    hideCloseButton?: boolean;
   }>(),
   {
     width: '37.5rem',
+    height: '85vh',
     closeFunction: () => true,
     position: 'right',
+    hideCloseButton: false,
   },
 );
 

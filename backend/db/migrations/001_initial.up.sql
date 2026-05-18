@@ -313,16 +313,26 @@ CREATE TABLE IF NOT EXISTS initiative_github_stats (
 );
 
 -- ============================================
--- TABLE: initiative_stats  (project only — backers count only)
--- total_raised excluded: no active write path (ProjectStats.TotalRaised always 0).
--- Updated by UpdateProjectStats → targeted UpdateItem on
---   cachedDetails.projectStats.backers ± 1
+-- TABLE: initiative_ledger_stats
+-- Populated by the ledger-stats-sync CronJob via GET /balance.
+-- Replaces initiative_stats — see docs/rewrite/02-decisions.md.
+--
+-- All _cents values are non-negative; the cron ABS()s negative ledger values
+-- on write. available_balance_cents is stored (not derived) — the ledger
+-- computes it as totalBalance + feeBalance (negative), which cannot be
+-- reconstructed from the other columns alone.
 -- ============================================
-CREATE TABLE IF NOT EXISTS initiative_stats (
-  initiative_id UUID PRIMARY KEY REFERENCES initiatives(id) ON DELETE CASCADE,
-  backers       INTEGER      NOT NULL DEFAULT 0,
-  created_on    TIMESTAMPTZ  DEFAULT NOW(),
-  updated_on    TIMESTAMPTZ  DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS initiative_ledger_stats (
+  initiative_id           UUID    PRIMARY KEY REFERENCES initiatives(id) ON DELETE CASCADE,
+  total_raised_cents      BIGINT  NOT NULL DEFAULT 0,     -- ledger: totalCredit
+  total_debited_cents     BIGINT  NOT NULL DEFAULT 0,     -- ledger: ABS(totalDebit)
+  total_balance_cents     BIGINT  NOT NULL DEFAULT 0,     -- ledger: totalBalance
+  available_balance_cents BIGINT  NOT NULL DEFAULT 0,     -- ledger: availableBalance
+  fee_balance_cents       BIGINT  NOT NULL DEFAULT 0,     -- ledger: ABS(feeBalance)
+  supporters              INTEGER NOT NULL DEFAULT 0,     -- ledger: unique contributor count (donors + subscribers)
+  sponsors                JSONB   NOT NULL DEFAULT '{}',  -- ledger: Sponsors
+  created_on              TIMESTAMPTZ DEFAULT NOW(),
+  updated_on              TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================
@@ -439,7 +449,7 @@ CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_sponsorship_tiers     
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_ostif_detail             FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_contacts                 FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_github_stats             FOR EACH ROW EXECUTE FUNCTION set_updated_on();
-CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_stats                    FOR EACH ROW EXECUTE FUNCTION set_updated_on();
+CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_ledger_stats             FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiative_entity_details           FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON donations                           FOR EACH ROW EXECUTE FUNCTION set_updated_on();
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON subscriptions                       FOR EACH ROW EXECUTE FUNCTION set_updated_on();
@@ -458,6 +468,10 @@ CREATE INDEX IF NOT EXISTS idx_initiatives_slug                     ON initiativ
 CREATE INDEX IF NOT EXISTS idx_initiatives_status                   ON initiatives(status);
 CREATE INDEX IF NOT EXISTS idx_initiatives_type                     ON initiatives(initiative_type);
 CREATE INDEX IF NOT EXISTS idx_initiatives_amount_raised            ON initiatives(amount_raised_in_cents DESC);
+
+-- initiative_ledger_stats (sort support)
+CREATE INDEX IF NOT EXISTS idx_ledger_stats_supporters              ON initiative_ledger_stats(supporters DESC);
+CREATE INDEX IF NOT EXISTS idx_ledger_stats_total_raised            ON initiative_ledger_stats(total_raised_cents DESC);
 
 -- initiative child tables
 CREATE INDEX IF NOT EXISTS idx_initiative_goals_iid                 ON initiative_goals(initiative_id);

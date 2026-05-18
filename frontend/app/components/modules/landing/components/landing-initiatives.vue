@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
     <!-- Section header -->
     <div class="flex items-center justify-between border-t border-neutral-200 pt-16 pb-8">
       <h2 class="text-xl font-semibold text-neutral-900">Trending initiatives</h2>
-      <NuxtLink to="/initiatives">
+      <NuxtLink :to="AppRoute.Initiatives">
         <lfx-button
           label="View all"
           type="transparent"
@@ -22,7 +22,7 @@ SPDX-License-Identifier: MIT
     <!-- Loading skeletons -->
     <div
       v-if="isLoading"
-      class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
+      class="grid grid-cols-1 md:gap-8 gap-5 sm:grid-cols-2 lg:grid-cols-3"
     >
       <initiative-card-loading
         v-for="n in 3"
@@ -46,7 +46,7 @@ SPDX-License-Identifier: MIT
     <!-- Initiative cards -->
     <div
       v-else-if="initiatives.length"
-      class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
+      class="grid grid-cols-1 md:gap-8 gap-5 sm:grid-cols-2 lg:grid-cols-3"
     >
       <initiative-card
         v-for="initiative in initiatives"
@@ -63,6 +63,7 @@ import LfxIcon from '~/components/uikit/icon/icon.vue';
 import InitiativeCard from '~/components/shared/components/initiative-card/initiative-card.vue';
 import InitiativeCardLoading from '~/components/shared/components/initiative-card/initiative-card-loading.vue';
 import type { Initiative } from '~/types/initiative.types';
+import { AppRoute } from '~/config/routes';
 
 defineProps<{
   initiatives: Initiative[];

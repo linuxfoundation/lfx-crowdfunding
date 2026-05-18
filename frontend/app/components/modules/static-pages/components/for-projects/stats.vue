@@ -3,12 +3,12 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="border-t border-neutral-200 py-10 flex gap-8 items-start">
+  <div class="border-t border-neutral-200 py-10 grid lg:grid-cols-4 grid-cols-2 lg:gap-8 gap-0">
     <template v-if="isLoading">
       <div
         v-for="n in 4"
         :key="n"
-        class="flex-1 flex flex-col gap-2"
+        class="flex-1 flex flex-col gap-2.5 md:py-10 py-5"
       >
         <lfx-skeleton
           height="3.5rem"
@@ -22,21 +22,13 @@ SPDX-License-Identifier: MIT
     </template>
 
     <template v-else>
-      <div class="flex-1 flex flex-col gap-2.5 min-w-0">
-        <p class="text-4xl leading-14 text-neutral-900">{{ totalRaised }}</p>
-        <p class="text-base leading-6 text-neutral-900">Total Funds Raised</p>
-      </div>
-      <div class="flex-1 flex flex-col gap-2.5 min-w-0">
-        <p class="text-4xl leading-14 text-neutral-900">{{ activeInitiatives }}</p>
-        <p class="text-base leading-6 text-neutral-900">Active Initiatives</p>
-      </div>
-      <div class="flex-1 flex flex-col gap-2.5 min-w-0">
-        <p class="text-4xl leading-14 text-neutral-900">{{ supporters }}</p>
-        <p class="text-base leading-6 text-neutral-900">Unique Supporters</p>
-      </div>
-      <div class="flex-1 flex flex-col gap-2.5 min-w-0">
-        <p class="text-4xl leading-14 text-neutral-900">0%</p>
-        <p class="text-base leading-6 text-neutral-900">Platform Fees</p>
+      <div
+        v-for="(item, idx) in stats"
+        :key="idx"
+        class="flex-1 flex flex-col gap-2.5 min-w-0 md:py-10 py-5"
+      >
+        <p class="text-4xl leading-14 text-neutral-900">{{ item.value }}</p>
+        <p class="text-base leading-6 text-neutral-900">{{ item.label }}</p>
       </div>
     </template>
   </div>
@@ -60,6 +52,13 @@ const totalRaised = computed(() =>
 const activeInitiatives = computed(() => (props.overview ? String(props.overview.activeInitiatives) : ''));
 
 const supporters = computed(() => (props.overview ? formatNumber(props.overview.supporterCount) + '+' : ''));
+
+const stats = [
+  { value: totalRaised, label: 'Total Funds Raised' },
+  { value: activeInitiatives, label: 'Active Initiatives' },
+  { value: supporters, label: 'Unique Supporters' },
+  { value: '0%', label: 'Platform Fees' },
+];
 </script>
 
 <script lang="ts">

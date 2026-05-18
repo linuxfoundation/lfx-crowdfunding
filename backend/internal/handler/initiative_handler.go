@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -33,8 +34,12 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	offset, _ := strconv.Atoi(q.Get("offset"))
 
 	filter := models.InitiativeFilter{
+		OwnerID:        q.Get("owner_id"),
 		InitiativeType: q.Get("type"),
 		Status:         q.Get("status"),
+		Search:         q.Get("search"),
+		SortBy:         strings.ToLower(q.Get("sort_by")),
+		SortDir:        strings.ToLower(q.Get("sort_dir")),
 		Limit:          limit,
 		Offset:         offset,
 	}
@@ -52,12 +57,12 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 // GetByID handles GET /v1/initiatives/{id}
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	detail, err := h.svc.GetByID(r.Context(), id)
+	initiative, err := h.svc.GetByID(r.Context(), id)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, detail)
+	JSON(w, http.StatusOK, initiative)
 }
 
 // Create handles POST /v1/initiatives — requires JWT.
@@ -119,16 +124,4 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// ListGoals handles GET /v1/initiatives/{id}/goals
-func (h *InitiativeHandler) ListGoals(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	// Re-use GetByID to return goals alongside the initiative.
-	detail, err := h.svc.GetByID(r.Context(), id)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	JSON(w, http.StatusOK, map[string]any{"data": detail.Goals})
 }

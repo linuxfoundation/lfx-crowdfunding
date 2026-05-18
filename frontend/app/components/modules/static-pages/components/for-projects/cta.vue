@@ -3,8 +3,10 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="pt-16 pb-30">
-    <div class="bg-gradient-to-b from-white to-accent-100 rounded-xl p-16 flex items-end justify-between gap-10">
+  <div class="pt-16 md:pb-30 pb-20">
+    <div
+      class="bg-gradient-to-b from-white to-accent-100 rounded-xl md:p-16 p-6 flex justify-between gap-10 md:flex-row flex-col md:items-end items-start"
+    >
       <div class="flex-1 flex flex-col gap-3 min-w-0">
         <h2 class="text-3xl font-light leading-11 text-neutral-900">Ready to fund your project?</h2>
         <p class="text-base font-normal leading-6 text-neutral-900">
@@ -13,15 +15,15 @@ SPDX-License-Identifier: MIT
         </p>
       </div>
       <NuxtLink
-        to="/start-fundraise"
-        class="shrink-0"
+        :to="AppRoute.StartFundraise"
+        class="shrink-0 md:w-auto w-full"
       >
         <lfx-button
           icon="box-dollar"
           label="Start a Fundraise"
           type="primary"
           button-style="pill"
-          size="small"
+          class="w-full justify-center"
         />
       </NuxtLink>
     </div>
@@ -30,6 +32,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import LfxButton from '~/components/uikit/button/button.vue';
+import { AppRoute } from '~/config/routes';
 </script>
 
 <script lang="ts">

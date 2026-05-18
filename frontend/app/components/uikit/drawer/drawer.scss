@@ -16,8 +16,16 @@
     @apply justify-end;
   }
 
+  &--bottom {
+    @apply items-end;
+
+    .c-drawer__content {
+      @apply h-auto rounded-t-2xl #{!important};
+    }
+  }
+
   &__content {
-    @apply w-full bg-white shadow-xl h-full;
+    @apply relative w-full bg-white shadow-xl h-full;
 
     .c-card {
       @apply shadow-none border-0;

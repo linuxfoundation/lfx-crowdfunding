@@ -48,6 +48,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	initiativeRepo := db.NewInitiativeRepository(pool)
 	donationRepo := db.NewDonationRepository(pool)
 	subscriptionRepo := db.NewSubscriptionRepository(pool)
+	statisticsRepo := db.NewStatisticsRepository(pool)
 
 	// Clients
 	ledgerClient := clients.NewLedgerClient(clients.LedgerConfig{
@@ -65,6 +66,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, ledgerClient, stripeClient)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, stripeClient)
+	statisticsSvc := service.NewStatisticsService(statisticsRepo)
 
 	// JWT authenticator
 	jwtAuth, err := auth.NewJWTAuthenticator(auth.JWTAuthConfig{
@@ -88,6 +90,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	initiativeH := handler.NewInitiativeHandler(initiativeSvc)
 	donationH := handler.NewDonationHandler(donationSvc)
 	subscriptionH := handler.NewSubscriptionHandler(subscriptionSvc)
+	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 
 	// Router
@@ -112,17 +115,19 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	// Stripe webhook (no JWT — uses its own HMAC signature validation)
 	r.Post("/v1/stripe/webhook", webhookH.Handle)
 
+	// Public API (no auth)
+	r.Get("/v1/statistics", statisticsH.GetPlatform)
+	r.Get("/v1/initiatives", initiativeH.List)
+	r.Get("/v1/initiatives/{id}", initiativeH.GetByID)
+
 	// Protected API
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(jwtAuth.Middleware)
 
 		r.Route("/initiatives", func(r chi.Router) {
-			r.Get("/", initiativeH.List)
 			r.Post("/", initiativeH.Create)
-			r.Get("/{id}", initiativeH.GetByID)
 			r.Patch("/{id}", initiativeH.Update)
 			r.Delete("/{id}", initiativeH.Delete)
-			r.Get("/{id}/goals", initiativeH.ListGoals)
 			r.Get("/{id}/donations", donationH.List)
 			r.Post("/{id}/donations", donationH.Create)
 			r.Get("/{id}/subscriptions", subscriptionH.List)

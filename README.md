@@ -14,7 +14,7 @@ LFX Crowdfunding enables open source projects to raise funds for development, se
 
 ## Repository Layout
 
-```
+```text
 lfx-crowdfunding/
 ├── frontend/          # Nuxt 3 frontend (Vue 3, TypeScript, Tailwind, PrimeVue)
 ├── cmd/

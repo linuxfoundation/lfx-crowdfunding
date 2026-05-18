@@ -14,11 +14,10 @@ import (
 type InitiativeRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Initiative, error)
 	GetBySlug(ctx context.Context, slug string) (*models.Initiative, error)
-	List(ctx context.Context, filter models.InitiativeFilter) ([]models.Initiative, *models.PaginationMeta, error)
+	List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error)
 	Create(ctx context.Context, initiative *models.Initiative) (*models.Initiative, error)
 	Update(ctx context.Context, initiative *models.Initiative) (*models.Initiative, error)
 	Delete(ctx context.Context, id string) error
-	ListGoals(ctx context.Context, initiativeID string) ([]models.Goal, error)
 }
 
 // DonationRepository defines persistence operations for donations.
@@ -48,4 +47,31 @@ type OrganizationRepository interface {
 type UserRepository interface {
 	GetByUserID(ctx context.Context, userID string) (*models.User, error)
 	Upsert(ctx context.Context, user *models.User) (*models.User, error)
+}
+
+// StatisticsRepository defines persistence operations for platform-wide statistics.
+type StatisticsRepository interface {
+	GetPlatformStatistics(ctx context.Context) (*models.PlatformStatistics, error)
+}
+
+// LedgerStatsRepository defines the persistence operations used exclusively by
+// the ledger-stats-sync CronJob.  All methods are scoped to the batch read/write
+// pattern of that job and should not be used by the HTTP API.
+type LedgerStatsRepository interface {
+	// ListActiveSyncIDs returns the UUIDs of all initiatives whose status is
+	// not 'archived' or 'draft'.  These are the initiatives the CronJob must
+	// attempt to sync on every run.
+	ListActiveSyncIDs(ctx context.Context) ([]string, error)
+
+	// BulkUpsertLedgerStats inserts or updates rows in initiative_ledger_stats.
+	// Returns the number of rows successfully upserted.
+	BulkUpsertLedgerStats(ctx context.Context, stats []models.LedgerStats) (int, error)
+
+	// GetOrganizationsByIDs returns a map of org UUID → Organization for all
+	// IDs in the slice.  Missing IDs are simply absent from the map.
+	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
+
+	// GetUsersByIDs returns a map of user_id (Auth0 subject) → User for all
+	// IDs in the slice.  Missing IDs are simply absent from the map.
+	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
 }

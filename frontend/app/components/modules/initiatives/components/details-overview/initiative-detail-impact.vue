@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
   <lfx-card class="p-6 flex flex-col gap-8">
     <p class="text-base font-semibold text-neutral-900 leading-6">Impact</p>
 
-    <div class="flex gap-4 items-start">
+    <div class="flex gap-4 items-start md:flex-row flex-col">
       <div
         v-for="stat in stats"
         :key="stat.label"

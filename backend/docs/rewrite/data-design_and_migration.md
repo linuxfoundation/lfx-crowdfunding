@@ -979,7 +979,7 @@ All child row IDs are derived from `_uuid5(scope, initiative_id, natural_discrim
 
 `_parse_ts()` handles ≥8 formats including the Go `time.String()` format with nanoseconds and monotonic suffix:
 
-```
+```text
 2019-04-02 15:42:26.518360269 +0000 UTC m=+2580.502337766
 ```
 
@@ -1094,7 +1094,7 @@ python3 db/scripts/migrate_dynamo_to_postgres.py
 
 ### Dependencies
 
-```
+```bash
 pip install boto3 psycopg2-binary
 ```
 
