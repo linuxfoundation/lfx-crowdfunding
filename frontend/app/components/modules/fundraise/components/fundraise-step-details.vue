@@ -19,7 +19,14 @@ SPDX-License-Identifier: MIT
     @update:model-value="securityAuditForm = $event"
   />
 
-  <!-- TODO: <fundraise-general-fund-steps /> -->
+  <!-- General Fund -->
+  <fundraise-general-fund-steps
+    v-else-if="initiativeType === 'general_fund'"
+    :current-step="subStep"
+    :model-value="generalFundForm"
+    @update:model-value="generalFundForm = $event"
+  />
+
   <!-- TODO: <fundraise-event-steps /> -->
 </template>
 
@@ -27,12 +34,14 @@ SPDX-License-Identifier: MIT
 import { ref, computed } from 'vue';
 import FundraiseProjectSteps from './project-steps/fundraise-project-steps.vue';
 import FundraiseSecurityAuditSteps from './security-audit-steps/fundraise-security-audit-steps.vue';
+import FundraiseGeneralFundSteps from './general-fund-steps/fundraise-general-fund-steps.vue';
 import type {
   InitiativeType,
   ProjectFormData,
   FundDistributionItem,
   SecurityAuditFormData,
   ContactPerson,
+  GeneralFundFormData,
 } from '~/types/fundraise.types';
 
 const props = defineProps<{
@@ -128,15 +137,28 @@ const createInitialSecurityAuditForm = (): SecurityAuditFormData => ({
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
+const createInitialGeneralFundForm = (): GeneralFundFormData => ({
+  name: '',
+  elevatorPitch: '',
+  topics: [],
+  websiteUrl: '',
+  logoFileName: '',
+  beneficiaries: [],
+  annualFundingGoal: '',
+  compliance: { ofacConfirmed: false, termsAccepted: false },
+});
+
 const subStep = ref(0);
 const projectForm = ref<ProjectFormData>(createInitialProjectForm());
 const securityAuditForm = ref<SecurityAuditFormData>(createInitialSecurityAuditForm());
+const generalFundForm = ref<GeneralFundFormData>(createInitialGeneralFundForm());
 
 const totalSubSteps = computed(() => {
   if (props.initiativeType === 'project') {
     return projectForm.value.hostingType === 'github' ? 4 : 3;
   }
   if (props.initiativeType === 'security_audit') return 2;
+  if (props.initiativeType === 'general_fund') return 2;
   return 1;
 });
 
@@ -159,6 +181,12 @@ const isCurrentSubStepValid = computed(() => {
     }
     return securityAuditForm.value.auditName.trim() !== '';
   }
+  if (props.initiativeType === 'general_fund') {
+    if (subStep.value === totalSubSteps.value - 1) {
+      return generalFundForm.value.compliance.ofacConfirmed && generalFundForm.value.compliance.termsAccepted;
+    }
+    return generalFundForm.value.name.trim() !== '';
+  }
   return true;
 });
 
@@ -174,6 +202,7 @@ const reset = () => {
   subStep.value = 0;
   projectForm.value = createInitialProjectForm();
   securityAuditForm.value = createInitialSecurityAuditForm();
+  generalFundForm.value = createInitialGeneralFundForm();
 };
 
 defineExpose({
@@ -186,6 +215,7 @@ defineExpose({
   reset,
   projectForm,
   securityAuditForm,
+  generalFundForm,
 });
 </script>
 
