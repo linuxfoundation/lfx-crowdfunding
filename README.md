@@ -16,42 +16,47 @@ LFX Crowdfunding enables open source projects to raise funds for development, se
 
 ```text
 lfx-crowdfunding/
-├── frontend/          # Nuxt 3 frontend (Vue 3, TypeScript, Tailwind, PrimeVue)
-├── cmd/
-│   ├── api/           # Go HTTP API entrypoint
-│   ├── mentorship-sync/   # CronJob: syncs mentorship data from Snowflake
-│   ├── ledger-stats-sync/ # CronJob: syncs financial stats from Ledger HTTP API
-│   └── migrate/       # DB migration runner (golang-migrate)
-├── internal/          # Go domain packages (DDD: domain/, usecases/, repository/)
-├── services/          # Go external service clients (Stripe, Mandrill, GitHub, Ledger, Snowflake)
-├── db/
-│   ├── migrations/    # SQL migration files (golang-migrate)
-│   └── scripts/       # One-time DynamoDB → Postgres migration (Python)
-└── docs/
-    └── rewrite/       # Architecture decisions, open questions, migration plan
+├── backend/                    # Go API service
+│   ├── cmd/
+│   │   ├── initiatives-api/    # HTTP API entrypoint
+│   │   └── ledger-stats-sync/  # CronJob: syncs financial stats from Ledger HTTP API
+│   ├── internal/
+│   │   ├── domain/             # Domain models and repository interfaces
+│   │   ├── service/            # Business logic / orchestration
+│   │   ├── handler/            # HTTP handlers (Chi router)
+│   │   └── infrastructure/     # DB, external clients, auth middleware
+│   ├── db/
+│   │   ├── migrations/         # SQL migration files (golang-migrate)
+│   │   ├── scripts/            # One-time DynamoDB → Postgres migration (Python)
+│   │   └── seed.sql            # Development seed data
+│   └── charts/                 # Helm chart
+├── frontend/                   # Nuxt 4 frontend (Vue 3, TypeScript, Tailwind, PrimeVue)
+├── docker-compose.yml          # Local Postgres
+└── backend/docs/
+    └── rewrite/                # Architecture decisions, open questions, migration plan
 ```
 
 ## Architecture
 
 The platform is split into two independently deployable services:
 
-**Frontend** — Nuxt 3 BFF. Handles Auth0 PKCE authentication, HTTP-only session cookies, and Stripe.js. Calls the Go API to serve pages.
+**Frontend** — Nuxt 4 BFF. Handles Auth0 PKCE authentication, HTTP-only session cookies, and Stripe.js. Calls the Go API to serve pages.
 
 **Go HTTP API** — Chi router. Owns all business logic: initiative CRUD, Stripe payment processing, webhook handling, email, and read-only Ledger integration.
 
 Both are deployed as Kubernetes Deployments behind an Ingress. Background jobs run as K8s CronJobs.
 
-See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) for the full system diagram and component breakdown.
+See [`backend/docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/04-target-architecture.md) for the full system diagram and component breakdown.
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [`docs/rewrite/01-current-system.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
-| [`docs/rewrite/02-decisions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
-| [`docs/rewrite/03-open-questions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
-| [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
-| [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
+| [`backend/docs/rewrite/01-current-system.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
+| [`backend/docs/rewrite/02-decisions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
+| [`backend/docs/rewrite/03-open-questions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
+| [`backend/docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
+| [`backend/docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
 
 ## Tech Stack
 
@@ -59,7 +64,7 @@ See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundatio
 
 | Concern | Choice |
 |---|---|
-| Framework | Nuxt 3 + Vue 3 |
+| Framework | Nuxt 4 + Vue 3 |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS + PrimeVue v4 |
 | State | Pinia + Vue Query |
@@ -72,10 +77,11 @@ See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundatio
 |---|---|
 | Language | Go (latest stable) |
 | Router | Chi |
-| Database | PostgreSQL via `sqlc` + `pgx/v5` |
+| Database | PostgreSQL via `pgx/v5` |
 | Migrations | `golang-migrate` |
 | Auth | Auth0 JWT middleware |
 | Logging | `slog` (stdlib) |
+| Tracing | OpenTelemetry |
 
 ### Infrastructure
 
@@ -103,43 +109,79 @@ See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundatio
 
 | Job | Schedule | Purpose |
 |---|---|---|
-| `mentorship-sync` | Daily | Pulls mentorship program data from Snowflake into CF Postgres |
-| `ledger-stats-sync` | Hourly | Syncs financial stats from Ledger HTTP API into cached columns on `initiatives` |
+| `ledger-stats-sync` | Hourly | Syncs financial stats (balance, sponsors) from Ledger HTTP API into cached columns on `initiatives` |
 
 ## Database
 
-The `crowdfunding` schema lives on the shared LFX v2 RDS instance. The initial migration file is at [`db/migrations/001_initial.up.sql`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/db/migrations/001_initial.up.sql).
+The `crowdfunding` schema lives on the shared LFX v2 RDS instance. The initial migration file is at [`backend/db/migrations/001_initial.up.sql`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/db/migrations/001_initial.up.sql).
 
-One-time DynamoDB → Postgres data migration script: [`db/scripts/migrate_dynamo_to_postgres.py`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/db/scripts/migrate_dynamo_to_postgres.py).
+One-time DynamoDB → Postgres data migration script: [`backend/db/scripts/migrate_dynamo_to_postgres.py`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/db/scripts/migrate_dynamo_to_postgres.py).
 
-See [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/05-migration-plan.md) for cutover procedure.
+See [`backend/docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/05-migration-plan.md) for cutover procedure.
 
 ## Development Setup
 
-### Frontend
+### Prerequisites
+
+- Go (latest stable)
+- Node.js 22+ and pnpm 9+
+- Docker (for Postgres)
+
+### 1. Start Postgres
 
 ```bash
+docker compose up -d
+```
+
+### 2. Backend
+
+```bash
+cd backend
+cp .env.example .env   # then fill in values — see below
+psql "$DATABASE_URL" -f db/migrations/001_initial.up.sql
+go run ./cmd/initiatives-api/
+```
+
+To seed development data after the DB schema is applied:
+
+```bash
+make db-seed
+```
+
+**Required env vars:**
+
+| Var | Notes |
+|-----|-------|
+| `DATABASE_URL` | `postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding` (matches docker-compose) |
+| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Set to any non-empty string to skip JWT validation locally |
+| `STRIPE_SECRET_KEY` | Stripe test key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe test webhook secret |
+| `LEDGER_BASE_URL` | Ledger service URL |
+| `LEDGER_API_KEY` | Ledger API key |
+
+`JWKS_URL` and `DISABLED_MOCK_LOCAL_PRINCIPAL` are mutually exclusive — the server rejects startup if both are set. When using the mock principal locally, leave `JWKS_URL` unset or empty.
+
+### 3. Frontend
+
+Node 22 is required (pnpm 9+ and the husky hooks need it):
+
+```bash
+nvm use 22
 cd frontend
 pnpm install
-cp .env.example .env.local   # fill in Auth0, Stripe, API URL
+cp .env.example .env   # then fill in values — see below
 pnpm dev
 ```
 
-Required env vars (server-side): `NUXT_AUTH0_CLIENT_SECRET`, `NUXT_JWT_SECRET`, `NUXT_API_URL`, `NUXT_STRIPE_SECRET_KEY`, `NUXT_GITHUB_OAUTH_CLIENT_SECRET`
+**Required env vars:**
 
-Public env vars: `NUXT_PUBLIC_AUTH0_DOMAIN`, `NUXT_PUBLIC_AUTH0_CLIENT_ID`, `NUXT_PUBLIC_STRIPE_PUBLIC_KEY`, `NUXT_PUBLIC_APP_ENV`
+| Var | Notes |
+|-----|-------|
+| `NUXT_PUBLIC_AUTH0_CLIENT_ID` | Auth0 client ID for the dev tenant |
+| `NUXT_AUTH0_CLIENT_SECRET` | Auth0 client secret for the dev tenant |
+| `NUXT_JWT_SECRET` | Any random string for local session signing |
 
-### Backend
-
-```bash
-# Run DB migrations
-go run ./cmd/migrate
-
-# Start API server
-go run ./cmd/api
-```
-
-Required env vars: see [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/04-target-architecture.md) for the full inventory.
+Auth0 domain is set automatically to `linuxfoundation-dev.auth0.com` when `NUXT_APP_ENV=development` (the default).
 
 ## Contributing
 

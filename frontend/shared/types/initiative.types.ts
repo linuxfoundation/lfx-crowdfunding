@@ -6,13 +6,11 @@
 // (Vue, vue-query, browser APIs, etc.).
 
 export interface InitiativeStats {
-  backers: number;
-  sponsors: number;
-  totalRaised: number;
+  supporters: number;
 }
 
 export interface FundingStatus {
-  totalAnnualGoalInCents: number;
+  goalsTotalCents: number;
   annualSubscriptionAmountInCents?: number;
   annualSubscriptionRemainingAmountInCents?: number;
   amountRaisedCents?: number;
@@ -22,8 +20,7 @@ export interface FundingStatus {
 /** Core initiative fields constructed and returned by the server. */
 export interface InitiativeBase {
   id: string;
-  initiativeId: string;
-  ownerId: string;
+  slug: string;
   name: string;
   description: string;
   status: string;

@@ -5,3 +5,9 @@
 megalinter-reports/
 .env
 backend/bin/
+backend/initiatives-api
+.claude/skills/speckit-*
+settings.json
+.claude/settings.local.json
+specs
+.playwright-mcp/

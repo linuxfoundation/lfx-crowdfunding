@@ -33,7 +33,9 @@ SPDX-License-Identifier: MIT
         </div>
 
         <!-- Bottom tagline -->
-        <p class="font-secondary font-light text-3xl leading-11 text-black">{{ card.tagline }}</p>
+        <p class="font-secondary font-light text-3xl leading-11 text-black">
+          {{ card.id === 'statistics' ? statisticsTagline : card.tagline }}
+        </p>
       </nuxt-link>
     </div>
   </section>
@@ -42,6 +44,16 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import { navCards } from '~/config/pages/nav-cards.config';
+import { useStatisticsOverview } from '~/composables/statistics/useStatisticsOverview';
+
+const { data: stats } = useStatisticsOverview();
+
+const statisticsTagline = computed(() => {
+  if (!stats.value) return navCards.find((c) => c.id === 'statistics')?.tagline ?? '';
+  const raised = `$${(stats.value.totalRaisedCents / 100 / 1_000_000).toFixed(1)}M`;
+  const supporters = stats.value.supporterCount.toLocaleString();
+  return `${raised} funds raised by ${supporters} supporters`;
+});
 </script>
 
 <script lang="ts">

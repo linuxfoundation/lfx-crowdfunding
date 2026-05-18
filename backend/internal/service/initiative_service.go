@@ -5,8 +5,14 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"hash/fnv"
+	"log/slog"
+	"net/url"
+	"slices"
+	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -18,9 +24,8 @@ import (
 var initiativeSvcTracer = otel.Tracer("initiatives-service")
 
 // InitiativeService orchestrates initiative reads and writes.
-// Financial data is sourced from initiative_ledger_stats (populated by the
-// ledger-stats-sync CronJob) — no live Ledger API calls on read paths.
-// The LedgerClient is retained for future use by the transactions tab.
+// Cached financials come from initiative_ledger_stats (CronJob); per-goal
+// donated/spent is enriched live from Ledger GetBalance on each detail request.
 type InitiativeService struct {
 	repo   domain.InitiativeRepository
 	ledger clients.LedgerClient
@@ -36,7 +41,9 @@ func NewInitiativeService(
 	return &InitiativeService{repo: repo, ledger: ledger, stripe: stripe}
 }
 
-// GetByID retrieves an initiative with goals and financials from CF DB.
+// GetByID retrieves an initiative with goals, financials, and sponsors.
+// Per-goal donated/spent is enriched from a live Ledger balance call; Ledger
+// unavailability is non-fatal — goals are returned with zero donated/spent.
 func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetByID")
 	defer span.End()
@@ -47,10 +54,71 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 		span.RecordError(err)
 		return nil, fmt.Errorf("get initiative: %w", err)
 	}
+
+	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
+	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
 }
 
-// GetBySlug retrieves an initiative by its URL slug.
+// flattenSponsors merges orgs and individuals from the cached sponsor list into a
+// single flat slice sorted by total descending.
+func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
+	sponsors := make([]models.Sponsor, 0, len(list.Orgs)+len(list.Individuals))
+	for _, o := range list.Orgs {
+		avatarURL := o.AvatarURL
+		if avatarURL == "" {
+			avatarURL = generatedAvatarURL(o.ID, o.Name)
+		}
+		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: avatarURL, TotalCents: o.Total})
+	}
+	for _, u := range list.Individuals {
+		avatarURL := u.AvatarURL
+		if avatarURL == "" {
+			avatarURL = generatedAvatarURL(u.ID, u.Name)
+		}
+		sponsors = append(sponsors, models.Sponsor{ID: u.ID, Name: u.Name, AvatarURL: avatarURL, TotalCents: u.Total})
+	}
+	slices.SortFunc(sponsors, func(a, b models.Sponsor) int {
+		return cmp.Compare(b.TotalCents, a.TotalCents) // descending
+	})
+	return sponsors
+}
+
+// CheckPublishedByID verifies that a UUID identifies a published initiative.
+// It does not trigger Ledger enrichment — use instead of GetByID when only
+// status validation is needed (e.g. the transactions handler).
+func (s *InitiativeService) CheckPublishedByID(ctx context.Context, id string) error {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.CheckPublishedByID")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.id", id))
+
+	initiative, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("get initiative: %w", err)
+	}
+	if initiative.Status != "published" {
+		return domain.ErrInitiativeNotFound
+	}
+	return nil
+}
+
+// GetIDBySlug returns only the UUID for the given slug.
+// Used by handlers that need to resolve a slug without triggering Ledger enrichment.
+func (s *InitiativeService) GetIDBySlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetIDBySlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.slug", slug))
+
+	id, err := s.repo.GetIDBySlug(ctx, slug)
+	if err != nil {
+		span.RecordError(err)
+		return "", fmt.Errorf("get id by slug: %w", err)
+	}
+	return id, nil
+}
+
+// GetBySlug retrieves an initiative by its URL slug, with the same enrichment as GetByID.
 func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetBySlug")
 	defer span.End()
@@ -61,7 +129,39 @@ func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models
 		span.RecordError(err)
 		return nil, fmt.Errorf("get initiative by slug: %w", err)
 	}
+
+	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
+	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
+}
+
+// enrichGoalsFromLedger populates donated_cents/spent_cents on each goal by
+// matching the goal name (case-insensitive) against Ledger subTotal categories.
+// Ledger uses PascalCase keys ("Mentorship", "BugBounty"); our goal names are
+// lowercase ("mentorship", "bugbounty"). Errors are non-fatal — goals keep zero values.
+func enrichGoalsFromLedger(ctx context.Context, ledger clients.LedgerClient, initiative *models.Initiative) {
+	if len(initiative.Goals) == 0 {
+		return
+	}
+	balance, err := ledger.GetBalance(ctx, initiative.ID)
+	// Short-circuit: balance is only dereferenced after the nil err check passes.
+	if err != nil || len(balance.SubTotals) == 0 {
+		return
+	}
+	// Build a normalised lookup: lowercase(category) → subTotal
+	lookup := make(map[string]*clients.LedgerSubTotal, len(balance.SubTotals))
+	for k, v := range balance.SubTotals {
+		lookup[strings.ToLower(k)] = v
+	}
+	for i := range initiative.Goals {
+		key := strings.ToLower(strings.ReplaceAll(initiative.Goals[i].Name, "_", ""))
+		if sub, ok := lookup[key]; ok {
+			donated := sub.Credit
+			spent := -sub.Debit // Debit is negative in Ledger; normalize to positive
+			initiative.Goals[i].DonatedCents = &donated
+			initiative.Goals[i].SpentCents = &spent
+		}
+	}
 }
 
 // List retrieves a filtered, paginated list of initiatives.
@@ -87,6 +187,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 	}
 	if input.InitiativeType == "" {
 		return nil, fmt.Errorf("%w: initiative_type is required", domain.ErrInvalidInput)
+	}
+	if !models.ValidInitiativeTypes[input.InitiativeType] {
+		return nil, fmt.Errorf("%w: unknown initiative_type %q", domain.ErrInvalidInput, input.InitiativeType)
 	}
 
 	initiative := &models.Initiative{
@@ -134,6 +237,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		existing.Slug = *input.Slug
 	}
 	if input.Status != nil {
+		if !models.ValidInitiativeStatuses[*input.Status] {
+			return nil, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, *input.Status)
+		}
 		existing.Status = *input.Status
 	}
 	if input.Description != nil {
@@ -164,6 +270,100 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		return nil, fmt.Errorf("update initiative: %w", err)
 	}
 	return updated, nil
+}
+
+// GetTransactions fetches transactions from Ledger and enriches each with donor
+// name and avatar from the CF DB (users / organizations tables).
+// When no CF DB record matches, a generated avatar URL is returned as fallback.
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, size, page int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		ProjectID: initiativeID,
+		TxnType:   txnType,
+		Size:      size,
+		Page:      page,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	return list, nil
+}
+
+// enrichTransactionsFromDB batch-looks up users and organizations from the CF DB
+// and merges name + avatar_url onto each transaction.
+// Falls back to a deterministic generated avatar when no DB record is found.
+func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeRepository, txns []models.Transaction) {
+	if len(txns) == 0 {
+		return
+	}
+	// Collect unique IDs to look up.
+	userIDs := make([]string, 0, len(txns))
+	orgIDs := make([]string, 0, len(txns))
+	seenUsers := map[string]bool{}
+	seenOrgs := map[string]bool{}
+	for _, t := range txns {
+		if t.LedgerUserID != "" && !seenUsers[t.LedgerUserID] {
+			userIDs = append(userIDs, t.LedgerUserID)
+			seenUsers[t.LedgerUserID] = true
+		}
+		if t.LedgerOrgID != "" && !seenOrgs[t.LedgerOrgID] {
+			orgIDs = append(orgIDs, t.LedgerOrgID)
+			seenOrgs[t.LedgerOrgID] = true
+		}
+	}
+
+	users, err := repo.GetUsersByIDs(ctx, userIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
+		users = map[string]models.User{}
+	}
+	orgs, err := repo.GetOrganizationsByIDs(ctx, orgIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to look up donor organizations", "error", err)
+		orgs = map[string]models.Organization{}
+	}
+
+	for i := range txns {
+		t := &txns[i]
+		if t.LedgerOrgID != "" {
+			if org, ok := orgs[t.LedgerOrgID]; ok {
+				t.DonorName = org.Name
+				t.DonorLogoURL = org.AvatarURL
+			}
+			if t.DonorLogoURL == "" {
+				t.DonorLogoURL = generatedAvatarURL(t.LedgerOrgID, t.DonorName)
+			}
+		} else if t.LedgerUserID != "" {
+			if user, ok := users[t.LedgerUserID]; ok {
+				if user.Name != "" {
+					t.DonorName = user.Name
+				}
+				t.DonorLogoURL = user.AvatarURL
+			}
+			if t.DonorLogoURL == "" {
+				t.DonorLogoURL = generatedAvatarURL(t.LedgerUserID, t.DonorName)
+			}
+		}
+	}
+}
+
+// avatarPalette is the set of background colors used for generated avatars.
+// Chosen to be visually distinct and accessible against white text.
+var avatarPalette = []string{"326CE5", "E6522C", "425CC7", "2E7D32", "6A1B9A", "00838F", "C62828", "558B2F"}
+
+// generatedAvatarURL returns a deterministic UI Avatars URL for the given id and name.
+// The background color is derived from a hash of id so the same entity always
+// gets the same color across requests.
+func generatedAvatarURL(id, name string) string {
+	h := fnv.New32a()
+	h.Write([]byte(id))
+	color := avatarPalette[h.Sum32()%uint32(len(avatarPalette))]
+	return fmt.Sprintf("https://ui-avatars.com/api/?name=%s&background=%s&color=fff&size=128&bold=true",
+		url.QueryEscape(name), color)
 }
 
 // Delete removes an initiative, enforcing owner authorisation.

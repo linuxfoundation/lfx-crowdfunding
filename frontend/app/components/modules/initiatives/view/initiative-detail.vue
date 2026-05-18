@@ -36,6 +36,10 @@ SPDX-License-Identifier: MIT
               <initiative-detail-financials
                 v-else-if="activeTab === 'financials'"
                 :initiative="data"
+                :donation-records="donationRecords"
+                :is-loading-donations="transactionsLoading"
+                :expense-records="expenseRecords"
+                :is-loading-expenses="expensesLoading"
               />
               <initiative-detail-about
                 v-else-if="activeTab === 'about'"
@@ -48,14 +52,16 @@ SPDX-License-Identifier: MIT
               <initiative-detail-sponsors
                 v-if="data.sponsors?.length"
                 :sponsors="data.sponsors"
-                :initiative-id="data.initiativeId"
+                :initiative-id="data.slug"
               />
-              <div class="border-t border-neutral-200 pt-10">
-                <recent-donations
-                  v-if="data.recentDonations?.length"
-                  :donations="data.recentDonations"
-                />
-              </div>
+              <div
+                v-if="data.sponsors?.length"
+                class="border-t border-neutral-200"
+              />
+              <RecentDonations
+                :donations="recentDonations"
+                :is-loading="transactionsLoading"
+              />
             </div>
           </div>
         </div>
@@ -71,13 +77,59 @@ import InitiativeDetailSponsors from '../components/details-overview/initiative-
 import InitiativeDetailFinancials from '../components/details-financials/initiative-detail-financials.vue';
 import InitiativeDetailAbout from '../components/details-about/initiative-detail-about.vue';
 import { useInitiative } from '~/composables/initiatives/useInitiative';
+import { useInitiativeTransactions } from '~/composables/initiatives/useInitiativeTransactions';
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useScroll from '~/utils/scroll';
+import { formatTimeAgo, formatShortDate } from '~/utils/date';
+import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/types/initiative-detail.types';
 
 const props = defineProps<{ initiativeId: string }>();
 
 const { data, isLoading, error } = useInitiative(computed(() => props.initiativeId));
+const { data: txnData, isLoading: transactionsLoading } = useInitiativeTransactions(
+  computed(() => props.initiativeId),
+  'donations',
+);
+const { data: expenseData, isLoading: expensesLoading } = useInitiativeTransactions(
+  computed(() => props.initiativeId),
+  'expenses',
+  10,
+);
+
+const recentDonations = computed<RecentDonation[]>(() =>
+  (txnData.value?.data ?? []).map((t) => ({
+    id: t.id,
+    donorName: t.donorName ?? 'Anonymous',
+    donorLogoUrl: t.donorLogoUrl,
+    donorType: t.donorType === 'organization' ? 'organization' : 'member',
+    amountCents: t.amountCents,
+    timeAgo: formatTimeAgo(t.date),
+  })),
+);
+
+const donationRecords = computed<DonationRecord[]>(() =>
+  (txnData.value?.data ?? []).map((t) => ({
+    id: t.id,
+    date: formatShortDate(t.date),
+    supporterName: t.donorName ?? 'Anonymous',
+    supporterLogoUrl: t.donorLogoUrl,
+    supporterType: t.donorType === 'organization' ? 'organization' : 'member',
+    donorCategory: t.donorType === 'organization' ? 'Company' : 'Individual',
+    amountCents: t.amountCents,
+  })),
+);
+
+const expenseRecords = computed<ExpenseRecord[]>(() =>
+  (expenseData.value?.data ?? []).map((t) => ({
+    id: t.id,
+    date: formatShortDate(t.date),
+    category: t.category ?? 'Other',
+    description: t.category ?? 'Other',
+    amountCents: t.amountCents,
+  })),
+);
+
 const activeTab = ref('overview');
 
 const { scrollTop } = useScroll();

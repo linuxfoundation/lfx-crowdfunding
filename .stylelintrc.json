@@ -3,7 +3,26 @@
     "at-rule-no-unknown": [
       true,
       {
-        "ignoreAtRules": ["tailwind", "apply", "layer", "variants", "responsive", "screen", "config", "use", "forward", "mixin", "include", "each", "function", "return", "if", "else", "warn", "error"]
+        "ignoreAtRules": [
+          "tailwind",
+          "apply",
+          "layer",
+          "variants",
+          "responsive",
+          "screen",
+          "config",
+          "use",
+          "forward",
+          "mixin",
+          "include",
+          "each",
+          "function",
+          "return",
+          "if",
+          "else",
+          "warn",
+          "error"
+        ]
       }
     ]
   }

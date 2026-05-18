@@ -6,8 +6,10 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -52,7 +54,8 @@ const initiativeSelect = `
 			SELECT SUM(amount_in_cents)::bigint
 			FROM initiative_goals
 			WHERE initiative_id = i.id
-		), 0)::bigint AS goals_total_cents
+		), 0)::bigint AS goals_total_cents,
+		COALESCE(ls.sponsors, '{}')::jsonb      AS sponsors
 	FROM initiatives i
 	LEFT JOIN initiative_ledger_stats ls ON ls.initiative_id = i.id`
 
@@ -96,6 +99,24 @@ func (r *InitiativeRepository) GetBySlug(ctx context.Context, slug string) (*mod
 	}
 	initiative.Goals = goals
 	return initiative, nil
+}
+
+// GetIDBySlug returns the UUID of the initiative with the given slug.
+// Cheaper than GetBySlug — no goals query, no Ledger enrichment.
+func (r *InitiativeRepository) GetIDBySlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.GetIDBySlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.initiative_slug", slug))
+
+	var id string
+	err := r.pool.QueryRow(ctx, `SELECT id FROM initiatives WHERE slug = $1 AND status = 'published'`, slug).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrInitiativeNotFound
+		}
+		return "", fmt.Errorf("get id by slug: %w", err)
+	}
+	return id, nil
 }
 
 // List retrieves initiatives matching the filter with pagination.
@@ -337,12 +358,8 @@ func (r *InitiativeRepository) listGoalsForIDs(ctx context.Context, ids []string
 
 	result := make(map[string][]models.Goal)
 	for rows.Next() {
-		var g models.Goal
-		if err := rows.Scan(
-			&g.ID, &g.InitiativeID, &g.Name, &g.AmountInCents, &g.Allocation,
-			&g.RepoLink, &g.Description, &g.Color, &g.Icon, &g.SortOrder,
-			&g.CreatedOn, &g.UpdatedOn,
-		); err != nil {
+		g, err := scanGoal(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan goal: %w", err)
 		}
 		result[g.InitiativeID] = append(result[g.InitiativeID], g)
@@ -353,17 +370,32 @@ func (r *InitiativeRepository) listGoalsForIDs(ctx context.Context, ids []string
 func scanGoals(rows pgx.Rows) ([]models.Goal, error) {
 	goals := []models.Goal{}
 	for rows.Next() {
-		var g models.Goal
-		if err := rows.Scan(
-			&g.ID, &g.InitiativeID, &g.Name, &g.AmountInCents, &g.Allocation,
-			&g.RepoLink, &g.Description, &g.Color, &g.Icon, &g.SortOrder,
-			&g.CreatedOn, &g.UpdatedOn,
-		); err != nil {
+		g, err := scanGoal(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan goal: %w", err)
 		}
 		goals = append(goals, g)
 	}
 	return goals, rows.Err()
+}
+
+func scanGoal(row scanner) (models.Goal, error) {
+	var g models.Goal
+	var allocation, repoLink, description, color, icon *string
+	err := row.Scan(
+		&g.ID, &g.InitiativeID, &g.Name, &g.AmountInCents, &allocation,
+		&repoLink, &description, &color, &icon, &g.SortOrder,
+		&g.CreatedOn, &g.UpdatedOn,
+	)
+	if err != nil {
+		return g, err
+	}
+	g.Allocation = derefString(allocation)
+	g.RepoLink = derefString(repoLink)
+	g.Description = derefString(description)
+	g.Color = derefString(color)
+	g.Icon = derefString(icon)
+	return g, nil
 }
 
 type scanner interface {
@@ -379,6 +411,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		eventbriteURL, applicationURL, country, city                  *string
 		acceptFunding, isOnline                                       *bool
 		createdOn, updatedOn                                          *time.Time
+		sponsorsJSON                                                  []byte
 	)
 	err := row.Scan(
 		&i.ID, &i.InitiativeType, &sourceDynamoTable, &i.OwnerID,
@@ -395,12 +428,19 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		&i.Financials.AvailableBalanceCents,
 		&i.Financials.Supporters,
 		&i.Financials.GoalsTotalCents,
+		&sponsorsJSON,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrInitiativeNotFound
 		}
 		return nil, err
+	}
+
+	if len(sponsorsJSON) > 0 {
+		if err := json.Unmarshal(sponsorsJSON, &i.RawSponsors); err != nil {
+			slog.Warn("failed to unmarshal sponsors JSONB", "initiative_id", i.ID, "error", err)
+		}
 	}
 
 	i.SourceDynamoTable = derefString(sourceDynamoTable)
@@ -439,6 +479,73 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	}
 
 	return i, nil
+}
+
+// GetUsersByIDs returns a map of Auth0 user_id → User for all IDs provided.
+// Missing IDs are absent from the map.
+func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetUsersByIDs")
+	defer span.End()
+
+	result := make(map[string]models.User, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, user_id, name, avatar_url FROM users WHERE user_id = ANY($1)`
+	rows, err := r.pool.Query(ctx, q, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get users by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var u models.User
+		var name, avatarURL *string
+		if err := rows.Scan(&u.ID, &u.UserID, &name, &avatarURL); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		if name != nil {
+			u.Name = *name
+		}
+		if avatarURL != nil {
+			u.AvatarURL = *avatarURL
+		}
+		result[u.UserID] = u
+	}
+	return result, rows.Err()
+}
+
+// GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs provided.
+// Missing IDs are absent from the map.
+func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetOrganizationsByIDs")
+	defer span.End()
+
+	result := make(map[string]models.Organization, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, name, avatar_url FROM organizations WHERE id = ANY($1::uuid[])`
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		return nil, fmt.Errorf("get organizations by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var o models.Organization
+		var avatarURL *string
+		if err := rows.Scan(&o.ID, &o.Name, &avatarURL); err != nil {
+			return nil, fmt.Errorf("scan organization: %w", err)
+		}
+		if avatarURL != nil {
+			o.AvatarURL = *avatarURL
+		}
+		result[o.ID] = o
+	}
+	return result, rows.Err()
 }
 
 func derefString(s *string) string {
