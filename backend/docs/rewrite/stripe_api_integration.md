@@ -212,7 +212,7 @@ response is sent.
 
 ### 6. `POST /v1/initiatives/{id}/subscriptions`
 
-**Purpose:** Start a recurring monthly or annual donation to a crowdfunding initiative.
+**Purpose:** Start a recurring donation to a crowdfunding initiative.
 
 **Auth:** JWT required.
 
@@ -227,7 +227,7 @@ response is sent.
 }
 ```
 
-`frequency` must be `"monthly"` or `"yearly"`.
+`frequency` must be one of `"monthly"` (`"month"`), `"yearly"` (`"year"`, `"annual"`), `"weekly"` (`"week"`), or `"daily"` (`"day"`). Aliases are accepted; unsupported values return `400`.
 
 **Response `201 Created` — subscription activated immediately:**
 ```json
@@ -685,7 +685,7 @@ Frontend                         Backend (API)                  Stripe / Webhook
 ```ts
 const subscription = await api.post(`/v1/initiatives/${initiativeID}/subscriptions`, {
   amount_in_cents: 1000,
-  frequency: 'monthly', // 'monthly' | 'yearly' | 'weekly'
+  frequency: 'monthly', // 'monthly' | 'yearly' | 'weekly' | 'daily'
   stripe_payment_method_id: card.payment_method_id,
 })
 
