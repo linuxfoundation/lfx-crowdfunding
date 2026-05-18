@@ -5,8 +5,11 @@
 package handler
 
 import (
+	"crypto/md5" //nolint:gosec // MD5 used for non-cryptographic ETag generation only
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -15,6 +18,13 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
+)
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+const (
+	maxTransactionPageSize     = 100
+	defaultTransactionPageSize = 10
 )
 
 // InitiativeHandler holds Chi handlers for the /v1/initiatives resource.
@@ -48,21 +58,53 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	if initiatives == nil {
+		initiatives = []*models.Initiative{}
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"data": initiatives,
 		"meta": meta,
 	})
 }
 
-// GetByID handles GET /v1/initiatives/{id}
+// GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
+// Slugs are the canonical public identifier; UUIDs are supported as a fallback.
+// Only published initiatives are returned; others produce a 404.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	initiative, err := h.svc.GetByID(r.Context(), id)
+	var (
+		initiative *models.Initiative
+		err        error
+	)
+	if uuidPattern.MatchString(id) {
+		initiative, err = h.svc.GetByID(r.Context(), id)
+	} else {
+		initiative, err = h.svc.GetBySlug(r.Context(), id)
+	}
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, initiative)
+	if initiative.Status != "published" {
+		Error(w, domain.ErrInitiativeNotFound)
+		return
+	}
+
+	body, err := json.Marshal(initiative)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	etag := etagOf(body)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 // Create handles POST /v1/initiatives — requires JWT.
@@ -110,6 +152,75 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, updated)
 }
 
+// GetTransactions handles GET /v1/initiatives/{id}/transactions
+// Accepts ?type=donations|expenses&size=N&page=N (1-based page, defaults to 1).
+// Resolves the initiative by slug or UUID, verifies it is published, then calls Ledger.
+func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
+	value := chi.URLParam(r, "id")
+	q := r.URL.Query()
+
+	txnTypeParam := strings.ToLower(q.Get("type"))
+	var ledgerTxnType string
+	switch txnTypeParam {
+	case "donations":
+		ledgerTxnType = "donation"
+	case "expenses":
+		ledgerTxnType = "reimbursement"
+	}
+
+	size, _ := strconv.Atoi(q.Get("size"))
+	if size <= 0 {
+		size = defaultTransactionPageSize
+	} else if size > maxTransactionPageSize {
+		size = maxTransactionPageSize
+	}
+
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page <= 0 {
+		page = 1
+	}
+
+	// Resolve identifier to a UUID, verifying the initiative exists and is published.
+	// Use lightweight lookups (no Ledger enrichment) since transactions come from Ledger directly.
+	var initiativeID string
+	if uuidPattern.MatchString(value) {
+		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = value
+	} else {
+		id, err := h.svc.GetIDBySlug(r.Context(), value)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = id
+	}
+
+	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, size, page)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	body, err := json.Marshal(list)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	etag := etagOf(body)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
 // Delete handles DELETE /v1/initiatives/{id} — requires JWT.
 func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
@@ -124,4 +235,10 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// etagOf returns a quoted ETag for the given response body using MD5.
+func etagOf(body []byte) string {
+	sum := md5.Sum(body) //nolint:gosec // MD5 is fine for ETags (not security-sensitive)
+	return `"` + hex.EncodeToString(sum[:]) + `"`
 }

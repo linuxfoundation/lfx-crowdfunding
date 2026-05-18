@@ -137,16 +137,16 @@ const currentBalanceFormatted = computed(() => formatAmount(props.initiative.cur
 
 const amountRaisedFormatted = computed(() => formatAmount(props.initiative.fundingStatus?.amountRaisedCents ?? 0));
 
-const goalFormatted = computed(() => formatAmount(props.initiative.fundingStatus?.totalAnnualGoalInCents ?? 0));
+const goalFormatted = computed(() => formatAmount(props.initiative.fundingStatus?.goalsTotalCents ?? 0));
 
 const percentFunded = computed(() => {
-  const goal = props.initiative.fundingStatus?.totalAnnualGoalInCents ?? 0;
+  const goal = props.initiative.fundingStatus?.goalsTotalCents ?? 0;
   const raised = props.initiative.fundingStatus?.amountRaisedCents ?? 0;
   return goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
 });
 
 const supportersLabel = computed(() => {
-  const count = props.initiative.initiativeStats?.backers ?? 0;
+  const count = props.initiative.initiativeStats?.supporters ?? 0;
   return `${count.toLocaleString()} supporters`;
 });
 

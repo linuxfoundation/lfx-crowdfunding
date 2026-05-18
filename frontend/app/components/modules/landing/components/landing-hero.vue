@@ -33,7 +33,7 @@ SPDX-License-Identifier: MIT
                 size="small"
               />
             </lfx-avatar-group>
-            <span class="text-xs text-neutral-600 leading-4">Trusted by 1,800+ supporters</span>
+            <span class="text-xs text-neutral-600 leading-4">Trusted by {{ supporterCount }} supporters</span>
           </div>
         </div>
 
@@ -60,7 +60,7 @@ SPDX-License-Identifier: MIT
         >
           <div class="flex flex-col items-center text-center gap-1">
             <span class="text-sm font-semibold text-neutral-900 leading-6">Funds raised</span>
-            <span class="text-[60px] font-normal text-neutral-900 leading-[72px]">$5.8M</span>
+            <span class="text-[60px] font-normal text-neutral-900 leading-[72px]">{{ totalRaisedDollars }}</span>
             <span class="text-xs text-neutral-600 leading-5 max-w-[184px]">
               Help us reach $10M to sustain the open source ecosystem
             </span>
@@ -103,11 +103,26 @@ import LfxButton from '~/components/uikit/button/button.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxAvatarGroup from '~/components/uikit/avatar-group/avatar-group.vue';
 import LfxDonutChart from '~/components/uikit/donut-chart/donut-chart.vue';
+import { useStatisticsOverview } from '~/composables/statistics/useStatisticsOverview';
 
-const TOTAL_RAISED = 5_800_000;
+const { data: stats } = useStatisticsOverview();
+
 const GOAL = 10_000_000;
 
-const progressPercent = Math.round((TOTAL_RAISED / GOAL) * 100);
+const totalRaisedDollars = computed(() => {
+  const cents = stats.value?.totalRaisedCents ?? 0;
+  return `$${(cents / 100 / 1_000_000).toFixed(1)}M`;
+});
+
+const progressPercent = computed(() => {
+  const cents = stats.value?.totalRaisedCents ?? 0;
+  return Math.min(100, Math.round((cents / 100 / GOAL) * 100));
+});
+
+const supporterCount = computed(() => {
+  const count = stats.value?.supporterCount ?? 0;
+  return count > 0 ? `${count.toLocaleString()}+` : '1,800+';
+});
 
 const supporterAvatars = [
   'https://i.pravatar.cc/40?img=1',

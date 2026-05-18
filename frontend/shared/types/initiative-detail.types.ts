@@ -4,8 +4,10 @@
 import type { InitiativeBase } from './initiative.types';
 
 export interface SponsorEntry {
+  id: string;
   name: string;
-  logoUrl?: string;
+  avatarUrl?: string;
+  totalCents: number;
 }
 
 export interface RecentDonation {
