@@ -6,6 +6,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -48,10 +49,19 @@ func (h *SubscriptionHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create handles POST /v1/initiatives/{id}/subscriptions — requires JWT.
+// Clients MUST supply an Idempotency-Key header (a UUID they generate per
+// logical subscription attempt). The backend uses it for both Stripe Price
+// and Subscription creation so that retries are idempotent end-to-end.
 func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil {
 		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	idempotencyKey := r.Header.Get("Idempotency-Key")
+	if idempotencyKey == "" {
+		Error(w, fmt.Errorf("%w: Idempotency-Key header is required", domain.ErrInvalidInput))
 		return
 	}
 
@@ -61,8 +71,9 @@ func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrInvalidInput)
 		return
 	}
+	input.IdempotencyKey = idempotencyKey
 
-	created, err := h.svc.Create(r.Context(), initiativeID, principal.UserID, input)
+	created, err := h.svc.Create(r.Context(), initiativeID, principal.UserID, principal.Email, input)
 	if err != nil {
 		Error(w, err)
 		return
