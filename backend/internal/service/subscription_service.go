@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -79,8 +80,15 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	}
 
 	// Resolve the Stripe customer for this user (create if first payment).
+	// Only treat ErrUserNotFound as "no existing customer"; any other error
+	// (e.g. transient DB outage) must be returned to avoid creating orphaned
+	// Stripe customers when the DB read fails.
 	customerID := ""
 	user, err := s.userRepo.GetByUserID(ctx, userID)
+	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get user: %w", err)
+	}
 	if err == nil {
 		customerID = user.StripeCustomerID
 	}

@@ -195,6 +195,23 @@ func TestDonationService_Create_StripePaymentIntentError(t *testing.T) {
 
 // --- DB error propagation ---
 
+func TestDonationService_Create_UserRepoTransientError(t *testing.T) {
+	dbErr := errors.New("connection reset")
+
+	userRepo := &testUserRepo{
+		onGetByUserID: func(_ context.Context, _ string) (*models.User, error) {
+			return nil, dbErr
+		},
+	}
+	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), userRepo, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
+		models.DonationCreateInput{AmountCents: 1000})
+	if !errors.Is(err, dbErr) {
+		t.Errorf("error = %v, want to wrap %v", err, dbErr)
+	}
+}
+
 func TestDonationService_Create_DBError(t *testing.T) {
 	dbErr := errors.New("db write failed")
 

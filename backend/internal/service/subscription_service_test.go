@@ -212,6 +212,25 @@ func TestSubscriptionService_Create_StripeError(t *testing.T) {
 
 // --- Cancel ---
 
+func TestSubscriptionService_Create_UserRepoTransientError(t *testing.T) {
+	dbErr := errors.New("connection reset")
+
+	userRepo := &testUserRepo{
+		onGetByUserID: func(_ context.Context, _ string) (*models.User, error) {
+			return nil, dbErr
+		},
+	}
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), userRepo, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
+		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "monthly"})
+	if !errors.Is(err, dbErr) {
+		t.Errorf("error = %v, want to wrap %v", err, dbErr)
+	}
+}
+
+// --- Cancel ---
+
 func TestSubscriptionService_Cancel_WrongOwner(t *testing.T) {
 	subRepo := &testSubscriptionRepo{
 		onGetByID: func(_ context.Context, id string) (*models.Subscription, error) {
