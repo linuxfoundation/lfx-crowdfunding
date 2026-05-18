@@ -43,6 +43,16 @@ func TestSubscriptionService_Create_MissingFrequency(t *testing.T) {
 	}
 }
 
+func TestSubscriptionService_Create_MissingPaymentMethod(t *testing.T) {
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
+		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "monthly", StripePaymentMethodID: ""})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
 func TestSubscriptionService_Create_InitiativeNotAccepting(t *testing.T) {
 	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: false}}
 	svc := newSubscriptionSvc(&testSubscriptionRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
@@ -107,8 +117,9 @@ func TestSubscriptionService_Create_NewCustomerActive(t *testing.T) {
 	svc := newSubscriptionSvc(subRepo, acceptingInitiative(), userRepo, stripe)
 	sub, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
 		models.SubscriptionCreateInput{
-			AmountCents: 1000,
-			Frequency:   "monthly",
+			AmountCents:           1000,
+			Frequency:             "monthly",
+			StripePaymentMethodID: "pm_test",
 		})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -166,7 +177,7 @@ func TestSubscriptionService_Create_ExistingCustomer3DS(t *testing.T) {
 
 	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), userRepo, stripe)
 	sub, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.SubscriptionCreateInput{AmountCents: 2000, Frequency: "monthly"})
+		models.SubscriptionCreateInput{AmountCents: 2000, Frequency: "monthly", StripePaymentMethodID: "pm_test"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -204,7 +215,7 @@ func TestSubscriptionService_Create_StripeError(t *testing.T) {
 	)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.SubscriptionCreateInput{AmountCents: 500, Frequency: "monthly"})
+		models.SubscriptionCreateInput{AmountCents: 500, Frequency: "monthly", StripePaymentMethodID: "pm_test"})
 	if !errors.Is(err, stripeErr) {
 		t.Errorf("error = %v, want to wrap %v", err, stripeErr)
 	}
@@ -223,7 +234,7 @@ func TestSubscriptionService_Create_UserRepoTransientError(t *testing.T) {
 	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), userRepo, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "monthly"})
+		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "monthly", StripePaymentMethodID: "pm_test"})
 	if !errors.Is(err, dbErr) {
 		t.Errorf("error = %v, want to wrap %v", err, dbErr)
 	}

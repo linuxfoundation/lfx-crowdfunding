@@ -93,6 +93,9 @@ func (s *PaymentService) AttachPaymentMethod(ctx context.Context, userID, email,
 		return nil, fmt.Errorf("attach payment method: %w", err)
 	}
 
+	// Note: if Stripe's attach succeeded but this DB write fails, the card exists
+	// in Stripe but is not recorded locally. This is a known distributed-transaction
+	// limitation; a subsequent AttachPaymentMethod call or admin re-sync will recover.
 	if err := s.userRepo.UpdateStripeInfo(ctx, userID, customerID, paymentMethodID); err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("persist payment method: %w", err)

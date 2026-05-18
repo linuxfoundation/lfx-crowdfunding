@@ -254,6 +254,9 @@ func (c *stripeClientImpl) CreatePaymentIntent(ctx context.Context, req models.P
 			},
 		},
 		Params: stripe.Params{
+			// Idempotency key prevents duplicate charges if the client retries a
+			// timed-out request before the original completes.
+			IdempotencyKey: stripe.String(fmt.Sprintf("pi:%s:%s:%d", req.UserID, req.InitiativeID, req.AmountCents)),
 			Metadata: map[string]string{
 				"initiative_id": req.InitiativeID,
 				"user_id":       req.UserID,
@@ -263,9 +266,8 @@ func (c *stripeClientImpl) CreatePaymentIntent(ctx context.Context, req models.P
 	if req.CustomerID != "" {
 		params.Customer = stripe.String(req.CustomerID)
 	}
-	if req.PaymentMethodID != "" {
-		params.PaymentMethod = stripe.String(req.PaymentMethodID)
-	}
+	// PaymentMethodID is guaranteed non-empty by the guard above.
+	params.PaymentMethod = stripe.String(req.PaymentMethodID)
 	// Expand latest_charge to capture ch_xxx on immediate success.
 	params.AddExpand("latest_charge")
 
@@ -363,8 +365,12 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 		params.DefaultPaymentMethod = stripe.String(req.PaymentMethodID)
 	}
 	// Expand latest_invoice so we can read ConfirmationSecret.ClientSecret.
+	// Idempotency key: customerID+priceID is unique per logical request because
+	// GetOrCreatePrice always creates a fresh price — so a retry with the same
+	// priceID will be returned from Stripe's idempotency cache unchanged.
 	params.Params = stripe.Params{
-		Expand: []*string{stripe.String("latest_invoice")},
+		IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s:%s", req.StripeCustomerID, req.StripePriceID)),
+		Expand:         []*string{stripe.String("latest_invoice")},
 		Metadata: map[string]string{
 			"initiative_id": req.InitiativeID,
 			"user_id":       req.UserID,

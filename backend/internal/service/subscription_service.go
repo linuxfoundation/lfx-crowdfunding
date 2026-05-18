@@ -69,6 +69,9 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	if input.Frequency == "" {
 		return nil, fmt.Errorf("%w: frequency is required", domain.ErrInvalidInput)
 	}
+	if input.StripePaymentMethodID == "" {
+		return nil, fmt.Errorf("%w: stripe_payment_method_id is required", domain.ErrInvalidInput)
+	}
 
 	initiative, err := s.initiativeRepo.GetByID(ctx, initiativeID)
 	if err != nil {
