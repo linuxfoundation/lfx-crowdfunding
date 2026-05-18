@@ -145,17 +145,17 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	size, _ := strconv.Atoi(q.Get("size"))
 	from, _ := strconv.Atoi(q.Get("from"))
 
-	// Resolve initiative to get its UUID (Ledger uses UUID as projectId).
+	// Resolve slug → UUID without triggering full initiative enrichment (Ledger call).
 	var initiativeID string
 	if uuidPattern.MatchString(value) {
 		initiativeID = value
 	} else {
-		initiative, err := h.svc.GetBySlug(r.Context(), value)
+		id, err := h.svc.GetIDBySlug(r.Context(), value)
 		if err != nil {
 			Error(w, err)
 			return
 		}
-		initiativeID = initiative.ID
+		initiativeID = id
 	}
 
 	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, size, from)

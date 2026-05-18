@@ -100,6 +100,24 @@ func (r *InitiativeRepository) GetBySlug(ctx context.Context, slug string) (*mod
 	return initiative, nil
 }
 
+// GetIDBySlug returns the UUID of the initiative with the given slug.
+// Cheaper than GetBySlug — no goals query, no Ledger enrichment.
+func (r *InitiativeRepository) GetIDBySlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.GetIDBySlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.initiative_slug", slug))
+
+	var id string
+	err := r.pool.QueryRow(ctx, `SELECT id FROM initiatives WHERE slug = $1`, slug).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrInitiativeNotFound
+		}
+		return "", fmt.Errorf("get id by slug: %w", err)
+	}
+	return id, nil
+}
+
 // List retrieves initiatives matching the filter with pagination.
 func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")

@@ -17,7 +17,7 @@ type Transaction struct {
 	DonorName     string `json:"donor_name,omitempty"`
 	DonorType     string `json:"donor_type,omitempty"` // "organization" | "individual"
 	DonorLogoURL  string `json:"donor_logo_url,omitempty"`
-	DonorUsername string `json:"donor_username,omitempty"`
+	DonorUsername string `json:"donor_username,omitempty"` // reserved; not yet populated
 
 	// Internal: used by the service to look up CF DB records. Not serialised.
 	LedgerUserID string `json:"-"`

@@ -84,6 +84,21 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	return sponsors
 }
 
+// GetIDBySlug returns only the UUID for the given slug.
+// Used by handlers that need to resolve a slug without triggering Ledger enrichment.
+func (s *InitiativeService) GetIDBySlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetIDBySlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.slug", slug))
+
+	id, err := s.repo.GetIDBySlug(ctx, slug)
+	if err != nil {
+		span.RecordError(err)
+		return "", fmt.Errorf("get id by slug: %w", err)
+	}
+	return id, nil
+}
+
 // GetBySlug retrieves an initiative by its URL slug, with the same enrichment as GetByID.
 func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetBySlug")
