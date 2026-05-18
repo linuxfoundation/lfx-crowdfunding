@@ -93,6 +93,17 @@ export interface SecurityAuditFormData {
   compliance: ComplianceData;
 }
 
+export interface GeneralFundFormData {
+  name: string;
+  elevatorPitch: string;
+  topics: string[];
+  websiteUrl: string;
+  logoFileName: string;
+  beneficiaries: Beneficiary[];
+  annualFundingGoal: string;
+  compliance: ComplianceData;
+}
+
 export interface FundraiseDetailsForm {
   name: string;
   description: string;
