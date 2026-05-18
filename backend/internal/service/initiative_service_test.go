@@ -141,7 +141,8 @@ func TestEnrichGoalsFromLedger_PopulatesDonatedAndSpent(t *testing.T) {
 	ledger := &mockLedgerClient{
 		balance: &clients.LedgerBalance{
 			SubTotals: map[string]*clients.LedgerSubTotal{
-				"Mentorship": {Credit: donated, Debit: spent},
+				// Ledger debits are negative; service negates to a positive SpentCents.
+				"Mentorship": {Credit: donated, Debit: -spent},
 			},
 		},
 	}
@@ -200,7 +201,7 @@ func TestEnrichGoalsFromLedger_LedgerErrorLeavesGoalsUnchanged(t *testing.T) {
 	}
 }
 
-func TestEnrichGoalsFromLedger_NoGoalsIsNoop(t *testing.T) {
+func TestEnrichGoalsFromLedger_NoGoalsIsNoop(_ *testing.T) {
 	called := false
 	ledger := &mockLedgerClient{
 		balance: &clients.LedgerBalance{

@@ -138,7 +138,7 @@ func enrichGoalsFromLedger(ctx context.Context, ledger clients.LedgerClient, ini
 		key := strings.ToLower(strings.ReplaceAll(initiative.Goals[i].Name, "_", ""))
 		if sub, ok := lookup[key]; ok {
 			donated := sub.Credit
-			spent := sub.Debit
+			spent := -sub.Debit // Debit is negative in Ledger; normalize to positive
 			initiative.Goals[i].DonatedCents = &donated
 			initiative.Goals[i].SpentCents = &spent
 		}
@@ -256,7 +256,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
-func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, size, from int) (*models.TransactionList, error) {
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, size, page int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
 	defer span.End()
 
@@ -264,7 +264,7 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 		ProjectID: initiativeID,
 		TxnType:   txnType,
 		Size:      size,
-		From:      from,
+		Page:      page,
 	})
 	if err != nil {
 		return nil, err

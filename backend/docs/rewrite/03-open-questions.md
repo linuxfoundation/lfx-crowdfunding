@@ -63,7 +63,11 @@ RS switches Category 1 reads (CF-owned data) from OpenSearch to three narrow int
 | `projects` + `entities` (bulk) | `GET /internal/v1/initiatives?status=published` | Bulk tag rebuild (`RefreshTags` cron, runs every 3h) |
 | `lff-users` | `GET /internal/v1/users/{owner_id}` | Owner email lookup |
 
-**Why the bulk endpoint is required:** Once CF DNS cuts over, the new CF service writes exclusively to Postgres — OpenSearch receives no new writes and becomes a stale snapshot. `RefreshTags()` runs every 3 hours and bulk-reads all published initiatives to rebuild Expensify GL code tags. If it keeps reading from stale OpenSearch, new projects created after cutover will never appear as Expensify tags and beneficiaries cannot submit expenses against them — silent failure with real financial impact.
+**Why the bulk endpoint is required:** Once CF DNS cuts over, the new CF service writes exclusively to
+Postgres — OpenSearch receives no new writes and becomes a stale snapshot. `RefreshTags()` runs every
+3 hours and bulk-reads all published initiatives to rebuild Expensify GL code tags. If it keeps reading
+from stale OpenSearch, new projects created after cutover will never appear as Expensify tags and
+beneficiaries cannot submit expenses against them — silent failure with real financial impact.
 
 These endpoints are on the CF public HTTPS ingress, authenticated via a shared secret (`X-Internal-Token` header). RS Lambda can reach them over public HTTPS (OQ-1/OQ-2 confirmed reachable). No direct Postgres access from RS Lambda — the shared LFX v2 RDS is `publicly_accessible = false` and unreachable from the RS Lambda VPC.
 

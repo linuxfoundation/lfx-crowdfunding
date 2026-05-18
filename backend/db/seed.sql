@@ -17,14 +17,15 @@ INSERT INTO users (id, user_id, email, given_name, family_name, name, avatar_url
   ('a0000000-0000-0000-0000-000000000002', 'auth0|dev-user-002', 'bob@example.com',    'Bob',    'Johnson', 'Bob Johnson',   'https://i.pravatar.cc/150?u=bob'),
   ('a0000000-0000-0000-0000-000000000003', 'auth0|dev-user-003', 'carol@example.com',  'Carol',  'Williams','Carol Williams','https://i.pravatar.cc/150?u=carol'),
   ('a0000000-0000-0000-0000-000000000004', 'auth0|dev-user-004', 'dave@example.com',   'Dave',   'Brown',   'Dave Brown',    'https://i.pravatar.cc/150?u=dave'),
-  -- Real Ledger dev userIDs — match auth0 subjects in Ledger transactions so JOIN returns real data.
-  ('a0000000-0000-0000-0000-000000000010', 'auth0|lewisoj',        'lewisojile01@gmail.com',              'Lewis',  'Ojile',  'Lewis Ojile',   'https://i.pravatar.cc/150?u=lewisoj'),
-  ('a0000000-0000-0000-0000-000000000011', 'auth0|lewisojile',     'lewisojile01@gmail.com',              'Lewis',  'Ojile',  'Lewis Ojile',   'https://i.pravatar.cc/150?u=lewisojile'),
-  ('a0000000-0000-0000-0000-000000000012', 'auth0|kelo',           'lojile@contractor.linuxfoundation.org','Kelo',  'Ojile',  'Kelo Ojile',    'https://i.pravatar.cc/150?u=kelo'),
-  ('a0000000-0000-0000-0000-000000000013', 'auth0|simk68',         'simritik+068@proximabiz.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk68'),
-  ('a0000000-0000-0000-0000-000000000014', 'auth0|simk61',         'simritik+061@proximabiz.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk61'),
-  ('a0000000-0000-0000-0000-000000000015', 'auth0|simk.ment.admin','simritik+admin@proximabiz.com',       'Simrit', 'Admin',  'Simrit Admin',  'https://i.pravatar.cc/150?u=simkadmin'),
-  ('a0000000-0000-0000-0000-000000000016', 'auth0|simk43',         'simritik+043@proximabiz.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk43')
+  -- Ledger dev auth0 subjects — auth0|* values match transaction UserIDs in the dev Ledger instance
+  -- so JOIN enrichment returns real donor names. Emails are synthetic (example.com) — do not use real addresses.
+  ('a0000000-0000-0000-0000-000000000010', 'auth0|lewisoj',        'dev-lewisoj@example.com',        'Lewis',  'O',      'Lewis O',       'https://i.pravatar.cc/150?u=lewisoj'),
+  ('a0000000-0000-0000-0000-000000000011', 'auth0|lewisojile',     'dev-lewisojile@example.com',     'Lewis',  'Ojile',  'Lewis Ojile',   'https://i.pravatar.cc/150?u=lewisojile'),
+  ('a0000000-0000-0000-0000-000000000012', 'auth0|kelo',           'dev-kelo@example.com',           'Kelo',   'O',      'Kelo O',        'https://i.pravatar.cc/150?u=kelo'),
+  ('a0000000-0000-0000-0000-000000000013', 'auth0|simk68',         'dev-simk68@example.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk68'),
+  ('a0000000-0000-0000-0000-000000000014', 'auth0|simk61',         'dev-simk61@example.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk61'),
+  ('a0000000-0000-0000-0000-000000000015', 'auth0|simk.ment.admin','dev-simkadmin@example.com',      'Simrit', 'Admin',  'Simrit Admin',  'https://i.pravatar.cc/150?u=simkadmin'),
+  ('a0000000-0000-0000-0000-000000000016', 'auth0|simk43',         'dev-simk43@example.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk43')
 ON CONFLICT (user_id) DO NOTHING;
 
 -- ============================================
@@ -210,11 +211,11 @@ ON CONFLICT (initiative_id, name) DO NOTHING;
 -- ============================================
 -- Initiative Beneficiaries
 -- ============================================
-INSERT INTO initiative_beneficiaries (initiative_id, name, email) VALUES
-  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Alice Smith',   'alice@example.com'),
-  ('c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Bob Johnson',   'bob@example.com'),
-  ('57135156-cb73-4896-bbd3-8d503b568b3b', 'Carol Williams','carol@example.com')
-ON CONFLICT DO NOTHING;
+INSERT INTO initiative_beneficiaries (id, initiative_id, name, email) VALUES
+  ('f1000000-0000-0000-0000-000000000001', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Alice Smith',   'alice@example.com'),
+  ('f1000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Bob Johnson',   'bob@example.com'),
+  ('f1000000-0000-0000-0000-000000000003', '57135156-cb73-4896-bbd3-8d503b568b3b', 'Carol Williams','carol@example.com')
+ON CONFLICT (id) DO NOTHING;
 
 -- ============================================
 -- Initiative Custom Websites

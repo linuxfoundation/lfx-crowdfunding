@@ -5,6 +5,8 @@
 package handler
 
 import (
+	"crypto/md5" //nolint:gosec // MD5 used for non-cryptographic ETag generation only
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -19,6 +21,11 @@ import (
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+const (
+	maxTransactionPageSize     = 100
+	defaultTransactionPageSize = 10
+)
 
 // InitiativeHandler holds Chi handlers for the /v1/initiatives resource.
 type InitiativeHandler struct {
@@ -62,6 +69,7 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
+// Only published initiatives are returned; others produce a 404.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var (
@@ -77,8 +85,26 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	if initiative.Status != "published" {
+		Error(w, domain.ErrInitiativeNotFound)
+		return
+	}
+
+	body, err := json.Marshal(initiative)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	etag := etagOf(body)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
-	JSON(w, http.StatusOK, initiative)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 // Create handles POST /v1/initiatives — requires JWT.
@@ -127,8 +153,8 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetTransactions handles GET /v1/initiatives/{id}/transactions
-// Accepts ?type=donations|expenses&size=N&from=N
-// Resolves the initiative by slug or UUID to obtain its ID before calling Ledger.
+// Accepts ?type=donations|expenses&size=N&page=N (1-based page, defaults to 1).
+// Resolves the initiative by slug or UUID, verifies it is published, then calls Ledger.
 func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	value := chi.URLParam(r, "id")
 	q := r.URL.Query()
@@ -143,22 +169,44 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	}
 
 	size, _ := strconv.Atoi(q.Get("size"))
-	from, _ := strconv.Atoi(q.Get("from"))
+	if size <= 0 {
+		size = defaultTransactionPageSize
+	} else if size > maxTransactionPageSize {
+		size = maxTransactionPageSize
+	}
 
-	// Resolve slug → UUID without triggering full initiative enrichment (Ledger call).
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page <= 0 {
+		page = 1
+	}
+
+	// Resolve identifier to a UUID, verifying the initiative exists and is published.
 	var initiativeID string
 	if uuidPattern.MatchString(value) {
-		initiativeID = value
-	} else {
-		id, err := h.svc.GetIDBySlug(r.Context(), value)
+		initiative, err := h.svc.GetByID(r.Context(), value)
 		if err != nil {
 			Error(w, err)
 			return
 		}
-		initiativeID = id
+		if initiative.Status != "published" {
+			Error(w, domain.ErrInitiativeNotFound)
+			return
+		}
+		initiativeID = initiative.ID
+	} else {
+		initiative, err := h.svc.GetBySlug(r.Context(), value)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		if initiative.Status != "published" {
+			Error(w, domain.ErrInitiativeNotFound)
+			return
+		}
+		initiativeID = initiative.ID
 	}
 
-	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, size, from)
+	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, size, page)
 	if err != nil {
 		Error(w, err)
 		return
@@ -180,4 +228,10 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// etagOf returns a quoted ETag for the given response body using MD5.
+func etagOf(body []byte) string {
+	sum := md5.Sum(body) //nolint:gosec // MD5 is fine for ETags (not security-sensitive)
+	return `"` + hex.EncodeToString(sum[:]) + `"`
 }

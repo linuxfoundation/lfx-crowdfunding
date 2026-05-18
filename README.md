@@ -138,6 +138,7 @@ docker compose up -d
 ```bash
 cd backend
 cp .env.example .env   # then fill in values — see below
+psql "$DATABASE_URL" -f db/migrations/001_initial.up.sql
 go run ./cmd/initiatives-api/
 ```
 
@@ -158,7 +159,7 @@ make db-seed
 | `LEDGER_BASE_URL` | Ledger service URL |
 | `LEDGER_API_KEY` | Ledger API key |
 
-`JWKS_URL` is not required when `DISABLED_MOCK_LOCAL_PRINCIPAL` is set.
+`JWKS_URL` and `DISABLED_MOCK_LOCAL_PRINCIPAL` are mutually exclusive — the server rejects startup if both are set. When using the mock principal locally, leave `JWKS_URL` unset or empty.
 
 ### 3. Frontend
 

@@ -43,7 +43,7 @@ type TransactionFilter struct {
 	ProjectID string
 	TxnType   string // "donation" | "reimbursement" — empty = all
 	Size      int    // page size; 0 defaults to 10
-	From      int    // offset for pagination
+	Page      int    // 1-based page number; 0 or negative defaults to 1
 }
 
 // LedgerClient is the interface consumed by the service layer and the
@@ -168,9 +168,9 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 	if size <= 0 {
 		size = 10
 	}
-	page := 1
-	if size > 0 && filter.From > 0 {
-		page = filter.From/size + 1
+	page := filter.Page
+	if page <= 0 {
+		page = 1
 	}
 
 	q := url.Values{}
@@ -209,9 +209,10 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			txnType = "reimbursement"
 		}
 		// Best-effort display name from Ledger data; will be overwritten by CF DB lookup in service.
+		// Avoid exposing accountEmail — it is PII and this is a public endpoint.
 		donorName := raw.SubmitterName
 		if donorName == "" {
-			donorName = raw.AccountEmail
+			donorName = "Anonymous"
 		}
 		donorType := "individual"
 		if raw.OrganizationID != "" {
@@ -231,7 +232,7 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 	}
 
 	// Ledger doesn't return a total count on this endpoint; use HasNext to signal more pages.
-	totalCount := filter.From + len(txns)
+	totalCount := (page-1)*size + len(txns)
 	if resp.HasNext {
 		totalCount += size // at least one more page
 	}
@@ -239,7 +240,7 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 	return &models.TransactionList{
 		Data:       txns,
 		TotalCount: totalCount,
-		From:       filter.From,
+		Page:       page,
 		Size:       size,
 	}, nil
 }
