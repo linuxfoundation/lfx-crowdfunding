@@ -125,6 +125,7 @@ func enrichGoalsFromLedger(ctx context.Context, ledger clients.LedgerClient, ini
 		return
 	}
 	balance, err := ledger.GetBalance(ctx, initiative.ID)
+	// Short-circuit: balance is only dereferenced after the nil err check passes.
 	if err != nil || len(balance.SubTotals) == 0 {
 		return
 	}
@@ -277,6 +278,9 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 // and merges name + avatar_url onto each transaction.
 // Falls back to a deterministic generated avatar when no DB record is found.
 func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeRepository, txns []models.Transaction) {
+	if len(txns) == 0 {
+		return
+	}
 	// Collect unique IDs to look up.
 	userIDs := make([]string, 0, len(txns))
 	orgIDs := make([]string, 0, len(txns))

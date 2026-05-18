@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -437,7 +438,9 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	}
 
 	if len(sponsorsJSON) > 0 {
-		_ = json.Unmarshal(sponsorsJSON, &i.RawSponsors)
+		if err := json.Unmarshal(sponsorsJSON, &i.RawSponsors); err != nil {
+			slog.Warn("failed to unmarshal sponsors JSONB", "initiative_id", i.ID, "error", err)
+		}
 	}
 
 	i.SourceDynamoTable = derefString(sourceDynamoTable)

@@ -16,19 +16,24 @@ LFX Crowdfunding enables open source projects to raise funds for development, se
 
 ```text
 lfx-crowdfunding/
-├── frontend/          # Nuxt 3 frontend (Vue 3, TypeScript, Tailwind, PrimeVue)
-├── cmd/
-│   ├── api/           # Go HTTP API entrypoint
-│   ├── mentorship-sync/   # CronJob: syncs mentorship data from Snowflake
-│   ├── ledger-stats-sync/ # CronJob: syncs financial stats from Ledger HTTP API
-│   └── migrate/       # DB migration runner (golang-migrate)
-├── internal/          # Go domain packages (DDD: domain/, usecases/, repository/)
-├── services/          # Go external service clients (Stripe, Mandrill, GitHub, Ledger, Snowflake)
-├── db/
-│   ├── migrations/    # SQL migration files (golang-migrate)
-│   └── scripts/       # One-time DynamoDB → Postgres migration (Python)
+├── backend/                    # Go API service
+│   ├── cmd/
+│   │   ├── initiatives-api/    # HTTP API entrypoint
+│   │   └── ledger-stats-sync/  # CronJob: syncs financial stats from Ledger HTTP API
+│   ├── internal/
+│   │   ├── domain/             # Domain models and repository interfaces
+│   │   ├── service/            # Business logic / orchestration
+│   │   ├── handler/            # HTTP handlers (Chi router)
+│   │   └── infrastructure/     # DB, external clients, auth middleware
+│   ├── db/
+│   │   ├── migrations/         # SQL migration files (golang-migrate)
+│   │   ├── scripts/            # One-time DynamoDB → Postgres migration (Python)
+│   │   └── seed.sql            # Development seed data
+│   └── charts/                 # Helm chart
+├── frontend/                   # Nuxt 3 frontend (Vue 3, TypeScript, Tailwind, PrimeVue)
+├── docker-compose.yml          # Local Postgres
 └── docs/
-    └── rewrite/       # Architecture decisions, open questions, migration plan
+    └── rewrite/                # Architecture decisions, open questions, migration plan
 ```
 
 ## Architecture
@@ -72,10 +77,11 @@ See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundatio
 |---|---|
 | Language | Go (latest stable) |
 | Router | Chi |
-| Database | PostgreSQL via `sqlc` + `pgx/v5` |
+| Database | PostgreSQL via `pgx/v5` |
 | Migrations | `golang-migrate` |
 | Auth | Auth0 JWT middleware |
 | Logging | `slog` (stdlib) |
+| Tracing | OpenTelemetry |
 
 ### Infrastructure
 
@@ -103,14 +109,13 @@ See [`docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundatio
 
 | Job | Schedule | Purpose |
 |---|---|---|
-| `mentorship-sync` | Daily | Pulls mentorship program data from Snowflake into CF Postgres |
-| `ledger-stats-sync` | Hourly | Syncs financial stats from Ledger HTTP API into cached columns on `initiatives` |
+| `ledger-stats-sync` | Hourly | Syncs financial stats (balance, sponsors) from Ledger HTTP API into cached columns on `initiatives` |
 
 ## Database
 
-The `crowdfunding` schema lives on the shared LFX v2 RDS instance. The initial migration file is at [`db/migrations/001_initial.up.sql`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/db/migrations/001_initial.up.sql).
+The `crowdfunding` schema lives on the shared LFX v2 RDS instance. The initial migration file is at [`backend/db/migrations/001_initial.up.sql`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/db/migrations/001_initial.up.sql).
 
-One-time DynamoDB → Postgres data migration script: [`db/scripts/migrate_dynamo_to_postgres.py`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/db/scripts/migrate_dynamo_to_postgres.py).
+One-time DynamoDB → Postgres data migration script: [`backend/db/scripts/migrate_dynamo_to_postgres.py`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/db/scripts/migrate_dynamo_to_postgres.py).
 
 See [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/rewrite/05-migration-plan.md) for cutover procedure.
 
@@ -119,7 +124,7 @@ See [`docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx
 ### Prerequisites
 
 - Go (latest stable)
-- Node.js + pnpm
+- Node.js 22+ and pnpm 9+
 - Docker (for Postgres)
 
 ### 1. Start Postgres
@@ -133,7 +138,13 @@ docker compose up -d
 ```bash
 cd backend
 cp .env.example .env   # then fill in values — see below
-go run ./cmd/initiatives-api
+go run ./cmd/initiatives-api/
+```
+
+To seed development data after the DB schema is applied:
+
+```bash
+make db-seed
 ```
 
 **Required env vars:**
@@ -141,7 +152,7 @@ go run ./cmd/initiatives-api
 | Var | Notes |
 |-----|-------|
 | `DATABASE_URL` | `postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding` (matches docker-compose) |
-| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Set to any string (e.g. `local-dev`) to skip JWT validation locally |
+| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Set to any non-empty string to skip JWT validation locally |
 | `STRIPE_SECRET_KEY` | Stripe test key |
 | `STRIPE_WEBHOOK_SECRET` | Stripe test webhook secret |
 | `LEDGER_BASE_URL` | Ledger service URL |
@@ -151,7 +162,10 @@ go run ./cmd/initiatives-api
 
 ### 3. Frontend
 
+Node 22 is required (pnpm 9+ and the husky hooks need it):
+
 ```bash
+nvm use 22
 cd frontend
 pnpm install
 cp .env.example .env   # then fill in values — see below

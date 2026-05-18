@@ -7,18 +7,17 @@ package models
 import "time"
 
 // ValidInitiativeTypes is the set of accepted initiative_type values.
-// Includes legacy migrated types (other, community, travel_fund, ostif) that exist
-// in production data but are not expected for new rows created via the API.
+// Legacy types community and travel_fund are excluded: community rows are
+// discarded during migration; travel_fund rows are reclassified as general_fund.
+// ostif and other are retained — migrated rows exist and updates must be accepted.
 var ValidInitiativeTypes = map[string]bool{
-	"project":       true,
-	"event":         true,
-	"mentorship":    true,
+	"project":        true,
+	"event":          true,
+	"mentorship":     true,
 	"security_audit": true,
-	"general_fund":  true,
-	"ostif":         true,
-	"other":         true,
-	"community":     true,
-	"travel_fund":   true,
+	"general_fund":   true,
+	"ostif":          true,
+	"other":          true,
 }
 
 // ValidInitiativeStatuses is the set of accepted status values.
