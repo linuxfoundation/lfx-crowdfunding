@@ -24,7 +24,10 @@ export type FundCategory =
   | 'meetups'
   | 'bug_bounty'
   | 'travel'
-  | 'documentation';
+  | 'documentation'
+  | 'venue'
+  | 'food_beverage'
+  | 'equipment';
 
 export interface FundDistributionItem {
   category: FundCategory;
@@ -90,6 +93,28 @@ export interface SecurityAuditFormData {
   secondaryContact: ContactPerson;
   technicalLead: ContactPerson;
   fundingGoal: string;
+  compliance: ComplianceData;
+}
+
+export interface FundDistributionData {
+  goal: string;
+  distribution: FundDistributionItem[];
+}
+
+export interface EventFormData {
+  name: string;
+  elevatorPitch: string;
+  topics: string[];
+  websiteUrl: string;
+  registrationUrl: string;
+  startDate: string;
+  endDate: string;
+  city: string;
+  country: string;
+  logoFileName: string;
+  beneficiaries: Beneficiary[];
+  sponsorshipGoal: string;
+  budgetDistribution: FundDistributionItem[];
   compliance: ComplianceData;
 }
 

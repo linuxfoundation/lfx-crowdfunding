@@ -136,18 +136,23 @@ const handleContinue = async () => {
     const projectForm = detailsStepRef.value?.projectForm;
     const auditForm = detailsStepRef.value?.securityAuditForm;
     const generalFundForm = detailsStepRef.value?.generalFundForm;
+    const eventForm = detailsStepRef.value?.eventForm;
     const name =
       selectedType.value === 'security_audit'
         ? (auditForm?.auditName ?? '')
         : selectedType.value === 'general_fund'
           ? (generalFundForm?.name ?? '')
-          : (projectForm?.details.projectName ?? '');
+          : selectedType.value === 'event'
+            ? (eventForm?.name ?? '')
+            : (projectForm?.details.projectName ?? '');
     const description =
       selectedType.value === 'security_audit'
         ? (auditForm?.elevatorPitch ?? '')
         : selectedType.value === 'general_fund'
           ? (generalFundForm?.elevatorPitch ?? '')
-          : (projectForm?.details.elevatorPitch ?? '');
+          : selectedType.value === 'event'
+            ? (eventForm?.elevatorPitch ?? '')
+            : (projectForm?.details.elevatorPitch ?? '');
     await $fetch('/api/fundraise', {
       method: 'POST',
       body: {
