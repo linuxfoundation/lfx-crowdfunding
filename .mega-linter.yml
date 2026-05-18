@@ -52,7 +52,4 @@ GO_REVIVE_DIRECTORY: backend
 
 # Exclude .claude/ skill files — these are tool configuration, not application
 # code, and contain markdown with intentional bare fences (example snippets).
-#
-# Exclude Helm templates from YAML/prettier linting — Go template syntax
-# ({{ }}) is not valid YAML and cannot be parsed by any YAML linter.
-FILTER_REGEX_EXCLUDE: (\.claude/|backend/charts/.*/templates/)
+FILTER_REGEX_EXCLUDE: (\.claude/)

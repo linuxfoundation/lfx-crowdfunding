@@ -4,15 +4,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: { { include "lfx-v2-initiatives-service.fullname" . } }
-  namespace: { { .Release.Namespace } }
-  labels: { { - include "lfx-v2-initiatives-service.labels" . | nindent 4 } }
+  name: {{ include "lfx-v2-initiatives-service.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
 spec:
-  type: { { .Values.service.type } }
+  type: {{ .Values.service.type }}
   ports:
-    - port: { { .Values.service.port } }
-      targetPort: { { .Values.service.targetPort } }
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
       protocol: TCP
       name: http
   selector:
-    { { - include "lfx-v2-initiatives-service.selectorLabels" . | nindent 4 } }
+    {{- include "lfx-v2-initiatives-service.selectorLabels" . | nindent 4 }}
