@@ -133,15 +133,22 @@ const handleContinue = async () => {
 
   submitting.value = true;
   try {
-    const form = detailsStepRef.value?.projectForm;
+    const projectForm = detailsStepRef.value?.projectForm;
+    const auditForm = detailsStepRef.value?.securityAuditForm;
+    const name =
+      selectedType.value === 'security_audit' ? (auditForm?.auditName ?? '') : (projectForm?.details.projectName ?? '');
+    const description =
+      selectedType.value === 'security_audit'
+        ? (auditForm?.elevatorPitch ?? '')
+        : (projectForm?.details.elevatorPitch ?? '');
     await $fetch('/api/fundraise', {
       method: 'POST',
       body: {
         initiativeType: selectedType.value,
         details: {
-          name: form?.details.projectName ?? '',
-          description: form?.details.elevatorPitch ?? '',
-          githubUrl: form?.selectedRepo ?? undefined,
+          name,
+          description,
+          githubUrl: projectForm?.selectedRepo ?? undefined,
         },
       },
     });

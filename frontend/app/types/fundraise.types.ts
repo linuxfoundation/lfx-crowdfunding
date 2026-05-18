@@ -59,6 +59,40 @@ export interface ProjectFormData {
   compliance: ComplianceData;
 }
 
+export interface InitiativeDetailsData {
+  name: string;
+  elevatorPitch: string;
+  topics: string[];
+  repositoryUrl?: string;
+  websiteUrl: string;
+}
+
+export interface ContactPerson {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  preferredContact: 'email' | 'phone';
+}
+
+export interface SecurityAuditFormData {
+  auditName: string;
+  elevatorPitch: string;
+  topics: string[];
+  repositoryUrl: string;
+  websiteUrl: string;
+  logoFileName: string;
+  ciiProjectId: string;
+  licenseType: string;
+  currentSecurityStrategy: string;
+  codeOfConductUrl: string;
+  primaryContact: ContactPerson;
+  secondaryContact: ContactPerson;
+  technicalLead: ContactPerson;
+  fundingGoal: string;
+  compliance: ComplianceData;
+}
+
 export interface FundraiseDetailsForm {
   name: string;
   description: string;

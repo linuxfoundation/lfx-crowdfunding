@@ -11,7 +11,14 @@ SPDX-License-Identifier: MIT
     @update:model-value="projectForm = $event"
   />
 
-  <!-- TODO: <fundraise-security-audit-steps /> -->
+  <!-- Security Audit -->
+  <fundraise-security-audit-steps
+    v-else-if="initiativeType === 'security_audit'"
+    :current-step="subStep"
+    :model-value="securityAuditForm"
+    @update:model-value="securityAuditForm = $event"
+  />
+
   <!-- TODO: <fundraise-general-fund-steps /> -->
   <!-- TODO: <fundraise-event-steps /> -->
 </template>
@@ -19,7 +26,14 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import FundraiseProjectSteps from './project-steps/fundraise-project-steps.vue';
-import type { InitiativeType, ProjectFormData, FundDistributionItem } from '~/types/fundraise.types';
+import FundraiseSecurityAuditSteps from './security-audit-steps/fundraise-security-audit-steps.vue';
+import type {
+  InitiativeType,
+  ProjectFormData,
+  FundDistributionItem,
+  SecurityAuditFormData,
+  ContactPerson,
+} from '~/types/fundraise.types';
 
 const props = defineProps<{
   initiativeType: InitiativeType | null;
@@ -88,13 +102,41 @@ const createInitialProjectForm = (): ProjectFormData => ({
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
+const createInitialContact = (): ContactPerson => ({
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  preferredContact: 'email',
+});
+
+const createInitialSecurityAuditForm = (): SecurityAuditFormData => ({
+  auditName: '',
+  elevatorPitch: '',
+  topics: [],
+  repositoryUrl: '',
+  websiteUrl: '',
+  logoFileName: '',
+  ciiProjectId: '',
+  licenseType: '',
+  currentSecurityStrategy: '',
+  codeOfConductUrl: '',
+  primaryContact: createInitialContact(),
+  secondaryContact: createInitialContact(),
+  technicalLead: createInitialContact(),
+  fundingGoal: '',
+  compliance: { ofacConfirmed: false, termsAccepted: false },
+});
+
 const subStep = ref(0);
 const projectForm = ref<ProjectFormData>(createInitialProjectForm());
+const securityAuditForm = ref<SecurityAuditFormData>(createInitialSecurityAuditForm());
 
 const totalSubSteps = computed(() => {
   if (props.initiativeType === 'project') {
     return projectForm.value.hostingType === 'github' ? 4 : 3;
   }
+  if (props.initiativeType === 'security_audit') return 2;
   return 1;
 });
 
@@ -111,6 +153,12 @@ const isCurrentSubStepValid = computed(() => {
     }
     return true;
   }
+  if (props.initiativeType === 'security_audit') {
+    if (subStep.value === totalSubSteps.value - 1) {
+      return securityAuditForm.value.compliance.ofacConfirmed && securityAuditForm.value.compliance.termsAccepted;
+    }
+    return securityAuditForm.value.auditName.trim() !== '';
+  }
   return true;
 });
 
@@ -125,9 +173,20 @@ const back = () => {
 const reset = () => {
   subStep.value = 0;
   projectForm.value = createInitialProjectForm();
+  securityAuditForm.value = createInitialSecurityAuditForm();
 };
 
-defineExpose({ subStep, totalSubSteps, isLastSubStep, isCurrentSubStepValid, advance, back, reset, projectForm });
+defineExpose({
+  subStep,
+  totalSubSteps,
+  isLastSubStep,
+  isCurrentSubStepValid,
+  advance,
+  back,
+  reset,
+  projectForm,
+  securityAuditForm,
+});
 </script>
 
 <script lang="ts">
