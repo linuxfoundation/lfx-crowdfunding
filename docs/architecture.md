@@ -291,17 +291,17 @@ sequenceDiagram
 
     Donor->>FE: Fill donation form, click Pay
     FE->>API: POST /v1/initiatives/{id}/donations
-    API->>DB: INSERT INTO donations (status = 'pending')
+    API->>DB: INSERT INTO donations, status = pending
     DB-->>API: donation record
-    API->>Stripe: Create PaymentIntent (amount, metadata.initiative_id)
+    API->>Stripe: Create PaymentIntent with amount and initiative metadata
     Stripe-->>API: client_secret
     API-->>FE: donation_id + client_secret
-    FE->>Stripe: stripe.confirmPayment(client_secret)
+    FE->>Stripe: stripe.confirmPayment
     Stripe-->>FE: Payment result
     FE-->>Donor: Confirmation screen
-    Stripe->>API: POST /v1/stripe/webhook (payment_intent.succeeded)
+    Stripe->>API: POST /v1/stripe/webhook — payment_intent.succeeded
     API->>API: Validate Stripe-Signature header
-    API->>DB: UPDATE donations SET status = 'succeeded'
+    API->>DB: UPDATE donations SET status = succeeded
 ```
 
 The Ledger Service also receives a Stripe webhook independently and records the transaction in its own database. CF reads balance data from Ledger — it does not maintain its own running balance.
@@ -322,15 +322,15 @@ sequenceDiagram
     FE->>API: POST /v1/initiatives/{id}/subscriptions
     API->>Stripe: Create Customer if new, then create Subscription
     Stripe-->>API: subscription_id + payment client_secret
-    API->>DB: INSERT INTO subscriptions (status = 'active')
+    API->>DB: INSERT INTO subscriptions, status = active
     API-->>FE: subscription_id + client_secret
-    FE->>Stripe: stripe.confirmPayment(client_secret)
+    FE->>Stripe: stripe.confirmPayment
     Stripe-->>FE: Confirmed
 
     Note over Stripe,API: Later — donor cancels or card expires
-    Stripe->>API: POST /v1/stripe/webhook (customer.subscription.deleted)
+    Stripe->>API: POST /v1/stripe/webhook — customer.subscription.deleted
     API->>API: Validate Stripe-Signature header
-    API->>DB: UPDATE subscriptions SET status = 'cancelled'
+    API->>DB: UPDATE subscriptions SET status = cancelled
 ```
 
 ---
@@ -345,10 +345,10 @@ sequenceDiagram
     participant Ledger as Ledger Service
     participant DB as PostgreSQL
 
-    Cron->>Ledger: GET /api/balance (all projects)
+    Cron->>Ledger: GET /api/balance for all projects
     Ledger-->>Cron: projectID, total_raised, balance, sponsors[]
     loop For each initiative
-        Cron->>DB: UPSERT initiative_ledger_stats (total_raised, balance, supporters, sponsors)
+        Cron->>DB: UPSERT initiative_ledger_stats — total_raised, balance, supporters, sponsors
     end
     Note over DB: Initiative reads JOIN this table. No live Ledger call needed for aggregate figures.
 ```
@@ -371,12 +371,12 @@ sequenceDiagram
     FE->>API: GET /v1/initiatives/{id}/transactions?type=donations
     API->>DB: SELECT id FROM initiatives WHERE slug = ? AND status = 'published'
     DB-->>API: initiative UUID
-    API->>Ledger: GET /api/transactions (projectID, type=donation, page, size)
+    API->>Ledger: GET /api/transactions — projectID, type=donation, page, size
     Ledger-->>API: txn_id, amount, date, user_id, org_id per transaction
-    API->>DB: SELECT FROM users WHERE user_id = ANY(?)
-    API->>DB: SELECT FROM organizations WHERE id = ANY(?)
+    API->>DB: SELECT FROM users WHERE user_id = ANY
+    API->>DB: SELECT FROM organizations WHERE id = ANY
     DB-->>API: user and org records
-    API->>API: Merge donor name and avatar (org takes priority; generate avatar if no match)
+    API->>API: Merge donor name and avatar — org takes priority, generate avatar if no match
     API-->>FE: Enriched transaction list
     FE-->>User: Donations table
 ```
@@ -397,13 +397,13 @@ sequenceDiagram
 
     MS->>SNS: Publish projectCreated / projectUpdated / projectUpdateStatus
     SNS->>SQS: Fan-out to CF queue
-    CF->>SQS: Poll (long-running SQS consumer)
+    CF->>SQS: Poll — long-running SQS consumer
     SQS-->>CF: Event message
 
     alt projectCreated
-        CF->>DB: INSERT INTO initiatives (type=mentorship, jobspring_project_id=?)
+        CF->>DB: INSERT INTO initiatives — type=mentorship, jobspring_project_id
     else projectUpdated
-        CF->>DB: UPDATE initiatives (Mentorship-owned fields only)
+        CF->>DB: UPDATE initiatives — Mentorship-owned fields only
     else projectUpdateStatus
         CF->>DB: UPDATE initiatives SET status = ?
     end
