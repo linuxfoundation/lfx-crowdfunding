@@ -13,12 +13,12 @@ graph TB
     end
 
     subgraph K8s["Kubernetes (LFX v2 cluster)"]
-        FE["Nuxt 3 Frontend\nDeployment + Ingress"]
-        API["Go HTTP API\nDeployment + Ingress"]
-        LSS["ledger-stats-sync\nCronJob (hourly)"]
-        DB[("PostgreSQL\ncrowdfunding schema")]
+        FE["Nuxt 3 Frontend"]
+        API["Go HTTP API"]
+        LSS["ledger-stats-sync CronJob"]
+        DB[("PostgreSQL")]
 
-        FE -- "$fetch HTTPS" --> API
+        FE -- "fetch HTTPS" --> API
         API --> DB
         LSS --> DB
     end
@@ -26,9 +26,9 @@ graph TB
     subgraph External["External Services"]
         AUTH0[Auth0]
         STRIPE[Stripe]
-        LEDGER["Ledger Service\n(AWS Lambda)"]
-        RS["Reimbursement Service\n(AWS Lambda)"]
-        MENTORSHIP["Mentorship Service\n(AWS Lambda / jobspring)"]
+        LEDGER["Ledger Service"]
+        RS["Reimbursement Service"]
+        MENTORSHIP["Mentorship Service"]
         MANDRILL[Mandrill]
         GITHUB[GitHub API]
     end
@@ -38,10 +38,12 @@ graph TB
     API -- "JWT validation" --> AUTH0
     API -- "payments" --> STRIPE
     STRIPE -- "webhook" --> API
-    API -- "balance + transactions\n(read-only)" --> LEDGER
+    API -- "balance + transactions" --> LEDGER
     LSS -- "batch balance sync" --> LEDGER
-    API <--> RS
-    API <--> MENTORSHIP
+    API --> RS
+    RS --> API
+    API --> MENTORSHIP
+    MENTORSHIP --> API
     API -- "transactional email" --> MANDRILL
     API -- "repo stats" --> GITHUB
 ```
@@ -261,15 +263,15 @@ sequenceDiagram
 
     User->>FE: GET /projects/kubernetes
     FE->>API: GET /v1/initiatives/kubernetes
-    API->>DB: SELECT initiatives + initiative_ledger_stats\nWHERE slug = 'kubernetes'
+    API->>DB: SELECT initiatives JOIN initiative_ledger_stats WHERE slug = 'kubernetes'
     DB-->>API: initiative row + cached financials + sponsors JSONB
     API->>DB: SELECT initiative_goals WHERE initiative_id = ?
     DB-->>API: goals[]
     API->>Ledger: GET /api/balance/{projectID}
     Ledger-->>API: balance + per-category subTotals
-    API->>API: Enrich each goal with donated_cents / spent_cents\nfrom Ledger subTotals (case-insensitive match)
-    API->>API: Flatten + sort sponsors from cached JSONB
-    API-->>FE: Initiative JSON (ETag + Cache-Control: max-age=60)
+    API->>API: Enrich goals with donated_cents / spent_cents
+    API->>API: Flatten and sort sponsors from cached JSONB
+    API-->>FE: Initiative JSON with ETag and Cache-Control
     FE-->>User: Rendered page
 ```
 
@@ -288,18 +290,18 @@ sequenceDiagram
     participant Stripe
 
     Donor->>FE: Fill donation form, click Pay
-    FE->>API: POST /v1/initiatives/{id}/donations\n{amount_cents, category, payment_method}
+    FE->>API: POST /v1/initiatives/{id}/donations
     API->>DB: INSERT INTO donations (status = 'pending')
     DB-->>API: donation record
-    API->>Stripe: Create PaymentIntent\n(amount, currency, metadata.initiative_id)
+    API->>Stripe: Create PaymentIntent (amount, metadata.initiative_id)
     Stripe-->>API: client_secret
-    API-->>FE: {donation_id, client_secret}
+    API-->>FE: donation_id + client_secret
     FE->>Stripe: stripe.confirmPayment(client_secret)
     Stripe-->>FE: Payment result
     FE-->>Donor: Confirmation screen
-    Stripe->>API: POST /v1/stripe/webhook\n(payment_intent.succeeded)
+    Stripe->>API: POST /v1/stripe/webhook (payment_intent.succeeded)
     API->>API: Validate Stripe-Signature header
-    API->>DB: UPDATE donations SET status = 'succeeded'\nWHERE stripe_charge_id = ?
+    API->>DB: UPDATE donations SET status = 'succeeded'
 ```
 
 The Ledger Service also receives a Stripe webhook independently and records the transaction in its own database. CF reads balance data from Ledger — it does not maintain its own running balance.
@@ -317,16 +319,16 @@ sequenceDiagram
     participant Stripe
 
     Donor->>FE: Choose monthly/annual, click Subscribe
-    FE->>API: POST /v1/initiatives/{id}/subscriptions\n{amount_cents, frequency, payment_method}
-    API->>Stripe: Create Customer (if new)\nCreate Subscription (price, metadata)
-    Stripe-->>API: subscription_id + latest_invoice.payment_intent.client_secret
+    FE->>API: POST /v1/initiatives/{id}/subscriptions
+    API->>Stripe: Create Customer if new, then create Subscription
+    Stripe-->>API: subscription_id + payment client_secret
     API->>DB: INSERT INTO subscriptions (status = 'active')
-    API-->>FE: {subscription_id, client_secret}
+    API-->>FE: subscription_id + client_secret
     FE->>Stripe: stripe.confirmPayment(client_secret)
     Stripe-->>FE: Confirmed
 
     Note over Stripe,API: Later — donor cancels or card expires
-    Stripe->>API: POST /v1/stripe/webhook\n(customer.subscription.deleted)
+    Stripe->>API: POST /v1/stripe/webhook (customer.subscription.deleted)
     API->>API: Validate Stripe-Signature header
     API->>DB: UPDATE subscriptions SET status = 'cancelled'
 ```
@@ -339,16 +341,16 @@ The `ledger-stats-sync` CronJob runs hourly and pre-warms the `initiative_ledger
 
 ```mermaid
 sequenceDiagram
-    participant Cron as ledger-stats-sync\n(K8s CronJob)
+    participant Cron as ledger-stats-sync
     participant Ledger as Ledger Service
     participant DB as PostgreSQL
 
     Cron->>Ledger: GET /api/balance (all projects)
-    Ledger-->>Cron: [{projectID, total_raised, balance, sponsors[]}]
+    Ledger-->>Cron: projectID, total_raised, balance, sponsors[]
     loop For each initiative
-        Cron->>DB: UPSERT initiative_ledger_stats\n(total_raised_cents, available_balance_cents,\nsupporters, sponsors JSONB)
+        Cron->>DB: UPSERT initiative_ledger_stats (total_raised, balance, supporters, sponsors)
     end
-    Note over DB: initiative detail reads JOIN\nthis table — no live Ledger call\nneeded for aggregate figures
+    Note over DB: Initiative reads JOIN this table. No live Ledger call needed for aggregate figures.
 ```
 
 ---
@@ -369,12 +371,12 @@ sequenceDiagram
     FE->>API: GET /v1/initiatives/{id}/transactions?type=donations
     API->>DB: SELECT id FROM initiatives WHERE slug = ? AND status = 'published'
     DB-->>API: initiative UUID
-    API->>Ledger: GET /api/transactions\n{projectID, type: 'donation', page, size}
-    Ledger-->>API: [{txn_id, amount, date, user_id, org_id}]
-    API->>DB: SELECT * FROM users WHERE user_id = ANY(?)
-    API->>DB: SELECT * FROM organizations WHERE id = ANY(?)
-    DB-->>API: user + org records
-    API->>API: Merge donor name + avatar onto each transaction\n(org takes priority over user;\ngenerate avatar URL if no DB record)
+    API->>Ledger: GET /api/transactions (projectID, type=donation, page, size)
+    Ledger-->>API: txn_id, amount, date, user_id, org_id per transaction
+    API->>DB: SELECT FROM users WHERE user_id = ANY(?)
+    API->>DB: SELECT FROM organizations WHERE id = ANY(?)
+    DB-->>API: user and org records
+    API->>API: Merge donor name and avatar (org takes priority; generate avatar if no match)
     API-->>FE: Enriched transaction list
     FE-->>User: Donations table
 ```
@@ -387,7 +389,7 @@ Mentorship programs in LFX are created and managed by the Mentorship service (jo
 
 ```mermaid
 sequenceDiagram
-    participant MS as Mentorship Service\n(jobspring Lambda)
+    participant MS as Mentorship Service
     participant SNS as AWS SNS
     participant SQS as AWS SQS
     participant CF as CF Go API
@@ -395,18 +397,18 @@ sequenceDiagram
 
     MS->>SNS: Publish projectCreated / projectUpdated / projectUpdateStatus
     SNS->>SQS: Fan-out to CF queue
-    CF->>SQS: Poll (SQS consumer — long-running Deployment)
+    CF->>SQS: Poll (long-running SQS consumer)
     SQS-->>CF: Event message
 
     alt projectCreated
-        CF->>DB: INSERT INTO initiatives\n(initiative_type='mentorship', jobspring_project_id=?)
+        CF->>DB: INSERT INTO initiatives (type=mentorship, jobspring_project_id=?)
     else projectUpdated
-        CF->>DB: UPDATE initiatives\n(Mentorship-owned fields only;\nnever overwrite logo, color, description)
+        CF->>DB: UPDATE initiatives (Mentorship-owned fields only)
     else projectUpdateStatus
         CF->>DB: UPDATE initiatives SET status = ?
     end
 
-    Note over MS,CF: Mentorship also calls CF directly (HTTP)\nfor slug sync, funding status, title checks,\nand beneficiary management
+    Note over MS,CF: Mentorship also calls CF directly for slug sync, funding status, title checks, and beneficiary management.
 ```
 
 ---
