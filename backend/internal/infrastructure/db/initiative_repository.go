@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -109,7 +110,7 @@ func (r *InitiativeRepository) GetIDBySlug(ctx context.Context, slug string) (st
 	span.SetAttributes(attribute.String("db.initiative_slug", slug))
 
 	var id string
-	err := r.pool.QueryRow(ctx, `SELECT id FROM initiatives WHERE slug = $1 AND status = 'published'`, slug).Scan(&id)
+	err := r.pool.QueryRow(ctx, `SELECT id FROM initiatives WHERE slug = $1 AND LOWER(status) = $2`, slug, models.StatusPublished).Scan(&id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", domain.ErrInitiativeNotFound
@@ -243,7 +244,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative)
 
 	var id string
 	err := r.pool.QueryRow(ctx, q,
-		i.InitiativeType, i.OwnerID, i.Name, nullableString(i.Slug), nullableString(i.Status),
+		i.InitiativeType, i.OwnerID, i.Name, nullableString(i.Slug), nullableString(string(i.Status)),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
 		nullableString(i.StripePlanID), nullableString(i.StripeProductID),
@@ -277,7 +278,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative)
 		WHERE id = $1`
 
 	tag, err := r.pool.Exec(ctx, q,
-		i.ID, i.Name, nullableString(i.Slug), nullableString(i.Status),
+		i.ID, i.Name, nullableString(i.Slug), nullableString(string(i.Status)),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
 		i.AcceptFunding,
@@ -445,7 +446,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 
 	i.SourceDynamoTable = derefString(sourceDynamoTable)
 	i.Slug = derefString(slug)
-	i.Status = derefString(status)
+	i.Status = models.InitiativeStatus(strings.ToLower(derefString(status)))
 	i.Industry = derefString(industry)
 	i.Description = derefString(description)
 	i.Color = derefString(color)
