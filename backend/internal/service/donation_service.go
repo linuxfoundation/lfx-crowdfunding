@@ -66,6 +66,9 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	if input.AmountCents <= 0 {
 		return nil, fmt.Errorf("%w: amount_in_cents must be positive", domain.ErrInvalidInput)
 	}
+	if input.StripePaymentMethodID == "" {
+		return nil, fmt.Errorf("%w: stripe_payment_method_id is required", domain.ErrInvalidInput)
+	}
 
 	// Verify the initiative exists and accepts funding.
 	initiative, err := s.initiativeRepo.GetByID(ctx, initiativeID)

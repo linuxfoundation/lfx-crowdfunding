@@ -230,6 +230,10 @@ func (c *stripeClientImpl) CreatePaymentIntent(ctx context.Context, req models.P
 	_, span := stripeTracer.Start(ctx, "stripe.CreatePaymentIntent")
 	defer span.End()
 
+	if req.PaymentMethodID == "" {
+		return nil, fmt.Errorf("stripe create payment intent: payment_method_id is required when confirming server-side")
+	}
+
 	currency := req.Currency
 	if currency == "" {
 		currency = "usd"

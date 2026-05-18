@@ -47,13 +47,23 @@ func TestDonationService_Create_NegativeAmount(t *testing.T) {
 	}
 }
 
+func TestDonationService_Create_MissingPaymentMethod(t *testing.T) {
+	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
+		models.DonationCreateInput{AmountCents: 1000})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("expected ErrInvalidInput for missing PM, got %v", err)
+	}
+}
+
 func TestDonationService_Create_InitiativeNotFound(t *testing.T) {
 	notFound := errors.New("initiative not found")
 	initRepo := &mockInitiativeRepo{err: notFound}
 	svc := newDonationSvc(&testDonationRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-missing", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 100})
+		models.DonationCreateInput{AmountCents: 100, StripePaymentMethodID: "pm_test"})
 	if !errors.Is(err, notFound) {
 		t.Errorf("expected initiative-not-found error, got %v", err)
 	}
@@ -64,7 +74,7 @@ func TestDonationService_Create_InitiativeNotAccepting(t *testing.T) {
 	svc := newDonationSvc(&testDonationRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 500})
+		models.DonationCreateInput{AmountCents: 500, StripePaymentMethodID: "pm_test"})
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput, got %v", err)
 	}
@@ -187,7 +197,7 @@ func TestDonationService_Create_StripePaymentIntentError(t *testing.T) {
 	)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 1000})
+		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test"})
 	if !errors.Is(err, stripeErr) {
 		t.Errorf("error = %v, want to wrap %v", err, stripeErr)
 	}
@@ -206,7 +216,7 @@ func TestDonationService_Create_UserRepoTransientError(t *testing.T) {
 	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), userRepo, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 1000})
+		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test"})
 	if !errors.Is(err, dbErr) {
 		t.Errorf("error = %v, want to wrap %v", err, dbErr)
 	}
@@ -235,7 +245,7 @@ func TestDonationService_Create_DBError(t *testing.T) {
 	)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 1000})
+		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test"})
 	if !errors.Is(err, dbErr) {
 		t.Errorf("error = %v, want to wrap %v", err, dbErr)
 	}
