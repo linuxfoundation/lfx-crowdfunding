@@ -1,0 +1,5 @@
+# False positives: example placeholder values in API documentation.
+# These are clearly-fake strings used as JSON response examples, not real secrets.
+d76f263f02cb1861e8fb15044c354361bfaabf89:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:54
+d76f263f02cb1861e8fb15044c354361bfaabf89:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:188
+d76f263f02cb1861e8fb15044c354361bfaabf89:backend/docs/rewrite/stripe_api_integration.md:generic-api-key:254

@@ -51,7 +51,7 @@ the account.
 **Response `201 Created`:**
 ```json
 {
-  "client_secret": "seti_1ABC...secret_xyz"
+  "client_secret": "<setup-intent-client-secret>"
 }
 ```
 
@@ -185,7 +185,7 @@ account settings.
   "id": "don_...",
   "status": "requires_action",
   "stripe_payment_intent_id": "pi_1ABC...",
-  "client_secret": "pi_1ABC...secret_xyz",
+  "client_secret": "<payment-intent-client-secret>",
   "created_on": "2026-05-18T10:00:00Z",
   "updated_on": "2026-05-18T10:00:00Z"
 }
@@ -251,7 +251,7 @@ response is sent.
   "id": "sub_local_...",
   "status": "incomplete",
   "stripe_subscription_id": "sub_1ABC...",
-  "client_secret": "pi_1ABC...secret_xyz",
+  "client_secret": "<payment-intent-client-secret>",
   "created_on": "2026-05-18T10:00:00Z",
   "updated_on": "2026-05-18T10:00:00Z"
 }
