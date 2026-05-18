@@ -375,3 +375,545 @@ created ──► incomplete ──(invoice.payment_succeeded)──► active
 | `donations` | `status` | Payment state: `pending`, `requires_action`, `succeeded`, `failed` |
 | `subscriptions` | `stripe_price_id` | Stripe `price_xxx` created per subscription |
 | `subscriptions` | `status` | Subscription state: `incomplete`, `active`, `past_due`, `canceled` |
+
+---
+
+## Frontend Implementation Guide
+
+This section is written for the frontend developer implementing the Stripe UI.
+It covers every user-facing flow end-to-end with diagrams, Stripe.js call
+signatures, and error handling.
+
+### Prerequisites
+
+Install the Stripe.js loader:
+
+```bash
+pnpm add @stripe/stripe-js
+```
+
+Initialise once at app startup (do **not** call `loadStripe` inside a
+component render cycle):
+
+```ts
+// plugins/stripe.ts
+import { loadStripe } from '@stripe/stripe-js'
+
+export const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+```
+
+---
+
+### API Quick Reference
+
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| `POST` | `/v1/me/setup-intent` | JWT | Get a `client_secret` to save a card |
+| `POST` | `/v1/me/payment-method` | JWT | Record the card after Stripe confirms it |
+| `GET`  | `/v1/me/payment-account` | JWT | Fetch saved card details |
+| `DELETE` | `/v1/me/payment-method` | JWT | Remove saved card |
+| `POST` | `/v1/initiatives/{id}/donations` | JWT | Create a one-time donation |
+| `POST` | `/v1/initiatives/{id}/subscriptions` | JWT | Create a recurring subscription |
+| `DELETE` | `/v1/subscriptions/{id}` | JWT | Cancel a subscription |
+
+---
+
+### Flow 1 — Save a Card (SetupIntent)
+
+Run this flow **before** any donation or subscription if the user has no card
+on file. `GET /v1/me/payment-account` returns `404` when no card is saved.
+
+```
+Frontend                         Backend (API)                    Stripe
+   │                                   │                             │
+   │── POST /v1/me/setup-intent ───────▶                             │
+   │                                   │── Customers.New ───────────▶│
+   │                                   │◀──────────────── cus_xxx ───│
+   │                                   │── SetupIntents.New ─────────▶│
+   │                                   │◀──── seti_xxx + client_secret│
+   │◀── { client_secret: "seti_..." } ─│                             │
+   │                                   │                             │
+   │  stripe.elements({ clientSecret })│                             │
+   │  paymentElement.mount('#el')      │                             │
+   │  [user fills card form]           │                             │
+   │                                   │                             │
+   │── stripe.confirmSetup() ──────────────────────────────────────▶│
+   │                                   │        [Stripe validates card]
+   │                         ┌─────────┴──────────────────────────┐  │
+   │                         │   Does bank require 3DS challenge?  │  │
+   │                         └─────────┬──────────────────────────┘  │
+   │                              NO ◀─┘──▶ YES                      │
+   │                              │              │                    │
+   │◀── setupIntent.payment_method│              │ Stripe opens       │
+   │    (pm_xxx, in-page result)  │              │ 3DS modal/redirect │
+   │                              │              │                    │
+   │── POST /v1/me/payment-method │       User completes challenge   │
+   │   { payment_method_id: pm_xxx}       │                          │
+   │◀── { last_four, brand, ... } │    Stripe redirects to           │
+   │                              │    /payment/complete             │
+   │                              │    ?setup_intent=seti_xxx        │
+   │                              │    &redirect_status=succeeded    │
+   │                              │              │                    │
+   │                              │     [completion page runs]       │
+   │                              │     stripe.retrieveSetupIntent() │
+   │                              │     → setupIntent.payment_method │
+   │                              │              │                    │
+   │                              │── POST /v1/me/payment-method ───▶│
+   │                              │◀── { last_four, brand, ... } ───│
+```
+
+#### Step 1 — Request a SetupIntent
+
+```ts
+const { client_secret } = await api.post('/v1/me/setup-intent')
+// → { "client_secret": "seti_xxx_secret_yyy" }
+```
+
+#### Step 2 — Mount the Payment Element
+
+```ts
+const elements = stripe.elements({ clientSecret: client_secret })
+const paymentElement = elements.create('payment')
+paymentElement.mount('#payment-element')
+```
+
+#### Step 3 — Confirm on form submit
+
+```ts
+const { setupIntent, error } = await stripe.confirmSetup({
+  elements,
+  confirmParams: {
+    return_url: `${window.location.origin}/payment/complete`,
+  },
+  redirect: 'if_required', // stay on page when no redirect is needed
+})
+
+if (error) {
+  showError(error.message)
+  return
+}
+// No redirect — pm_xxx available immediately
+await api.post('/v1/me/payment-method', {
+  payment_method_id: setupIntent.payment_method,
+})
+```
+
+#### Two possible outcomes — same final call to the backend
+
+```
+redirect: 'if_required' result
+┌──────────────────────────────────────────────────────────────┐
+│ No redirect (most cards)                                     │
+│   setupIntent.status === 'succeeded'                         │
+│   setupIntent.payment_method === 'pm_xxx'  ← POST to API    │
+├──────────────────────────────────────────────────────────────┤
+│ Redirected to /payment/complete                              │
+│   URL params:                                                │
+│     setup_intent=seti_xxx                                    │
+│     setup_intent_client_secret=seti_xxx_secret_yyy           │
+│     redirect_status=succeeded                                │
+│   Call stripe.retrieveSetupIntent(client_secret_from_url)    │
+│   → setupIntent.payment_method  ← POST to API               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Flow 2 — One-Time Donation
+
+#### Prerequisite check
+
+```ts
+let card
+try {
+  card = await api.get('/v1/me/payment-account')
+} catch (e) {
+  if (e.status === 404) {
+    router.push('/account/payment/add') // → run Flow 1 first
+    return
+  }
+  throw e
+}
+```
+
+#### Full flow diagram
+
+```
+Frontend                         Backend (API)                  Stripe / Webhook
+   │                                   │                              │
+   │── POST /v1/initiatives/:id/donations ──────────────────────────▶│
+   │   { amount_in_cents: 5000,        │   PaymentIntents.New         │
+   │     stripe_payment_method_id:     │   (Confirm=true,             │
+   │     pm_xxx }                      │    3DS=automatic)            │
+   │                                   │◀─────────────────────────────│
+   │                                   │                              │
+   │          ┌────────────────────────┴────────────────────────────┐ │
+   │          │ What did Stripe return?                              │ │
+   │          └───────────┬──────────────────────┬──────────────────┘ │
+   │                      │                      │                    │
+   │               status=succeeded       status=requires_action      │
+   │               (no 3DS needed)        client_secret present       │
+   │                      │                      │                    │
+   │◀── 201 { status:     │      201 { status: "requires_action",    │
+   │    "succeeded" }     │           client_secret: "pi_xxx..." }   │
+   │          │           │                      │                    │
+   │    Show success ✓    │   stripe.confirmCardPayment(             │
+   │   (webhook also      │     client_secret,                       │
+   │    fires to confirm) │     { payment_method: pm_xxx }           │
+   │                      │   )                  │                    │
+   │                      │          ┌───────────┴──────────────────┐ │
+   │                      │          │ 3DS challenge needed?        │ │
+   │                      │          └──────────┬───────────────────┘ │
+   │                      │               NO ◀──┘──▶ YES              │
+   │                      │               │              │            │
+   │                      │   paymentIntent.status       │            │
+   │                      │   === 'succeeded'        Stripe modal     │
+   │                      │         │            User authenticates   │
+   │                      │   Show success ✓         │                │
+   │                      │   (webhook still         ▼                │
+   │                      │    fires separately) Stripe POSTs to      │
+   │                      │                 /v1/stripe/webhook        │
+   │                      │                 payment_intent.succeeded  │
+   │                      │                      │                    │
+   │                      │               backend updates DB          │
+   │                      │               donation.status='succeeded' │
+```
+
+#### Submit the donation
+
+```ts
+const donation = await api.post(`/v1/initiatives/${initiativeID}/donations`, {
+  amount_in_cents: 5000,
+  stripe_payment_method_id: card.payment_method_id,
+})
+
+if (donation.status === 'succeeded') {
+  showSuccess()
+  return
+}
+
+if (donation.status === 'requires_action') {
+  const { paymentIntent, error } = await stripe.confirmCardPayment(
+    donation.client_secret,
+    { payment_method: card.payment_method_id }
+  )
+  if (error) {
+    showError(error.message)
+    // The donation row stays 'pending' until the webhook fires 'failed'.
+    // Do NOT re-POST to create another donation — the record already exists.
+    return
+  }
+  showSuccess()
+  // DB status is updated asynchronously by the payment_intent.succeeded webhook
+}
+```
+
+#### Donation status state machine
+
+```
+                POST /donations
+                      │
+                       ▼
+              ┌──────────────┐
+              │   pending    │  ← initial DB state
+              └──────┬───────┘
+                     │
+       ┌─────────────┴──────────────┐
+       │                            │
+       ▼                            ▼
+payment_intent.succeeded   payment_intent.payment_failed
+(webhook)                  (webhook)
+       │                            │
+       ▼                            ▼
+┌────────────┐             ┌──────────────┐
+│ succeeded  │             │   failed     │
+└────────────┘             └──────────────┘
+```
+
+---
+
+### Flow 3 — Recurring Subscription
+
+#### Full flow diagram
+
+```
+Frontend                         Backend (API)                  Stripe / Webhook
+   │                                   │                              │
+   │── POST /v1/initiatives/:id/subscriptions ──────────────────────▶│
+   │   { amount_in_cents: 1000,        │   Prices.New (fresh price)   │
+   │     frequency: "monthly",         │   Subscriptions.New          │
+   │     stripe_payment_method_id:     │   (default_incomplete,       │
+   │     pm_xxx }                      │    expand latest_invoice)    │
+   │                                   │◀─────────────────────────────│
+   │                                   │                              │
+   │          ┌────────────────────────┴────────────────────────────┐ │
+   │          │ Did the first invoice need 3DS?                     │ │
+   │          └───────────┬──────────────────────┬──────────────────┘ │
+   │                      │                      │                    │
+   │                status=active          status=incomplete          │
+   │                (no 3DS needed         client_secret present      │
+   │                 OR no invoice)               │                   │
+   │                      │                      │                    │
+   │◀── 201 { status:     │    201 { status: "incomplete",           │
+   │    "active" }        │         client_secret: "pi_xxx..." }     │
+   │          │           │                      │                    │
+   │    Show success ✓    │   stripe.confirmPayment(                 │
+   │                      │     clientSecret,                        │
+   │                      │     confirmParams: {                     │
+   │                      │       return_url: '/payment/complete'    │
+   │                      │     },                                   │
+   │                      │     redirect: 'if_required'              │
+   │                      │   )                  │                    │
+   │                      │          ┌───────────┴──────────────────┐ │
+   │                      │          │ 3DS challenge needed?        │ │
+   │                      │          └──────────┬───────────────────┘ │
+   │                      │               NO ◀──┘──▶ YES              │
+   │                      │               │              │            │
+   │                      │   webhook fires         Redirect to       │
+   │                      │   asynchronously        /payment/complete │
+   │                      │   Show success ✓        (webhook handles  │
+   │                      │                          status update)   │
+   │                      │                              │            │
+   │                      │             Stripe POSTs to /v1/stripe/webhook
+   │                      │             invoice.payment_succeeded     │
+   │                      │                   │                       │
+   │                      │             backend: subscription → active│
+```
+
+#### Submit the subscription
+
+```ts
+const subscription = await api.post(`/v1/initiatives/${initiativeID}/subscriptions`, {
+  amount_in_cents: 1000,
+  frequency: 'monthly', // 'monthly' | 'yearly' | 'weekly'
+  stripe_payment_method_id: card.payment_method_id,
+})
+
+if (subscription.status === 'active') {
+  showSuccess('Subscription activated!')
+  return
+}
+
+if (subscription.status === 'incomplete') {
+  const { error } = await stripe.confirmPayment({
+    clientSecret: subscription.client_secret,
+    confirmParams: {
+      return_url: `${window.location.origin}/payment/complete`,
+    },
+    redirect: 'if_required',
+  })
+  if (error) {
+    showError(error.message)
+    // Stripe will retry the invoice automatically (smart retry)
+    return
+  }
+  showSuccess('Subscription activated!')
+  // webhook (invoice.payment_succeeded) advances DB → 'active'
+}
+```
+
+#### Subscription status state machine
+
+```
+           POST /subscriptions
+                  │
+                   ▼
+         ┌─────────────────┐
+         │   incomplete    │  ← initial DB state
+         └────────┬────────┘
+                  │
+     invoice.payment_succeeded (webhook)
+                  │
+                  ▼
+         ┌─────────────────┐
+         │     active      │◀─── invoice.payment_succeeded (each renewal)
+         └────────┬────────┘
+                  │
+     ┌────────────┴──────────────┐
+     │                           │
+invoice.payment_failed      DELETE /subscriptions/:id
+(webhook)                   (frontend cancel)
+     │                           │
+     ▼                           ▼
+┌──────────┐            ┌──────────────┐
+│ past_due │            │   canceled   │◀── customer.subscription.deleted
+└──────────┘            └──────────────┘    (Stripe-initiated webhook)
+     │
+     │  Stripe retries automatically (~4 attempts over several days)
+     │
+invoice.payment_succeeded ──▶ back to active
+invoice.payment_failed (exhausted) ──▶ Stripe deletes ──▶ canceled
+```
+
+---
+
+### Flow 4 — `/payment/complete` Return Page
+
+This single page handles **all** Stripe redirect outcomes.
+
+```
+User lands on /payment/complete
+         │
+         ▼
+Read URL params
+         │
+    ┌────┴──────────────────────────┐
+    │        Which flow?            │
+    └───────┬───────────────────────┘
+            │                   │
+    setup_intent=...     payment_intent=...
+    (save card)          (donation/subscription)
+            │                   │
+            ▼                   ▼
+  stripe.retrieveSetupIntent  stripe.retrievePaymentIntent
+    (setup_intent_client_secret) (payment_intent_client_secret)
+            │                   │
+            ▼                   ▼
+   status=succeeded?    redirect_status=succeeded?
+            │                   │
+     YES ───▼              YES ─▼
+            │               Show success
+  POST /v1/me/payment-method  (DB updated by webhook)
+  { payment_method_id }
+  → redirect to /account
+            │
+     NO ────▼
+     Show "card verification
+     failed" + retry button
+```
+
+```ts
+// composables/usePaymentComplete.ts
+const params = new URLSearchParams(window.location.search)
+
+if (params.get('setup_intent')) {
+  const { setupIntent } = await stripe.retrieveSetupIntent(
+    params.get('setup_intent_client_secret')!
+  )
+  if (setupIntent?.status === 'succeeded' && setupIntent.payment_method) {
+    await api.post('/v1/me/payment-method', {
+      payment_method_id: setupIntent.payment_method,
+    })
+    router.replace('/account/payment?saved=true')
+  } else {
+    showError('Card verification failed. Please try again.')
+  }
+
+} else if (params.get('payment_intent')) {
+  if (params.get('redirect_status') === 'succeeded') {
+    // DB is updated by the webhook — just show confirmation
+    router.replace('/account?payment=complete')
+  } else {
+    showError('Payment failed. Please try again.')
+  }
+}
+```
+
+---
+
+### Flow 5 — View and Remove a Saved Card
+
+```ts
+// View
+const card = await api.get('/v1/me/payment-account')
+// { payment_method_id, last_four, brand, expiry_month, expiry_year }
+// 404 → no card saved, show "Add a card" CTA
+
+// Remove
+await api.delete('/v1/me/payment-method')
+// 204 No Content
+// After deletion GET /v1/me/payment-account returns 404 again
+```
+
+---
+
+### Flow 6 — Cancel a Subscription
+
+```ts
+await api.delete(`/v1/subscriptions/${subscriptionID}`)
+// 204 No Content — cancelled immediately in Stripe and DB
+```
+
+---
+
+### Error Handling Reference
+
+| HTTP status | Condition | Frontend action |
+|-------------|-----------|-----------------|
+| `400` | Missing/invalid field (e.g. no `stripe_payment_method_id`) | Show field validation error |
+| `401` | Missing or expired JWT | Redirect to login |
+| `403` | Caller doesn't own the resource | Show "not authorised" |
+| `404` on `/me/payment-account` | No card saved | Redirect to save-card flow |
+| `404` on donation / subscription | Record not found | Show not found page |
+| `409` | Conflict (duplicate resource) | Show "already exists" message |
+| `503` | Stripe API unreachable | Show "payment service unavailable, please retry" |
+| `500` | Unexpected server error | Show generic error; log to Sentry |
+
+For Stripe.js errors, always show `error.message` directly — Stripe localises
+it for the user's locale:
+
+```ts
+const { error } = await stripe.confirmCardPayment(...)
+if (error) {
+  // error.type: 'card_error' | 'validation_error' | 'api_connection_error' | ...
+  // error.code: 'card_declined' | 'insufficient_funds' | 'expired_card' | ...
+  showError(error.message) // Stripe-provided, user-friendly
+}
+```
+
+---
+
+### Which Stripe.js Call to Use
+
+```
+┌─────────────────────────────┬──────────────────────────────────────┐
+│ Scenario                    │ Stripe.js method                     │
+├─────────────────────────────┼──────────────────────────────────────┤
+│ Saving a card               │ stripe.confirmSetup({ elements,      │
+│ (SetupIntent flow)          │   redirect: 'if_required' })         │
+├─────────────────────────────┼──────────────────────────────────────┤
+│ One-time donation 3DS       │ stripe.confirmCardPayment(           │
+│                             │   client_secret,                     │
+│                             │   { payment_method: pm_xxx })        │
+├─────────────────────────────┼──────────────────────────────────────┤
+│ Subscription first invoice  │ stripe.confirmPayment({              │
+│ 3DS                         │   clientSecret,                      │
+│                             │   confirmParams: { return_url },     │
+│                             │   redirect: 'if_required' })         │
+├─────────────────────────────┼──────────────────────────────────────┤
+│ Redirect return handler     │ stripe.retrieveSetupIntent() or      │
+│ (/payment/complete page)    │ stripe.retrievePaymentIntent()       │
+└─────────────────────────────┴──────────────────────────────────────┘
+```
+
+---
+
+### Test Cards
+
+Use these in Stripe test mode (`sk_test_...` / `pk_test_...`):
+
+| Card number | Scenario |
+|-------------|----------|
+| `4242 4242 4242 4242` | Instant success — no 3DS required |
+| `4000 0027 6000 3184` | 3DS required — always challenges |
+| `4000 0025 0000 3155` | 3DS required — user must authenticate to succeed |
+| `4000 0000 0000 9995` | Declined — `insufficient_funds` |
+| `4000 0000 0000 0002` | Declined — `card_declined` |
+| `4000 0000 0000 0069` | Declined — `expired_card` |
+
+Use any future expiry date (e.g. `12/34`), any 3-digit CVC, and any postal code.
+
+---
+
+### Key Rules
+
+1. **Always call the relevant `stripe.confirm*` method when `client_secret` is
+   present** — the payment is not complete without it.
+2. **Never store `client_secret`** — it is transient, injected at creation time
+   only, and never written to the DB.
+3. **The canonical final status comes from the webhook**, not the initial `POST`
+   response. Show optimistic UI, but reconcile from a fresh `GET` if needed.
+4. **`stripe_payment_method_id` is required** in both donation and subscription
+   requests — save the card via the setup-intent flow first.
+5. **`GET /v1/me/payment-account` returning 404 means no card** — always check
+   this before rendering a payment form and redirect to the card-saving flow.
