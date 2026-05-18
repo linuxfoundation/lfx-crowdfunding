@@ -13,7 +13,7 @@ SPDX-License-Identifier: MIT
         <div
           class="c-modal__content"
           :class="props.contentClass"
-          :style="{ 'max-width': props.width, 'max-height': props.height }"
+          :style="props.type === 'cover' ? {} : { 'max-width': props.width, 'max-height': props.height }"
           v-bind="$attrs"
           @click.stop
         >
