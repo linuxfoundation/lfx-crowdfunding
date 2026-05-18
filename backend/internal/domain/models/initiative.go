@@ -6,6 +6,28 @@ package models
 
 import "time"
 
+// ValidInitiativeTypes is the set of accepted initiative_type values.
+// Legacy types community and travel_fund are excluded: community rows are
+// discarded during migration; travel_fund rows are reclassified as general_fund.
+// ostif and other are retained — migrated rows exist and updates must be accepted.
+var ValidInitiativeTypes = map[string]bool{
+	"project":        true,
+	"event":          true,
+	"mentorship":     true,
+	"security_audit": true,
+	"general_fund":   true,
+	"ostif":          true,
+	"other":          true,
+}
+
+// ValidInitiativeStatuses is the set of accepted status values.
+var ValidInitiativeStatuses = map[string]bool{
+	"submitted": true,
+	"published": true,
+	"declined":  true,
+	"hidden":    true,
+}
+
 // Financials holds funding statistics sourced from initiative_ledger_stats,
 // populated by the ledger-stats-sync CronJob. All fields are zero when the
 // cron has not yet run for this initiative.
@@ -24,7 +46,7 @@ type Financials struct {
 type Initiative struct {
 	ID             string `json:"id"`
 	InitiativeType string `json:"initiative_type"`
-	OwnerID        string `json:"owner_id"`
+	OwnerID        string `json:"-"`
 	Name           string `json:"name"`
 	Slug           string `json:"slug,omitempty"`
 	Status         string `json:"status,omitempty"`
@@ -51,16 +73,20 @@ type Initiative struct {
 	// Populated from initiative_ledger_stats; zero when cron has not yet run
 	Financials Financials `json:"financials"`
 
+	// Populated from initiative_ledger_stats.sponsors; flat list sorted by total descending
+	Sponsors []Sponsor `json:"sponsors"`
+
 	CreatedOn time.Time `json:"created_on"`
 	UpdatedOn time.Time `json:"updated_on"`
 
 	// Internal fields — never serialised
-	SourceDynamoTable  string `json:"-"`
-	StripePlanID       string `json:"-"`
-	StripeProductID    string `json:"-"`
-	CiiProjectID       string `json:"-"`
-	JobspringProjectID string `json:"-"`
-	StacksIdentifier   string `json:"-"`
+	SourceDynamoTable  string            `json:"-"`
+	StripePlanID       string            `json:"-"`
+	StripeProductID    string            `json:"-"`
+	CiiProjectID       string            `json:"-"`
+	JobspringProjectID string            `json:"-"`
+	StacksIdentifier   string            `json:"-"`
+	RawSponsors        LedgerSponsorList `json:"-"` // set by DB layer; flattened into Sponsors by service layer
 }
 
 // InitiativeCreateInput is the request body for creating an initiative.

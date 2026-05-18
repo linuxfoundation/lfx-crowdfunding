@@ -66,7 +66,7 @@ SPDX-License-Identifier: MIT
         <NuxtLink
           v-for="(initiative, index) in initiatives"
           :key="initiative.id"
-          :to="`/initiatives/${initiative.id}`"
+          :to="`/initiatives/${initiative.slug}`"
           class="flex gap-8 md:items-center items-start p-6 hover:bg-neutral-50 transition-colors md:flex-row flex-col"
           :class="{ 'border-b border-neutral-200': index < initiatives.length - 1 }"
         >

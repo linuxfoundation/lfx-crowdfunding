@@ -1,0 +1,11 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+
+packages:
+  - "."
+
+allowBuilds:
+  "@parcel/watcher": true
+  esbuild: true
+  unrs-resolver: true
+  vue-demi: true

@@ -19,11 +19,11 @@ const appUrl = isProduction
     ? process.env.NUXT_APP_URL || 'https://crowdfunding-staging.lfx.linuxfoundation.org'
     : 'http://localhost:3000';
 
-// Dev and staging share the staging Auth0 tenant for now.
-// TODO: provision a dedicated staging tenant and update this when ready.
 const auth0Domain = isProduction
   ? 'https://sso.linuxfoundation.org'
-  : 'https://linuxfoundation-staging.auth0.com';
+  : isStaging
+    ? 'https://linuxfoundation-staging.auth0.com'
+    : 'https://linuxfoundation-dev.auth0.com';
 
 const auth0CookieDomain = isProduction
   ? 'crowdfunding.lfx.linuxfoundation.org'

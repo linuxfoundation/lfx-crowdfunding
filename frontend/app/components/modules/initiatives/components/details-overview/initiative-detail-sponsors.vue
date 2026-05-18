@@ -15,7 +15,7 @@ SPDX-License-Identifier: MIT
         <lfx-avatar
           type="organization"
           size="large"
-          :src="sponsor.logoUrl"
+          :src="sponsor.avatarUrl"
         />
         <span class="text-xs text-neutral-600 leading-[14px] text-center max-w-[48px] truncate">
           {{ sponsor.name }}

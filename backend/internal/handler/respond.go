@@ -7,6 +7,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -52,5 +53,8 @@ func mapError(err error) (int, string) {
 // Error writes a JSON error response derived from a domain error.
 func Error(w http.ResponseWriter, err error) {
 	status, msg := mapError(err)
+	if status == http.StatusInternalServerError {
+		slog.Error("internal error", "error", err)
+	}
 	JSON(w, status, errorBody{Error: msg})
 }

@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  devalue: ^5.8.1
-
 importers:
   .:
     dependencies:
@@ -1747,6 +1744,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-minify/binding-linux-arm64-musl@0.128.0":
     resolution:
@@ -1756,6 +1754,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-minify/binding-linux-ppc64-gnu@0.128.0":
     resolution:
@@ -1765,6 +1764,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-minify/binding-linux-riscv64-gnu@0.128.0":
     resolution:
@@ -1774,6 +1774,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-minify/binding-linux-riscv64-musl@0.128.0":
     resolution:
@@ -1783,6 +1784,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-minify/binding-linux-s390x-gnu@0.128.0":
     resolution:
@@ -1792,6 +1794,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-minify/binding-linux-x64-gnu@0.128.0":
     resolution:
@@ -1801,6 +1804,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-minify/binding-linux-x64-musl@0.128.0":
     resolution:
@@ -1810,6 +1814,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-minify/binding-openharmony-arm64@0.128.0":
     resolution:
@@ -1926,6 +1931,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-parser/binding-linux-arm64-musl@0.128.0":
     resolution:
@@ -1935,6 +1941,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-parser/binding-linux-ppc64-gnu@0.128.0":
     resolution:
@@ -1944,6 +1951,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-parser/binding-linux-riscv64-gnu@0.128.0":
     resolution:
@@ -1953,6 +1961,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-parser/binding-linux-riscv64-musl@0.128.0":
     resolution:
@@ -1962,6 +1971,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-parser/binding-linux-s390x-gnu@0.128.0":
     resolution:
@@ -1971,6 +1981,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-parser/binding-linux-x64-gnu@0.128.0":
     resolution:
@@ -1980,6 +1991,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-parser/binding-linux-x64-musl@0.128.0":
     resolution:
@@ -1989,6 +2001,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-parser/binding-openharmony-arm64@0.128.0":
     resolution:
@@ -2111,6 +2124,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-transform/binding-linux-arm64-musl@0.128.0":
     resolution:
@@ -2120,6 +2134,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-transform/binding-linux-ppc64-gnu@0.128.0":
     resolution:
@@ -2129,6 +2144,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-transform/binding-linux-riscv64-gnu@0.128.0":
     resolution:
@@ -2138,6 +2154,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-transform/binding-linux-riscv64-musl@0.128.0":
     resolution:
@@ -2147,6 +2164,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-transform/binding-linux-s390x-gnu@0.128.0":
     resolution:
@@ -2156,6 +2174,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-transform/binding-linux-x64-gnu@0.128.0":
     resolution:
@@ -2165,6 +2184,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   "@oxc-transform/binding-linux-x64-musl@0.128.0":
     resolution:
@@ -2174,6 +2194,7 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   "@oxc-transform/binding-openharmony-arm64@0.128.0":
     resolution:
@@ -2269,6 +2290,7 @@ packages:
     engines: { node: ">= 10.0.0" }
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   "@parcel/watcher-linux-arm-musl@2.5.6":
     resolution:
@@ -2278,6 +2300,7 @@ packages:
     engines: { node: ">= 10.0.0" }
     cpu: [arm]
     os: [linux]
+    libc: [musl]
 
   "@parcel/watcher-linux-arm64-glibc@2.5.6":
     resolution:
@@ -2287,6 +2310,7 @@ packages:
     engines: { node: ">= 10.0.0" }
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   "@parcel/watcher-linux-arm64-musl@2.5.6":
     resolution:
@@ -2296,6 +2320,7 @@ packages:
     engines: { node: ">= 10.0.0" }
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   "@parcel/watcher-linux-x64-glibc@2.5.6":
     resolution:
@@ -2305,6 +2330,7 @@ packages:
     engines: { node: ">= 10.0.0" }
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   "@parcel/watcher-linux-x64-musl@2.5.6":
     resolution:
@@ -2314,6 +2340,7 @@ packages:
     engines: { node: ">= 10.0.0" }
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   "@parcel/watcher-wasm@2.5.6":
     resolution:
@@ -2658,6 +2685,7 @@ packages:
       }
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   "@rollup/rollup-linux-arm-musleabihf@4.60.3":
     resolution:
@@ -2666,6 +2694,7 @@ packages:
       }
     cpu: [arm]
     os: [linux]
+    libc: [musl]
 
   "@rollup/rollup-linux-arm64-gnu@4.60.3":
     resolution:
@@ -2674,6 +2703,7 @@ packages:
       }
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   "@rollup/rollup-linux-arm64-musl@4.60.3":
     resolution:
@@ -2682,6 +2712,7 @@ packages:
       }
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   "@rollup/rollup-linux-loong64-gnu@4.60.3":
     resolution:
@@ -2690,6 +2721,7 @@ packages:
       }
     cpu: [loong64]
     os: [linux]
+    libc: [glibc]
 
   "@rollup/rollup-linux-loong64-musl@4.60.3":
     resolution:
@@ -2698,6 +2730,7 @@ packages:
       }
     cpu: [loong64]
     os: [linux]
+    libc: [musl]
 
   "@rollup/rollup-linux-ppc64-gnu@4.60.3":
     resolution:
@@ -2706,6 +2739,7 @@ packages:
       }
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   "@rollup/rollup-linux-ppc64-musl@4.60.3":
     resolution:
@@ -2714,6 +2748,7 @@ packages:
       }
     cpu: [ppc64]
     os: [linux]
+    libc: [musl]
 
   "@rollup/rollup-linux-riscv64-gnu@4.60.3":
     resolution:
@@ -2722,6 +2757,7 @@ packages:
       }
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   "@rollup/rollup-linux-riscv64-musl@4.60.3":
     resolution:
@@ -2730,6 +2766,7 @@ packages:
       }
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   "@rollup/rollup-linux-s390x-gnu@4.60.3":
     resolution:
@@ -2738,6 +2775,7 @@ packages:
       }
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   "@rollup/rollup-linux-x64-gnu@4.60.3":
     resolution:
@@ -2746,6 +2784,7 @@ packages:
       }
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   "@rollup/rollup-linux-x64-musl@4.60.3":
     resolution:
@@ -2754,6 +2793,7 @@ packages:
       }
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   "@rollup/rollup-openbsd-x64@4.60.3":
     resolution:
@@ -3157,6 +3197,7 @@ packages:
       }
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   "@unrs/resolver-binding-linux-arm64-musl@1.11.1":
     resolution:
@@ -3165,6 +3206,7 @@ packages:
       }
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   "@unrs/resolver-binding-linux-ppc64-gnu@1.11.1":
     resolution:
@@ -3173,6 +3215,7 @@ packages:
       }
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   "@unrs/resolver-binding-linux-riscv64-gnu@1.11.1":
     resolution:
@@ -3181,6 +3224,7 @@ packages:
       }
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   "@unrs/resolver-binding-linux-riscv64-musl@1.11.1":
     resolution:
@@ -3189,6 +3233,7 @@ packages:
       }
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   "@unrs/resolver-binding-linux-s390x-gnu@1.11.1":
     resolution:
@@ -3197,6 +3242,7 @@ packages:
       }
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   "@unrs/resolver-binding-linux-x64-gnu@1.11.1":
     resolution:
@@ -3205,6 +3251,7 @@ packages:
       }
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   "@unrs/resolver-binding-linux-x64-musl@1.11.1":
     resolution:
@@ -3213,6 +3260,7 @@ packages:
       }
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   "@unrs/resolver-binding-wasm32-wasi@1.11.1":
     resolution:

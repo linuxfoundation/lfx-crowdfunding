@@ -119,6 +119,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	r.Get("/v1/statistics", statisticsH.GetPlatform)
 	r.Get("/v1/initiatives", initiativeH.List)
 	r.Get("/v1/initiatives/{id}", initiativeH.GetByID)
+	r.Get("/v1/initiatives/{id}/transactions", initiativeH.GetTransactions)
 
 	// Protected API
 	r.Route("/v1", func(r chi.Router) {

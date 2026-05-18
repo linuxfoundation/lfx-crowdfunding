@@ -39,6 +39,7 @@ func NewPool(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error) {
 	config.MaxConns = int32(cfg.MaxConns)
 	config.MinConns = int32(cfg.MinConns)
 	config.MaxConnLifetime = cfg.ConnMaxLifetime
+	config.ConnConfig.RuntimeParams["search_path"] = "crowdfunding,public"
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
