@@ -6,24 +6,24 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "lfx-v2-initiatives-service.fullname" . }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
+  name: { { include "lfx-v2-initiatives-service.fullname" . } }
+  namespace: { { .Release.Namespace } }
+  labels: { { - include "lfx-v2-initiatives-service.labels" . | nindent 4 } }
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "lfx-v2-initiatives-service.fullname" . }}
-  minReplicas: {{ .Values.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+    name: { { include "lfx-v2-initiatives-service.fullname" . } }
+  minReplicas: { { .Values.autoscaling.minReplicas } }
+  maxReplicas: { { .Values.autoscaling.maxReplicas } }
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+          averageUtilization:
+            { { .Values.autoscaling.targetCPUUtilizationPercentage } }
 ---
 # prettier-ignore
 {{ end }}
