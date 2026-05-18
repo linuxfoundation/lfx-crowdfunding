@@ -7,6 +7,10 @@ package models
 import "time"
 
 // Goal maps to the crowdfunding.initiative_goals table.
+// Fields tagged json:"-" (InitiativeID, SortOrder, CreatedOn, UpdatedOn) are
+// used internally — for grouping or ordering — but are not part of the API response.
+// DonatedCents and SpentCents are transient: enriched from Ledger subTotals at
+// request time and not persisted; they are omitted when Ledger is unavailable.
 type Goal struct {
 	ID            string    `json:"id"`
 	InitiativeID  string    `json:"-"`
