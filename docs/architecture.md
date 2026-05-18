@@ -222,6 +222,195 @@ GET /v1/initiatives/{id}  ←── also calls Ledger live
 
 ---
 
+## Data Flows
+
+### User Authentication
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as Nuxt Frontend
+    participant Auth0
+
+    User->>FE: Click "Sign In"
+    FE->>FE: Generate PKCE code_verifier + code_challenge
+    FE-->>User: Redirect to Auth0 /authorize
+    User->>Auth0: Credentials
+    Auth0-->>FE: Redirect /auth/callback?code=...
+    FE->>Auth0: Exchange code + code_verifier for tokens
+    Auth0-->>FE: access_token + id_token
+    FE->>FE: Store tokens in HTTP-only cookies
+    FE-->>User: Authenticated session
+```
+
+Tokens never touch the browser directly — stored server-side in HTTP-only cookies. Subsequent API calls from the frontend automatically include the token via `credentials: 'include'`. The Go API validates the JWT on every protected request against Auth0's JWKS endpoint.
+
+---
+
+### Initiative Detail Page Load
+
+Every request for an initiative detail page triggers two parallel data sources: a DB read for initiative fields + cached financials, and a live Ledger call for per-goal donated/spent.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as Nuxt Frontend
+    participant API as Go API
+    participant DB as PostgreSQL
+    participant Ledger as Ledger Service
+
+    User->>FE: GET /projects/kubernetes
+    FE->>API: GET /v1/initiatives/kubernetes
+    API->>DB: SELECT initiatives + initiative_ledger_stats\nWHERE slug = 'kubernetes'
+    DB-->>API: initiative row + cached financials + sponsors JSONB
+    API->>DB: SELECT initiative_goals WHERE initiative_id = ?
+    DB-->>API: goals[]
+    API->>Ledger: GET /api/balance/{projectID}
+    Ledger-->>API: balance + per-category subTotals
+    API->>API: Enrich each goal with donated_cents / spent_cents\nfrom Ledger subTotals (case-insensitive match)
+    API->>API: Flatten + sort sponsors from cached JSONB
+    API-->>FE: Initiative JSON (ETag + Cache-Control: max-age=60)
+    FE-->>User: Rendered page
+```
+
+**Caching:** The API response includes `Cache-Control: public, max-age=60, stale-while-revalidate=300` and an `ETag`. Ledger unavailability is non-fatal — goals are returned with zero donated/spent rather than failing the request.
+
+---
+
+### One-Time Donation
+
+```mermaid
+sequenceDiagram
+    actor Donor
+    participant FE as Nuxt Frontend
+    participant API as Go API
+    participant DB as PostgreSQL
+    participant Stripe
+
+    Donor->>FE: Fill donation form, click Pay
+    FE->>API: POST /v1/initiatives/{id}/donations\n{amount_cents, category, payment_method}
+    API->>DB: INSERT INTO donations (status = 'pending')
+    DB-->>API: donation record
+    API->>Stripe: Create PaymentIntent\n(amount, currency, metadata.initiative_id)
+    Stripe-->>API: client_secret
+    API-->>FE: {donation_id, client_secret}
+    FE->>Stripe: stripe.confirmPayment(client_secret)
+    Stripe-->>FE: Payment result
+    FE-->>Donor: Confirmation screen
+    Stripe->>API: POST /v1/stripe/webhook\n(payment_intent.succeeded)
+    API->>API: Validate Stripe-Signature header
+    API->>DB: UPDATE donations SET status = 'succeeded'\nWHERE stripe_charge_id = ?
+```
+
+The Ledger Service also receives a Stripe webhook independently and records the transaction in its own database. CF reads balance data from Ledger — it does not maintain its own running balance.
+
+---
+
+### Recurring Subscription
+
+```mermaid
+sequenceDiagram
+    actor Donor
+    participant FE as Nuxt Frontend
+    participant API as Go API
+    participant DB as PostgreSQL
+    participant Stripe
+
+    Donor->>FE: Choose monthly/annual, click Subscribe
+    FE->>API: POST /v1/initiatives/{id}/subscriptions\n{amount_cents, frequency, payment_method}
+    API->>Stripe: Create Customer (if new)\nCreate Subscription (price, metadata)
+    Stripe-->>API: subscription_id + latest_invoice.payment_intent.client_secret
+    API->>DB: INSERT INTO subscriptions (status = 'active')
+    API-->>FE: {subscription_id, client_secret}
+    FE->>Stripe: stripe.confirmPayment(client_secret)
+    Stripe-->>FE: Confirmed
+
+    Note over Stripe,API: Later — donor cancels or card expires
+    Stripe->>API: POST /v1/stripe/webhook\n(customer.subscription.deleted)
+    API->>API: Validate Stripe-Signature header
+    API->>DB: UPDATE subscriptions SET status = 'cancelled'
+```
+
+---
+
+### Financial Stats Sync (CronJob)
+
+The `ledger-stats-sync` CronJob runs hourly and pre-warms the `initiative_ledger_stats` cache so initiative list and detail responses do not need a live Ledger call for aggregate financial figures.
+
+```mermaid
+sequenceDiagram
+    participant Cron as ledger-stats-sync\n(K8s CronJob)
+    participant Ledger as Ledger Service
+    participant DB as PostgreSQL
+
+    Cron->>Ledger: GET /api/balance (all projects)
+    Ledger-->>Cron: [{projectID, total_raised, balance, sponsors[]}]
+    loop For each initiative
+        Cron->>DB: UPSERT initiative_ledger_stats\n(total_raised_cents, available_balance_cents,\nsupporters, sponsors JSONB)
+    end
+    Note over DB: initiative detail reads JOIN\nthis table — no live Ledger call\nneeded for aggregate figures
+```
+
+---
+
+### Transaction History (Donations & Expenses)
+
+Transaction data lives in the Ledger Service, not in CF's database. The CF API proxies and enriches it with donor names and avatars from the CF DB.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as Nuxt Frontend
+    participant API as Go API
+    participant DB as PostgreSQL
+    participant Ledger as Ledger Service
+
+    User->>FE: Open "Donations" tab
+    FE->>API: GET /v1/initiatives/{id}/transactions?type=donations
+    API->>DB: SELECT id FROM initiatives WHERE slug = ? AND status = 'published'
+    DB-->>API: initiative UUID
+    API->>Ledger: GET /api/transactions\n{projectID, type: 'donation', page, size}
+    Ledger-->>API: [{txn_id, amount, date, user_id, org_id}]
+    API->>DB: SELECT * FROM users WHERE user_id = ANY(?)
+    API->>DB: SELECT * FROM organizations WHERE id = ANY(?)
+    DB-->>API: user + org records
+    API->>API: Merge donor name + avatar onto each transaction\n(org takes priority over user;\ngenerate avatar URL if no DB record)
+    API-->>FE: Enriched transaction list
+    FE-->>User: Donations table
+```
+
+---
+
+### Mentorship Program Sync
+
+Mentorship programs in LFX are created and managed by the Mentorship service (jobspring). CF mirrors them as `mentorship`-type initiatives so they appear in the Crowdfunding UI and can receive donations.
+
+```mermaid
+sequenceDiagram
+    participant MS as Mentorship Service\n(jobspring Lambda)
+    participant SNS as AWS SNS
+    participant SQS as AWS SQS
+    participant CF as CF Go API
+    participant DB as PostgreSQL
+
+    MS->>SNS: Publish projectCreated / projectUpdated / projectUpdateStatus
+    SNS->>SQS: Fan-out to CF queue
+    CF->>SQS: Poll (SQS consumer — long-running Deployment)
+    SQS-->>CF: Event message
+
+    alt projectCreated
+        CF->>DB: INSERT INTO initiatives\n(initiative_type='mentorship', jobspring_project_id=?)
+    else projectUpdated
+        CF->>DB: UPDATE initiatives\n(Mentorship-owned fields only;\nnever overwrite logo, color, description)
+    else projectUpdateStatus
+        CF->>DB: UPDATE initiatives SET status = ?
+    end
+
+    Note over MS,CF: Mentorship also calls CF directly (HTTP)\nfor slug sync, funding status, title checks,\nand beneficiary management
+```
+
+---
+
 ## External Integrations
 
 | Service | Direction | Purpose |
