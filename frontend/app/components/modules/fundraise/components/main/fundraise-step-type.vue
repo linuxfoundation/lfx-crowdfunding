@@ -65,8 +65,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import LfxIcon from '~/components/uikit/icon/icon.vue';
-
-export type InitiativeType = 'project' | 'security_audit' | 'general_fund' | 'event';
+import type { InitiativeType } from '~/types/fundraise.types';
 
 interface InitiativeTypeOption {
   value: InitiativeType;
