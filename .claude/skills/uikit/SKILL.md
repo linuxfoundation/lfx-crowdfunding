@@ -22,6 +22,8 @@ Reference for using and extending the LFX uikit component library in `frontend/a
    - Custom dropdown panels with `v-show` + manual listeners → use `<lfx-dropdown>`
    - Custom spinner/skeleton HTML → use `<lfx-spinner>` / `<lfx-skeleton>`
 
+5. **Never define types or interfaces inside `.vue` files.** All shared types belong in `frontend/app/types/`. Name the file after the domain (e.g. `fundraise.types.ts`). Import with `import type { ... } from '~/types/...'`. A component may re-export a type from the types file (`export type { Foo };`) only if external callers currently rely on that import path, but the canonical definition must live in `app/types/`.
+
 ## Quick reference
 
 | Need                          | Component(s)                                               |

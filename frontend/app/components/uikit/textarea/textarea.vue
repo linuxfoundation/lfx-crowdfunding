@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <div
-    class="c-input"
+    class="c-input c-input--textarea"
     :class="{ 'is-invalid': props.invalid }"
   >
     <textarea
