@@ -1,2 +1,2 @@
-# .gitleaks.toml already allowlists backend/docs/ and docs/ paths globally,
-# so commit-specific fingerprints are not needed here.
+# Keep this file for any future commit-specific gitleaks fingerprints that are
+# not already covered by the current .gitleaks.toml allowlist configuration.
