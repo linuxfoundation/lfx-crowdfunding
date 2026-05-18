@@ -81,6 +81,11 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	if !initiative.AcceptFunding {
 		return nil, fmt.Errorf("%w: initiative does not accept funding", domain.ErrInvalidInput)
 	}
+	// Validate Stripe product before doing any customer work so we fail fast
+	// and cheaply when an initiative hasn't been fully configured yet.
+	if initiative.StripeProductID == "" {
+		return nil, fmt.Errorf("%w: initiative has no Stripe product configured", domain.ErrInvalidInput)
+	}
 
 	// Resolve the Stripe customer for this user (create if first payment).
 	// Only treat ErrUserNotFound as "no existing customer"; any other error
@@ -88,11 +93,18 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	// Stripe customers when the DB read fails.
 	customerID := ""
 	user, err := s.userRepo.GetByUserID(ctx, userID)
-	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
-		span.RecordError(err)
-		return nil, fmt.Errorf("get user: %w", err)
-	}
-	if err == nil {
+	if err != nil {
+		if !errors.Is(err, domain.ErrUserNotFound) {
+			span.RecordError(err)
+			return nil, fmt.Errorf("get user: %w", err)
+		}
+		// First-time user: upsert a minimal users row so UpdateStripeInfo can
+		// persist the new customer ID (UpdateStripeInfo is UPDATE-only).
+		if _, upsertErr := s.userRepo.Upsert(ctx, &models.User{UserID: userID, Email: userEmail}); upsertErr != nil {
+			span.RecordError(upsertErr)
+			return nil, fmt.Errorf("ensure user record: %w", upsertErr)
+		}
+	} else {
 		customerID = user.StripeCustomerID
 	}
 	if customerID == "" {
@@ -107,8 +119,9 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 		}
 	}
 
-	// Get or create a recurring Price for this initiative / amount / interval.
-	priceID, err := s.stripe.GetOrCreatePrice(ctx, initiativeID, input.AmountCents, input.Frequency)
+	// Attach the Price to the initiative's existing Stripe Product rather than
+	// creating a new Product per Price — keeps the Stripe catalog manageable.
+	priceID, err := s.stripe.GetOrCreatePrice(ctx, initiative.StripeProductID, input.AmountCents, input.Frequency)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("stripe price: %w", err)

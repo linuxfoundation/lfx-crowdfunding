@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -29,12 +30,21 @@ func NewPaymentService(userRepo domain.UserRepository, stripe clients.StripeClie
 }
 
 // ensureCustomer returns the user's existing Stripe customer ID or creates one.
+// When the user row does not exist yet (ErrUserNotFound), a minimal record is
+// upserted first so that UpdateStripeInfo (UPDATE-only) can persist the new
+// customer ID without leaving an orphaned Stripe customer.
 func (s *PaymentService) ensureCustomer(ctx context.Context, userID, email string) (string, error) {
 	user, err := s.userRepo.GetByUserID(ctx, userID)
 	if err != nil {
-		return "", fmt.Errorf("get user: %w", err)
-	}
-	if user.StripeCustomerID != "" {
+		if !errors.Is(err, domain.ErrUserNotFound) {
+			return "", fmt.Errorf("get user: %w", err)
+		}
+		// First-time user: upsert a minimal users row so UpdateStripeInfo can
+		// persist the new customer ID.
+		if _, upsertErr := s.userRepo.Upsert(ctx, &models.User{UserID: userID, Email: email}); upsertErr != nil {
+			return "", fmt.Errorf("ensure user record: %w", upsertErr)
+		}
+	} else if user.StripeCustomerID != "" {
 		return user.StripeCustomerID, nil
 	}
 	customerID, err := s.stripe.CreateCustomer(ctx, userID, email)

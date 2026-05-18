@@ -35,6 +35,10 @@ type PaymentIntentRequest struct {
 	AmountCents     int64
 	Currency        string // defaults to "usd"
 	PaymentMethodID string
+	// IdempotencyKey is a per-request unique value (UUID) that prevents Stripe
+	// from creating a duplicate PaymentIntent when the client retries a timed-out
+	// request. Must be different for each logically distinct charge.
+	IdempotencyKey string
 }
 
 // PaymentIntent holds the Stripe PaymentIntent result.

@@ -88,9 +88,9 @@ func (c *configStripeClient) DetachPaymentMethod(ctx context.Context, pmID strin
 	}
 	panic("DetachPaymentMethod not expected")
 }
-func (c *configStripeClient) GetOrCreatePrice(ctx context.Context, initiativeID string, amountCents int64, frequency string) (string, error) {
+func (c *configStripeClient) GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, frequency string) (string, error) {
 	if c.onGetOrCreatePrice != nil {
-		return c.onGetOrCreatePrice(ctx, initiativeID, amountCents, frequency)
+		return c.onGetOrCreatePrice(ctx, productID, amountCents, frequency)
 	}
 	panic("GetOrCreatePrice not expected")
 }

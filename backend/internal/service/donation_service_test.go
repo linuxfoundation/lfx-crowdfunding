@@ -22,7 +22,7 @@ func newDonationSvc(
 }
 
 func acceptingInitiative() *mockInitiativeRepo {
-	return &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: true}}
+	return &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: true, StripeProductID: "prod-test"}}
 }
 
 // --- input validation ---

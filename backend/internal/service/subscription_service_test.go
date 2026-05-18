@@ -53,6 +53,17 @@ func TestSubscriptionService_Create_MissingPaymentMethod(t *testing.T) {
 	}
 }
 
+func TestSubscriptionService_Create_NoStripeProduct(t *testing.T) {
+	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: true, StripeProductID: ""}}
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
+		models.SubscriptionCreateInput{AmountCents: 1000, Frequency: "monthly", StripePaymentMethodID: "pm_test"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("expected ErrInvalidInput for missing StripeProductID, got %v", err)
+	}
+}
+
 func TestSubscriptionService_Create_InitiativeNotAccepting(t *testing.T) {
 	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: false}}
 	svc := newSubscriptionSvc(&testSubscriptionRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
@@ -80,9 +91,9 @@ func TestSubscriptionService_Create_NewCustomerActive(t *testing.T) {
 			customerCreated = true
 			return "cus_new", nil
 		},
-		onGetOrCreatePrice: func(_ context.Context, initiativeID string, amountCents int64, frequency string) (string, error) {
-			if initiativeID != "init-1" {
-				t.Errorf("GetOrCreatePrice initiativeID = %q, want init-1", initiativeID)
+		onGetOrCreatePrice: func(_ context.Context, productID string, amountCents int64, frequency string) (string, error) {
+			if productID != "prod-test" {
+				t.Errorf("GetOrCreatePrice productID = %q, want prod-test", productID)
 			}
 			if amountCents != 1000 {
 				t.Errorf("GetOrCreatePrice amountCents = %d, want 1000", amountCents)

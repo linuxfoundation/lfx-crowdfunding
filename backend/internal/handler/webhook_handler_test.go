@@ -323,7 +323,7 @@ func TestWebhookHandler_InvoicePaymentFailed_MarksPastDue(t *testing.T) {
 
 // --- customer.subscription.deleted ---
 
-func TestWebhookHandler_SubscriptionDeleted_MarkesCanceled(t *testing.T) {
+func TestWebhookHandler_SubscriptionDeleted_MarksCanceled(t *testing.T) {
 	var gotSubID, gotStatus string
 
 	sr := &wbSubscriptionRepo{

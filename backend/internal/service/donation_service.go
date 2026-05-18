@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -86,11 +87,18 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	// Stripe customers when the DB read fails.
 	customerID := ""
 	user, err := s.userRepo.GetByUserID(ctx, userID)
-	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
-		span.RecordError(err)
-		return nil, fmt.Errorf("get user: %w", err)
-	}
-	if err == nil {
+	if err != nil {
+		if !errors.Is(err, domain.ErrUserNotFound) {
+			span.RecordError(err)
+			return nil, fmt.Errorf("get user: %w", err)
+		}
+		// First-time user: upsert a minimal users row so UpdateStripeInfo can
+		// persist the new customer ID (UpdateStripeInfo is UPDATE-only).
+		if _, upsertErr := s.userRepo.Upsert(ctx, &models.User{UserID: userID, Email: userEmail}); upsertErr != nil {
+			span.RecordError(upsertErr)
+			return nil, fmt.Errorf("ensure user record: %w", upsertErr)
+		}
+	} else {
 		customerID = user.StripeCustomerID
 	}
 	if customerID == "" {
@@ -106,12 +114,16 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	}
 
 	// Create a PaymentIntent with automatic 3DS.
+	// A fresh UUID idempotency key is generated per request so that separate
+	// donations with the same amount are not de-duped by Stripe's cache, while
+	// still protecting against client retries of the same request.
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
 		InitiativeID:    initiativeID,
 		UserID:          userID,
 		CustomerID:      customerID,
 		AmountCents:     input.AmountCents,
 		PaymentMethodID: input.StripePaymentMethodID,
+		IdempotencyKey:  uuid.New().String(),
 	})
 	if err != nil {
 		span.RecordError(err)
