@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -70,6 +69,9 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	if input.StripePaymentMethodID == "" {
 		return nil, fmt.Errorf("%w: stripe_payment_method_id is required", domain.ErrInvalidInput)
 	}
+	if input.IdempotencyKey == "" {
+		return nil, fmt.Errorf("%w: idempotency_key is required", domain.ErrInvalidInput)
+	}
 
 	// Verify the initiative exists and accepts funding.
 	initiative, err := s.initiativeRepo.GetByID(ctx, initiativeID)
@@ -114,16 +116,16 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	}
 
 	// Create a PaymentIntent with automatic 3DS.
-	// A fresh UUID idempotency key is generated per request so that separate
-	// donations with the same amount are not de-duped by Stripe's cache, while
-	// still protecting against client retries of the same request.
+	// The client-supplied idempotency key is forwarded to Stripe verbatim:
+	// if the client retries the same request it sends the same key, Stripe
+	// returns the cached response instead of creating a duplicate charge.
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
 		InitiativeID:    initiativeID,
 		UserID:          userID,
 		CustomerID:      customerID,
 		AmountCents:     input.AmountCents,
 		PaymentMethodID: input.StripePaymentMethodID,
-		IdempotencyKey:  uuid.New().String(),
+		IdempotencyKey:  input.IdempotencyKey,
 	})
 	if err != nil {
 		span.RecordError(err)

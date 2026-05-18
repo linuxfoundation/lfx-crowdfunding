@@ -35,4 +35,7 @@ type DonationCreateInput struct {
 	OrganizationID string `json:"organization_id,omitempty"`
 	// StripePaymentMethodID is used to create a Stripe charge
 	StripePaymentMethodID string `json:"stripe_payment_method_id,omitempty"`
+	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.
+	// It is not decoded from the JSON body (json:"-").
+	IdempotencyKey string `json:"-"`
 }

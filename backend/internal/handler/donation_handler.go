@@ -6,6 +6,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -48,10 +49,20 @@ func (h *DonationHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create handles POST /v1/initiatives/{id}/donations — requires JWT.
+// Clients MUST supply an Idempotency-Key header (a UUID they generate per
+// logical donation attempt). The backend passes it verbatim to Stripe so
+// that retries of the same timed-out request are de-duped rather than
+// creating duplicate charges.
 func (h *DonationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil {
 		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	idempotencyKey := r.Header.Get("Idempotency-Key")
+	if idempotencyKey == "" {
+		Error(w, fmt.Errorf("%w: Idempotency-Key header is required", domain.ErrInvalidInput))
 		return
 	}
 
@@ -61,6 +72,7 @@ func (h *DonationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrInvalidInput)
 		return
 	}
+	input.IdempotencyKey = idempotencyKey
 
 	created, err := h.svc.Create(r.Context(), initiativeID, principal.UserID, principal.Email, input)
 	if err != nil {

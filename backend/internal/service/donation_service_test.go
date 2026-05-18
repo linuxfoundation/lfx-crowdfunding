@@ -57,13 +57,23 @@ func TestDonationService_Create_MissingPaymentMethod(t *testing.T) {
 	}
 }
 
+func TestDonationService_Create_MissingIdempotencyKey(t *testing.T) {
+	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
+		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("expected ErrInvalidInput for missing idempotency key, got %v", err)
+	}
+}
+
 func TestDonationService_Create_InitiativeNotFound(t *testing.T) {
 	notFound := errors.New("initiative not found")
 	initRepo := &mockInitiativeRepo{err: notFound}
 	svc := newDonationSvc(&testDonationRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-missing", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 100, StripePaymentMethodID: "pm_test"})
+		models.DonationCreateInput{AmountCents: 100, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1"})
 	if !errors.Is(err, notFound) {
 		t.Errorf("expected initiative-not-found error, got %v", err)
 	}
@@ -74,7 +84,7 @@ func TestDonationService_Create_InitiativeNotAccepting(t *testing.T) {
 	svc := newDonationSvc(&testDonationRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 500, StripePaymentMethodID: "pm_test"})
+		models.DonationCreateInput{AmountCents: 500, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1"})
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput, got %v", err)
 	}
@@ -103,6 +113,9 @@ func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 			if req.AmountCents != 2000 {
 				t.Errorf("AmountCents = %d, want 2000", req.AmountCents)
 			}
+			if req.IdempotencyKey != "idem-key-abc" {
+				t.Errorf("IdempotencyKey = %q, want idem-key-abc", req.IdempotencyKey)
+			}
 			return &models.PaymentIntent{
 				ID:     "pi_test",
 				Status: "succeeded",
@@ -112,7 +125,7 @@ func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 
 	svc := newDonationSvc(donRepo, acceptingInitiative(), userRepo, stripe)
 	don, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 2000, StripePaymentMethodID: "pm_abc"})
+		models.DonationCreateInput{AmountCents: 2000, StripePaymentMethodID: "pm_abc", IdempotencyKey: "idem-key-abc"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -162,7 +175,7 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 
 	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), userRepo, stripe)
 	don, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 5000, StripePaymentMethodID: "pm_eu"})
+		models.DonationCreateInput{AmountCents: 5000, StripePaymentMethodID: "pm_eu", IdempotencyKey: "idem-key-eu"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -197,7 +210,7 @@ func TestDonationService_Create_StripePaymentIntentError(t *testing.T) {
 	)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test"})
+		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1"})
 	if !errors.Is(err, stripeErr) {
 		t.Errorf("error = %v, want to wrap %v", err, stripeErr)
 	}
@@ -216,7 +229,7 @@ func TestDonationService_Create_UserRepoTransientError(t *testing.T) {
 	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), userRepo, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test"})
+		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1"})
 	if !errors.Is(err, dbErr) {
 		t.Errorf("error = %v, want to wrap %v", err, dbErr)
 	}
@@ -245,7 +258,7 @@ func TestDonationService_Create_DBError(t *testing.T) {
 	)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", "u@example.com",
-		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test"})
+		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1"})
 	if !errors.Is(err, dbErr) {
 		t.Errorf("error = %v, want to wrap %v", err, dbErr)
 	}
