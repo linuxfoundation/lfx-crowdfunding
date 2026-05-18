@@ -76,22 +76,19 @@ SPDX-License-Identifier: MIT
 
       <!-- CTAs -->
       <div class="flex md:flex-row flex-col md:items-center items-stretch md:w-auto w-full gap-6">
-        <lfx-button
-          label="Start Fundraise"
+        <start-fundraise-button
           type="tertiary"
-          button-style="pill"
-          icon="box-dollar"
-          size="small"
           class="md:justify-start justify-center"
         />
-        <lfx-button
-          label="Explore initiatives"
-          type="primary"
-          button-style="pill"
-          icon="hand-heart"
-          size="small"
-          class="md:justify-start justify-center"
-        />
+        <NuxtLink :to="AppRoute.Initiatives">
+          <lfx-button
+            label="Explore initiatives"
+            type="primary"
+            button-style="pill"
+            icon="hand-heart"
+            class="md:justify-start justify-center"
+          />
+        </NuxtLink>
       </div>
     </div>
   </section>
@@ -100,9 +97,11 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import TrustBadge from './trust-badge.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
+import StartFundraiseButton from '~/components/shared/components/start-fundraise-button.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxAvatarGroup from '~/components/uikit/avatar-group/avatar-group.vue';
 import LfxDonutChart from '~/components/uikit/donut-chart/donut-chart.vue';
+import { AppRoute } from '~/config/routes';
 
 const TOTAL_RAISED = 5_800_000;
 const GOAL = 10_000_000;
