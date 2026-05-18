@@ -35,7 +35,10 @@ INSERT INTO organizations (id, owner_id, name, avatar_url, status) VALUES
   ('b0000000-0000-0000-0000-000000000001', 'auth0|dev-user-001', 'Acme Corp',       'https://i.pravatar.cc/150?u=acme',  'Active'),
   ('b0000000-0000-0000-0000-000000000002', 'auth0|dev-user-002', 'Open Source Inc', 'https://i.pravatar.cc/150?u=ossinc','Active'),
   -- Real Ledger dev org UUID — matches organizationID on Kubernetes transactions from auth0|kelo.
-  ('09b68fe3-12ae-4a7f-b021-7b522e87ae3d', 'auth0|kelo',         'Google Cloud',    'https://ui-avatars.com/api/?name=Google+Cloud&background=4285F4&color=fff&size=128&bold=true', 'Active')
+  ('09b68fe3-12ae-4a7f-b021-7b522e87ae3d', 'auth0|kelo',         'Google Cloud',    'https://ui-avatars.com/api/?name=Google+Cloud&background=4285F4&color=fff&size=128&bold=true', 'Active'),
+  -- Real Ledger dev org UUIDs — match organizationID on Prometheus transactions.
+  ('a5df9992-9374-445c-8b88-545f6178bb11', 'auth0|dev-user-001', 'Grafana Labs',     'https://ui-avatars.com/api/?name=Grafana+Labs&background=F46800&color=fff&size=128&bold=true', 'Active'),
+  ('da78ebed-3c32-49ca-80db-234761b01979', 'auth0|dev-user-001', 'Weaveworks',       'https://ui-avatars.com/api/?name=Weaveworks&background=0077CC&color=fff&size=128&bold=true',   'Active')
 ON CONFLICT DO NOTHING;
 
 -- ============================================
