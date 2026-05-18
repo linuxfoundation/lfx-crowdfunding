@@ -27,7 +27,13 @@ SPDX-License-Identifier: MIT
     @update:model-value="generalFundForm = $event"
   />
 
-  <!-- TODO: <fundraise-event-steps /> -->
+  <!-- Event -->
+  <fundraise-event-steps
+    v-else-if="initiativeType === 'event'"
+    :current-step="subStep"
+    :model-value="eventForm"
+    @update:model-value="eventForm = $event"
+  />
 </template>
 
 <script setup lang="ts">
@@ -35,6 +41,7 @@ import { ref, computed } from 'vue';
 import FundraiseProjectSteps from './project-steps/fundraise-project-steps.vue';
 import FundraiseSecurityAuditSteps from './security-audit-steps/fundraise-security-audit-steps.vue';
 import FundraiseGeneralFundSteps from './general-fund-steps/fundraise-general-fund-steps.vue';
+import FundraiseEventSteps from './event-steps/fundraise-event-steps.vue';
 import type {
   InitiativeType,
   ProjectFormData,
@@ -42,6 +49,7 @@ import type {
   SecurityAuditFormData,
   ContactPerson,
   GeneralFundFormData,
+  EventFormData,
 } from '~/types/fundraise.types';
 
 const props = defineProps<{
@@ -137,6 +145,61 @@ const createInitialSecurityAuditForm = (): SecurityAuditFormData => ({
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
+const DEFAULT_BUDGET_DISTRIBUTION: FundDistributionItem[] = [
+  {
+    category: 'venue',
+    label: 'Venue',
+    description: 'Make sure you have the funds for the right venue to accommodate your event.',
+    enabled: false,
+    percentage: 0,
+  },
+  {
+    category: 'food_beverage',
+    label: 'Food & Beverage',
+    description: 'Provide coffee, snacks, or cover meals during your event.',
+    enabled: false,
+    percentage: 0,
+  },
+  {
+    category: 'travel',
+    label: 'Travel',
+    description: 'Provide travel assistance to community members to attend your event.',
+    enabled: false,
+    percentage: 0,
+  },
+  {
+    category: 'equipment',
+    label: 'Equipment',
+    description: 'Budget for microphones, projectors, screens, and other equipment.',
+    enabled: false,
+    percentage: 0,
+  },
+  {
+    category: 'marketing',
+    label: 'Marketing',
+    description: 'Promote your event with advertising, attendee swag, or website design.',
+    enabled: false,
+    percentage: 0,
+  },
+];
+
+const createInitialEventForm = (): EventFormData => ({
+  name: '',
+  elevatorPitch: '',
+  topics: [],
+  websiteUrl: '',
+  registrationUrl: '',
+  startDate: '',
+  endDate: '',
+  city: '',
+  country: '',
+  logoFileName: '',
+  beneficiaries: [],
+  sponsorshipGoal: '',
+  budgetDistribution: DEFAULT_BUDGET_DISTRIBUTION.map((item) => ({ ...item })),
+  compliance: { ofacConfirmed: false, termsAccepted: false },
+});
+
 const createInitialGeneralFundForm = (): GeneralFundFormData => ({
   name: '',
   elevatorPitch: '',
@@ -152,6 +215,7 @@ const subStep = ref(0);
 const projectForm = ref<ProjectFormData>(createInitialProjectForm());
 const securityAuditForm = ref<SecurityAuditFormData>(createInitialSecurityAuditForm());
 const generalFundForm = ref<GeneralFundFormData>(createInitialGeneralFundForm());
+const eventForm = ref<EventFormData>(createInitialEventForm());
 
 const totalSubSteps = computed(() => {
   if (props.initiativeType === 'project') {
@@ -159,6 +223,7 @@ const totalSubSteps = computed(() => {
   }
   if (props.initiativeType === 'security_audit') return 2;
   if (props.initiativeType === 'general_fund') return 2;
+  if (props.initiativeType === 'event') return 2;
   return 1;
 });
 
@@ -187,6 +252,12 @@ const isCurrentSubStepValid = computed(() => {
     }
     return generalFundForm.value.name.trim() !== '';
   }
+  if (props.initiativeType === 'event') {
+    if (subStep.value === totalSubSteps.value - 1) {
+      return eventForm.value.compliance.ofacConfirmed && eventForm.value.compliance.termsAccepted;
+    }
+    return eventForm.value.name.trim() !== '';
+  }
   return true;
 });
 
@@ -203,6 +274,7 @@ const reset = () => {
   projectForm.value = createInitialProjectForm();
   securityAuditForm.value = createInitialSecurityAuditForm();
   generalFundForm.value = createInitialGeneralFundForm();
+  eventForm.value = createInitialEventForm();
 };
 
 defineExpose({
@@ -216,6 +288,7 @@ defineExpose({
   projectForm,
   securityAuditForm,
   generalFundForm,
+  eventForm,
 });
 </script>
 

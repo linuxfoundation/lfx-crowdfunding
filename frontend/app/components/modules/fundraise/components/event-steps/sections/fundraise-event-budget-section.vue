@@ -4,9 +4,10 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <fundraise-fund-distribution-section
-    title="Funding"
-    description="Provide your initial estimated annual project budget. You can update your goal at any time and continue raising funds after your goal is met."
-    goal-label="Annual Funding Goal"
+    title="Event Budget"
+    description="Provide your initial estimated event budget. You can update your goal at any time and continue raising funds after your goal is met."
+    goal-label="Sponsorship Goal"
+    distribution-label="Budget distribution"
     :model-value="distributionData"
     @update:model-value="onUpdate"
   />
@@ -15,32 +16,32 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed } from 'vue';
 import FundraiseFundDistributionSection from '../../shared/fundraise-fund-distribution-section.vue';
-import type { ProjectDetailsData, FundDistributionData } from '~/types/fundraise.types';
+import type { EventFormData, FundDistributionData } from '~/types/fundraise.types';
 
 const props = defineProps<{
-  modelValue: ProjectDetailsData;
+  modelValue: EventFormData;
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: ProjectDetailsData): void;
+  (e: 'update:modelValue', value: EventFormData): void;
 }>();
 
 const distributionData = computed<FundDistributionData>(() => ({
-  goal: props.modelValue.annualFundingGoal,
-  distribution: props.modelValue.fundDistribution,
+  goal: props.modelValue.sponsorshipGoal,
+  distribution: props.modelValue.budgetDistribution,
 }));
 
 const onUpdate = (updated: FundDistributionData) => {
   emit('update:modelValue', {
     ...props.modelValue,
-    annualFundingGoal: updated.goal,
-    fundDistribution: updated.distribution,
+    sponsorshipGoal: updated.goal,
+    budgetDistribution: updated.distribution,
   });
 };
 </script>
 
 <script lang="ts">
 export default {
-  name: 'FundraiseProjectFundingSection',
+  name: 'FundraiseEventBudgetSection',
 };
 </script>
