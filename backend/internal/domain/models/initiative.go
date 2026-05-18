@@ -4,7 +4,10 @@
 // Package models defines the domain model types shared across the application.
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ValidInitiativeTypes is the set of accepted initiative_type values.
 // Legacy types community and travel_fund are excluded: community rows are
@@ -20,12 +23,39 @@ var ValidInitiativeTypes = map[string]bool{
 	"other":          true,
 }
 
+// InitiativeStatus represents the lifecycle state of an initiative.
+type InitiativeStatus string
+
+const (
+	StatusSubmitted InitiativeStatus = "submitted"
+	StatusPending   InitiativeStatus = "pending"
+	StatusPublished InitiativeStatus = "published"
+	StatusDeclined  InitiativeStatus = "declined"
+	StatusHidden    InitiativeStatus = "hidden"
+)
+
+// EqualFold reports whether s and other represent the same status, ignoring case.
+func (s InitiativeStatus) EqualFold(other InitiativeStatus) bool {
+	return strings.EqualFold(string(s), string(other))
+}
+
+// IsValid reports whether s is a known status value, ignoring case.
+func (s InitiativeStatus) IsValid() bool {
+	for k := range ValidInitiativeStatuses {
+		if strings.EqualFold(string(s), string(k)) {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidInitiativeStatuses is the set of accepted status values.
-var ValidInitiativeStatuses = map[string]bool{
-	"submitted": true,
-	"published": true,
-	"declined":  true,
-	"hidden":    true,
+var ValidInitiativeStatuses = map[InitiativeStatus]bool{
+	StatusSubmitted: true,
+	StatusPending:   true,
+	StatusPublished: true,
+	StatusDeclined:  true,
+	StatusHidden:    true,
 }
 
 // Financials holds funding statistics sourced from initiative_ledger_stats,
@@ -44,19 +74,19 @@ type Financials struct {
 // Internal fields (Stripe IDs, DynamoDB source, CII/Jobspring/Stacks identifiers)
 // are excluded from JSON output — they are operational metadata, not API data.
 type Initiative struct {
-	ID             string `json:"id"`
-	InitiativeType string `json:"initiative_type"`
-	OwnerID        string `json:"-"`
-	Name           string `json:"name"`
-	Slug           string `json:"slug,omitempty"`
-	Status         string `json:"status,omitempty"`
-	Industry       string `json:"industry,omitempty"`
-	Description    string `json:"description,omitempty"`
-	Color          string `json:"color,omitempty"`
-	LogoURL        string `json:"logo_url,omitempty"`
-	WebsiteURL     string `json:"website_url,omitempty"`
-	CocURL         string `json:"coc_url,omitempty"`
-	AcceptFunding  bool   `json:"accept_funding"`
+	ID             string           `json:"id"`
+	InitiativeType string           `json:"initiative_type"`
+	OwnerID        string           `json:"-"`
+	Name           string           `json:"name"`
+	Slug           string           `json:"slug,omitempty"`
+	Status         InitiativeStatus `json:"status,omitempty"`
+	Industry       string           `json:"industry,omitempty"`
+	Description    string           `json:"description,omitempty"`
+	Color          string           `json:"color,omitempty"`
+	LogoURL        string           `json:"logo_url,omitempty"`
+	WebsiteURL     string           `json:"website_url,omitempty"`
+	CocURL         string           `json:"coc_url,omitempty"`
+	AcceptFunding  bool             `json:"accept_funding"`
 
 	// Entity-only display fields
 	EventbriteURL  string     `json:"eventbrite_url,omitempty"`
@@ -105,14 +135,14 @@ type InitiativeCreateInput struct {
 
 // InitiativeUpdateInput is the request body for updating an initiative.
 type InitiativeUpdateInput struct {
-	Name          *string `json:"name,omitempty"`
-	Slug          *string `json:"slug,omitempty"`
-	Status        *string `json:"status,omitempty"`
-	Description   *string `json:"description,omitempty"`
-	Industry      *string `json:"industry,omitempty"`
-	Color         *string `json:"color,omitempty"`
-	LogoURL       *string `json:"logo_url,omitempty"`
-	WebsiteURL    *string `json:"website_url,omitempty"`
-	CocURL        *string `json:"coc_url,omitempty"`
-	AcceptFunding *bool   `json:"accept_funding,omitempty"`
+	Name          *string           `json:"name,omitempty"`
+	Slug          *string           `json:"slug,omitempty"`
+	Status        *InitiativeStatus `json:"status,omitempty"`
+	Description   *string           `json:"description,omitempty"`
+	Industry      *string           `json:"industry,omitempty"`
+	Color         *string           `json:"color,omitempty"`
+	LogoURL       *string           `json:"logo_url,omitempty"`
+	WebsiteURL    *string           `json:"website_url,omitempty"`
+	CocURL        *string           `json:"coc_url,omitempty"`
+	AcceptFunding *bool             `json:"accept_funding,omitempty"`
 }

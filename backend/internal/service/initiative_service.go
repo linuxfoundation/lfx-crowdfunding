@@ -97,7 +97,7 @@ func (s *InitiativeService) CheckPublishedByID(ctx context.Context, id string) e
 		span.RecordError(err)
 		return fmt.Errorf("get initiative: %w", err)
 	}
-	if initiative.Status != "published" {
+	if !initiative.Status.EqualFold(models.StatusPublished) {
 		return domain.ErrInitiativeNotFound
 	}
 	return nil
@@ -174,6 +174,9 @@ func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFi
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list initiatives: %w", err)
 	}
+	for _, i := range initiatives {
+		i.Sponsors = flattenSponsors(i.RawSponsors)
+	}
 	return initiatives, meta, nil
 }
 
@@ -204,7 +207,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 		WebsiteURL:     input.WebsiteURL,
 		CocURL:         input.CocURL,
 		AcceptFunding:  input.AcceptFunding,
-		Status:         "submitted",
+		Status:         models.StatusSubmitted,
 	}
 
 	created, err := s.repo.Create(ctx, initiative)
@@ -237,7 +240,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		existing.Slug = *input.Slug
 	}
 	if input.Status != nil {
-		if !models.ValidInitiativeStatuses[*input.Status] {
+		if !input.Status.IsValid() {
 			return nil, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, *input.Status)
 		}
 		existing.Status = *input.Status
