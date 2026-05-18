@@ -83,6 +83,22 @@ func (m *mockStripeClient) CancelSubscription(_ context.Context, _ string) error
 func (m *mockStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.Event, error) {
 	return stripe.Event{}, nil
 }
+func (m *mockStripeClient) CreateCustomer(_ context.Context, _, _ string) (string, error) {
+	return "cus_mock", nil
+}
+func (m *mockStripeClient) CreateSetupIntent(_ context.Context, _ string) (string, error) {
+	return "seti_mock_secret", nil
+}
+func (m *mockStripeClient) AttachPaymentMethod(_ context.Context, _, _ string) (*models.CardDetails, error) {
+	return &models.CardDetails{}, nil
+}
+func (m *mockStripeClient) GetPaymentMethod(_ context.Context, _ string) (*models.CardDetails, error) {
+	return &models.CardDetails{}, nil
+}
+func (m *mockStripeClient) DetachPaymentMethod(_ context.Context, _ string) error { return nil }
+func (m *mockStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64, _ string) (string, error) {
+	return "price_mock", nil
+}
 
 // --- flattenSponsors ---
 

@@ -37,6 +37,8 @@ type DonationRepository interface {
 	ListByInitiative(ctx context.Context, initiativeID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
 	ListByUser(ctx context.Context, userID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
 	Create(ctx context.Context, donation *models.Donation) (*models.Donation, error)
+	// UpdateByPaymentIntentID is called by the Stripe webhook to reconcile async 3DS results.
+	UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error
 }
 
 // SubscriptionRepository defines persistence operations for subscriptions.
@@ -46,6 +48,8 @@ type SubscriptionRepository interface {
 	ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error)
 	Create(ctx context.Context, sub *models.Subscription) (*models.Subscription, error)
 	Update(ctx context.Context, sub *models.Subscription) (*models.Subscription, error)
+	// UpdateByStripeSubscriptionID is called by the Stripe webhook to advance subscription status.
+	UpdateByStripeSubscriptionID(ctx context.Context, stripeSubID, status string) error
 }
 
 // OrganizationRepository defines persistence operations for organizations.
@@ -58,6 +62,13 @@ type OrganizationRepository interface {
 type UserRepository interface {
 	GetByUserID(ctx context.Context, userID string) (*models.User, error)
 	Upsert(ctx context.Context, user *models.User) (*models.User, error)
+	// UpdateStripeInfo persists the Stripe Customer ID and default PaymentMethod
+	// after the user completes the setup-intent / attach-payment-method flow.
+	// An empty string for either field leaves the existing DB value unchanged.
+	UpdateStripeInfo(ctx context.Context, userID, customerID, paymentMethodID string) error
+	// ClearStripePaymentMethod sets stripe_default_payment_method to NULL.
+	// Called when the user removes their saved card.
+	ClearStripePaymentMethod(ctx context.Context, userID string) error
 }
 
 // StatisticsRepository defines persistence operations for platform-wide statistics.

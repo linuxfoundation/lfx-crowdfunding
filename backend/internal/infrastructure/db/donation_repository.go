@@ -39,7 +39,7 @@ func (r *DonationRepository) GetByID(ctx context.Context, id string) (*models.Do
 	const q = `
 		SELECT id, user_id, initiative_id, organization_id, category,
 		       current_amount_in_cents, po_number, payment_method,
-		       status, stripe_charge_id, created_on, updated_on
+		       status, stripe_payment_intent_id, stripe_charge_id, created_on, updated_on
 		FROM donations WHERE id = $1`
 
 	row := r.pool.QueryRow(ctx, q, id)
@@ -89,7 +89,7 @@ func (r *DonationRepository) listDonations(ctx context.Context, col, val string,
 	dataQ := fmt.Sprintf(`
 		SELECT id, user_id, initiative_id, organization_id, category,
 		       current_amount_in_cents, po_number, payment_method,
-		       status, stripe_charge_id, created_on, updated_on
+		       status, stripe_payment_intent_id, stripe_charge_id, created_on, updated_on
 		FROM donations WHERE %s = $1
 		ORDER BY created_on DESC LIMIT $2 OFFSET $3`, col)
 
@@ -122,17 +122,18 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 		INSERT INTO donations
 		       (user_id, initiative_id, organization_id, category,
 		        current_amount_in_cents, po_number, payment_method,
-		        status, stripe_charge_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		        status, stripe_payment_intent_id, stripe_charge_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		RETURNING id, user_id, initiative_id, organization_id, category,
 		          current_amount_in_cents, po_number, payment_method,
-		          status, stripe_charge_id, created_on, updated_on`
+		          status, stripe_payment_intent_id, stripe_charge_id, created_on, updated_on`
 
 	row := r.pool.QueryRow(ctx, q,
 		d.UserID, d.InitiativeID, nullableString(d.OrganizationID),
 		nullableString(d.Category), d.CurrentAmountCents,
 		nullableString(d.PONumber), nullableString(d.PaymentMethod),
-		nullableString(d.Status), nullableString(d.StripeChargeID),
+		nullableString(d.Status), nullableString(d.StripePaymentIntentID),
+		nullableString(d.StripeChargeID),
 	)
 	created, err := scanDonation(row)
 	if err != nil {
@@ -142,18 +143,43 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 	return created, nil
 }
 
+// UpdateByPaymentIntentID is called by the Stripe webhook to reconcile the
+// result of an async 3DS challenge. chargeID may be empty on failure events.
+func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error {
+	ctx, span := donationTracer.Start(ctx, "db.donations.UpdateByPaymentIntentID")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.payment_intent_id", piID),
+		attribute.String("db.status", status),
+	)
+
+	const q = `
+		UPDATE donations SET
+			status          = $2,
+			stripe_charge_id = COALESCE(NULLIF($3, ''), stripe_charge_id),
+			updated_on      = NOW()
+		WHERE stripe_payment_intent_id = $1`
+
+	_, err := r.pool.Exec(ctx, q, piID, status, chargeID)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("update donation by payment intent: %w", err)
+	}
+	return nil
+}
+
 func scanDonation(row scanner) (*models.Donation, error) {
 	d := &models.Donation{}
 	var (
 		initiativeID, organizationID, category *string
 		poNumber, paymentMethod, status        *string
-		stripeChargeID                         *string
+		stripePaymentIntentID, stripeChargeID  *string
 		createdOn, updatedOn                   *time.Time
 	)
 	err := row.Scan(
 		&d.ID, &d.UserID, &initiativeID, &organizationID, &category,
 		&d.CurrentAmountCents, &poNumber, &paymentMethod,
-		&status, &stripeChargeID, &createdOn, &updatedOn,
+		&status, &stripePaymentIntentID, &stripeChargeID, &createdOn, &updatedOn,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -167,6 +193,7 @@ func scanDonation(row scanner) (*models.Donation, error) {
 	d.PONumber = derefString(poNumber)
 	d.PaymentMethod = derefString(paymentMethod)
 	d.Status = derefString(status)
+	d.StripePaymentIntentID = derefString(stripePaymentIntentID)
 	d.StripeChargeID = derefString(stripeChargeID)
 	if createdOn != nil {
 		d.CreatedOn = *createdOn

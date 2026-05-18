@@ -33,21 +33,21 @@ func NewSubscriptionRepository(pool *pgxpool.Pool) *SubscriptionRepository {
 const subscriptionColumns = `
 	id, user_id, initiative_id, organization_id, category,
 	current_amount_in_cents, frequency, status,
-	stripe_subscription_id, stripe_subscription_item_id,
+	stripe_subscription_id, stripe_subscription_item_id, stripe_price_id,
 	created_on, updated_on`
 
 func scanSubscription(row scanner) (*models.Subscription, error) {
 	s := &models.Subscription{}
 	var (
-		initiativeID, organizationID, category         *string
-		frequency, status                              *string
-		stripeSubscriptionID, stripeSubscriptionItemID *string
-		createdOn, updatedOn                           *time.Time
+		initiativeID, organizationID, category                        *string
+		frequency, status                                             *string
+		stripeSubscriptionID, stripeSubscriptionItemID, stripePriceID *string
+		createdOn, updatedOn                                          *time.Time
 	)
 	err := row.Scan(
 		&s.ID, &s.UserID, &initiativeID, &organizationID, &category,
 		&s.CurrentAmountCents, &frequency, &status,
-		&stripeSubscriptionID, &stripeSubscriptionItemID,
+		&stripeSubscriptionID, &stripeSubscriptionItemID, &stripePriceID,
 		&createdOn, &updatedOn,
 	)
 	if err != nil {
@@ -63,6 +63,7 @@ func scanSubscription(row scanner) (*models.Subscription, error) {
 	s.Status = derefString(status)
 	s.StripeSubscriptionID = derefString(stripeSubscriptionID)
 	s.StripeSubscriptionItemID = derefString(stripeSubscriptionItemID)
+	s.StripePriceID = derefString(stripePriceID)
 	if createdOn != nil {
 		s.CreatedOn = *createdOn
 	}
@@ -147,15 +148,15 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 		INSERT INTO subscriptions
 		       (user_id, initiative_id, organization_id, category,
 		        current_amount_in_cents, frequency, status,
-		        stripe_subscription_id, stripe_subscription_item_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		        stripe_subscription_id, stripe_subscription_item_id, stripe_price_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		RETURNING ` + subscriptionColumns
 
 	row := r.pool.QueryRow(ctx, q,
 		s.UserID, s.InitiativeID, nullableString(s.OrganizationID),
 		nullableString(s.Category), s.CurrentAmountCents, s.Frequency,
 		nullableString(s.Status), nullableString(s.StripeSubscriptionID),
-		nullableString(s.StripeSubscriptionItemID),
+		nullableString(s.StripeSubscriptionItemID), nullableString(s.StripePriceID),
 	)
 	created, err := scanSubscription(row)
 	if err != nil {
@@ -163,6 +164,28 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 		return nil, fmt.Errorf("create subscription: %w", err)
 	}
 	return created, nil
+}
+
+// UpdateByStripeSubscriptionID is called by the Stripe webhook to advance
+// the subscription status (e.g. incomplete → active, active → past_due).
+func (r *SubscriptionRepository) UpdateByStripeSubscriptionID(ctx context.Context, stripeSubID, status string) error {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.UpdateByStripeSubscriptionID")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.stripe_subscription_id", stripeSubID),
+		attribute.String("db.status", status),
+	)
+
+	const q = `
+		UPDATE subscriptions SET status = $2, updated_on = NOW()
+		WHERE stripe_subscription_id = $1`
+
+	_, err := r.pool.Exec(ctx, q, stripeSubID, status)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("update subscription by stripe id: %w", err)
+	}
+	return nil
 }
 
 // Update saves changes to a subscription (status, amount, Stripe IDs).

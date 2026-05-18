@@ -11,18 +11,40 @@ type StripeProduct struct {
 	Active bool   `json:"active"`
 }
 
+// CardDetails holds information about a saved Stripe PaymentMethod.
+type CardDetails struct {
+	PaymentMethodID string `json:"payment_method_id"` // pm_xxx
+	LastFour        string `json:"last_four"`
+	Brand           string `json:"brand"`
+	ExpiryMonth     int    `json:"expiry_month"`
+	ExpiryYear      int    `json:"expiry_year"`
+}
+
+// SetupIntentResult is returned by POST /v1/me/setup-intent.
+// The frontend passes ClientSecret to the Stripe.js Payment Element to collect
+// and 3DS-authenticate the card before attaching it to the customer.
+type SetupIntentResult struct {
+	ClientSecret string `json:"client_secret"`
+}
+
 // PaymentIntentRequest is the input for creating a one-time Stripe payment.
 type PaymentIntentRequest struct {
 	InitiativeID    string
 	UserID          string
+	CustomerID      string // Stripe cus_xxx — required for 3DS off-session charges
 	AmountCents     int64
+	Currency        string // defaults to "usd"
 	PaymentMethodID string
 }
 
 // PaymentIntent holds the Stripe PaymentIntent result.
+// ClientSecret is non-empty when Status == "requires_action"; the frontend
+// must call stripe.confirmCardPayment(ClientSecret) to complete 3DS.
 type PaymentIntent struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
+	ID           string `json:"id"`
+	Status       string `json:"status"`
+	ClientSecret string `json:"client_secret,omitempty"` // non-empty when 3DS required
+	ChargeID     string `json:"charge_id,omitempty"`     // ch_xxx once succeeded
 }
 
 // StripeSubscriptionRequest is the input for creating a Stripe subscription.
@@ -35,8 +57,11 @@ type StripeSubscriptionRequest struct {
 }
 
 // StripeSubscriptionResult holds the IDs needed to record the subscription in Postgres.
+// ClientSecret is non-empty when Status == "incomplete" (first invoice needs 3DS).
 type StripeSubscriptionResult struct {
 	SubscriptionID     string `json:"subscription_id"`
 	SubscriptionItemID string `json:"subscription_item_id"`
+	PriceID            string `json:"price_id"`
 	Status             string `json:"status"`
+	ClientSecret       string `json:"client_secret,omitempty"` // non-empty when 3DS required
 }

@@ -18,8 +18,12 @@ type Subscription struct {
 	Status                   string    `json:"status,omitempty"`
 	StripeSubscriptionID     string    `json:"stripe_subscription_id,omitempty"`
 	StripeSubscriptionItemID string    `json:"stripe_subscription_item_id,omitempty"`
+	StripePriceID            string    `json:"stripe_price_id,omitempty"`
 	CreatedOn                time.Time `json:"created_on"`
 	UpdatedOn                time.Time `json:"updated_on"`
+
+	// ClientSecret is transient — set by the service when 3DS is required, never stored.
+	ClientSecret string `json:"client_secret,omitempty"`
 }
 
 // SubscriptionCreateInput is the request body for creating a subscription.

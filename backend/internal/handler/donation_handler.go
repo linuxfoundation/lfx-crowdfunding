@@ -62,7 +62,7 @@ func (h *DonationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.svc.Create(r.Context(), initiativeID, principal.UserID, input)
+	created, err := h.svc.Create(r.Context(), initiativeID, principal.UserID, principal.Email, input)
 	if err != nil {
 		Error(w, err)
 		return

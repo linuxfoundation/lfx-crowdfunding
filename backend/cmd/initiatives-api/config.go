@@ -54,6 +54,9 @@ type StripeConfig struct {
 	SecretKey     string
 	WebhookSecret string
 	Timeout       time.Duration
+	// ReturnURL is the frontend URL Stripe redirects to after a 3DS challenge.
+	// Required when Confirm=true on a PaymentIntent. Set STRIPE_RETURN_URL.
+	ReturnURL string
 	// AckUnimplementedWebhooks, when true, responds with HTTP 200 for
 	// recognised-but-unimplemented event types instead of 501. Useful in
 	// pre-production environments where real Stripe deliveries are active but
@@ -162,6 +165,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	stripeReturnURL := getEnv("STRIPE_RETURN_URL", "http://localhost:3000/payment/complete")
 	ledgerTimeout, err := getDurationEnv("LEDGER_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return nil, err
@@ -191,6 +195,7 @@ func LoadConfig() (*Config, error) {
 			SecretKey:                stripeKey,
 			WebhookSecret:            stripeWebhookSecret,
 			Timeout:                  stripeTimeout,
+			ReturnURL:                stripeReturnURL,
 			AckUnimplementedWebhooks: stripeAckUnimplemented,
 		},
 		Ledger: LedgerConfig{
