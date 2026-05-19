@@ -61,6 +61,7 @@ SPDX-License-Identifier: MIT
     type="transparent"
     size="medium"
     :loading="isLoading"
+    aria-label="Sign in"
     @click="login()"
   />
 </template>

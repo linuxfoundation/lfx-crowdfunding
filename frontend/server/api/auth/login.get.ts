@@ -13,7 +13,8 @@ import { isValidRedirectUrl, getSafeRedirectUrl } from '../../utils/redirect';
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
-  const isProduction = process.env.NUXT_APP_ENV === 'production';
+  const isLocal =
+    process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
 
   try {
     const authConfig = await discovery(
@@ -27,11 +28,11 @@ export default defineEventHandler(async (event) => {
 
     const cookieOptions = {
       httpOnly: true,
-      secure: isProduction,
+      secure: !isLocal,
       sameSite: 'lax' as const,
       path: '/',
       maxAge: 60 * 15, // 15 minutes
-      ...(!isProduction && { domain: 'localhost' }),
+      ...(isLocal ? { domain: 'localhost' } : { domain: config.auth0CookieDomain }),
     };
 
     // Store state + code verifier together to prevent concurrent login flow races

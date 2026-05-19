@@ -4,8 +4,8 @@
 const isLocal = process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
 
 const ALLOWED_REDIRECT_DOMAINS = isLocal
-  ? ['linuxfoundation.org', 'auth0.com', 'localhost']
-  : ['linuxfoundation.org', 'auth0.com'];
+  ? ['linuxfoundation.org', 'localhost']
+  : ['linuxfoundation.org'];
 
 export const DEFAULT_REDIRECT = '/';
 

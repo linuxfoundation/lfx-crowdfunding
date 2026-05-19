@@ -10,7 +10,8 @@ import type { DecodedIdToken } from '~~/types/auth/auth-jwt.types';
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
-  const isProduction = process.env.NUXT_APP_ENV === 'production';
+  const isLocal =
+    process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
 
   const redirectTo = getSafeRedirectUrl(getCookie(event, 'auth_redirect_to'));
 
@@ -112,10 +113,10 @@ export default defineEventHandler(async (event) => {
 
     const tokenCookieOptions = {
       httpOnly: true,
-      secure: isProduction,
+      secure: !isLocal,
       sameSite: 'lax' as const,
       path: '/',
-      ...(isProduction ? { domain: config.auth0CookieDomain } : { domain: 'localhost' }),
+      ...(isLocal ? { domain: 'localhost' } : { domain: config.auth0CookieDomain }),
       maxAge: expiresIn,
     };
 

@@ -1,29 +1,27 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { deleteCookie } from 'h3';
 import type { H3Event } from 'h3';
 import { isValidRedirectUrl } from '../../utils/redirect';
 
-const isProduction = process.env.NUXT_APP_ENV === 'production';
+const isLocal = process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
 
 function clearAuthCookies(event: H3Event) {
   const config = useRuntimeConfig();
 
   const opts = {
     httpOnly: true,
-    secure: isProduction,
+    secure: !isLocal,
     sameSite: 'lax' as const,
     path: '/',
-    ...(isProduction ? { domain: config.auth0CookieDomain } : { domain: 'localhost' }),
+    ...(isLocal ? { domain: 'localhost' } : { domain: config.auth0CookieDomain }),
     maxAge: 0,
   };
 
-  // Explicitly set to empty to ensure clearing works across proxy setups in production
   setCookie(event, 'auth_oidc_token', '', opts);
-  deleteCookie(event, 'auth_refresh_token');
-  deleteCookie(event, 'auth_pkce');
-  deleteCookie(event, 'auth_redirect_to');
+  setCookie(event, 'auth_refresh_token', '', opts);
+  setCookie(event, 'auth_pkce', '', opts);
+  setCookie(event, 'auth_redirect_to', '', opts);
 }
 
 export default defineEventHandler(async (event) => {
