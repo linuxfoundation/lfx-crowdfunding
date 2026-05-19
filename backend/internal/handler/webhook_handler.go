@@ -6,6 +6,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -79,6 +80,14 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 func (h *WebhookHandler) dispatch(r *http.Request, event stripe.Event, w http.ResponseWriter) {
 	h.logger.Info("stripe webhook event received", "type", event.Type, "id", event.ID)
 
+	// TODO(go-live): Add LFF-era event guard before enabling this endpoint in production.
+	// CF and LFF share the same Stripe account. LFF objects carry "projectID" in metadata;
+	// CF objects carry "initiative_id". Until LFF is fully retired and the webhook is
+	// switched over, any events arriving here that lack "initiative_id" in their metadata
+	// are LFF events and must be silently acknowledged (200) rather than processed.
+	// Without this guard, LFF events cause not-found DB errors and pollute error logs.
+	// See docs/go-live-checklist.md for the full pre-production checklist.
+
 	var err error
 	switch event.Type {
 	case "payment_intent.succeeded":
@@ -102,7 +111,18 @@ func (h *WebhookHandler) dispatch(r *http.Request, event stripe.Event, w http.Re
 		return
 	}
 
-	// Processing error: log and return 500 so Stripe retries.
+	// Not-found errors are permanent — the record will never appear on retry.
+	// Acknowledge so Stripe does not retry indefinitely. This also handles
+	// LFF-era events whose payment_intent_id or subscription_id has no
+	// corresponding row in the CF database.
+	if errors.Is(err, domain.ErrDonationNotFound) || errors.Is(err, domain.ErrSubscriptionNotFound) {
+		h.logger.Warn("stripe webhook: no matching record, acknowledging to prevent retry",
+			"type", event.Type, "id", event.ID, "error", err)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Transient error: log and return 500 so Stripe retries.
 	// When ackUnimplemented=true (pre-production), suppress retries and ack instead.
 	if h.ackUnimplemented {
 		h.logger.Warn("suppressing webhook retry (ack_unimplemented=true)",

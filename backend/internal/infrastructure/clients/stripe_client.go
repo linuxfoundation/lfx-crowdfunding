@@ -418,11 +418,9 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 	if req.PaymentMethodID != "" {
 		params.DefaultPaymentMethod = stripe.String(req.PaymentMethodID)
 	}
-	// Expand latest_invoice so we can read ConfirmationSecret.ClientSecret.
-	// Use the client-supplied idempotency key (prefixed) so retries of the
-	// same logical request return the cached Subscription rather than creating
-	// a duplicate. The price key (sub-price:) uses the same base key so a
-	// retry also returns the cached Price.
+	// Expand latest_invoice so we can read ConfirmationSecret.ClientSecret when
+	// the first invoice requires 3DS. ConfirmationSecret is the stripe-go v82
+	// field for the client_secret needed to complete the challenge.
 	params.Params = stripe.Params{
 		IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s", req.IdempotencyKey)),
 		Expand:         []*string{stripe.String("latest_invoice")},
@@ -446,12 +444,14 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 	if len(sub.Items.Data) > 0 {
 		result.SubscriptionItemID = sub.Items.Data[0].ID
 	}
-	// When the first invoice requires 3DS, return the client_secret so the
-	// frontend can call stripe.confirmPayment() to complete the challenge.
+	// When the first invoice requires 3DS, ConfirmationSecret holds the
+	// client_secret the frontend needs to call stripe.confirmPayment().
+	// ConfirmationSecret is the stripe-go v82 accessor for this field;
+	// it wraps the same underlying client_secret as the older
+	// latest_invoice.payment_intent.client_secret Stripe API path.
 	if sub.LatestInvoice != nil && sub.LatestInvoice.ConfirmationSecret != nil {
-		cs := sub.LatestInvoice.ConfirmationSecret
-		if cs.ClientSecret != "" {
-			result.ClientSecret = cs.ClientSecret
+		if cs := sub.LatestInvoice.ConfirmationSecret.ClientSecret; cs != "" {
+			result.ClientSecret = cs
 			result.Status = "incomplete"
 		}
 	}

@@ -54,8 +54,10 @@ type StripeConfig struct {
 	SecretKey     string
 	WebhookSecret string
 	Timeout       time.Duration
-	// ReturnURL is the frontend URL Stripe redirects to after a 3DS challenge.
-	// Required when Confirm=true on a PaymentIntent. Set STRIPE_RETURN_URL.
+	// ReturnURL is the frontend URL Stripe redirects to after a redirect-based 3DS
+	// challenge. Required — set STRIPE_RETURN_URL to the deployed /payment/complete URL.
+	// Never leave this unset: a missing value causes Stripe to redirect users to an
+	// unreachable address and the payment hangs in requires_action permanently.
 	ReturnURL string
 	// AckUnimplementedWebhooks, when true, responds with HTTP 200 for
 	// recognised-but-unimplemented event types instead of 501. Useful in
