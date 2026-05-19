@@ -15,6 +15,15 @@ export default defineEventHandler(async (event) => {
 
   const redirectTo = getSafeRedirectUrl(getCookie(event, 'auth_redirect_to'));
 
+  const clearCookieOptions = {
+    httpOnly: true,
+    secure: !isLocal,
+    sameSite: 'lax' as const,
+    path: '/',
+    ...(isLocal ? { domain: 'localhost' } : { domain: config.auth0CookieDomain }),
+    maxAge: 0,
+  };
+
   try {
     // Handle Auth0 errors (e.g. silent auth failure)
     if (query.error) {
@@ -76,8 +85,8 @@ export default defineEventHandler(async (event) => {
       pkceCodeVerifier: codeVerifier,
     });
 
-    deleteCookie(event, 'auth_pkce');
-    deleteCookie(event, 'auth_redirect_to');
+    setCookie(event, 'auth_pkce', '', clearCookieOptions);
+    setCookie(event, 'auth_redirect_to', '', clearCookieOptions);
 
     if (!config.jwtSecret) {
       throw createError({ statusCode: 500, statusMessage: 'JWT secret not configured' });
@@ -133,10 +142,10 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     console.error('Auth callback error:', error);
 
-    deleteCookie(event, 'auth_pkce');
-    deleteCookie(event, 'auth_redirect_to');
-    deleteCookie(event, 'auth_oidc_token');
-    deleteCookie(event, 'auth_refresh_token');
+    setCookie(event, 'auth_pkce', '', clearCookieOptions);
+    setCookie(event, 'auth_redirect_to', '', clearCookieOptions);
+    setCookie(event, 'auth_oidc_token', '', clearCookieOptions);
+    setCookie(event, 'auth_refresh_token', '', clearCookieOptions);
 
     let statusCode = 500;
     let statusMessage = 'Authentication callback error';

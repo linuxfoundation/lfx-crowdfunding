@@ -28,8 +28,11 @@ export function isValidRedirectUrl(url: string | undefined | null): boolean {
 
   // Allow relative URLs starting with /
   if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+    // Reject backslashes — browsers normalize them to slashes (e.g. /\ becomes //)
+    if (trimmed.includes('\\')) return false;
     try {
-      if (decodeURIComponent(trimmed).startsWith('//')) return false;
+      const decoded = decodeURIComponent(trimmed);
+      if (decoded.startsWith('//') || decoded.includes('\\')) return false;
     } catch {
       return false;
     }

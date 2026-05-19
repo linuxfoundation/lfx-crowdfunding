@@ -15,7 +15,7 @@ SPDX-License-Identifier: MIT
       'has-image': props.src && !imageFailed,
     }"
     v-bind="$attrs"
-    @error="imageFailed = true"
+    @image-error="imageFailed = true"
   />
 </template>
 

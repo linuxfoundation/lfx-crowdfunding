@@ -23,7 +23,7 @@ export default defineNuxtConfig({
   css: ['~/assets/styles/main.scss'],
   primevue,
   routeRules: {
-    '/auth/callback': { redirect: '/api/auth/callback' },
+    '/auth/callback': { proxy: '/api/auth/callback' },
   },
   runtimeConfig,
   tailwindcss,
