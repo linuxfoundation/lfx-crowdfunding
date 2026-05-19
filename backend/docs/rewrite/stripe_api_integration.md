@@ -337,7 +337,7 @@ Enable these event types:
 |---|---|---|---|
 | `STRIPE_SECRET_KEY` | yes | — | Stripe secret key (`sk_live_...` or `sk_test_...`) |
 | `STRIPE_WEBHOOK_SECRET` | yes | — | Webhook endpoint signing secret (`whsec_...`) |
-| `STRIPE_RETURN_URL` | no | `http://localhost:3000/payment/complete` | Redirect URL Stripe uses after a redirect-based 3DS challenge |
+| `STRIPE_RETURN_URL` | yes | — | Redirect URL Stripe uses after a redirect-based 3DS challenge. Must be the deployed frontend `/payment/complete` URL. Service will not start if unset. |
 | `STRIPE_TIMEOUT` | no | `30s` | HTTP timeout for outbound Stripe API calls |
 | `STRIPE_WEBHOOK_ACK_UNIMPLEMENTED` | no | `false` | Reply `200` for handled-but-unimplemented events instead of `501` (pre-production only) |
 

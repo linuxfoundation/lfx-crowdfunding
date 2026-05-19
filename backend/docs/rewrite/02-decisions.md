@@ -135,7 +135,7 @@ The `initiative_stats` table that existed in an earlier schema version has been 
 
 The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
-**Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SIGNING_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
+**Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
 
 **Cutover:** run `ledger-stats-sync` once manually before DNS cutover to pre-populate `initiative_ledger_stats` for all migrated initiatives. Rows are absent before the first run — the `initiative_repository` LEFT JOINs `initiative_ledger_stats` and COALESCEs all financial values to `0`, so missing rows display cleanly as zero. See OQ-15 for post-cutover ID strategy.
 
@@ -651,7 +651,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `AUTH0_DOMAIN` | Auth0 tenant domain (e.g. `linuxfoundation.auth0.com`) | Same value as LFF `AUTH0_DOMAIN` |
 | `AUTH0_AUDIENCE` | Auth0 API audience for JWT validation | New — set when Auth0 API is configured for new CF app |
 | `STRIPE_CLIENT_SECRET` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
-| `STRIPE_WEBHOOK_SIGNING_SECRET` | Per-endpoint signing secret for `POST /v1/hooks/stripe` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
+| `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /v1/hooks/stripe` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
 | `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
 | `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
 | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |
