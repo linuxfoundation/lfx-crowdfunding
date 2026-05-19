@@ -1,0 +1,12 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+
+title = "LFX Crowdfunding Gitleaks Config"
+
+# The Stripe integration guide contains intentional example API response shapes
+# (e.g. "client_secret": "pi_xxx_secret_xxx") that are never real credentials.
+[allowlist]
+  description = "Example Stripe values in the integration guide are not real secrets"
+  paths = [
+    '''backend/docs/rewrite/stripe_api_integration\.md''',
+  ]

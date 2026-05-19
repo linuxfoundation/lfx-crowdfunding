@@ -114,6 +114,13 @@ SPDX-License-Identifier: MIT
             class="!text-accent-500"
             @click="openDonateDrawer({ id: initiative.id, name: initiative.name, logoUrl: initiative.logoUrl })"
           />
+          <lfx-button
+            label="Start an initiative"
+            type="primary"
+            icon="box-dollar"
+            icon-position="left"
+            @click="openFundraiseDrawer()"
+          />
         </div>
       </div>
 
@@ -156,6 +163,7 @@ import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
+import { useFundraiseDrawerStore } from '~/components/modules/fundraise/store/fundraise-drawer.store';
 import useScroll from '~/utils/scroll';
 
 const props = defineProps<{
@@ -164,6 +172,7 @@ const props = defineProps<{
 }>();
 
 const { openDonateDrawer } = useDonateDrawerStore();
+const { openFundraiseDrawer } = useFundraiseDrawerStore();
 
 const { scrollTop } = useScroll();
 const isScrolled = computed(() => scrollTop.value > 10);

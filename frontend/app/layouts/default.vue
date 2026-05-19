@@ -10,6 +10,7 @@ SPDX-License-Identifier: MIT
     </main>
     <crowdfunding-footer />
     <donate-drawer-global />
+    <fundraise-drawer-global />
   </div>
 </template>
 
@@ -17,4 +18,5 @@ SPDX-License-Identifier: MIT
 import CrowdfundingHeader from '~/components/shared/layout/header.vue';
 import CrowdfundingFooter from '~/components/shared/layout/footer.vue';
 import DonateDrawerGlobal from '~/components/modules/donate/components/donate-drawer-global.vue';
+import FundraiseDrawerGlobal from '~/components/modules/fundraise/components/fundraise-drawer-global.vue';
 </script>

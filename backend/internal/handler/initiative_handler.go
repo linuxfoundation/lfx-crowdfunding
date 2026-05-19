@@ -46,7 +46,7 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	filter := models.InitiativeFilter{
 		OwnerID:        q.Get("owner_id"),
 		InitiativeType: q.Get("type"),
-		Status:         q.Get("status"),
+		Status:         models.InitiativeStatus(q.Get("status")),
 		Search:         q.Get("search"),
 		SortBy:         strings.ToLower(q.Get("sort_by")),
 		SortDir:        strings.ToLower(q.Get("sort_dir")),
@@ -85,7 +85,7 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	if initiative.Status != "published" {
+	if !initiative.Status.EqualFold(models.StatusPublished) {
 		Error(w, domain.ErrInitiativeNotFound)
 		return
 	}

@@ -29,4 +29,8 @@ type User struct {
 	AvatarURL  string    `json:"avatar_url,omitempty"`
 	CreatedOn  time.Time `json:"created_on"`
 	UpdatedOn  time.Time `json:"updated_on"`
+
+	// Stripe fields — internal, never serialised.
+	StripeCustomerID           string `json:"-"` // cus_xxx
+	StripeDefaultPaymentMethod string `json:"-"` // pm_xxx
 }

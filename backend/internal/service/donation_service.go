@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -21,6 +22,7 @@ var donationSvcTracer = otel.Tracer("donations-service")
 type DonationService struct {
 	repo           domain.DonationRepository
 	initiativeRepo domain.InitiativeRepository
+	userRepo       domain.UserRepository
 	stripe         clients.StripeClient
 }
 
@@ -28,9 +30,10 @@ type DonationService struct {
 func NewDonationService(
 	repo domain.DonationRepository,
 	initiativeRepo domain.InitiativeRepository,
+	userRepo domain.UserRepository,
 	stripe clients.StripeClient,
 ) *DonationService {
-	return &DonationService{repo: repo, initiativeRepo: initiativeRepo, stripe: stripe}
+	return &DonationService{repo: repo, initiativeRepo: initiativeRepo, userRepo: userRepo, stripe: stripe}
 }
 
 // ListByInitiative returns paginated donations for an initiative.
@@ -47,8 +50,12 @@ func (s *DonationService) ListByInitiative(ctx context.Context, initiativeID str
 	return donations, meta, nil
 }
 
-// Create processes a one-time donation: validates the initiative, charges via Stripe, records in DB.
-func (s *DonationService) Create(ctx context.Context, initiativeID, userID string, input models.DonationCreateInput) (*models.Donation, error) {
+// Create processes a one-time donation with 3DS support.
+// When the bank requires an authentication challenge, the returned Donation
+// has Status == "requires_action" and ClientSecret set — the frontend must
+// call stripe.confirmCardPayment(ClientSecret) to complete the 3DS flow.
+// The webhook (payment_intent.succeeded / .payment_failed) advances the status.
+func (s *DonationService) Create(ctx context.Context, initiativeID, userID, userEmail string, input models.DonationCreateInput) (*models.Donation, error) {
 	ctx, span := donationSvcTracer.Start(ctx, "DonationService.Create")
 	defer span.End()
 	span.SetAttributes(
@@ -58,6 +65,12 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID strin
 
 	if input.AmountCents <= 0 {
 		return nil, fmt.Errorf("%w: amount_in_cents must be positive", domain.ErrInvalidInput)
+	}
+	if input.StripePaymentMethodID == "" {
+		return nil, fmt.Errorf("%w: stripe_payment_method_id is required", domain.ErrInvalidInput)
+	}
+	if input.IdempotencyKey == "" {
+		return nil, fmt.Errorf("%w: idempotency_key is required", domain.ErrInvalidInput)
 	}
 
 	// Verify the initiative exists and accepts funding.
@@ -70,12 +83,49 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID strin
 		return nil, fmt.Errorf("%w: initiative does not accept funding", domain.ErrInvalidInput)
 	}
 
-	// Charge via Stripe.
+	// Resolve the Stripe customer for this user (create if first payment).
+	// Only treat ErrUserNotFound as "no existing customer"; any other error
+	// (e.g. transient DB outage) must be returned to avoid creating orphaned
+	// Stripe customers when the DB read fails.
+	customerID := ""
+	user, err := s.userRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		if !errors.Is(err, domain.ErrUserNotFound) {
+			span.RecordError(err)
+			return nil, fmt.Errorf("get user: %w", err)
+		}
+		// First-time user: upsert a minimal users row so UpdateStripeInfo can
+		// persist the new customer ID (UpdateStripeInfo is UPDATE-only).
+		if _, upsertErr := s.userRepo.Upsert(ctx, &models.User{UserID: userID, Email: userEmail}); upsertErr != nil {
+			span.RecordError(upsertErr)
+			return nil, fmt.Errorf("ensure user record: %w", upsertErr)
+		}
+	} else {
+		customerID = user.StripeCustomerID
+	}
+	if customerID == "" {
+		customerID, err = s.stripe.CreateCustomer(ctx, userID, userEmail)
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("create stripe customer: %w", err)
+		}
+		if persistErr := s.userRepo.UpdateStripeInfo(ctx, userID, customerID, ""); persistErr != nil {
+			span.RecordError(persistErr)
+			return nil, fmt.Errorf("persist stripe customer: %w", persistErr)
+		}
+	}
+
+	// Create a PaymentIntent with automatic 3DS.
+	// The client-supplied idempotency key is forwarded to Stripe verbatim:
+	// if the client retries the same request it sends the same key, Stripe
+	// returns the cached response instead of creating a duplicate charge.
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
 		InitiativeID:    initiativeID,
 		UserID:          userID,
+		CustomerID:      customerID,
 		AmountCents:     input.AmountCents,
 		PaymentMethodID: input.StripePaymentMethodID,
+		IdempotencyKey:  input.IdempotencyKey,
 	})
 	if err != nil {
 		span.RecordError(err)
@@ -83,15 +133,16 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID strin
 	}
 
 	donation := &models.Donation{
-		UserID:             userID,
-		InitiativeID:       initiativeID,
-		OrganizationID:     input.OrganizationID,
-		Category:           input.Category,
-		CurrentAmountCents: input.AmountCents,
-		PONumber:           input.PONumber,
-		PaymentMethod:      input.PaymentMethod,
-		Status:             pi.Status,
-		StripeChargeID:     pi.ID,
+		UserID:                userID,
+		InitiativeID:          initiativeID,
+		OrganizationID:        input.OrganizationID,
+		Category:              input.Category,
+		CurrentAmountCents:    input.AmountCents,
+		PONumber:              input.PONumber,
+		PaymentMethod:         input.PaymentMethod,
+		Status:                pi.Status,
+		StripePaymentIntentID: pi.ID,
+		StripeChargeID:        pi.ChargeID,
 	}
 
 	created, err := s.repo.Create(ctx, donation)
@@ -99,5 +150,8 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID strin
 		span.RecordError(err)
 		return nil, fmt.Errorf("record donation: %w", err)
 	}
+
+	// Surface client_secret when 3DS challenge is needed — transient, not stored.
+	created.ClientSecret = pi.ClientSecret
 	return created, nil
 }

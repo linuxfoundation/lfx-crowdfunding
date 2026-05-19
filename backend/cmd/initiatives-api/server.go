@@ -49,6 +49,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	donationRepo := db.NewDonationRepository(pool)
 	subscriptionRepo := db.NewSubscriptionRepository(pool)
 	statisticsRepo := db.NewStatisticsRepository(pool)
+	userRepo := db.NewUserRepository(pool)
 
 	// Clients
 	ledgerClient := clients.NewLedgerClient(clients.LedgerConfig{
@@ -57,15 +58,16 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		Timeout: cfg.Ledger.Timeout,
 	})
 	stripeClient := clients.NewStripeClient(clients.StripeConfig{
-		SecretKey:     cfg.Stripe.SecretKey,
-		WebhookSecret: cfg.Stripe.WebhookSecret,
-		Timeout:       cfg.Stripe.Timeout,
+		SecretKey: cfg.Stripe.SecretKey,
+		Timeout:   cfg.Stripe.Timeout,
+		ReturnURL: cfg.Stripe.ReturnURL,
 	})
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, ledgerClient, stripeClient)
-	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, stripeClient)
-	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, stripeClient)
+	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
+	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
+	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo)
 
 	// JWT authenticator
@@ -90,8 +92,9 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	initiativeH := handler.NewInitiativeHandler(initiativeSvc)
 	donationH := handler.NewDonationHandler(donationSvc)
 	subscriptionH := handler.NewSubscriptionHandler(subscriptionSvc)
+	paymentH := handler.NewPaymentHandler(paymentSvc)
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
-	webhookH := handler.NewWebhookHandler(stripeClient, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
+	webhookH := handler.NewWebhookHandler(stripeClient, donationRepo, subscriptionRepo, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 
 	// Router
 	r := chi.NewRouter()
@@ -136,6 +139,12 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		})
 
 		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
+
+		// Payment account (saved card for 3DS flows)
+		r.Post("/me/setup-intent", paymentH.CreateSetupIntent)
+		r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
+		r.Get("/me/payment-account", paymentH.GetPaymentAccount)
+		r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
