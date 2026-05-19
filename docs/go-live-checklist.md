@@ -1,7 +1,7 @@
 # Go-Live Checklist
 
 Items that must be resolved before the new CF backend handles real traffic in production.
-Each item references the code location where a TODO comment was left.
+Each item references the relevant code location for the required follow-up work.
 
 ---
 
