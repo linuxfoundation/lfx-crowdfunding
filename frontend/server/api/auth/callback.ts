@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { discovery, authorizationCodeGrant } from 'openid-client';
+import { discovery, authorizationCodeGrant, ClientSecretPost } from 'openid-client';
 import { SignJWT, decodeJwt } from 'jose';
 import { H3Error } from 'h3';
 import { getSafeRedirectUrl } from '../../utils/redirect';
@@ -63,10 +63,10 @@ export default defineEventHandler(async (event) => {
     const authConfig = await discovery(
       new URL(`${config.public.auth0Domain}`),
       config.public.auth0ClientId,
+      undefined,
+      config.auth0ClientSecret ? ClientSecretPost(config.auth0ClientSecret) : undefined,
     );
 
-    // Reconstruct the callback URL with original query params to avoid
-    // mismatch from the /auth/callback -> /api/auth/callback route redirect
     const callbackUrl = new URL(config.public.auth0RedirectUri);
     callbackUrl.search = new URL(getRequestURL(event)).search;
 

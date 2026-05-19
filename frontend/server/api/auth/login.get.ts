@@ -41,7 +41,14 @@ export default defineEventHandler(async (event) => {
     if (redirectTo) {
       const safeRedirectTo = getSafeRedirectUrl(redirectTo);
       if (isValidRedirectUrl(redirectTo)) {
-        setCookie(event, 'auth_redirect_to', safeRedirectTo, cookieOptions);
+        const redirectUrl = new URL(safeRedirectTo, 'http://n');
+        redirectUrl.searchParams.delete('auth');
+        setCookie(
+          event,
+          'auth_redirect_to',
+          redirectUrl.pathname + redirectUrl.search,
+          cookieOptions,
+        );
       }
     }
 
