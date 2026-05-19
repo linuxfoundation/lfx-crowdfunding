@@ -50,6 +50,20 @@ func (s *DonationService) ListByInitiative(ctx context.Context, initiativeID str
 	return donations, meta, nil
 }
 
+// ListByUser returns paginated donations for the authenticated user.
+func (s *DonationService) ListByUser(ctx context.Context, userID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+	ctx, span := donationSvcTracer.Start(ctx, "DonationService.ListByUser")
+	defer span.End()
+	span.SetAttributes(attribute.String("user.id", userID))
+
+	donations, meta, err := s.repo.ListByUser(ctx, userID, filter)
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("list donations by user: %w", err)
+	}
+	return donations, meta, nil
+}
+
 // Create processes a one-time donation with 3DS support.
 // When the bank requires an authentication challenge, the returned Donation
 // has Status == "requires_action" and ClientSecret set — the frontend must

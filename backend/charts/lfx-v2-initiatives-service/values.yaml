@@ -88,6 +88,11 @@ config:
   LEDGER_BASE_URL: ""
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   OTEL_SERVICE_NAME: "lfx-v2-initiatives-service"
+  # REQUIRED — the frontend URL Stripe redirects to after a 3DS challenge.
+  # Must be the public HTTPS URL of the /payment/complete page, e.g.:
+  #   https://crowdfunding.linuxfoundation.org/payment/complete
+  # Leaving this empty will cause helm install/upgrade to fail.
+  STRIPE_RETURN_URL: ""
 
 # ── Secret environment variables ─────────────────────────────────────────────
 # These are sourced from a Kubernetes Secret via envFrom.secretRef.

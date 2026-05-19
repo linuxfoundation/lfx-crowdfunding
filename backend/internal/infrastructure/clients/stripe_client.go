@@ -26,6 +26,14 @@ var stripeTracer = otel.Tracer("stripe-client")
 // so the service layer remains testable without a live Stripe connection.
 type StripeClient interface {
 	GetProduct(ctx context.Context, productID string) (*models.StripeProduct, error)
+	// CreateProduct creates a new Stripe Product for an initiative and returns the prod_xxx ID.
+	// initiativeID is the pre-generated UUID — stored as Stripe metadata so the product
+	// can always be traced back to the local initiative row.
+	CreateProduct(ctx context.Context, initiativeID, name string) (string, error)
+	// DeleteProduct permanently deletes a Stripe Product.
+	// Only safe to call when no Prices have been attached (e.g. as a rollback after
+	// CreateProduct succeeds but the subsequent DB INSERT fails).
+	DeleteProduct(ctx context.Context, productID string) error
 
 	// Customer management
 	// CreateCustomer creates a Stripe Customer for a user and returns the cus_xxx ID.
@@ -99,6 +107,44 @@ func NewStripeClient(cfg StripeConfig) StripeClient {
 	return &stripeClientImpl{api: api, returnURL: cfg.ReturnURL}
 }
 
+// CreateProduct creates a Stripe Product for an initiative.
+// initiativeID is stored in metadata so the Stripe Dashboard product can be traced
+// back to the local initiative UUID.
+func (c *stripeClientImpl) CreateProduct(ctx context.Context, initiativeID, name string) (string, error) {
+	_, span := stripeTracer.Start(ctx, "stripe.CreateProduct")
+	defer span.End()
+	span.SetAttributes(attribute.String("stripe.initiative_id", initiativeID))
+
+	p, err := c.api.Products.New(&stripe.ProductParams{
+		Name: stripe.String(name),
+		Params: stripe.Params{
+			// Idempotency key scoped to the pre-generated initiative UUID so that a
+			// network-timeout retry returns the cached Product instead of creating a duplicate.
+			IdempotencyKey: stripe.String(fmt.Sprintf("create-product:%s", initiativeID)),
+			Metadata:       map[string]string{"initiative_id": initiativeID},
+		},
+	})
+	if err != nil {
+		span.RecordError(err)
+		return "", fmt.Errorf("stripe create product: %w", err)
+	}
+	return p.ID, nil
+}
+
+// DeleteProduct permanently deletes a Stripe Product.
+func (c *stripeClientImpl) DeleteProduct(ctx context.Context, productID string) error {
+	_, span := stripeTracer.Start(ctx, "stripe.DeleteProduct")
+	defer span.End()
+	span.SetAttributes(attribute.String("stripe.product_id", productID))
+
+	_, err := c.api.Products.Del(productID, nil)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("stripe delete product: %w", err)
+	}
+	return nil
+}
+
 // GetProduct retrieves a Stripe product by ID.
 func (c *stripeClientImpl) GetProduct(ctx context.Context, productID string) (*models.StripeProduct, error) {
 	_, span := stripeTracer.Start(ctx, "stripe.GetProduct")
@@ -143,11 +189,9 @@ func (c *stripeClientImpl) CreateSetupIntent(ctx context.Context, customerID str
 	span.SetAttributes(attribute.String("stripe.customer_id", customerID))
 
 	si, err := c.api.SetupIntents.New(&stripe.SetupIntentParams{
-		Customer: stripe.String(customerID),
-		AutomaticPaymentMethods: &stripe.SetupIntentAutomaticPaymentMethodsParams{
-			Enabled: stripe.Bool(true),
-		},
-		Usage: stripe.String("off_session"),
+		Customer:           stripe.String(customerID),
+		PaymentMethodTypes: []*string{stripe.String("card")},
+		Usage:              stripe.String("off_session"),
 	})
 	if err != nil {
 		span.RecordError(err)

@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  ws: ">=8.20.1"
   devalue: ^5.8.1
-  ws: ^8.20.1
 
 importers:
   .:

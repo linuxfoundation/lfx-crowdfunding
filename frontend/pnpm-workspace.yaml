@@ -4,6 +4,10 @@
 packages:
   - "."
 
+overrides:
+  ws: ">=8.20.1"
+  devalue: "^5.8.1"
+
 allowBuilds:
   "@parcel/watcher": true
   esbuild: true
