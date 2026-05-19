@@ -26,7 +26,17 @@ SPDX-License-Identifier: MIT
       </template>
     </lfx-input>
 
-    <div class="flex flex-col -mx-6">
+    <div
+      v-if="isLoading"
+      class="flex items-center justify-center py-10 text-sm text-neutral-500"
+    >
+      Loading repositories…
+    </div>
+
+    <div
+      v-else
+      class="flex flex-col -mx-6"
+    >
       <button
         v-for="(repo, index) in filteredRepos"
         :key="repo.id"
@@ -82,6 +92,7 @@ import LfxInput from '~/components/uikit/input/input.vue';
 const props = defineProps<{
   repos: GitHubRepo[];
   modelValue: string | null;
+  isLoading?: boolean;
 }>();
 
 defineEmits<{

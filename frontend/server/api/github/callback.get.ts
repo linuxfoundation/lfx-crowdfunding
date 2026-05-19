@@ -1,0 +1,56 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
+export default defineEventHandler(async (event) => {
+  const config = useRuntimeConfig();
+  const query = getQuery(event);
+  const isLocal =
+    process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
+
+  const redirectTo = getCookie(event, 'github_redirect_to') || '/fundraise';
+
+  deleteCookie(event, 'github_redirect_to');
+
+  if (query.error) {
+    await sendRedirect(event, `${redirectTo}?github_error=${query.error}`);
+    return;
+  }
+
+  const storedState = getCookie(event, 'github_oauth_state');
+  deleteCookie(event, 'github_oauth_state');
+
+  if (!query.code || !storedState || storedState !== query.state) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid OAuth state or missing code' });
+  }
+
+  const tokenResponse = await $fetch<{ access_token?: string; error?: string }>(
+    'https://github.com/login/oauth/access_token',
+    {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      body: {
+        client_id: config.public.githubOauthClientId,
+        client_secret: config.githubOauthClientSecret,
+        code: query.code,
+        redirect_uri: config.public.githubOauthRedirectUri,
+      },
+    },
+  );
+
+  if (tokenResponse.error || !tokenResponse.access_token) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: tokenResponse.error || 'Failed to exchange GitHub OAuth code for token',
+    });
+  }
+
+  setCookie(event, 'github_oauth_token', tokenResponse.access_token, {
+    httpOnly: true,
+    secure: !isLocal,
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: 60 * 60 * 8, // 8 hours
+  });
+
+  await sendRedirect(event, `${redirectTo}?github_connected=true`);
+});
