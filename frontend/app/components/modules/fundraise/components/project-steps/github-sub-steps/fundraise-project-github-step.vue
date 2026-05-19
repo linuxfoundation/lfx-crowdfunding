@@ -12,18 +12,28 @@ SPDX-License-Identifier: MIT
     </div>
 
     <div class="border border-neutral-200 rounded-xl overflow-hidden">
-      <github-connect-prompt
-        v-if="!isConnected"
-        @connect="isConnected = true"
-      />
+      <div
+        v-if="isInitializing"
+        class="flex items-center justify-center py-10 text-sm text-neutral-500"
+      >
+        Loading…
+      </div>
 
-      <template v-else>
-        <github-connected-header :login="MOCK_USER.login" />
+      <template v-else-if="!isConnected">
+        <github-connect-prompt @connect="connectWithSession" />
+      </template>
+
+      <template v-else-if="isConnected">
+        <github-connected-header
+          :login="user!.login"
+          @disconnect="disconnect"
+        />
 
         <div class="border-t border-neutral-200" />
 
         <github-repo-list
-          :repos="MOCK_REPOS"
+          :repos="repos"
+          :is-loading="isLoadingRepos"
           :model-value="modelValue"
           @update:model-value="$emit('update:modelValue', $event)"
         />
@@ -33,46 +43,12 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
+import { useRoute, useRouter } from 'nuxt/app';
 import GithubConnectPrompt from './github-connect-prompt.vue';
 import GithubConnectedHeader from './github-connected-header.vue';
 import GithubRepoList from './github-repo-list.vue';
-import type { GitHubRepo } from '~/types/fundraise.types';
-
-const MOCK_USER = { login: 'nunoeufrasio', name: 'Nuno Eufrasio' };
-
-const MOCK_REPOS: GitHubRepo[] = [
-  {
-    id: 1,
-    fullName: 'kubernetes/kubernetes',
-    name: 'kubernetes/kubernetes',
-    description: 'Production-Grade Container Scheduling and Management',
-    stars: 110000,
-  },
-  { id: 2, fullName: 'torvalds/linux', name: 'torvalds/linux', description: 'Linux kernel source tree', stars: 185000 },
-  { id: 3, fullName: 'golang/go', name: 'golang/go', description: 'The Go programming language', stars: 123000 },
-  {
-    id: 4,
-    fullName: 'python/cpython',
-    name: 'python/cpython',
-    description: 'The Python programming language',
-    stars: 62000,
-  },
-  {
-    id: 5,
-    fullName: 'nodejs/node',
-    name: 'nodejs/node',
-    description: "Node.js JavaScript runtime built on Chrome's V8 engine",
-    stars: 107000,
-  },
-  {
-    id: 6,
-    fullName: 'rust-lang/rust',
-    name: 'rust-lang/rust',
-    description: 'Empowering everyone to build reliable and efficient software',
-    stars: 97000,
-  },
-];
+import { useGithubAuth } from '~/composables/useGithubAuth';
 
 defineProps<{
   modelValue: string | null;
@@ -82,7 +58,32 @@ defineEmits<{
   (e: 'update:modelValue', value: string): void;
 }>();
 
-const isConnected = ref(false);
+const route = useRoute();
+const router = useRouter();
+
+const { isConnected, user, repos, isLoadingRepos, fetchUser, fetchRepos, connect, disconnect } = useGithubAuth();
+
+const connectWithSession = () => {
+  connect({ initiativeType: 'project', step: 1, subStep: 1, hostingType: 'github' });
+};
+
+const isInitializing = ref(true);
+
+onMounted(async () => {
+  try {
+    if (route.query.github_connected) {
+      await router.replace({ query: { ...route.query, github_connected: undefined } });
+    }
+
+    await fetchUser();
+
+    if (isConnected.value) {
+      await fetchRepos();
+    }
+  } finally {
+    isInitializing.value = false;
+  }
+});
 </script>
 
 <script lang="ts">
