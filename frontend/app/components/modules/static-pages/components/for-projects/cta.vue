@@ -14,25 +14,16 @@ SPDX-License-Identifier: MIT
           started.
         </p>
       </div>
-      <NuxtLink
-        :to="AppRoute.StartFundraise"
-        class="shrink-0 md:w-auto w-full"
-      >
-        <lfx-button
-          icon="box-dollar"
-          label="Start a Fundraise"
-          type="primary"
-          button-style="pill"
-          class="w-full justify-center"
-        />
-      </NuxtLink>
+      <start-fundraise-button
+        label="Start a Fundraise"
+        type="primary"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import LfxButton from '~/components/uikit/button/button.vue';
-import { AppRoute } from '~/config/routes';
+import StartFundraiseButton from '~/components/shared/components/start-fundraise-button.vue';
 </script>
 
 <script lang="ts">

@@ -46,14 +46,11 @@ SPDX-License-Identifier: MIT
       v-else
       class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
     >
-      <NuxtLink
+      <initiative-card
         v-for="initiative in initiatives"
         :key="initiative.id"
-        :to="`/initiatives/${initiative.slug}`"
-        class="block"
-      >
-        <initiative-card :initiative="initiative" />
-      </NuxtLink>
+        :initiative="initiative"
+      />
     </div>
   </section>
 </template>

@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <lfx-button
-    label="Start Fundraise"
+    :label="label"
     icon="box-dollar"
     button-style="pill"
     :type="type"
@@ -20,8 +20,9 @@ import { useFundraiseDrawerStore } from '~/components/modules/fundraise/store/fu
 withDefaults(
   defineProps<{
     type?: 'primary' | 'secondary' | 'tertiary' | 'transparent' | 'ghost' | 'outline' | 'nav';
+    label?: string;
   }>(),
-  { type: 'transparent' },
+  { type: 'transparent', label: 'Start Fundraise' },
 );
 
 const { openFundraiseDrawer } = useFundraiseDrawerStore();
