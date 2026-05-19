@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 	stripe "github.com/stripe/stripe-go/v82"
 )
@@ -148,7 +149,7 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 	if pi.LatestCharge != nil {
 		chargeID = pi.LatestCharge.ID
 	}
-	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, "succeeded", chargeID); err != nil {
+	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusSucceeded, chargeID); err != nil {
 		h.logger.Error("payment_intent.succeeded: DB update failed", "pi_id", pi.ID, "error", err)
 		return fmt.Errorf("payment_intent.succeeded: db update: %w", err)
 	}
@@ -166,7 +167,7 @@ func (h *WebhookHandler) handlePaymentIntentFailed(r *http.Request, event stripe
 		h.logger.Error("payment_intent.payment_failed: unmarshal failed", "event_id", event.ID, "error", err)
 		return fmt.Errorf("payment_intent.payment_failed: unmarshal: %w", err)
 	}
-	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, "failed", ""); err != nil {
+	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusFailed, ""); err != nil {
 		h.logger.Error("payment_intent.payment_failed: DB update failed", "pi_id", pi.ID, "error", err)
 		return fmt.Errorf("payment_intent.payment_failed: db update: %w", err)
 	}
@@ -188,7 +189,7 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 		return nil // not subscription-related; nothing to do
 	}
 	subID := inv.Parent.SubscriptionDetails.Subscription.ID
-	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, "active"); err != nil {
+	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, models.SubscriptionStatusActive); err != nil {
 		h.logger.Error("invoice.payment_succeeded: DB update failed",
 			"sub_id", subID, "error", err)
 		return fmt.Errorf("invoice.payment_succeeded: db update: %w", err)
@@ -220,7 +221,7 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(r *http.Request, event strip
 		return nil
 	}
 	subID := inv.Parent.SubscriptionDetails.Subscription.ID
-	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, "past_due"); err != nil {
+	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, models.SubscriptionStatusPastDue); err != nil {
 		h.logger.Error("invoice.payment_failed: DB update failed",
 			"sub_id", subID, "error", err)
 		return fmt.Errorf("invoice.payment_failed: db update: %w", err)
@@ -240,7 +241,7 @@ func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe
 		h.logger.Error("customer.subscription.deleted: unmarshal failed", "event_id", event.ID, "error", err)
 		return fmt.Errorf("customer.subscription.deleted: unmarshal: %w", err)
 	}
-	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), sub.ID, "canceled"); err != nil {
+	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), sub.ID, models.SubscriptionStatusCanceled); err != nil {
 		h.logger.Error("customer.subscription.deleted: DB update failed", "sub_id", sub.ID, "error", err)
 		return fmt.Errorf("customer.subscription.deleted: db update: %w", err)
 	}

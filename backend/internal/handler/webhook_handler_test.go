@@ -200,8 +200,8 @@ func TestWebhookHandler_PaymentIntentSucceeded(t *testing.T) {
 	if gotPIID != "pi_test_001" {
 		t.Errorf("piID = %q, want pi_test_001", gotPIID)
 	}
-	if gotStatus != "succeeded" {
-		t.Errorf("status = %q, want succeeded", gotStatus)
+	if gotStatus != models.DonationStatusSucceeded {
+		t.Errorf("status = %q, want %q", gotStatus, models.DonationStatusSucceeded)
 	}
 	if gotChargeID != "ch_test_001" {
 		t.Errorf("chargeID = %q, want ch_test_001", gotChargeID)
@@ -233,8 +233,8 @@ func TestWebhookHandler_PaymentIntentFailed(t *testing.T) {
 	if gotPIID != "pi_fail_001" {
 		t.Errorf("piID = %q, want pi_fail_001", gotPIID)
 	}
-	if gotStatus != "failed" {
-		t.Errorf("status = %q, want failed", gotStatus)
+	if gotStatus != models.DonationStatusFailed {
+		t.Errorf("status = %q, want %q", gotStatus, models.DonationStatusFailed)
 	}
 }
 
@@ -265,8 +265,8 @@ func TestWebhookHandler_InvoicePaymentSucceeded_ActivatesSubscription(t *testing
 	if gotSubID != "sub_test_001" {
 		t.Errorf("subID = %q, want sub_test_001", gotSubID)
 	}
-	if gotStatus != "active" {
-		t.Errorf("status = %q, want active", gotStatus)
+	if gotStatus != models.SubscriptionStatusActive {
+		t.Errorf("status = %q, want %q", gotStatus, models.SubscriptionStatusActive)
 	}
 }
 
@@ -320,8 +320,33 @@ func TestWebhookHandler_InvoicePaymentFailed_MarksPastDue(t *testing.T) {
 	if gotSubID != "sub_pastdue_001" {
 		t.Errorf("subID = %q, want sub_pastdue_001", gotSubID)
 	}
-	if gotStatus != "past_due" {
-		t.Errorf("status = %q, want past_due", gotStatus)
+	if gotStatus != models.SubscriptionStatusPastDue {
+		t.Errorf("status = %q, want %q", gotStatus, models.SubscriptionStatusPastDue)
+	}
+}
+
+func TestWebhookHandler_InvoicePaymentFailed_FirstInvoice_SkipsDBUpdate(t *testing.T) {
+	dbCalled := false
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, _, _ string) error {
+			dbCalled = true
+			return nil
+		},
+	}
+	// billing_reason=subscription_create signals a first-invoice failure.
+	// The subscription is already "incomplete" — no DB update should be made.
+	invoiceJSON := `{"billing_reason":"subscription_create","parent":{"subscription_details":{"subscription":{"id":"sub_firstfail"}}}}`
+	event := buildEvent("invoice.payment_failed", invoiceJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if dbCalled {
+		t.Error("UpdateByStripeSubscriptionID must not be called for first-invoice failures")
 	}
 }
 
@@ -350,8 +375,8 @@ func TestWebhookHandler_SubscriptionDeleted_MarksCanceled(t *testing.T) {
 	if gotSubID != "sub_deleted_001" {
 		t.Errorf("subID = %q, want sub_deleted_001", gotSubID)
 	}
-	if gotStatus != "canceled" {
-		t.Errorf("status = %q, want canceled", gotStatus)
+	if gotStatus != models.SubscriptionStatusCanceled {
+		t.Errorf("status = %q, want %q", gotStatus, models.SubscriptionStatusCanceled)
 	}
 }
 
@@ -390,7 +415,7 @@ func TestWebhookHandler_PaymentIntentSucceeded_DBError_Returns500(t *testing.T) 
 	}
 }
 
-// --- not-found: no local row for Stripe ID → non-200 so Stripe retries ---
+// --- not-found: no local row for Stripe ID → 200 (permanent, no retry) ---
 
 func TestWebhookHandler_PaymentIntentSucceeded_DonationNotFound_Returns200(t *testing.T) {
 	dr := &wbDonationRepo{
