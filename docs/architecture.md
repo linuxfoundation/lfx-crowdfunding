@@ -152,7 +152,7 @@ backend/
 | `POST` | `/v1/initiatives/{id}/donations` | Create one-time donation |
 | `POST` | `/v1/initiatives/{id}/subscriptions` | Create recurring subscription |
 | `DELETE` | `/v1/subscriptions/{id}` | Cancel subscription |
-| `POST` | `/v1/hooks/stripe` | Stripe webhook receiver |
+| `POST` | `/v1/stripe/webhook` | Stripe webhook receiver |
 
 **Mentorship compatibility endpoints** (called directly by the Mentorship service):
 
