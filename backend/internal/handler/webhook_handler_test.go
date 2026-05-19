@@ -306,7 +306,7 @@ func TestWebhookHandler_InvoicePaymentFailed_MarksPastDue(t *testing.T) {
 			return nil
 		},
 	}
-	invoiceJSON := `{"parent":{"subscription_details":{"subscription":{"id":"sub_pastdue_001"}}}}`
+	invoiceJSON := `{"billing_reason":"subscription_cycle","parent":{"subscription_details":{"subscription":{"id":"sub_pastdue_001"}}}}`
 	event := buildEvent("invoice.payment_failed", invoiceJSON)
 	sc := &wbStripeClient{
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },

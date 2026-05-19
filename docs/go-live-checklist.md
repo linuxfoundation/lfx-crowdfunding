@@ -55,7 +55,20 @@ used by mistake, all signature validations will fail and every webhook will be r
 
 ---
 
-### 3. Set `STRIPE_RETURN_URL` in all deployed environments
+### 3. Configure Stripe Dashboard to cancel subscriptions after failed retries (not `unpaid`)
+
+**Why:** CF's webhook handler maps `customer.subscription.deleted` → `canceled` in the DB.
+If the Dashboard is configured to transition exhausted subscriptions to `unpaid` instead of
+`canceled`, Stripe never fires `customer.subscription.deleted`, and the DB row stays `past_due`
+forever. The `unpaid` status is not tracked by CF.
+
+**What to do:**
+- In the Stripe Dashboard, go to **Settings → Billing → Subscriptions and emails**.
+- Under "If a payment fails", confirm "Cancel the subscription" is selected (not "Mark as unpaid").
+
+---
+
+### 5. Set `STRIPE_RETURN_URL` in all deployed environments
 
 **Location:** `backend/cmd/initiatives-api/config.go` — `LoadConfig()`
 
@@ -72,7 +85,7 @@ will leave the payment hanging in `requires_action` permanently.
 
 ---
 
-### 4. Integration-test the 3DS subscription flow with Stripe test card `4000 0025 0000 3155`
+### 6. Integration-test the 3DS subscription flow with Stripe test card `4000 0025 0000 3155`
 
 **Location:** `backend/internal/infrastructure/clients/stripe_client.go` — `CreateSubscription()`
 
@@ -93,7 +106,7 @@ require 3DS authentication, which never happens in normal local testing.
 
 ## Data Migration
 
-### 5. Confirm `ledger-stats-sync` CronJob is running before go-live
+### 7. Confirm `ledger-stats-sync` CronJob is running before go-live
 
 **Why:** The `amount_raised_in_cents` column on `crowdfunding.initiatives` starts as NULL.
 The API returns 0 in that case, but list sorting and statistics will be incorrect until
@@ -107,7 +120,7 @@ the first CronJob run completes and populates the column.
 
 ## Auth / Security
 
-### 6. Remove or disable `DISABLED_MOCK_LOCAL_PRINCIPAL` in all non-local environments
+### 8. Remove or disable `DISABLED_MOCK_LOCAL_PRINCIPAL` in all non-local environments
 
 **Location:** `backend/cmd/initiatives-api/config.go` — `LoadConfig()`
 
