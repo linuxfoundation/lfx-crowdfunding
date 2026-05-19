@@ -16,7 +16,7 @@ graph TB
     end
 
     subgraph K8s["Kubernetes (LFX v2 cluster)"]
-        FE["Nuxt 3 Frontend"]
+        FE["Nuxt 4 Frontend"]
         API["Go HTTP API"]
         LSS["ledger-stats-sync CronJob"]
         DB[("PostgreSQL")]
@@ -55,13 +55,13 @@ graph TB
 
 ## Components
 
-### Frontend — Nuxt 3
+### Frontend — Nuxt 4
 
 Server-side rendered Vue 3 application. Acts as a BFF: handles authentication, session cookies, and Stripe.js. All data fetched from the Go API.
 
 | Concern | Choice |
 |---|---|
-| Framework | Nuxt 3 + Vue 3 |
+| Framework | Nuxt 4 + Vue 3 |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS + PrimeVue v4 |
 | State | Pinia (app state) + Vue Query (server state) |
@@ -149,8 +149,8 @@ backend/
 | `PUT` | `/v1/initiatives/{id}` | Update initiative |
 | `DELETE` | `/v1/initiatives/{id}` | Delete initiative |
 | `GET` | `/v1/initiatives/{id}/transactions` | Donations and expenses |
-| `POST` | `/v1/initiatives/{id}/payment-intent` | Create Stripe payment intent |
-| `POST` | `/v1/initiatives/{id}/subscription` | Create Stripe subscription |
+| `POST` | `/v1/initiatives/{id}/donations` | Create one-time donation |
+| `POST` | `/v1/initiatives/{id}/subscriptions` | Create recurring subscription |
 | `DELETE` | `/v1/subscriptions/{id}` | Cancel subscription |
 | `POST` | `/v1/hooks/stripe` | Stripe webhook receiver |
 
@@ -424,7 +424,7 @@ sequenceDiagram
 | Stripe | CF → Stripe | Charges, subscriptions, Stripe Connect |
 | Stripe webhook | Stripe → CF | `customer.subscription.deleted` → cancel in DB |
 | Ledger Service | CF → Ledger (read-only) | Balance, per-goal subtotals, transaction history |
-| Ledger Service | Ledger → CF | Donation callbacks (`GET /v1/projects/{id}`) |
+
 | Reimbursement Service | Bidirectional | Expense policy, beneficiary lifecycle |
 | Mentorship Service | Bidirectional | Program sync via SNS/SQS + direct HTTP calls |
 | Mandrill | CF → Mandrill | Transactional email |
@@ -438,7 +438,7 @@ All application components run in Kubernetes, deployed via ArgoCD from [`linuxfo
 
 | Component | K8s resource |
 |---|---|
-| Nuxt 3 frontend | `Deployment` + `Service` + `Ingress` |
+| Nuxt 4 frontend | `Deployment` + `Service` + `Ingress` |
 | Go HTTP API | `Deployment` + `Service` + `Ingress` |
 | `ledger-stats-sync` | `CronJob` |
 | PostgreSQL | Managed RDS (shared LFX v2 instance) |
