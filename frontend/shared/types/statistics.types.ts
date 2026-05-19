@@ -27,17 +27,15 @@ export interface DonorBreakdown {
   individualsCents: number;
 }
 
-export interface MonthlyDonationsDaily {
-  date: string;
-  cents: number;
+export interface MonthlyBucket {
+  year: number;
+  month: number; // 1–12
+  totalCents: number;
+  supporters: number;
 }
 
 export interface MonthlyDonations {
-  totalCents: number;
-  percentChange: number;
-  newSupporters: number;
-  periodLabel: string;
-  daily: MonthlyDonationsDaily[];
+  buckets: MonthlyBucket[];
 }
 
 export interface TopDonor {

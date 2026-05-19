@@ -59,6 +59,16 @@ type LedgerClient interface {
 	// GetTransactions returns a paginated list of transactions for an initiative
 	// from the Ledger service's Elasticsearch-backed paginate endpoint.
 	GetTransactions(ctx context.Context, filter TransactionFilter) (*models.TransactionList, error)
+
+	// GetPlatformBalance returns platform-wide aggregate data including category
+	// totals, donor split, and top sponsors from the Ledger service.
+	GetPlatformBalance(ctx context.Context) (*LedgerPlatformBalance, error)
+
+	// GetPlatformMonthly returns monthly donation buckets for the last N months.
+	GetPlatformMonthly(ctx context.Context, months int) (*LedgerPlatformMonthly, error)
+
+	// GetPlatformRecentDonations returns the most recent platform-wide credit transactions.
+	GetPlatformRecentDonations(ctx context.Context) ([]LedgerRecentDonation, error)
 }
 
 // LedgerConfig holds Ledger service connection settings.
@@ -243,6 +253,204 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 		Page:       page,
 		Size:       size,
 	}, nil
+}
+
+// LedgerPlatformBalance holds the platform-wide aggregate returned by GET /balance/platform.
+type LedgerPlatformBalance struct {
+	TotalCredit        int64
+	TotalDebit         int64
+	TotalSupporters    int64
+	OrganizationsCents int64
+	IndividualsCents   int64
+	Categories         []LedgerCategoryTotal
+	TopOrganizations   []LedgerSponsorRaw
+	TopIndividuals     []LedgerSponsorRaw
+}
+
+// LedgerCategoryTotal is one category entry from the platform balance response.
+type LedgerCategoryTotal struct {
+	Name       string
+	TotalCents int64
+	Count      int
+}
+
+// LedgerSponsorRaw is a top-sponsor entry from the platform balance response.
+type LedgerSponsorRaw struct {
+	ID    string
+	Total int64
+}
+
+// LedgerPlatformMonthly holds monthly donation buckets from GET /balance/platform/monthly.
+type LedgerPlatformMonthly struct {
+	Buckets []LedgerMonthlyBucket
+}
+
+// LedgerMonthlyBucket is one calendar-month entry from the platform monthly response.
+type LedgerMonthlyBucket struct {
+	Year       int
+	Month      int
+	TotalCents int64
+	Supporters int64
+}
+
+// LedgerRecentDonation is one entry from GET /transactions/platform/recent.
+type LedgerRecentDonation struct {
+	TxnID          string
+	ProjectID      string
+	UserID         string
+	OrganizationID string
+	SubmitterName  string
+	Amount         int64
+	TxnDate        int64
+	TxnCategory    string
+	SourceType     string
+}
+
+// raw JSON types for platform balance response
+type ledgerPlatformBalanceResponse struct {
+	TotalCredit        int64 `json:"totalCredit"`
+	TotalDebit         int64 `json:"totalDebit"`
+	TotalSupporters    int64 `json:"totalSupporters"`
+	OrganizationsCents int64 `json:"organizationsCents"`
+	IndividualsCents   int64 `json:"individualsCents"`
+	Categories         []struct {
+		Name       string `json:"name"`
+		TotalCents int64  `json:"totalCents"`
+		Count      int    `json:"count"`
+	} `json:"categories"`
+	TopOrganizations []struct {
+		ID    string `json:"id"`
+		Total int64  `json:"total"`
+	} `json:"topOrganizations"`
+	TopIndividuals []struct {
+		ID    string `json:"id"`
+		Total int64  `json:"total"`
+	} `json:"topIndividuals"`
+}
+
+// raw JSON types for platform monthly response
+type ledgerPlatformMonthlyResponse struct {
+	Buckets []struct {
+		Year       int   `json:"year"`
+		Month      int   `json:"month"`
+		TotalCents int64 `json:"totalCents"`
+		Supporters int64 `json:"supporters"`
+	} `json:"buckets"`
+}
+
+// raw JSON types for platform recent transactions response
+type ledgerPlatformRecentResponse struct {
+	Data []struct {
+		TxnID          string `json:"txnID"`
+		ProjectID      string `json:"projectID"`
+		UserID         string `json:"userID"`
+		OrganizationID string `json:"organizationID"`
+		SubmitterName  string `json:"submitterName"`
+		Amount         int64  `json:"amount"`
+		TxnDate        int64  `json:"txnDate"`
+		TxnCategory    string `json:"txnCategory"`
+		SourceType     string `json:"sourceType"`
+	} `json:"data"`
+}
+
+// GetPlatformBalance fetches platform-wide aggregate data from the Ledger service.
+func (c *ledgerHTTPClient) GetPlatformBalance(ctx context.Context) (*LedgerPlatformBalance, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetPlatformBalance")
+	defer span.End()
+
+	endpoint := fmt.Sprintf("%s/balance/platform", c.baseURL)
+	headers := map[string]string{"Authorization": c.apiKey}
+
+	var resp ledgerPlatformBalanceResponse
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger GET /balance/platform returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger platform balance: %w", err)
+	}
+
+	out := &LedgerPlatformBalance{
+		TotalCredit:        resp.TotalCredit,
+		TotalDebit:         resp.TotalDebit,
+		TotalSupporters:    resp.TotalSupporters,
+		OrganizationsCents: resp.OrganizationsCents,
+		IndividualsCents:   resp.IndividualsCents,
+	}
+	for _, c := range resp.Categories {
+		out.Categories = append(out.Categories, LedgerCategoryTotal{Name: c.Name, TotalCents: c.TotalCents, Count: c.Count})
+	}
+	for _, o := range resp.TopOrganizations {
+		out.TopOrganizations = append(out.TopOrganizations, LedgerSponsorRaw{ID: o.ID, Total: o.Total})
+	}
+	for _, i := range resp.TopIndividuals {
+		out.TopIndividuals = append(out.TopIndividuals, LedgerSponsorRaw{ID: i.ID, Total: i.Total})
+	}
+	return out, nil
+}
+
+// GetPlatformMonthly fetches monthly donation buckets for the last N months.
+func (c *ledgerHTTPClient) GetPlatformMonthly(ctx context.Context, months int) (*LedgerPlatformMonthly, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetPlatformMonthly")
+	defer span.End()
+	span.SetAttributes(attribute.Int("ledger.months", months))
+
+	endpoint := fmt.Sprintf("%s/balance/platform/monthly?months=%d", c.baseURL, months)
+	headers := map[string]string{"Authorization": c.apiKey}
+
+	var resp ledgerPlatformMonthlyResponse
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger GET /balance/platform/monthly returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger platform monthly: %w", err)
+	}
+
+	out := &LedgerPlatformMonthly{}
+	for _, b := range resp.Buckets {
+		out.Buckets = append(out.Buckets, LedgerMonthlyBucket{
+			Year:       b.Year,
+			Month:      b.Month,
+			TotalCents: b.TotalCents,
+			Supporters: b.Supporters,
+		})
+	}
+	return out, nil
+}
+
+// GetPlatformRecentDonations fetches the most recent platform-wide credit transactions.
+func (c *ledgerHTTPClient) GetPlatformRecentDonations(ctx context.Context) ([]LedgerRecentDonation, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetPlatformRecentDonations")
+	defer span.End()
+
+	endpoint := fmt.Sprintf("%s/transactions/platform/recent", c.baseURL)
+	headers := map[string]string{"Authorization": c.apiKey}
+
+	var resp ledgerPlatformRecentResponse
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger GET /transactions/platform/recent returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger platform recent donations: %w", err)
+	}
+
+	out := make([]LedgerRecentDonation, 0, len(resp.Data))
+	for _, d := range resp.Data {
+		out = append(out, LedgerRecentDonation{
+			TxnID:          d.TxnID,
+			ProjectID:      d.ProjectID,
+			UserID:         d.UserID,
+			OrganizationID: d.OrganizationID,
+			SubmitterName:  d.SubmitterName,
+			Amount:         d.Amount,
+			TxnDate:        d.TxnDate,
+			TxnCategory:    d.TxnCategory,
+			SourceType:     d.SourceType,
+		})
+	}
+	return out, nil
 }
 
 // GetAllBalances fetches the full bulk balance snapshot from the Ledger service.

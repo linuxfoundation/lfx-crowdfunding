@@ -1,12 +1,21 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import type { FundingByCategoryResponse } from '#shared/types/statistics.types';
-import { MOCK_FUNDING_BY_CATEGORY } from '#server/mock-data/statistics';
+import type { BackendPlatformDetails } from '../../types/statistics.types';
+import type { FundingByCategoryResponse, FundingCategory } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<FundingByCategoryResponse> => {
-  // TODO: replace with a proxy call to the Go backend API once wired up.
-  // In our architecture Nuxt's server layer owns auth only — business data comes
-  // from the Go microservice. This handler returns fixture data for scaffolding.
-  return { data: MOCK_FUNDING_BY_CATEGORY };
+  const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
+  const res = await $fetch<BackendPlatformDetails>(`${apiBase}/v1/statistics/platform`);
+
+  const data: FundingCategory[] = res.categories.map((cat) => ({
+    id: cat.name,
+    name: cat.name,
+    icon: '',
+    raisedCents: cat.total_cents,
+    goalCents: 0,
+    supporterCount: cat.count,
+  }));
+
+  return { data };
 });

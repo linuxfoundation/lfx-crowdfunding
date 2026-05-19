@@ -29,3 +29,33 @@ func (h *StatisticsHandler) GetPlatform(w http.ResponseWriter, r *http.Request) 
 	}
 	JSON(w, http.StatusOK, stats)
 }
+
+// GetPlatformDetails handles GET /v1/statistics/platform
+func (h *StatisticsHandler) GetPlatformDetails(w http.ResponseWriter, r *http.Request) {
+	details, err := h.svc.GetPlatformDetails(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, details)
+}
+
+// GetPlatformMonthly handles GET /v1/statistics/monthly
+func (h *StatisticsHandler) GetPlatformMonthly(w http.ResponseWriter, r *http.Request) {
+	monthly, err := h.svc.GetPlatformMonthly(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, monthly)
+}
+
+// GetRecentDonations handles GET /v1/statistics/recent-donations
+func (h *StatisticsHandler) GetRecentDonations(w http.ResponseWriter, r *http.Request) {
+	donations, err := h.svc.GetRecentDonations(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, donations)
+}

@@ -51,36 +51,26 @@ SPDX-License-Identifier: MIT
       v-else-if="monthly"
       class="flex items-start justify-between md:gap-4 gap-8 md:flex-row flex-col"
     >
-      <!-- Left: raised amount + label + change indicator -->
+      <!-- Left: raised amount for most recent month -->
       <div class="flex-1 w-full flex flex-col min-w-0">
         <p class="text-4xl font-normal leading-[56px] text-neutral-900 whitespace-nowrap">
           {{ totalFormatted }}
         </p>
         <div class="flex flex-col gap-2">
-          <p class="text-sm text-neutral-600">Raised in {{ monthly.periodLabel }}</p>
-          <div class="flex items-center gap-1">
-            <lfx-icon
-              name="circle-arrow-up"
-              type="solid"
-              :size="12"
-              class="text-positive-600"
-            />
-            <span class="text-[10px] leading-[14px] font-medium text-positive-600">+{{ monthly.percentChange }}%</span>
-            <span class="text-[10px] leading-[14px] text-neutral-600">vs. last month</span>
-          </div>
+          <p class="text-sm text-neutral-600">Raised in {{ latestPeriodLabel }}</p>
         </div>
       </div>
 
-      <!-- Middle: new supporters -->
+      <!-- Middle: supporters for most recent month -->
       <div class="flex-1 w-full flex flex-col min-w-0">
         <p class="text-4xl font-normal leading-[56px] text-neutral-900">
-          {{ monthly.newSupporters }}
+          {{ latestSupporters }}
         </p>
         <p class="text-sm text-neutral-600">New supporters</p>
       </div>
 
-      <!-- Right: mini bar chart -->
-      <statistics-monthly-bar-chart :daily="monthly.daily" />
+      <!-- Right: bar chart (all 12 buckets) -->
+      <statistics-monthly-bar-chart :buckets="monthly.buckets" />
     </div>
   </lfx-card>
 </template>
@@ -89,10 +79,11 @@ SPDX-License-Identifier: MIT
 import { computed } from 'vue';
 import StatisticsMonthlyBarChart from './statistics-monthly-bar-chart.vue';
 import LfxCard from '~/components/uikit/card/card.vue';
-import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import { formatNumberCurrency } from '~/utils/formatter';
 import type { MonthlyDonations } from '#shared/types/statistics.types';
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const props = defineProps<{
   monthly: MonthlyDonations | undefined;
@@ -100,9 +91,21 @@ const props = defineProps<{
   error: Error | null;
 }>();
 
+const latestBucket = computed(() => {
+  const buckets = props.monthly?.buckets;
+  return buckets && buckets.length > 0 ? buckets[buckets.length - 1] : undefined;
+});
+
 const totalFormatted = computed(() =>
-  props.monthly ? formatNumberCurrency(props.monthly.totalCents / 100, 'USD') : '',
+  latestBucket.value ? formatNumberCurrency(latestBucket.value.totalCents / 100, 'USD') : '',
 );
+
+const latestPeriodLabel = computed(() => {
+  const b = latestBucket.value;
+  return b ? `${MONTH_ABBR[b.month - 1]} ${b.year}` : '';
+});
+
+const latestSupporters = computed(() => latestBucket.value?.supporters ?? 0);
 </script>
 
 <script lang="ts">
