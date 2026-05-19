@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -113,13 +114,24 @@ func (r *SubscriptionRepository) listSubs(ctx context.Context, col, val string, 
 		offset = 0
 	}
 
+	// Build WHERE clause. col is always a hardcoded internal value (never user input).
+	args := []any{val}
+	clauses := []string{fmt.Sprintf("%s = $1", col)}
+	if filter.Status != "" {
+		args = append(args, filter.Status)
+		clauses = append(clauses, fmt.Sprintf("status = $%d", len(args)))
+	}
+	where := strings.Join(clauses, " AND ")
+
 	var total int
-	if err := r.pool.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM subscriptions WHERE %s = $1", col), val).Scan(&total); err != nil {
+	if err := r.pool.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM subscriptions WHERE %s", where), args...).Scan(&total); err != nil {
 		return nil, nil, fmt.Errorf("count subscriptions: %w", err)
 	}
 
-	q := fmt.Sprintf("SELECT %s FROM subscriptions WHERE %s = $1 ORDER BY created_on DESC LIMIT $2 OFFSET $3", subscriptionColumns, col)
-	rows, err := r.pool.Query(ctx, q, val, limit, offset)
+	dataArgs := append(args, limit, offset) //nolint:gocritic // intentional re-slice
+	q := fmt.Sprintf("SELECT %s FROM subscriptions WHERE %s ORDER BY created_on DESC LIMIT $%d OFFSET $%d",
+		subscriptionColumns, where, len(args)+1, len(args)+2)
+	rows, err := r.pool.Query(ctx, q, dataArgs...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list subscriptions: %w", err)
 	}
