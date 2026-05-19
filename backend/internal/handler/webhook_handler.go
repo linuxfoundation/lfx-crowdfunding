@@ -197,7 +197,9 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	return nil
 }
 
-// handleInvoicePaymentFailed marks a subscription past_due when renewal fails.
+// handleInvoicePaymentFailed marks a subscription past_due when a renewal invoice fails.
+// First-invoice failures (billing_reason=subscription_create) are skipped — the subscription
+// is already "incomplete" in both Stripe and CF's DB; no update is needed.
 func (h *WebhookHandler) handleInvoicePaymentFailed(r *http.Request, event stripe.Event) error {
 	if event.Data == nil {
 		return fmt.Errorf("invoice.payment_failed: event.Data is nil (event_id=%s)", event.ID)
@@ -210,6 +212,13 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(r *http.Request, event strip
 	if inv.Parent == nil || inv.Parent.SubscriptionDetails == nil || inv.Parent.SubscriptionDetails.Subscription == nil {
 		return nil
 	}
+	// First-invoice failure: Stripe keeps the subscription "incomplete"; CF already
+	// stores it as "incomplete". No status change required.
+	if inv.BillingReason == stripe.InvoiceBillingReasonSubscriptionCreate {
+		h.logger.Info("invoice.payment_failed: first-invoice failure, subscription remains incomplete",
+			"sub_id", inv.Parent.SubscriptionDetails.Subscription.ID)
+		return nil
+	}
 	subID := inv.Parent.SubscriptionDetails.Subscription.ID
 	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, "past_due"); err != nil {
 		h.logger.Error("invoice.payment_failed: DB update failed",
@@ -220,7 +229,7 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(r *http.Request, event strip
 	return nil
 }
 
-// handleSubscriptionDeleted marks a subscription cancelled when Stripe deletes it
+// handleSubscriptionDeleted marks a subscription canceled when Stripe deletes it
 // (e.g. after too many failed invoices or an explicit cancellation via the Dashboard).
 func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe.Event) error {
 	if event.Data == nil {
@@ -235,6 +244,6 @@ func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe
 		h.logger.Error("customer.subscription.deleted: DB update failed", "sub_id", sub.ID, "error", err)
 		return fmt.Errorf("customer.subscription.deleted: db update: %w", err)
 	}
-	h.logger.Info("customer.subscription.deleted: subscription cancelled", "sub_id", sub.ID)
+	h.logger.Info("customer.subscription.deleted: subscription canceled", "sub_id", sub.ID)
 	return nil
 }

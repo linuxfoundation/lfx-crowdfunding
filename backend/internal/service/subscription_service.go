@@ -191,7 +191,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	return created, nil
 }
 
-// Cancel cancels a Stripe subscription and marks it cancelled in the database.
+// Cancel cancels a Stripe subscription and marks it canceled in the database.
 func (s *SubscriptionService) Cancel(ctx context.Context, id, callerID string) error {
 	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.Cancel")
 	defer span.End()

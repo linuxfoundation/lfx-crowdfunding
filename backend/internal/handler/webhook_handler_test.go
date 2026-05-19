@@ -392,7 +392,7 @@ func TestWebhookHandler_PaymentIntentSucceeded_DBError_Returns500(t *testing.T) 
 
 // --- not-found: no local row for Stripe ID → non-200 so Stripe retries ---
 
-func TestWebhookHandler_PaymentIntentSucceeded_DonationNotFound_Returns500(t *testing.T) {
+func TestWebhookHandler_PaymentIntentSucceeded_DonationNotFound_Returns200(t *testing.T) {
 	dr := &wbDonationRepo{
 		onUpdateByPaymentIntentID: func(_ context.Context, _, _, _ string) error {
 			return domain.ErrDonationNotFound
@@ -404,13 +404,14 @@ func TestWebhookHandler_PaymentIntentSucceeded_DonationNotFound_Returns500(t *te
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
 	}
 
+	// Not-found is permanent — acknowledge so Stripe does not retry indefinitely.
 	rr := postWebhook(t, newTestWebhookHandler(sc, dr, &wbSubscriptionRepo{}), "t=1,v1=sig", `{}`)
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want 500 when donation row not found (so Stripe retries)", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 for permanent not-found (no retry)", rr.Code)
 	}
 }
 
-func TestWebhookHandler_InvoicePaymentSucceeded_SubscriptionNotFound_Returns500(t *testing.T) {
+func TestWebhookHandler_InvoicePaymentSucceeded_SubscriptionNotFound_Returns200(t *testing.T) {
 	sr := &wbSubscriptionRepo{
 		onUpdateByStripeSubscriptionID: func(_ context.Context, _, _ string) error {
 			return domain.ErrSubscriptionNotFound
@@ -422,8 +423,9 @@ func TestWebhookHandler_InvoicePaymentSucceeded_SubscriptionNotFound_Returns500(
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
 	}
 
+	// Not-found is permanent — acknowledge so Stripe does not retry indefinitely.
 	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want 500 when subscription row not found (so Stripe retries)", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 for permanent not-found (no retry)", rr.Code)
 	}
 }
