@@ -44,11 +44,10 @@ export interface InitiativesParams {
   search?: string;
   type?: string;
   sort?: string;
-  page?: string;
-  pageSize?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-export interface InitiativesResponse {
-  data: InitiativeBase[];
-  total: number;
-}
+export type { Pagination } from './pagination';
+import type { Pagination } from './pagination';
+export type InitiativesResponse = Pagination<InitiativeBase>;

@@ -20,5 +20,11 @@ export default defineEventHandler(async (event): Promise<InitiativesResponse> =>
   params.set('offset', String((pageNum - 1) * pageSizeNum));
 
   const res = await $fetch<BackendResponse>(`${apiBase}/v1/initiatives?${params}`);
-  return { data: (res.data ?? []).map(mapToInitiativeBase), total: res.meta.total };
+
+  return {
+    data: (res.data ?? []).map(mapToInitiativeBase),
+    total: res.meta.total,
+    page: pageNum,
+    pageSize: pageSizeNum,
+  };
 });
