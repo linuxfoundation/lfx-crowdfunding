@@ -50,6 +50,20 @@ func (s *SubscriptionService) ListByInitiative(ctx context.Context, initiativeID
 	return subs, meta, nil
 }
 
+// ListByUser returns paginated subscriptions owned by the authenticated user.
+func (s *SubscriptionService) ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.ListByUser")
+	defer span.End()
+	span.SetAttributes(attribute.String("user.id", userID))
+
+	subs, meta, err := s.repo.ListByUser(ctx, userID, filter)
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("list subscriptions: %w", err)
+	}
+	return subs, meta, nil
+}
+
 // Create creates a Stripe subscription with 3DS support and records it in the database.
 // When the first invoice requires an authentication challenge, the returned Subscription
 // has Status == "incomplete" and ClientSecret set — the frontend must call

@@ -1,0 +1,10 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+{{/*
+Validation template — aborts helm install/upgrade when required values are missing.
+No Kubernetes resource is rendered; this file only produces errors.
+*/}}
+
+{{- if not .Values.config.STRIPE_RETURN_URL }}
+{{- fail (printf "\n\nvalues.yaml: config.STRIPE_RETURN_URL is required.\nSet it to the frontend URL Stripe redirects to after a 3DS challenge, e.g.:\n  config:\n    STRIPE_RETURN_URL: \"https://crowdfunding.linuxfoundation.org/payment/complete\"\nLeaving it empty causes 3DS redirect-based payment challenges to fail in production.") }}
+{{- end }}

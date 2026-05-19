@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/google/uuid"
+	"github.com/gosimple/slug"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -30,6 +32,7 @@ type InitiativeService struct {
 	repo   domain.InitiativeRepository
 	ledger clients.LedgerClient
 	stripe clients.StripeClient
+	logger *slog.Logger
 }
 
 // NewInitiativeService returns an InitiativeService.
@@ -37,8 +40,9 @@ func NewInitiativeService(
 	repo domain.InitiativeRepository,
 	ledger clients.LedgerClient,
 	stripe clients.StripeClient,
+	logger *slog.Logger,
 ) *InitiativeService {
-	return &InitiativeService{repo: repo, ledger: ledger, stripe: stripe}
+	return &InitiativeService{repo: repo, ledger: ledger, stripe: stripe, logger: logger}
 }
 
 // GetByID retrieves an initiative with goals, financials, and sponsors.
@@ -188,6 +192,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 	if input.Name == "" {
 		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}
+	if input.Slug == "" {
+		input.Slug = slug.Make(input.Name)
+	}
 	if input.InitiativeType == "" {
 		return nil, fmt.Errorf("%w: initiative_type is required", domain.ErrInvalidInput)
 	}
@@ -195,24 +202,45 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 		return nil, fmt.Errorf("%w: unknown initiative_type %q", domain.ErrInvalidInput, input.InitiativeType)
 	}
 
+	// Pre-generate the UUID so the same ID is embedded in both the Stripe
+	// Product metadata and the DB INSERT — no follow-up UPDATE needed.
+	initiativeID := uuid.New().String()
+	span.SetAttributes(attribute.String("initiative.id", initiativeID))
+
+	// Create the Stripe Product first. If Stripe is unavailable, the whole
+	// creation fails cleanly and no DB row is created.
+	productID, err := s.stripe.CreateProduct(ctx, initiativeID, input.Name)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("stripe product: %w", err)
+	}
+
 	initiative := &models.Initiative{
-		InitiativeType: input.InitiativeType,
-		OwnerID:        ownerID,
-		Name:           input.Name,
-		Slug:           input.Slug,
-		Description:    input.Description,
-		Industry:       input.Industry,
-		Color:          input.Color,
-		LogoURL:        input.LogoURL,
-		WebsiteURL:     input.WebsiteURL,
-		CocURL:         input.CocURL,
-		AcceptFunding:  input.AcceptFunding,
-		Status:         models.StatusSubmitted,
+		ID:              initiativeID,
+		InitiativeType:  input.InitiativeType,
+		OwnerID:         ownerID,
+		Name:            input.Name,
+		Slug:            input.Slug,
+		Description:     input.Description,
+		Industry:        input.Industry,
+		Color:           input.Color,
+		LogoURL:         input.LogoURL,
+		WebsiteURL:      input.WebsiteURL,
+		CocURL:          input.CocURL,
+		AcceptFunding:   input.AcceptFunding,
+		Status:          models.StatusSubmitted,
+		StripeProductID: productID,
 	}
 
 	created, err := s.repo.Create(ctx, initiative)
 	if err != nil {
 		span.RecordError(err)
+		// Compensating transaction: remove the Stripe Product so Stripe stays in sync.
+		// Use a detached context so the cleanup runs even if the request context is cancelled.
+		if delErr := s.stripe.DeleteProduct(context.WithoutCancel(ctx), productID); delErr != nil {
+			s.logger.Warn("failed to roll back Stripe product after DB insert failure",
+				"product_id", productID, "error", delErr)
+		}
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
 	return created, nil

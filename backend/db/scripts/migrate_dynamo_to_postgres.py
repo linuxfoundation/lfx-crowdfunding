@@ -129,6 +129,7 @@ def scan_table(client, table_name: str) -> list:
 # General helpers
 # ---------------------------------------------------------------------------
 
+
 def _uuid5(scope: str, *parts) -> str:
     key = "|".join(str(p) for p in parts)
     return str(uuid.uuid5(_UUID_NS, f"{scope}:{key}"))
@@ -185,7 +186,8 @@ def _normalize_status(status: str | None) -> str | None:
 def _redact_dsn(dsn: str) -> str:
     """Redact password from PostgreSQL DSN for safe logging."""
     import re
-    return re.sub(r'password=\S+', 'password=***', dsn)
+
+    return re.sub(r"password=\S+", "password=***", dsn)
 
 
 def _parse_ts(s: str | None):
@@ -202,9 +204,9 @@ def _parse_ts(s: str | None):
     from datetime import datetime, timezone
 
     # Strip Go monotonic clock suffix: ' UTC m=+...' or ' UTC m=-...'
-    cleaned = re.sub(r'\s+UTC\s+m=[+-][\d.]+$', '', s)
+    cleaned = re.sub(r"\s+UTC\s+m=[+-][\d.]+$", "", s)
     # Truncate sub-second precision to at most 6 digits (microseconds)
-    cleaned = re.sub(r'(\.\d{6})\d+', r'\1', cleaned)
+    cleaned = re.sub(r"(\.\d{6})\d+", r"\1", cleaned)
 
     for fmt in (
         "%Y-%m-%d %H:%M:%S.%f %z",
@@ -232,7 +234,13 @@ def _trunc(value: str | None, max_len: int, label: str = "") -> str | None:
     if value is None:
         return None
     if len(value) > max_len:
-        log.warning("Truncating %s value (%d chars → %d): %r…", label, len(value), max_len, value[:60])
+        log.warning(
+            "Truncating %s value (%d chars → %d): %r…",
+            label,
+            len(value),
+            max_len,
+            value[:60],
+        )
         return value[:max_len]
     return value
 
@@ -241,13 +249,18 @@ def _trunc(value: str | None, max_len: int, label: str = "") -> str | None:
 # Migration: user
 # ---------------------------------------------------------------------------
 
+
 def migrate_users(cur, users: list, placeholder_ids: set) -> set:
     """
     Upsert users from lff-prod-users.
     Insert placeholder rows for any user_id referenced elsewhere but absent here.
     Returns the complete set of known user_ids after migration.
     """
-    log.info("Migrating users (%d records + %d placeholders) …", len(users), len(placeholder_ids))
+    log.info(
+        "Migrating users (%d records + %d placeholders) …",
+        len(users),
+        len(placeholder_ids),
+    )
 
     sql = """
         INSERT INTO users (user_id, email, given_name, family_name, name, avatar_url)
@@ -267,7 +280,16 @@ def migrate_users(cur, users: list, placeholder_ids: set) -> set:
         if not uid:
             continue
         known.add(uid)
-        rows.append((uid, u.get("email"), u.get("givenName"), u.get("familyName"), u.get("name"), u.get("avatarUrl")))
+        rows.append(
+            (
+                uid,
+                u.get("email"),
+                u.get("givenName"),
+                u.get("familyName"),
+                u.get("name"),
+                u.get("avatarUrl"),
+            )
+        )
 
     for uid in placeholder_ids:
         if uid and uid not in known:
@@ -282,6 +304,7 @@ def migrate_users(cur, users: list, placeholder_ids: set) -> set:
 # ---------------------------------------------------------------------------
 # Migration: organization
 # ---------------------------------------------------------------------------
+
 
 def migrate_organizations(cur, orgs: list, known_users: set) -> set:
     """
@@ -307,12 +330,16 @@ def migrate_organizations(cur, orgs: list, known_users: set) -> set:
         owner_id = o.get("ownerId")
         if owner_id not in known_users:
             skipped += 1
-            log.debug("Skip org %s — owner %s not found", o.get("organizationId"), owner_id)
+            log.debug(
+                "Skip org %s — owner %s not found", o.get("organizationId"), owner_id
+            )
             continue
 
         pg_id = _as_uuid(o.get("organizationId")) or str(uuid.uuid4())
         known_org_ids.add(pg_id)
-        rows.append((pg_id, owner_id, o.get("name"), o.get("avatarUrl"), o.get("status")))
+        rows.append(
+            (pg_id, owner_id, o.get("name"), o.get("avatarUrl"), o.get("status"))
+        )
 
     psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
     if skipped:
@@ -325,13 +352,13 @@ def migrate_organizations(cur, orgs: list, known_users: set) -> set:
 # Project goal category ordering (matches convertProjectToDynamoRepresentation)
 # ---------------------------------------------------------------------------
 _PROJECT_GOAL_CATEGORIES = [
-    ("development",   "development",   0),
-    ("marketing",     "marketing",     1),
-    ("meetups",       "meetups",       2),
-    ("travel",        "travel",        3),
-    ("bugBounty",     "bugBounty",     4),
+    ("development", "development", 0),
+    ("marketing", "marketing", 1),
+    ("meetups", "meetups", 2),
+    ("travel", "travel", 3),
+    ("bugBounty", "bugBounty", 4),
     ("documentation", "documentation", 5),
-    ("other",         "other",         6),
+    ("other", "other", 6),
     # 'mentee' is handled separately (sort_order 7)
 ]
 
@@ -339,6 +366,7 @@ _PROJECT_GOAL_CATEGORIES = [
 # ---------------------------------------------------------------------------
 # Migration: initiatives  (merged from lff-prod-entities + lff-prod-projects)
 # ---------------------------------------------------------------------------
+
 
 def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -> set:
     """
@@ -355,25 +383,27 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
     """
     log.info(
         "Migrating initiatives (%d entities + %d projects = %d total) …",
-        len(entities), len(projects), len(entities) + len(projects),
+        len(entities),
+        len(projects),
+        len(entities) + len(projects),
     )
 
     # ── Row buffers (one list per target table) ───────────────────────────
-    initiative_rows:          list = []
-    goals_rows:               list = []
-    beneficiaries_rows:       list = []
-    custom_websites_rows:     list = []
-    contributors_rows:        list = []
-    mentors_rows:             list = []
-    program_info_terms_rows:     list = []
-    program_info_skills_rows:    list = []
-    program_info_config_rows:    list = []
+    initiative_rows: list = []
+    goals_rows: list = []
+    beneficiaries_rows: list = []
+    custom_websites_rows: list = []
+    contributors_rows: list = []
+    mentors_rows: list = []
+    program_info_terms_rows: list = []
+    program_info_skills_rows: list = []
+    program_info_config_rows: list = []
     program_info_custom_term_rows: list = []
-    sponsorship_tiers_rows:   list = []
-    ostif_detail_rows:        list = []
-    contacts_rows:            list = []
-    github_stats_rows:        list = []
-    entity_details_rows:      list = []
+    sponsorship_tiers_rows: list = []
+    ostif_detail_rows: list = []
+    contacts_rows: list = []
+    github_stats_rows: list = []
+    entity_details_rows: list = []
 
     known_initiative_ids: set = set()
     skipped = 0
@@ -383,7 +413,9 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
         owner_id = p.get("ownerId")
         if owner_id not in known_users:
             skipped += 1
-            log.debug("Skip project %s — owner %s not found", p.get("projectId"), owner_id)
+            log.debug(
+                "Skip project %s — owner %s not found", p.get("projectId"), owner_id
+            )
             continue
 
         raw_initiative_id = p.get("projectId") or ""
@@ -392,7 +424,9 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
             log.warning("Skip project with no projectId (name=%s)", p.get("name"))
             continue
 
-        pg_id = _as_uuid(raw_initiative_id) or _uuid5("project", owner_id, p.get("name", ""))
+        pg_id = _as_uuid(raw_initiative_id) or _uuid5(
+            "project", owner_id, p.get("name", "")
+        )
         known_initiative_ids.add(pg_id)
 
         # projectDetails nested map (ProjectDetails struct serialised via JSON tags)
@@ -404,155 +438,220 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
         coc_url = coc.get("link") if isinstance(coc, dict) else None
 
         # ── Core initiative row ──────────────────────────────────────────
-        initiative_rows.append((
-            pg_id,                                       # id
-            "project",                                   # initiative_type
-            "projects",                                  # source_dynamo_table
-            owner_id,                                    # owner_id
-            p.get("name"),                               # name
-            p.get("slug"),                               # slug
-            _normalize_status(p.get("status")),          # status
-            pd.get("industry"),                          # industry
-            pd.get("description"),                       # description
-            _trunc(pd.get("color"), 10, "color"),        # color
-            p.get("logoUrl"),                            # logo_url
-            pd.get("website"),                           # website_url
-            coc_url,                                     # coc_url
-            pd.get("ciiProjectID"),                      # cii_project_id
-            p.get("planId"),                             # stripe_plan_id
-            p.get("productId"),                          # stripe_product_id
-            p.get("jobspringProjectId") or None,         # jobspring_project_id
-            pd.get("stacksIdentifier") or None,          # stacks_identifier
-            None,                                        # eventbrite_url  (entity only)
-            None,                                        # application_url (entity only)
-            _as_int(p.get("amountRaised")),               # amount_raised_in_cents
-            False,                                       # accept_funding (entity only)
-            None,                                        # event_start_date (entity only)
-            None,                                        # event_end_date   (entity only)
-            None,                                        # country  (entity only)
-            None,                                        # city     (entity only)
-            False,                                       # is_online (entity only)
-            _parse_ts(p.get("createdOn")),               # created_on
-            _parse_ts(p.get("updatedOn")),               # updated_on
-        ))
+        initiative_rows.append(
+            (
+                pg_id,  # id
+                "project",  # initiative_type
+                "projects",  # source_dynamo_table
+                owner_id,  # owner_id
+                p.get("name"),  # name
+                p.get("slug"),  # slug
+                _normalize_status(p.get("status")),  # status
+                pd.get("industry"),  # industry
+                pd.get("description"),  # description
+                _trunc(pd.get("color"), 10, "color"),  # color
+                p.get("logoUrl"),  # logo_url
+                pd.get("website"),  # website_url
+                coc_url,  # coc_url
+                pd.get("ciiProjectID"),  # cii_project_id
+                p.get("planId"),  # stripe_plan_id
+                p.get("productId"),  # stripe_product_id
+                p.get("jobspringProjectId") or None,  # jobspring_project_id
+                pd.get("stacksIdentifier") or None,  # stacks_identifier
+                None,  # eventbrite_url  (entity only)
+                None,  # application_url (entity only)
+                _as_int(p.get("amountRaised")),  # amount_raised_in_cents
+                False,  # accept_funding (entity only)
+                None,  # event_start_date (entity only)
+                None,  # event_end_date   (entity only)
+                None,  # country  (entity only)
+                None,  # city     (entity only)
+                False,  # is_online (entity only)
+                _parse_ts(p.get("createdOn")),  # created_on
+                _parse_ts(p.get("updatedOn")),  # updated_on
+            )
+        )
 
         # ── Budget category goals ────────────────────────────────────────
         for cat_key, goal_name, sort_order in _PROJECT_GOAL_CATEGORIES:
             cat: dict = pd.get(cat_key) or {}
             budget: dict = cat.get("budget") or {}
             # Budget.AmountInCents is serialised with json tag "amount"
-            amt    = _as_int(budget.get("amount"))
-            alloc  = budget.get("allocation") or None
+            amt = _as_int(budget.get("amount"))
+            alloc = budget.get("allocation") or None
             # Normalize empty strings to None; only development category can have repo_link
-            repo   = cat.get("repoLink") or None if cat_key == "development" else None
+            repo = cat.get("repoLink") or None if cat_key == "development" else None
             if amt > 0 or alloc or repo:
-                goals_rows.append((
-                    _uuid5("goal", raw_initiative_id, goal_name),
-                    pg_id, goal_name, max(0, amt), alloc, repo,
-                    None, None, None,     # description, color, icon (entity only)
-                    sort_order,
-                ))
+                goals_rows.append(
+                    (
+                        _uuid5("goal", raw_initiative_id, goal_name),
+                        pg_id,
+                        goal_name,
+                        max(0, amt),
+                        alloc,
+                        repo,
+                        None,
+                        None,
+                        None,  # description, color, icon (entity only)
+                        sort_order,
+                    )
+                )
 
         # ── Mentee as a special goal (sort_order 7) ──────────────────────
         mentee: dict = pd.get("mentee") or {}
         if mentee:
             m_budget: dict = mentee.get("budget") or {}
-            m_amt   = _as_nonneg_int(m_budget.get("amount"))
+            m_amt = _as_nonneg_int(m_budget.get("amount"))
             m_alloc = m_budget.get("allocation") or None
-            if m_amt > 0 or m_alloc or mentee.get("mentor") or mentee.get("terms") or mentee.get("skills"):
-                goals_rows.append((
-                    _uuid5("goal", raw_initiative_id, "mentee"),
-                    pg_id, "mentee", m_amt, m_alloc, None,
-                    None, None, None,
-                    7,
-                ))
+            if (
+                m_amt > 0
+                or m_alloc
+                or mentee.get("mentor")
+                or mentee.get("terms")
+                or mentee.get("skills")
+            ):
+                goals_rows.append(
+                    (
+                        _uuid5("goal", raw_initiative_id, "mentee"),
+                        pg_id,
+                        "mentee",
+                        m_amt,
+                        m_alloc,
+                        None,
+                        None,
+                        None,
+                        None,
+                        7,
+                    )
+                )
 
             # Mentors
             for idx, mentor in enumerate(mentee.get("mentor") or []):
                 email = mentor.get("email") or None
-                mentors_rows.append((
-                    _uuid5("mentor", raw_initiative_id, email or mentor.get("name", "") or str(idx)),
-                    pg_id,
-                    mentor.get("name"),
-                    email,
-                    mentor.get("avatarURL") or None,
-                    mentor.get("introduction") or None,
-                ))
+                mentors_rows.append(
+                    (
+                        _uuid5(
+                            "mentor",
+                            raw_initiative_id,
+                            email or mentor.get("name", "") or str(idx),
+                        ),
+                        pg_id,
+                        mentor.get("name"),
+                        email,
+                        mentor.get("avatarURL") or None,
+                        mentor.get("introduction") or None,
+                    )
+                )
 
             # Mentee config (termsConditions bool — always present once mentee is set)
-            program_info_config_rows.append((
-                pg_id,
-                bool(mentee.get("termsConditions", False)),
-            ))
+            program_info_config_rows.append(
+                (
+                    pg_id,
+                    bool(mentee.get("termsConditions", False)),
+                )
+            )
 
             # Mentee terms ([]string)
             for idx, term in enumerate(mentee.get("terms") or []):
                 if term:
-                    program_info_terms_rows.append((
-                        _uuid5("mentee_term", raw_initiative_id, str(idx)),
-                        pg_id, str(term), idx,
-                    ))
+                    program_info_terms_rows.append(
+                        (
+                            _uuid5("mentee_term", raw_initiative_id, str(idx)),
+                            pg_id,
+                            str(term),
+                            idx,
+                        )
+                    )
 
             # Mentee skills ([]string)
-            for skill in (mentee.get("skills") or []):
+            for skill in mentee.get("skills") or []:
                 if skill:
-                    program_info_skills_rows.append((
-                        _uuid5("mentee_skill", raw_initiative_id, str(skill)),
-                        pg_id, str(skill),
-                    ))
+                    program_info_skills_rows.append(
+                        (
+                            _uuid5("mentee_skill", raw_initiative_id, str(skill)),
+                            pg_id,
+                            str(skill),
+                        )
+                    )
 
             # Mentee custom term — only when termName is non-empty
             ct: dict = mentee.get("customTerm") or {}
             if isinstance(ct, dict) and ct.get("termName"):
-                program_info_custom_term_rows.append((
-                    pg_id,
-                    ct.get("termName"),
-                    ct.get("startMonth") or None,
-                    ct.get("endMonth") or None,
-                    _as_int(ct.get("year")) or None,
-                ))
+                program_info_custom_term_rows.append(
+                    (
+                        pg_id,
+                        ct.get("termName"),
+                        ct.get("startMonth") or None,
+                        ct.get("endMonth") or None,
+                        _as_int(ct.get("year")) or None,
+                    )
+                )
 
         # ── Contributors ─────────────────────────────────────────────────
         for idx, c in enumerate(pd.get("contributors") or []):
             email = c.get("email") or None
-            contributors_rows.append((
-                _uuid5("contributor", raw_initiative_id, email or c.get("name", "") or str(idx)),
-                pg_id, c.get("name"), email,
-            ))
+            contributors_rows.append(
+                (
+                    _uuid5(
+                        "contributor",
+                        raw_initiative_id,
+                        email or c.get("name", "") or str(idx),
+                    ),
+                    pg_id,
+                    c.get("name"),
+                    email,
+                )
+            )
 
         # ── Beneficiaries ────────────────────────────────────────────────
         for idx, b in enumerate(pd.get("beneficiaries") or []):
             email = b.get("email") or None
-            beneficiaries_rows.append((
-                _uuid5("beneficiary", raw_initiative_id, email or b.get("name", "") or str(idx)),
-                pg_id, b.get("name"), email,
-            ))
+            beneficiaries_rows.append(
+                (
+                    _uuid5(
+                        "beneficiary",
+                        raw_initiative_id,
+                        email or b.get("name", "") or str(idx),
+                    ),
+                    pg_id,
+                    b.get("name"),
+                    email,
+                )
+            )
 
         # ── Custom websites ──────────────────────────────────────────────
-        for cw in (pd.get("customWebsites") or []):
+        for cw in pd.get("customWebsites") or []:
             url = cw.get("url") or ""
             if url:
-                custom_websites_rows.append((
-                    _uuid5("custom_website", raw_initiative_id, url),
-                    pg_id, cw.get("name") or None, url,
-                ))
+                custom_websites_rows.append(
+                    (
+                        _uuid5("custom_website", raw_initiative_id, url),
+                        pg_id,
+                        cw.get("name") or None,
+                        url,
+                    )
+                )
 
         # ── GitHub stats ─────────────────────────────────────────────────
         gh: dict = cd.get("githubStats") or {}
         if gh.get("forks") or gh.get("stars") or gh.get("openIssues"):
-            github_stats_rows.append((
-                pg_id,
-                _as_int(gh.get("forks")),
-                _as_int(gh.get("stars")),
-                _as_int(gh.get("openIssues")),
-            ))
+            github_stats_rows.append(
+                (
+                    pg_id,
+                    _as_int(gh.get("forks")),
+                    _as_int(gh.get("stars")),
+                    _as_int(gh.get("openIssues")),
+                )
+            )
 
     # ── Entities ─────────────────────────────────────────────────────────
     for e in entities:
         owner_id = e.get("ownerId")
         if owner_id not in known_users:
             skipped += 1
-            log.debug("Skip entity %s — owner %s not found", e.get("entityId"), owner_id)
+            log.debug(
+                "Skip entity %s — owner %s not found", e.get("entityId"), owner_id
+            )
             continue
 
         raw_initiative_id = e.get("entityId") or ""
@@ -561,7 +660,9 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
             log.warning("Skip entity with no entityId (name=%s)", e.get("name"))
             continue
 
-        pg_id = _as_uuid(raw_initiative_id) or _uuid5("entity", owner_id, e.get("name", ""))
+        pg_id = _as_uuid(raw_initiative_id) or _uuid5(
+            "entity", owner_id, e.get("name", "")
+        )
         known_initiative_ids.add(pg_id)
 
         # entityType quirk: SaveEntity rewrites 'general fund' → 'initiative'
@@ -571,96 +672,116 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
             entity_type = "general fund"
 
         # ── Core initiative row ──────────────────────────────────────────
-        initiative_rows.append((
-            pg_id,                                                # id
-            entity_type,                                          # initiative_type
-            "entities",                                           # source_dynamo_table
-            owner_id,                                             # owner_id
-            e.get("name"),                                        # name
-            e.get("slug") or None,                                # slug
-            _normalize_status(e.get("status")),                   # status
-            e.get("industry") or None,                            # industry
-            e.get("description") or None,                         # description
-            _trunc(e.get("color"), 10, "color"),                  # color
-            e.get("logoUrl") or None,                             # logo_url
-            e.get("websiteURL") or None,                          # website_url
-            e.get("cocURL") or None,                              # coc_url
-            None,                                                 # cii_project_id (project only)
-            e.get("stripePlanId") or None,                        # stripe_plan_id
-            e.get("stripeProductId") or None,                     # stripe_product_id
-            None,                                                 # jobspring_project_id (project only)
-            None,                                                 # stacks_identifier (project only)
-            e.get("eventbriteId") or None,                        # eventbrite_url
-            e.get("applicationURL") or None,                      # application_url
-            _as_int(e.get("amountRaised")),                        # amount_raised_in_cents
-            bool(e.get("acceptFunding", False)),                   # accept_funding
-            _parse_ts(e.get("eventStartDate")),                   # event_start_date
-            _parse_ts(e.get("eventEndDate")),                     # event_end_date
-            e.get("country") or None,                             # country
-            e.get("city") or None,                                # city
-            bool(e.get("isOnline", False)),                        # is_online
-            _parse_ts(e.get("createdOn")),                        # created_on
-            _parse_ts(e.get("updatedOn")),                        # updated_on
-        ))
+        initiative_rows.append(
+            (
+                pg_id,  # id
+                entity_type,  # initiative_type
+                "entities",  # source_dynamo_table
+                owner_id,  # owner_id
+                e.get("name"),  # name
+                e.get("slug") or None,  # slug
+                _normalize_status(e.get("status")),  # status
+                e.get("industry") or None,  # industry
+                e.get("description") or None,  # description
+                _trunc(e.get("color"), 10, "color"),  # color
+                e.get("logoUrl") or None,  # logo_url
+                e.get("websiteURL") or None,  # website_url
+                e.get("cocURL") or None,  # coc_url
+                None,  # cii_project_id (project only)
+                e.get("stripePlanId") or None,  # stripe_plan_id
+                e.get("stripeProductId") or None,  # stripe_product_id
+                None,  # jobspring_project_id (project only)
+                None,  # stacks_identifier (project only)
+                e.get("eventbriteId") or None,  # eventbrite_url
+                e.get("applicationURL") or None,  # application_url
+                _as_int(e.get("amountRaised")),  # amount_raised_in_cents
+                bool(e.get("acceptFunding", False)),  # accept_funding
+                _parse_ts(e.get("eventStartDate")),  # event_start_date
+                _parse_ts(e.get("eventEndDate")),  # event_end_date
+                e.get("country") or None,  # country
+                e.get("city") or None,  # city
+                bool(e.get("isOnline", False)),  # is_online
+                _parse_ts(e.get("createdOn")),  # created_on
+                _parse_ts(e.get("updatedOn")),  # updated_on
+            )
+        )
 
         # ── Entity goals[] ───────────────────────────────────────────────
         # Goal{name, description, goalColor, goalIcon, budget{amount, allocation}}
         for idx, goal in enumerate(e.get("goals") or []):
             goal_name = goal.get("name") or f"goal_{idx}"
             goal_budget: dict = goal.get("budget") or {}
-            goals_rows.append((
-                _uuid5("goal", raw_initiative_id, goal_name),
-                pg_id,
-                goal_name,
-                _as_nonneg_int(goal_budget.get("amount")),
-                goal_budget.get("allocation") or None,
-                None,                                   # repo_link (project only)
-                goal.get("description") or None,
-                _trunc(goal.get("goalColor"), 10, "goal_color"),
-                goal.get("goalIcon") or None,
-                idx,
-            ))
+            goals_rows.append(
+                (
+                    _uuid5("goal", raw_initiative_id, goal_name),
+                    pg_id,
+                    goal_name,
+                    _as_nonneg_int(goal_budget.get("amount")),
+                    goal_budget.get("allocation") or None,
+                    None,  # repo_link (project only)
+                    goal.get("description") or None,
+                    _trunc(goal.get("goalColor"), 10, "goal_color"),
+                    goal.get("goalIcon") or None,
+                    idx,
+                )
+            )
 
         # ── Beneficiaries[] ──────────────────────────────────────────────
         # Entity field: Beneficiary []Beneficiary json:"beneficiaries"
         for idx, b in enumerate(e.get("beneficiaries") or []):
             email = b.get("email") or None
-            beneficiaries_rows.append((
-                _uuid5("beneficiary", raw_initiative_id, email or b.get("name", "") or str(idx)),
-                pg_id, b.get("name") or None, email,
-            ))
+            beneficiaries_rows.append(
+                (
+                    _uuid5(
+                        "beneficiary",
+                        raw_initiative_id,
+                        email or b.get("name", "") or str(idx),
+                    ),
+                    pg_id,
+                    b.get("name") or None,
+                    email,
+                )
+            )
 
         # ── CustomWebsites[] ─────────────────────────────────────────────
-        for cw in (e.get("customWebsites") or []):
+        for cw in e.get("customWebsites") or []:
             url = cw.get("url") or ""
             if url:
-                custom_websites_rows.append((
-                    _uuid5("custom_website", raw_initiative_id, url),
-                    pg_id, cw.get("name") or None, url,
-                ))
+                custom_websites_rows.append(
+                    (
+                        _uuid5("custom_website", raw_initiative_id, url),
+                        pg_id,
+                        cw.get("name") or None,
+                        url,
+                    )
+                )
 
         # ── SponsorshipTiers[] ───────────────────────────────────────────
         # SponsorshipTier{name, description, color, icon, minimum}
         for idx, tier in enumerate(e.get("sponsorshipTiers") or []):
             tier_name = tier.get("name") or str(idx)
-            sponsorship_tiers_rows.append((
-                _uuid5("sponsorship_tier", raw_initiative_id, tier_name),
-                pg_id,
-                tier.get("name") or None,
-                tier.get("description") or None,
-                _trunc(tier.get("color"), 10, "tier_color"),
-                tier.get("icon") or None,
-                _as_nonneg_int(tier.get("minimum")),
-                idx,
-            ))
+            sponsorship_tiers_rows.append(
+                (
+                    _uuid5("sponsorship_tier", raw_initiative_id, tier_name),
+                    pg_id,
+                    tier.get("name") or None,
+                    tier.get("description") or None,
+                    _trunc(tier.get("color"), 10, "tier_color"),
+                    tier.get("icon") or None,
+                    _as_nonneg_int(tier.get("minimum")),
+                    idx,
+                )
+            )
 
         # ── EntityDetails (map[string]string → JSONB) ────────────────────
         entity_details = e.get("entityDetails")
         if entity_details:
-            entity_details_rows.append((
-                pg_id,
-                _to_jsonb(entity_details),
-            ))
+            entity_details_rows.append(
+                (
+                    pg_id,
+                    _to_jsonb(entity_details),
+                )
+            )
 
         # ── OSTIF-specific detail (ostif entity type only) ───────────────
         # entity.Detail interface{} is a domain.Detail struct when non-nil.
@@ -668,34 +789,38 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
         if entity_type == "ostif":
             raw_detail = e.get("detail")
             if isinstance(raw_detail, dict) and raw_detail:
-                ostif_detail_rows.append((
-                    pg_id,
-                    raw_detail.get("monetizationStrategy") or None,
-                    raw_detail.get("currentSecurityStrategy") or None,
-                    raw_detail.get("licenseType") or None,
-                    _as_nonneg_int(raw_detail.get("totalBudget")),
-                    bool(raw_detail.get("termsConditions", False)),
-                ))
+                ostif_detail_rows.append(
+                    (
+                        pg_id,
+                        raw_detail.get("monetizationStrategy") or None,
+                        raw_detail.get("currentSecurityStrategy") or None,
+                        raw_detail.get("licenseType") or None,
+                        _as_nonneg_int(raw_detail.get("totalBudget")),
+                        bool(raw_detail.get("termsConditions", False)),
+                    )
+                )
 
                 # Contacts (primaryContact, secondaryContact, technicalLead)
                 for contact_type, detail_key in (
-                    ("primary",       "primaryContact"),
-                    ("secondary",     "secondaryContact"),
+                    ("primary", "primaryContact"),
+                    ("secondary", "secondaryContact"),
                     ("technical_lead", "technicalLead"),
                 ):
                     contact = raw_detail.get(detail_key)
                     if isinstance(contact, dict) and contact:
-                        contacts_rows.append((
-                            _uuid5("contact", raw_initiative_id, contact_type),
-                            pg_id,
-                            contact_type,
-                            contact.get("firstName") or None,
-                            contact.get("lastName") or None,
-                            contact.get("email") or None,
-                            contact.get("phoneNumber") or None,
-                            contact.get("otherContactOption") or None,
-                            contact.get("preferredContactMethod") or None,
-                        ))
+                        contacts_rows.append(
+                            (
+                                _uuid5("contact", raw_initiative_id, contact_type),
+                                pg_id,
+                                contact_type,
+                                contact.get("firstName") or None,
+                                contact.get("lastName") or None,
+                                contact.get("email") or None,
+                                contact.get("phoneNumber") or None,
+                                contact.get("otherContactOption") or None,
+                                contact.get("preferredContactMethod") or None,
+                            )
+                        )
 
     # ── Phase 1: Insert initiatives ──────────────────────────────────────
     _insert_initiatives(cur, initiative_rows)
@@ -730,7 +855,9 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
     log.info("    mentorship reclassification : %d row(s) updated", cur.rowcount)
 
     if skipped:
-        log.warning("  → %d initiative(s) skipped (owner not found or missing ID)", skipped)
+        log.warning(
+            "  → %d initiative(s) skipped (owner not found or missing ID)", skipped
+        )
     log.info("  → %d initiative rows upserted", len(initiative_rows))
     return known_initiative_ids
 
@@ -738,6 +865,7 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
 # ---------------------------------------------------------------------------
 # initiative row insert
 # ---------------------------------------------------------------------------
+
 
 def _insert_initiatives(cur, rows: list) -> None:
     if not rows:
@@ -799,6 +927,7 @@ def _insert_initiatives(cur, rows: list) -> None:
 # UUIDs are generated deterministically via _uuid5 so the same source row
 # always produces the same id.
 # ---------------------------------------------------------------------------
+
 
 def _insert_goals(cur, rows: list) -> None:
     if not rows:
@@ -1019,6 +1148,7 @@ def _insert_entity_details(cur, rows: list) -> None:
 # Migration: donations  (merged from lff-prod-donations + lff-prod-entity-donations)
 # ---------------------------------------------------------------------------
 
+
 def migrate_donations(
     cur,
     proj_donations: list,
@@ -1038,7 +1168,8 @@ def migrate_donations(
     """
     log.info(
         "Migrating donations (%d project + %d entity = %d total) …",
-        len(proj_donations), len(entity_donations),
+        len(proj_donations),
+        len(entity_donations),
         len(proj_donations) + len(entity_donations),
     )
 
@@ -1080,21 +1211,23 @@ def migrate_donations(
         pg_id = _uuid5("proj_donation", str(user_id), str(d.get("projectId")))
         org_id = _as_uuid(d.get("orgId"))
         if org_id not in known_org_ids:
-            org_id = None                           # orgId absent or not a known org
-        rows.append((
-            pg_id,
-            user_id,
-            initiative_id,
-            org_id,
-            _to_jsonb(d.get("cachedDetails")),
-            d.get("category"),
-            _parse_ts(d.get("createdOn")),
-            _as_nonneg_int(d.get("currentAmountInCents")),
-            d.get("ponumber") or None,              # po_number
-            d.get("paymentmethod"),
-            d.get("status"),
-            d.get("stripeChargeId"),
-        ))
+            org_id = None  # orgId absent or not a known org
+        rows.append(
+            (
+                pg_id,
+                user_id,
+                initiative_id,
+                org_id,
+                _to_jsonb(d.get("cachedDetails")),
+                d.get("category"),
+                _parse_ts(d.get("createdOn")),
+                _as_nonneg_int(d.get("currentAmountInCents")),
+                d.get("ponumber") or None,  # po_number
+                d.get("paymentmethod"),
+                d.get("status"),
+                d.get("stripeChargeId"),
+            )
+        )
 
     # --- lff-prod-entity-donations: PK = (userId, entityId) ----------------
     for d in entity_donations:
@@ -1110,33 +1243,38 @@ def migrate_donations(
         pg_id = _uuid5("entity_donation", str(user_id), str(d.get("entityId")))
         org_id = _as_uuid(d.get("orgId"))
         if org_id not in known_org_ids:
-            org_id = None                           # orgId absent or not a known org
-        rows.append((
-            pg_id,
-            user_id,
-            initiative_id,
-            org_id,
-            _to_jsonb(d.get("cachedDetails")),
-            d.get("category"),
-            _parse_ts(d.get("createdOn")),
-            _as_nonneg_int(d.get("currentAmountInCents")),
-            d.get("ponumber") or None,              # po_number
-            d.get("paymentmethod"),
-            d.get("status"),
-            d.get("stripeChargeId"),
-        ))
+            org_id = None  # orgId absent or not a known org
+        rows.append(
+            (
+                pg_id,
+                user_id,
+                initiative_id,
+                org_id,
+                _to_jsonb(d.get("cachedDetails")),
+                d.get("category"),
+                _parse_ts(d.get("createdOn")),
+                _as_nonneg_int(d.get("currentAmountInCents")),
+                d.get("ponumber") or None,  # po_number
+                d.get("paymentmethod"),
+                d.get("status"),
+                d.get("stripeChargeId"),
+            )
+        )
 
     psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
     if skipped_user:
         log.warning("  → %d donation(s) skipped (user not found)", skipped_user)
     if skipped_initiative:
-        log.warning("  → %d donation(s) skipped (initiative FK not found)", skipped_initiative)
+        log.warning(
+            "  → %d donation(s) skipped (initiative FK not found)", skipped_initiative
+        )
     log.info("  → %d donation rows upserted", len(rows))
 
 
 # ---------------------------------------------------------------------------
 # Migration: subscriptions (merged from lff-prod-subscriptions + lff-prod-entity-subscriptions)
 # ---------------------------------------------------------------------------
+
 
 def migrate_subscriptions(
     cur,
@@ -1157,7 +1295,8 @@ def migrate_subscriptions(
     """
     log.info(
         "Migrating subscriptions (%d project + %d entity = %d total) …",
-        len(proj_subs), len(entity_subs),
+        len(proj_subs),
+        len(entity_subs),
         len(proj_subs) + len(entity_subs),
     )
 
@@ -1195,26 +1334,30 @@ def migrate_subscriptions(
         initiative_id = _as_uuid(s.get("projectId"))
         if initiative_id not in known_initiative_ids:
             skipped_initiative += 1
-            log.debug("Skip project subscription — initiative %s not found", initiative_id)
+            log.debug(
+                "Skip project subscription — initiative %s not found", initiative_id
+            )
             continue
         pg_id = _uuid5("proj_subscription", str(user_id), str(s.get("projectId")))
         org_id = _as_uuid(s.get("orgId"))
         if org_id not in known_org_ids:
-            org_id = None                           # orgId absent or not a known org
-        rows.append((
-            pg_id,
-            user_id,
-            initiative_id,
-            org_id,
-            _to_jsonb(s.get("cachedDetails")),
-            s.get("category"),
-            _parse_ts(s.get("createdOn")),
-            _as_nonneg_int(s.get("currentAmountInCents")),
-            s.get("frequency"),
-            s.get("status"),
-            s.get("stripeSubscriptionId"),
-            s.get("stripeSubscriptionItemId"),
-        ))
+            org_id = None  # orgId absent or not a known org
+        rows.append(
+            (
+                pg_id,
+                user_id,
+                initiative_id,
+                org_id,
+                _to_jsonb(s.get("cachedDetails")),
+                s.get("category"),
+                _parse_ts(s.get("createdOn")),
+                _as_nonneg_int(s.get("currentAmountInCents")),
+                s.get("frequency"),
+                s.get("status"),
+                s.get("stripeSubscriptionId"),
+                s.get("stripeSubscriptionItemId"),
+            )
+        )
 
     # --- lff-prod-entity-subscriptions: PK = (userId, entityId) ------------
     for s in entity_subs:
@@ -1225,38 +1368,46 @@ def migrate_subscriptions(
         initiative_id = _as_uuid(s.get("entityId"))
         if initiative_id not in known_initiative_ids:
             skipped_initiative += 1
-            log.debug("Skip entity subscription — initiative %s not found", initiative_id)
+            log.debug(
+                "Skip entity subscription — initiative %s not found", initiative_id
+            )
             continue
         pg_id = _uuid5("entity_subscription", str(user_id), str(s.get("entityId")))
         org_id = _as_uuid(s.get("orgId"))
         if org_id not in known_org_ids:
-            org_id = None                           # orgId absent or not a known org
-        rows.append((
-            pg_id,
-            user_id,
-            initiative_id,
-            org_id,
-            _to_jsonb(s.get("cachedDetails")),
-            s.get("category"),
-            _parse_ts(s.get("createdOn")),
-            _as_nonneg_int(s.get("currentAmountInCents")),
-            s.get("frequency"),
-            s.get("status"),
-            s.get("stripeSubscriptionId"),
-            s.get("stripeSubscriptionItemId"),
-        ))
+            org_id = None  # orgId absent or not a known org
+        rows.append(
+            (
+                pg_id,
+                user_id,
+                initiative_id,
+                org_id,
+                _to_jsonb(s.get("cachedDetails")),
+                s.get("category"),
+                _parse_ts(s.get("createdOn")),
+                _as_nonneg_int(s.get("currentAmountInCents")),
+                s.get("frequency"),
+                s.get("status"),
+                s.get("stripeSubscriptionId"),
+                s.get("stripeSubscriptionItemId"),
+            )
+        )
 
     psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
     if skipped_user:
         log.warning("  → %d subscription(s) skipped (user not found)", skipped_user)
     if skipped_initiative:
-        log.warning("  → %d subscription(s) skipped (initiative FK not found)", skipped_initiative)
+        log.warning(
+            "  → %d subscription(s) skipped (initiative FK not found)",
+            skipped_initiative,
+        )
     log.info("  → %d subscription rows upserted", len(rows))
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     log.info("=" * 60)
@@ -1268,14 +1419,14 @@ def main():
     dynamo = boto3.client("dynamodb", region_name=REGION)
 
     # ── 1. Scan all DynamoDB tables ──────────────────────────────────────────
-    users            = scan_table(dynamo, "lff-prod-users")
-    orgs             = scan_table(dynamo, "lff-prod-organizations")
-    entities         = scan_table(dynamo, "lff-prod-entities")
-    projects         = scan_table(dynamo, "lff-prod-projects")
-    proj_donations   = scan_table(dynamo, "lff-prod-donations")
+    users = scan_table(dynamo, "lff-prod-users")
+    orgs = scan_table(dynamo, "lff-prod-organizations")
+    entities = scan_table(dynamo, "lff-prod-entities")
+    projects = scan_table(dynamo, "lff-prod-projects")
+    proj_donations = scan_table(dynamo, "lff-prod-donations")
     entity_donations = scan_table(dynamo, "lff-prod-entity-donations")
-    proj_subs        = scan_table(dynamo, "lff-prod-subscriptions")
-    entity_subs      = scan_table(dynamo, "lff-prod-entity-subscriptions")
+    proj_subs = scan_table(dynamo, "lff-prod-subscriptions")
+    entity_subs = scan_table(dynamo, "lff-prod-entity-subscriptions")
 
     # ── 2. Collect all user IDs referenced in other tables ──────────────────
     # Insert placeholder user rows for any referenced ID absent from lff-prod-users
@@ -1318,15 +1469,31 @@ def main():
             conn.commit()
 
             # 3. initiatives — FK → user  (merged entities + projects)
-            known_initiative_ids = migrate_initiatives(cur, entities, projects, known_users)
+            known_initiative_ids = migrate_initiatives(
+                cur, entities, projects, known_users
+            )
             conn.commit()
 
             # 4. donations — FK → user, FK → initiatives, FK → organizations (orgId)
-            migrate_donations(cur, proj_donations, entity_donations, known_users, known_initiative_ids, known_org_ids)
+            migrate_donations(
+                cur,
+                proj_donations,
+                entity_donations,
+                known_users,
+                known_initiative_ids,
+                known_org_ids,
+            )
             conn.commit()
 
             # 5. subscriptions — FK → user, FK → initiatives, FK → organizations (orgId)
-            migrate_subscriptions(cur, proj_subs, entity_subs, known_users, known_initiative_ids, known_org_ids)
+            migrate_subscriptions(
+                cur,
+                proj_subs,
+                entity_subs,
+                known_users,
+                known_initiative_ids,
+                known_org_ids,
+            )
             conn.commit()
 
         log.info("=" * 60)
@@ -1335,7 +1502,9 @@ def main():
 
     except Exception:
         conn.rollback()
-        log.exception("Migration failed — current phase rolled back (earlier phases already committed)")
+        log.exception(
+            "Migration failed — current phase rolled back (earlier phases already committed)"
+        )
         sys.exit(1)
 
     finally:

@@ -35,6 +35,7 @@ func (h *SubscriptionHandler) List(w http.ResponseWriter, r *http.Request) {
 	offset, _ := strconv.Atoi(q.Get("offset"))
 
 	subs, meta, err := h.svc.ListByInitiative(r.Context(), initiativeID, models.SubscriptionFilter{
+		Status: q.Get("status"),
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -79,6 +80,37 @@ func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusCreated, created)
+}
+
+// ListForUser handles GET /v1/me/subscriptions — requires JWT.
+// Returns the authenticated user's own subscriptions, paginated.
+func (h *SubscriptionHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+
+	subs, meta, err := h.svc.ListByUser(r.Context(), principal.UserID, models.SubscriptionFilter{
+		Status: q.Get("status"),
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if subs == nil {
+		subs = []models.Subscription{}
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"data": subs,
+		"meta": meta,
+	})
 }
 
 // Cancel handles DELETE /v1/subscriptions/{id} — requires JWT.

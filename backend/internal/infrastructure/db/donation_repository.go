@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -80,20 +81,30 @@ func (r *DonationRepository) listDonations(ctx context.Context, col, val string,
 		offset = 0
 	}
 
+	// Build WHERE clause. col is always a hardcoded internal value (never user input).
+	args := []any{val}
+	clauses := []string{fmt.Sprintf("%s = $1", col)}
+	if filter.Status != "" {
+		args = append(args, filter.Status)
+		clauses = append(clauses, fmt.Sprintf("status = $%d", len(args)))
+	}
+	where := strings.Join(clauses, " AND ")
+
 	var total int
-	countQ := fmt.Sprintf("SELECT COUNT(*) FROM donations WHERE %s = $1", col)
-	if err := r.pool.QueryRow(ctx, countQ, val).Scan(&total); err != nil {
+	countQ := fmt.Sprintf("SELECT COUNT(*) FROM donations WHERE %s", where)
+	if err := r.pool.QueryRow(ctx, countQ, args...).Scan(&total); err != nil {
 		return nil, nil, fmt.Errorf("count donations: %w", err)
 	}
 
+	dataArgs := append(args, limit, offset) //nolint:gocritic // intentional re-slice
 	dataQ := fmt.Sprintf(`
 		SELECT id, user_id, initiative_id, organization_id, category,
 		       current_amount_in_cents, po_number, payment_method,
 		       status, stripe_payment_intent_id, stripe_charge_id, created_on, updated_on
-		FROM donations WHERE %s = $1
-		ORDER BY created_on DESC LIMIT $2 OFFSET $3`, col)
+		FROM donations WHERE %s
+		ORDER BY created_on DESC LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2)
 
-	rows, err := r.pool.Query(ctx, dataQ, val, limit, offset)
+	rows, err := r.pool.Query(ctx, dataQ, dataArgs...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list donations: %w", err)
 	}

@@ -233,28 +233,27 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative) (*models.Initiative, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.Create")
 	defer span.End()
+	span.SetAttributes(attribute.String("db.initiative_id", i.ID))
 
 	const q = `
 		INSERT INTO initiatives
-		       (initiative_type, owner_id, name, slug, status, industry,
+		       (id, initiative_type, owner_id, name, slug, status, industry,
 		        description, color, logo_url, website_url, coc_url,
 		        stripe_plan_id, stripe_product_id, accept_funding)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-		RETURNING id`
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`
 
-	var id string
-	err := r.pool.QueryRow(ctx, q,
-		i.InitiativeType, i.OwnerID, i.Name, nullableString(i.Slug), nullableString(string(i.Status)),
+	_, err := r.pool.Exec(ctx, q,
+		i.ID, i.InitiativeType, i.OwnerID, i.Name, nullableString(i.Slug), nullableString(string(i.Status)),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
 		nullableString(i.StripePlanID), nullableString(i.StripeProductID),
 		i.AcceptFunding,
-	).Scan(&id)
+	)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
-	return r.GetByID(ctx, id)
+	return r.GetByID(ctx, i.ID)
 }
 
 // Update applies changes to an existing initiative.
