@@ -18,11 +18,12 @@ export const usePaymentAccount = () => {
     error.value = null;
     try {
       card.value = await $fetch<CardDetails>('/api/payment/account');
-    } catch (e: any) {
-      if (e?.statusCode === 404) {
+    } catch (e: unknown) {
+      const err = e as { statusCode?: number; data?: { message?: string } };
+      if (err?.statusCode === 404) {
         card.value = null;
       } else {
-        error.value = e?.data?.message ?? 'Could not load your payment account.';
+        error.value = err?.data?.message ?? 'Could not load your payment account.';
       }
     } finally {
       loading.value = false;
@@ -58,8 +59,9 @@ export const usePaymentAccount = () => {
         method: 'POST',
         body: { payment_method_id: paymentMethodId },
       });
-    } catch (e: any) {
-      error.value = e?.message ?? 'Failed to save your card.';
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      error.value = err?.message ?? 'Failed to save your card.';
       throw e;
     } finally {
       loading.value = false;

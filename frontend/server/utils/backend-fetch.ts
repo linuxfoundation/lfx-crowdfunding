@@ -27,9 +27,15 @@ export const useBackendFetch = async <T = unknown>(
         ...options.headers,
       },
     });
-  } catch (err: any) {
-    const status = err?.status ?? err?.statusCode ?? 500;
-    const message = err?.data?.message ?? err?.statusMessage ?? 'Upstream error';
+  } catch (err: unknown) {
+    const e = err as {
+      status?: number;
+      statusCode?: number;
+      data?: { message?: string };
+      statusMessage?: string;
+    };
+    const status = e?.status ?? e?.statusCode ?? 500;
+    const message = e?.data?.message ?? e?.statusMessage ?? 'Upstream error';
     throw createError({ statusCode: status, statusMessage: message });
   }
 };
