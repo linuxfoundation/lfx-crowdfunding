@@ -14,7 +14,7 @@ COPY pnpm-lock.yaml package.json ./
 RUN pnpm fetch
 
 COPY . .
-RUN pnpm install --offline && pnpm build
+RUN pnpm install --prefer-offline && pnpm build
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
