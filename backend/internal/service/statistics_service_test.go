@@ -346,6 +346,20 @@ func TestGetRecentDonations_LedgerError(t *testing.T) {
 	}
 }
 
+func TestGetRecentDonations_UpstreamUnavailable(t *testing.T) {
+	repo := &testStatisticsRepo{}
+	ledger := &testLedgerClient{err: domain.ErrUpstreamUnavailable}
+
+	svc := newStatsSvc(repo, ledger)
+	resp, err := svc.GetRecentDonations(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(resp.Data) != 0 {
+		t.Errorf("expected empty data, got %d entries", len(resp.Data))
+	}
+}
+
 // --- GetPlatformMonthly ---
 
 func TestGetPlatformMonthly_MapsBuckets(t *testing.T) {

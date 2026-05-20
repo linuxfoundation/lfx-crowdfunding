@@ -5,7 +5,11 @@ SPDX-License-Identifier: MIT
 <template>
   <div
     class="flex-1 w-full flex flex-col min-w-0"
-    :aria-label="`Monthly donations bar chart. Peak month: ${peakLabel} with ${peakAmount}.`"
+    :aria-label="
+      props.buckets.length === 0
+        ? 'Monthly donations bar chart. No data available.'
+        : `Monthly donations bar chart. Peak month: ${peakLabel} with ${peakAmount}.`
+    "
     role="img"
   >
     <Bar
