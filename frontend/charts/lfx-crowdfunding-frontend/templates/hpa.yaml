@@ -6,23 +6,24 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: { { include "lfx-crowdfunding-frontend.fullname" . } }
-  namespace: { { .Release.Namespace } }
-  labels: { { - include "lfx-crowdfunding-frontend.labels" . | nindent 4 } }
+  name: {{ include "lfx-crowdfunding-frontend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lfx-crowdfunding-frontend.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: { { include "lfx-crowdfunding-frontend.fullname" . } }
-  minReplicas: { { .Values.autoscaling.minReplicas } }
-  maxReplicas: { { .Values.autoscaling.maxReplicas } }
+    name: {{ include "lfx-crowdfunding-frontend.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: { { .Values.autoscaling.targetCPUUtilizationPercentage } }
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
 ---
 # prettier-ignore
 {{ end }}
