@@ -588,10 +588,11 @@ Access-Control-Max-Age:       86400
 For local development, add `http://localhost:4200` (Angular) or
 `http://localhost:3000` (Nuxt) to the allowed origins.
 
-> **Security note:** Never set `Access-Control-Allow-Origin: *` on endpoints
-> that require an `Authorization` header. Credentialed requests require an
-> explicit origin — wildcard is prohibited by the browser for credentialed
-> CORS.
+> **Security note:** Never set `Access-Control-Allow-Origin: *` on authenticated
+> API endpoints. The wildcard restriction applies when `Access-Control-Allow-Credentials: true`
+> is set (required for cookie-based flows) — but even for token-based flows with
+> an `Authorization` header, using a wildcard origin is poor practice: it grants any
+> domain the ability to read responses from your API. Always use an explicit allowlist.
 
 ### 8.3 Implementing CORS in the Go router
 
