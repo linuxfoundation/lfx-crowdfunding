@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 )
@@ -171,6 +172,23 @@ func TestGetPlatformDetails_LedgerError(t *testing.T) {
 	_, err := svc.GetPlatformDetails(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestGetPlatformDetails_LedgerUnavailableReturnsEmpty(t *testing.T) {
+	repo := &testStatisticsRepo{}
+	ledger := &testLedgerClient{err: domain.ErrUpstreamUnavailable}
+
+	svc := newStatsSvc(repo, ledger)
+	details, err := svc.GetPlatformDetails(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil error for upstream unavailable, got %v", err)
+	}
+	if details == nil {
+		t.Fatal("expected non-nil details, got nil")
+	}
+	if len(details.Categories) != 0 {
+		t.Errorf("expected empty categories, got %d", len(details.Categories))
 	}
 }
 

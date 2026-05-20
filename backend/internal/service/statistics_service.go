@@ -17,6 +17,11 @@ import (
 
 var statisticsSvcTracer = otel.Tracer("statistics-service")
 
+const (
+	donorTypeOrganization = "organization"
+	donorTypeIndividual   = "individual"
+)
+
 // StatisticsService provides platform-wide aggregate data.
 type StatisticsService struct {
 	repo         domain.StatisticsRepository
@@ -50,6 +55,13 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 	raw, err := s.ledgerClient.GetPlatformBalance(ctx)
 	if err != nil {
 		span.RecordError(err)
+		if errors.Is(err, domain.ErrUpstreamUnavailable) {
+			return &models.PlatformDetails{
+				Categories:       []models.CategoryTotal{},
+				TopOrganizations: []models.SponsorEntry{},
+				TopIndividuals:   []models.SponsorEntry{},
+			}, nil
+		}
 		return nil, fmt.Errorf("get platform balance: %w", err)
 	}
 
@@ -148,8 +160,8 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	}
 
 	// Collect IDs for enrichment
-	orgIDs := make([]string, 0)
-	userIDs := make([]string, 0)
+	orgIDs := make([]string, 0, len(raw))
+	userIDs := make([]string, 0, len(raw))
 	for _, d := range raw {
 		if d.OrganizationID != "" {
 			orgIDs = append(orgIDs, d.OrganizationID)
@@ -179,7 +191,7 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 			Category:    d.TxnCategory,
 		}
 		if d.OrganizationID != "" {
-			entry.DonorType = "organization"
+			entry.DonorType = donorTypeOrganization
 			if org, ok := orgs[d.OrganizationID]; ok {
 				entry.DonorName = org.Name
 				entry.DonorAvatarURL = org.AvatarURL
@@ -187,7 +199,7 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 				entry.DonorName = d.SubmitterName
 			}
 		} else {
-			entry.DonorType = "individual"
+			entry.DonorType = donorTypeIndividual
 			if user, ok := users[d.UserID]; ok {
 				entry.DonorName = user.Name
 				entry.DonorAvatarURL = user.AvatarURL
