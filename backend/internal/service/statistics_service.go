@@ -91,6 +91,9 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 		TotalSupporters:    raw.TotalSupporters,
 		OrganizationsCents: raw.OrganizationsCents,
 		IndividualsCents:   raw.IndividualsCents,
+		Categories:         []models.CategoryTotal{},
+		TopOrganizations:   []models.SponsorEntry{},
+		TopIndividuals:     []models.SponsorEntry{},
 	}
 	for _, c := range raw.Categories {
 		out.Categories = append(out.Categories, models.CategoryTotal{
@@ -132,7 +135,7 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 		return nil, fmt.Errorf("get platform monthly: %w", err)
 	}
 
-	out := &models.PlatformMonthly{}
+	out := &models.PlatformMonthly{Buckets: []models.MonthlyBucket{}}
 	for _, b := range raw.Buckets {
 		out.Buckets = append(out.Buckets, models.MonthlyBucket{
 			Year:       b.Year,

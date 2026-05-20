@@ -6,15 +6,19 @@ import type { DonorBreakdown } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<DonorBreakdown> => {
   const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
-  const res = await $fetch<BackendPlatformDetails>(`${apiBase}/v1/statistics/platform`);
+  try {
+    const res = await $fetch<BackendPlatformDetails>(`${apiBase}/v1/statistics/platform`);
 
-  const totalCents = res.organizations_cents + res.individuals_cents;
-  const avgDonationCents =
-    res.total_supporters > 0 ? Math.round(totalCents / res.total_supporters) : 0;
+    const totalCents = res.organizations_cents + res.individuals_cents;
+    const avgDonationCents =
+      res.total_supporters > 0 ? Math.round(totalCents / res.total_supporters) : 0;
 
-  return {
-    avgDonationCents,
-    organizationsCents: res.organizations_cents,
-    individualsCents: res.individuals_cents,
-  };
+    return {
+      avgDonationCents,
+      organizationsCents: res.organizations_cents,
+      individualsCents: res.individuals_cents,
+    };
+  } catch {
+    return { avgDonationCents: 0, organizationsCents: 0, individualsCents: 0 };
+  }
 });
