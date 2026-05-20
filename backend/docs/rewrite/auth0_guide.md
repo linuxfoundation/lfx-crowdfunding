@@ -853,7 +853,7 @@ acceptance window for just-expired tokens.
 Auth0 rotates signing keys periodically. The `keyfunc/v3` library (`github.com/MicahParks/keyfunc/v3`)
 automatically fetches fresh keys when a token arrives signed by a key ID (`kid`)
 not currently in the cache. The JWKS goroutine runs for the lifetime of the
-application context (`context.Background()` in `main.go`).
+cancellable root context created with `context.WithCancel(...)` in `main.go`.
 
 No manual key rotation steps are required.
 
