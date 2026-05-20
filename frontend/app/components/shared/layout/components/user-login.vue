@@ -4,21 +4,14 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <lfx-popover
+    v-if="isAuthenticated"
     placement="bottom-end"
     aria-label="User menu"
   >
     <lfx-avatar
-      v-if="user"
       type="member"
-      :src="user.avatarUrl"
+      :src="user?.picture"
       size="small"
-      class="cursor-pointer"
-    />
-    <lfx-icon
-      v-else
-      name="circle-user"
-      type="light"
-      :size="20"
       class="cursor-pointer"
     />
 
@@ -47,32 +40,41 @@ SPDX-License-Identifier: MIT
           My initiatives
         </NuxtLink>
         <div class="c-dropdown__separator" />
-        <div class="c-dropdown__item">
+        <button
+          class="c-dropdown__item w-full text-left"
+          @click="logout"
+        >
           <lfx-icon
             name="arrow-right-from-bracket"
             type="light"
             :size="16"
           />
           Sign out
-        </div>
+        </button>
       </div>
     </template>
   </lfx-popover>
+
+  <lfx-icon-button
+    v-else
+    icon="circle-user"
+    type="transparent"
+    size="medium"
+    :loading="isLoading"
+    aria-label="Sign in"
+    @click="login()"
+  />
 </template>
 
 <script setup lang="ts">
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
+import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxPopover from '~/components/uikit/popover/popover.vue';
 import { AppRoute } from '~/config/routes';
+import { useAuth } from '~/composables/useAuth';
 
-// ---------------------------------------------------------------------------
-// Mock auth — change MOCK_LOGGED_IN to true to preview the logged-in state
-// ---------------------------------------------------------------------------
-const MOCK_LOGGED_IN = false;
-const mockUser = { name: 'Jane Doe', avatarUrl: 'https://i.pravatar.cc/100' };
-const user = MOCK_LOGGED_IN ? mockUser : null;
-// ---------------------------------------------------------------------------
+const { isAuthenticated, user, isLoading, login, logout } = useAuth();
 </script>
 
 <script lang="ts">

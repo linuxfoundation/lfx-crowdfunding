@@ -57,7 +57,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, nextTick, onMounted } from 'vue';
 import FundraiseStepType from './main/fundraise-step-type.vue';
 import FundraiseStepDetails from './fundraise-step-details.vue';
 import FundraiseHeader from './main/fundraise-header.vue';
@@ -66,6 +66,7 @@ import FundraiseSuccess from './main/fundraise-success.vue';
 import type { InitiativeType } from '~/types/fundraise.types';
 import LfxModal from '~/components/uikit/modal/modal.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
+import { GITHUB_FUNDRAISE_SESSION_KEY, type GitHubFundraiseSession } from '~/composables/useGithubAuth';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -109,6 +110,26 @@ const close = () => {
   selectedType.value = null;
   detailsStepRef.value?.reset();
 };
+
+onMounted(async () => {
+  const raw = sessionStorage.getItem(GITHUB_FUNDRAISE_SESSION_KEY);
+  if (!raw) return;
+  sessionStorage.removeItem(GITHUB_FUNDRAISE_SESSION_KEY);
+  try {
+    const session = JSON.parse(raw) as GitHubFundraiseSession;
+    selectedType.value = session.initiativeType as InitiativeType;
+    step.value = session.step;
+    await nextTick();
+    if (detailsStepRef.value) {
+      detailsStepRef.value.subStep = session.subStep;
+      if (session.hostingType === 'github') {
+        detailsStepRef.value.projectForm.hostingType = session.hostingType;
+      }
+    }
+  } catch {
+    // Corrupted session — start fresh
+  }
+});
 
 const previousStep = () => {
   if (step.value === 1 && (detailsStepRef.value?.subStep ?? 0) > 0) {
@@ -160,7 +181,7 @@ const handleContinue = async () => {
         details: {
           name,
           description,
-          githubUrl: projectForm?.selectedRepo ?? undefined,
+          githubUrl: projectForm?.selectedRepo ? `https://github.com/${projectForm.selectedRepo}` : undefined,
         },
       },
     });

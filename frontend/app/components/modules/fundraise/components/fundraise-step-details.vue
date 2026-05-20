@@ -37,7 +37,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import FundraiseProjectSteps from './project-steps/fundraise-project-steps.vue';
 import FundraiseSecurityAuditSteps from './security-audit-steps/fundraise-security-audit-steps.vue';
 import FundraiseGeneralFundSteps from './general-fund-steps/fundraise-general-fund-steps.vue';
@@ -260,6 +260,15 @@ const isCurrentSubStepValid = computed(() => {
   }
   return true;
 });
+
+watch(
+  () => projectForm.value.selectedRepo,
+  (repo) => {
+    if (repo && !projectForm.value.details.projectName) {
+      projectForm.value.details.projectName = repo.split('/').pop() ?? repo;
+    }
+  },
+);
 
 const advance = () => {
   if (!isLastSubStep.value) subStep.value++;
