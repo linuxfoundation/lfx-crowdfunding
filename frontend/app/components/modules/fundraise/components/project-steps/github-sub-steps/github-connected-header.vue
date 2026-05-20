@@ -34,7 +34,6 @@ SPDX-License-Identifier: MIT
     <lfx-button
       label="Disconnect"
       type="ghost"
-      size="small"
       button-style="pill"
       @click="$emit('disconnect')"
     />
