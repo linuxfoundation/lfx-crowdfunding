@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
 // ── test constants ────────────────────────────────────────────────────────────
@@ -217,6 +218,119 @@ func TestMiddleware_BypassMode(t *testing.T) {
 	}
 	if gotUserID != "local-dev-user" {
 		t.Errorf("UserID = %q, want %q", gotUserID, "local-dev-user")
+	}
+}
+
+// ── middleware: enriched claims propagation ───────────────────────────────────
+
+func TestMiddleware_EnrichedClaimsPropagated(t *testing.T) {
+	a := newTestAuthenticator(defaultCfg())
+
+	tok := sign(&JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "auth0|elim",
+			Issuer:    testIssuer,
+			Audience:  jwt.ClaimStrings{testAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+		Username:      "elim",
+		Email:         "elim@ds9.ufp",
+		EmailVerified: true,
+		GivenName:     "Elim",
+		FamilyName:    "Garak",
+		Picture:       "https://cdn.example.com/garak.png",
+	})
+
+	var got *models.Principal
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = PrincipalFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(tok))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if got == nil {
+		t.Fatal("principal not set in context")
+	}
+	if got.UserID != "auth0|elim" {
+		t.Errorf("UserID = %q, want %q", got.UserID, "auth0|elim")
+	}
+	if got.Username != "elim" {
+		t.Errorf("Username = %q, want %q", got.Username, "elim")
+	}
+	if got.Email != "elim@ds9.ufp" {
+		t.Errorf("Email = %q, want %q", got.Email, "elim@ds9.ufp")
+	}
+	if !got.EmailVerified {
+		t.Error("EmailVerified should be true")
+	}
+	if got.GivenName != "Elim" {
+		t.Errorf("GivenName = %q, want %q", got.GivenName, "Elim")
+	}
+	if got.FamilyName != "Garak" {
+		t.Errorf("FamilyName = %q, want %q", got.FamilyName, "Garak")
+	}
+	if got.Picture != "https://cdn.example.com/garak.png" {
+		t.Errorf("Picture = %q, want %q", got.Picture, "https://cdn.example.com/garak.png")
+	}
+}
+
+// ── middleware: empty subject rejected ───────────────────────────────────────
+
+func TestMiddleware_EmptySubjectRejected(t *testing.T) {
+	a := newTestAuthenticator(defaultCfg())
+
+	// Token is valid but has no sub claim.
+	tok := sign(&JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    testIssuer,
+			Audience:  jwt.ClaimStrings{testAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(tok))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for empty subject, got %d", w.Code)
+	}
+}
+
+// ── middleware: malformed Authorization header ────────────────────────────────
+
+func TestMiddleware_MalformedAuthHeader(t *testing.T) {
+	a := newTestAuthenticator(defaultCfg())
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cases := []struct {
+		name   string
+		header string
+	}{
+		{"not Bearer scheme", "Token " + userToken()},
+		{"single word only", "onlyone"},
+		{"Basic auth", "Basic dXNlcjpwYXNz"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			r.Header.Set("Authorization", c.header)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401, got %d", w.Code)
+			}
+		})
 	}
 }
 
