@@ -1,0 +1,11 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+# Suppress known false positives from the Nuxt/Nitro frontend Helm chart.
+#
+# KSV014 / readOnlyRootFilesystem: Nuxt/Nitro writes temporary files at
+# runtime. Container is non-root, no capabilities, seccomp RuntimeDefault.
+#
+# AVD-KSV-01010 / sensitive ConfigMap keys: NITRO_PORT is a TCP port number.
+# Trivy's heuristic false-positives on the "PORT" substring in the key name.
+ignorefile: .trivyignore
