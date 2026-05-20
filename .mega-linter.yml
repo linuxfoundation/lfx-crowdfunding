@@ -55,9 +55,9 @@ GO_REVIVE_DIRECTORY: backend
 MARKDOWN_MARKDOWN_LINK_CHECK_CONFIG_FILE: .mlc_config.json
 
 # Pass .trivyignore explicitly so MegaLinter's trivy invocation suppresses
-# known false positives: AVD-KSV-0017 (readOnlyRootFilesystem: false is
-# required for the Nuxt/Nitro frontend) and AVD-KSV-0036 (NITRO_PORT in a
-# ConfigMap is not a secret — trivy's heuristic false-positives on "PORT").
+# known false positives: KSV014 (readOnlyRootFilesystem: false is required for
+# the Nuxt/Nitro frontend) and AVD-KSV-01010 (NITRO_PORT in a ConfigMap is not
+# a secret — trivy's heuristic false-positives on the "PORT" substring).
 REPOSITORY_TRIVY_ARGUMENTS: --ignorefile .trivyignore
 
 # Exclude .claude/ skill files — these are tool configuration, not application
