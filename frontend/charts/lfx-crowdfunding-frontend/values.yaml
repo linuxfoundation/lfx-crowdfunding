@@ -1,0 +1,97 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+replicaCount: 2
+
+image:
+  repository: ghcr.io/linuxfoundation/lfx-crowdfunding-frontend
+  pullPolicy: Always
+  tag: "" # defaults to .Chart.AppVersion
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false   # Nuxt/Nitro writes tmp files at runtime
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+ingress:
+  enabled: false
+  className: traefik
+  annotations: {}
+  hosts: []
+  tls: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 20
+  periodSeconds: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── Non-secret environment variables ─────────────────────────────────────────
+config:
+  NUXT_APP_ENV: "production"
+  NUXT_PUBLIC_AUTH0_CLIENT_ID: ""
+  NODE_ENV: "production"
+  NITRO_HOST: "0.0.0.0"
+  NITRO_PORT: "3000"
+
+# ── Secret environment variables ─────────────────────────────────────────────
+# Expected keys in the Secret:
+#   NUXT_AUTH0_CLIENT_SECRET, NUXT_JWT_SECRET, NUXT_APP_URL, NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+secretName: lfx-crowdfunding-frontend-secrets
+
+# createPlaceholderSecret — same semantics as backend chart.
+# false = ESO/operator creates the secret. true = chart creates empty placeholder.
+createPlaceholderSecret: false
