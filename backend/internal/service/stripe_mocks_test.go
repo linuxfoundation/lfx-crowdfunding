@@ -16,6 +16,8 @@ import (
 // paths immediately visible.
 type configStripeClient struct {
 	onGetProduct          func(context.Context, string) (*models.StripeProduct, error)
+	onCreateProduct       func(ctx context.Context, initiativeID, name string) (string, error)
+	onDeleteProduct       func(context.Context, string) error
 	onCreatePaymentIntent func(context.Context, models.PaymentIntentRequest) (*models.PaymentIntent, error)
 	onCreateSubscription  func(context.Context, models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
 	onCancelSubscription  func(context.Context, string) error
@@ -33,6 +35,18 @@ func (c *configStripeClient) GetProduct(ctx context.Context, id string) (*models
 		return c.onGetProduct(ctx, id)
 	}
 	panic("GetProduct not expected")
+}
+func (c *configStripeClient) CreateProduct(ctx context.Context, initiativeID, name string) (string, error) {
+	if c.onCreateProduct != nil {
+		return c.onCreateProduct(ctx, initiativeID, name)
+	}
+	panic("CreateProduct not expected")
+}
+func (c *configStripeClient) DeleteProduct(ctx context.Context, productID string) error {
+	if c.onDeleteProduct != nil {
+		return c.onDeleteProduct(ctx, productID)
+	}
+	panic("DeleteProduct not expected")
 }
 func (c *configStripeClient) CreatePaymentIntent(ctx context.Context, req models.PaymentIntentRequest) (*models.PaymentIntent, error) {
 	if c.onCreatePaymentIntent != nil {

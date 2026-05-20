@@ -90,10 +90,5 @@
     "*.{json,md,yaml,yml}": [
       "prettier --write"
     ]
-  },
-  "pnpm": {
-    "overrides": {
-      "devalue": "^5.8.1"
-    }
   }
 }

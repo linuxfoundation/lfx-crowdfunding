@@ -50,6 +50,10 @@ SPELL_CSPELL_ANALYZE_FILE_NAMES: false
 GO_GOLANGCI_LINT_DIRECTORY: backend
 GO_REVIVE_DIRECTORY: backend
 
+# Point markdown-link-check at the ignore config so shields.io badge URLs
+# (commonly unreachable from CI) do not fail the build.
+MARKDOWN_MARKDOWN_LINK_CHECK_CONFIG_FILE: .mlc_config.json
+
 # Exclude .claude/ skill files — these are tool configuration, not application
 # code, and contain markdown with intentional bare fences (example snippets).
 #

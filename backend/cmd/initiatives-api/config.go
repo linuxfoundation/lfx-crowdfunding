@@ -165,9 +165,9 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	stripeReturnURL, ok := os.LookupEnv("STRIPE_RETURN_URL")
-	if !ok || stripeReturnURL == "" {
-		stripeReturnURL = "http://localhost:3000/payment/complete"
+	stripeReturnURL := getEnv("STRIPE_RETURN_URL", "")
+	if stripeReturnURL == "" {
+		return nil, fmt.Errorf("STRIPE_RETURN_URL is required (set to the frontend URL Stripe redirects to after 3DS, e.g. https://yourdomain.com/payment/complete)")
 	}
 	ledgerTimeout, err := getDurationEnv("LEDGER_TIMEOUT", 10*time.Second)
 	if err != nil {

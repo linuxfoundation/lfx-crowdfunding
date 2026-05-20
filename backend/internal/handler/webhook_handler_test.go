@@ -32,6 +32,10 @@ type wbStripeClient struct {
 func (c *wbStripeClient) GetProduct(_ context.Context, _ string) (*models.StripeProduct, error) {
 	return nil, nil
 }
+func (c *wbStripeClient) CreateProduct(_ context.Context, _, _ string) (string, error) {
+	return "", nil
+}
+func (c *wbStripeClient) DeleteProduct(_ context.Context, _ string) error { return nil }
 func (c *wbStripeClient) CreatePaymentIntent(_ context.Context, _ models.PaymentIntentRequest) (*models.PaymentIntent, error) {
 	return nil, nil
 }

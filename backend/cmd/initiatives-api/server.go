@@ -64,7 +64,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	})
 
 	// Services
-	initiativeSvc := service.NewInitiativeService(initiativeRepo, ledgerClient, stripeClient)
+	initiativeSvc := service.NewInitiativeService(initiativeRepo, ledgerClient, stripeClient, logger)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
@@ -139,6 +139,8 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		})
 
 		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
+		r.Get("/me/donations", donationH.ListForUser)
+		r.Get("/me/subscriptions", subscriptionH.ListForUser)
 
 		// Payment account (saved card for 3DS flows)
 		r.Post("/me/setup-intent", paymentH.CreateSetupIntent)

@@ -6,10 +6,12 @@ package service
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 
 	stripe "github.com/stripe/stripe-go/v82"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 )
@@ -17,8 +19,9 @@ import (
 // --- mocks ---
 
 type mockInitiativeRepo struct {
-	initiative *models.Initiative
-	err        error
+	initiative  *models.Initiative
+	lastCreated *models.Initiative
+	err         error
 }
 
 func (m *mockInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -40,6 +43,7 @@ func (m *mockInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) 
 	return nil, nil, nil
 }
 func (m *mockInitiativeRepo) Create(_ context.Context, i *models.Initiative) (*models.Initiative, error) {
+	m.lastCreated = i
 	return i, nil
 }
 func (m *mockInitiativeRepo) Update(_ context.Context, i *models.Initiative) (*models.Initiative, error) {
@@ -99,6 +103,10 @@ func (m *mockStripeClient) DetachPaymentMethod(_ context.Context, _ string) erro
 func (m *mockStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64, _ string, _ string) (string, error) {
 	return "price_mock", nil
 }
+func (m *mockStripeClient) CreateProduct(_ context.Context, _, _ string) (string, error) {
+	return "prod_mock", nil
+}
+func (m *mockStripeClient) DeleteProduct(_ context.Context, _ string) error { return nil }
 
 // --- flattenSponsors ---
 
@@ -374,6 +382,7 @@ func TestGetByID_FlattensSponsorsList(t *testing.T) {
 		&mockInitiativeRepo{initiative: initiative},
 		&mockLedgerClient{},
 		&mockStripeClient{},
+		slog.Default(),
 	)
 
 	result, err := svc.GetByID(context.Background(), "test-id")
@@ -393,10 +402,62 @@ func TestGetByID_RepoError(t *testing.T) {
 		&mockInitiativeRepo{err: errors.New("not found")},
 		&mockLedgerClient{},
 		&mockStripeClient{},
+		slog.Default(),
 	)
 
 	_, err := svc.GetByID(context.Background(), "missing-id")
 	if err == nil {
 		t.Fatal("expected error from repo, got nil")
+	}
+}
+
+func newCreateSvc(repo domain.InitiativeRepository) *InitiativeService {
+	return NewInitiativeService(repo, &mockLedgerClient{}, &mockStripeClient{}, slog.Default())
+}
+
+func TestCreate_MissingName(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Slug: "my-project", InitiativeType: "project"},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestCreate_MissingSlug_AutoGeneratesFromName(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, _ = svc.Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Cool Project", InitiativeType: "project"},
+	)
+	// Stripe mock returns "prod_mock" and repo.Create records whatever initiative was passed.
+	// The slug should have been derived from the name.
+	if repo.lastCreated == nil {
+		t.Fatal("expected repo.Create to be called")
+	}
+	if repo.lastCreated.Slug != "my-cool-project" {
+		t.Errorf("expected slug %q, got %q", "my-cool-project", repo.lastCreated.Slug)
+	}
+}
+
+func TestCreate_MissingInitiativeType(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Project", Slug: "my-project"},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestCreate_UnknownInitiativeType(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Project", Slug: "my-project", InitiativeType: "nonsense"},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 }
