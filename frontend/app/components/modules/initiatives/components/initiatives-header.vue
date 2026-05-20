@@ -113,7 +113,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxInput from '~/components/uikit/input/input.vue';
 import LfxTabs from '~/components/uikit/tabs/tabs.vue';
@@ -127,6 +127,17 @@ defineProps<{
   activeType: string;
   sortBy: string;
 }>();
+
+// Scroll anchoring compensates for header height changes by adjusting scrollTop,
+// which oscillates isScrolled. Disabling it prevents that feedback loop.
+let prevOverflowAnchor = '';
+onMounted(() => {
+  prevOverflowAnchor = document.documentElement.style.overflowAnchor;
+  document.documentElement.style.overflowAnchor = 'none';
+});
+onUnmounted(() => {
+  document.documentElement.style.overflowAnchor = prevOverflowAnchor;
+});
 
 const { scrollTop } = useScroll();
 const isScrolled = computed(() => scrollTop.value > 10);

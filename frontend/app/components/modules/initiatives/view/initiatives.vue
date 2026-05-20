@@ -14,9 +14,12 @@ SPDX-License-Identifier: MIT
       :class="{ 'pt-8': isScrolled }"
     >
       <initiatives-grid
-        :initiatives="data?.data ?? []"
+        :initiatives="initiatives"
         :is-loading="isLoading"
         :error="initiativeError"
+        :is-fetching-next-page="isFetchingNextPage"
+        :has-next-page="hasNextPage"
+        @load-more="fetchNextPage"
       />
     </div>
   </div>
@@ -35,11 +38,14 @@ const searchTerm = ref('');
 const activeType = ref('all');
 const sortBy = ref('recent');
 
-const { data, isLoading, error } = useInitiatives({
+const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, error } = useInitiatives({
   search: searchTerm,
   type: activeType,
   sort: sortBy,
+  pageSize: 12,
 });
+
+const initiatives = computed(() => data.value?.pages.flatMap((p) => p.data) ?? []);
 
 const initiativeError = computed(() => error.value as Error | null);
 

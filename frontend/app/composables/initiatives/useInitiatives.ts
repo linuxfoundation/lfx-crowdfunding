@@ -1,36 +1,69 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
-import { useQuery } from '@tanstack/vue-query';
-import type { MaybeRef } from 'vue';
-import { toValue } from 'vue';
-import type { InitiativesParams, InitiativesResponse } from '#shared/types/initiative.types';
+import { type InfiniteData, type QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
+import { type MaybeRef, computed, toValue } from 'vue';
+import type { InitiativeBase } from '#shared/types/initiative.types';
+import type { Pagination } from '#shared/types/pagination';
+function getNextInitiativesPageParam(lastPage: Pagination<InitiativeBase>) {
+  const totalPages = Math.ceil(lastPage.total / lastPage.pageSize);
+  return lastPage.page < totalPages ? lastPage.page + 1 : null;
+}
 
-export type { InitiativesParams, InitiativesResponse };
+function fetchInitiativesQueryFn(
+  query: () => Record<string, string>,
+): QueryFunction<Pagination<InitiativeBase>, readonly unknown[], number> {
+  return async ({ pageParam = 1 }) => {
+    const params = new URLSearchParams({ ...query(), page: String(pageParam) });
+    return $fetch<Pagination<InitiativeBase>>(`/api/initiatives?${params}`);
+  };
+}
 
-export function useInitiatives(params?: { [K in keyof InitiativesParams]?: MaybeRef<string> }) {
-  return useQuery<InitiativesResponse>({
-    queryKey: [
-      'initiatives',
-      params?.search ?? '',
-      params?.type ?? '',
-      params?.sort ?? '',
-      params?.page ?? '',
-      params?.pageSize ?? '',
-    ] as const,
-    queryFn: () => {
-      const query = new URLSearchParams();
-      const search = toValue(params?.search ?? '');
-      const type = toValue(params?.type ?? '');
-      const sort = toValue(params?.sort ?? '');
-      const page = toValue(params?.page ?? '');
-      const pageSize = toValue(params?.pageSize ?? '');
-      if (search) query.set('search', search);
-      if (type) query.set('type', type);
-      if (sort) query.set('sort', sort);
-      if (page) query.set('page', page);
-      if (pageSize) query.set('pageSize', pageSize);
-      const qs = query.toString();
-      return $fetch<InitiativesResponse>(`/api/initiatives${qs ? `?${qs}` : ''}`);
-    },
+export function useInitiatives(params?: {
+  search?: MaybeRef<string>;
+  type?: MaybeRef<string>;
+  sort?: MaybeRef<string>;
+  pageSize?: MaybeRef<number>;
+}) {
+  const resolvedParams = computed(() => ({
+    search: toValue(params?.search ?? ''),
+    type: toValue(params?.type ?? ''),
+    sort: toValue(params?.sort ?? ''),
+    pageSize: toValue(params?.pageSize ?? 0),
+  }));
+
+  const queryKey = computed(
+    () =>
+      [
+        'initiatives',
+        resolvedParams.value.search,
+        resolvedParams.value.type,
+        resolvedParams.value.sort,
+        resolvedParams.value.pageSize,
+      ] as const,
+  );
+
+  const queryFn = fetchInitiativesQueryFn(() => {
+    const { search, type, sort, pageSize } = resolvedParams.value;
+    const p: Record<string, string> = {};
+    if (search) p.search = search;
+    if (type) p.type = type;
+    if (sort) p.sort = sort;
+    if (pageSize) p.pageSize = String(pageSize);
+    return p;
   });
+
+  const result = useInfiniteQuery<
+    Pagination<InitiativeBase>,
+    Error,
+    InfiniteData<Pagination<InitiativeBase>, number>,
+    readonly unknown[],
+    number
+  >({
+    queryKey,
+    queryFn,
+    getNextPageParam: getNextInitiativesPageParam,
+    initialPageParam: 1,
+  });
+
+  return result;
 }
