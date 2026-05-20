@@ -42,12 +42,7 @@ SPDX-License-Identifier: MIT
       <div class="flex items-center gap-4">
         <div class="hidden items-center gap-4 md:flex">
           <start-fundraise-button />
-          <lfx-button
-            label="Donate"
-            type="primary"
-            button-style="pill"
-            icon="hand-heart"
-          />
+          <donate-button />
         </div>
 
         <div class="hidden h-6 w-px bg-neutral-200 md:block" />
@@ -66,8 +61,8 @@ SPDX-License-Identifier: MIT
 import { ref } from 'vue';
 import { AppRoute } from '~/config/routes';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
-import LfxButton from '~/components/uikit/button/button.vue';
 import StartFundraiseButton from '~/components/shared/components/start-fundraise-button.vue';
+import DonateButton from '~/components/shared/components/donate-button.vue';
 import LfxDesktopNav from '~/components/shared/layout/components/desktop-nav.vue';
 import LfxMobileMenu from '~/components/shared/layout/components/mobile-menu.vue';
 import LfxUserLogin from '~/components/shared/layout/components/user-login.vue';
