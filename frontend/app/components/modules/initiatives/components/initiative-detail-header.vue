@@ -150,7 +150,7 @@ import useScroll from '~/utils/scroll';
 
 const props = defineProps<{
   initiative: InitiativeDetail;
-  activeTab?: string;
+  activeTab: string;
 }>();
 
 const { openDonateDrawer } = useDonateDrawerStore();
