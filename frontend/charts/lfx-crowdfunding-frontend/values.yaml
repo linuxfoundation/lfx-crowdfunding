@@ -85,6 +85,7 @@ config:
   NUXT_APP_URL: "" # set per environment, e.g. https://funding.platform.linuxfoundation.org
   NUXT_AUTH0_COOKIE_DOMAIN: "" # set per environment, e.g. platform.linuxfoundation.org
   NUXT_PUBLIC_AUTH0_CLIENT_ID: ""
+  NUXT_PUBLIC_AUTH0_DOMAIN: "" # set per environment, e.g. https://linuxfoundation.auth0.com
   NODE_ENV: "production"
   NITRO_HOST: "0.0.0.0"
   NITRO_PORT: "3000"
