@@ -6,10 +6,20 @@ SPDX-License-Identifier: MIT
   <button
     type="button"
     class="c-icon-button"
-    :class="[`c-icon-button--${props.size}`, `c-icon-button--${props.type}`, { 'is-disabled': props.disabled }]"
-    :disabled="props.disabled"
+    :class="[
+      `c-icon-button--${props.size}`,
+      `c-icon-button--${props.type}`,
+      { 'is-disabled': props.disabled || props.loading },
+    ]"
+    :disabled="props.disabled || props.loading"
   >
-    <slot>
+    <lfx-icon
+      v-if="props.loading"
+      name="spinner-third"
+      class="animate-spin"
+      :size="props.iconSize"
+    />
+    <slot v-else>
       <lfx-icon
         :name="props.icon"
         :type="props.iconType"
@@ -32,6 +42,7 @@ const props = withDefaults(
     iconType?: IconType;
     iconSize?: number;
     disabled?: boolean;
+    loading?: boolean;
   }>(),
   {
     type: 'default',
@@ -39,6 +50,7 @@ const props = withDefaults(
     iconType: 'light',
     iconSize: 16,
     disabled: false,
+    loading: false,
   },
 );
 </script>

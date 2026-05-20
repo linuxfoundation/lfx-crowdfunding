@@ -33,24 +33,38 @@ SPDX-License-Identifier: MIT
               {{ section.title }}
             </p>
             <nav class="flex flex-col">
-              <NuxtLink
-                v-for="link in section.links.filter((l) => l.link.startsWith('/'))"
+              <template
+                v-for="link in section.links"
                 :key="link.name"
-                :to="link.link"
-                class="text-sm leading-7 text-white hover:underline"
               >
-                {{ link.name }}
-              </NuxtLink>
-              <a
-                v-for="link in section.links.filter((l) => !l.link.startsWith('/'))"
-                :key="link.name"
-                :href="link.link"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-sm leading-7 text-white hover:underline"
-              >
-                {{ link.name }}
-              </a>
+                <template v-if="link.link">
+                  <NuxtLink
+                    v-if="link.link.startsWith('/')"
+                    :to="link.link"
+                    class="text-sm leading-7 text-white hover:underline"
+                  >
+                    {{ link.name }}
+                  </NuxtLink>
+                  <a
+                    v-else
+                    :href="link.link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-sm leading-7 text-white hover:underline"
+                  >
+                    {{ link.name }}
+                  </a>
+                </template>
+                <template v-else>
+                  <button
+                    type="button"
+                    class="text-sm leading-7 text-white hover:underline -ml-1"
+                    @click="link.action"
+                  >
+                    {{ link.name }}
+                  </button>
+                </template>
+              </template>
             </nav>
           </section>
         </div>
