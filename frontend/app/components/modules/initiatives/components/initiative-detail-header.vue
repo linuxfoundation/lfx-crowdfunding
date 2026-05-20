@@ -112,14 +112,14 @@ SPDX-License-Identifier: MIT
             icon="hand-heart"
             icon-position="left"
             class="!text-accent-500"
-            @click="openDonateDrawer({ id: initiative.id, name: initiative.name, logoUrl: initiative.logoUrl })"
+            @click="handleFundInitiative()"
           />
           <lfx-button
             label="Start an initiative"
             type="primary"
             icon="box-dollar"
             icon-position="left"
-            @click="openFundraiseDrawer()"
+            @click="handleStartInitiative()"
           />
         </div>
       </div>
@@ -164,6 +164,7 @@ import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
 import { useFundraiseDrawerStore } from '~/components/modules/fundraise/store/fundraise-drawer.store';
+import { useAuth } from '~/composables/useAuth';
 import useScroll from '~/utils/scroll';
 
 const props = defineProps<{
@@ -173,6 +174,23 @@ const props = defineProps<{
 
 const { openDonateDrawer } = useDonateDrawerStore();
 const { openFundraiseDrawer } = useFundraiseDrawerStore();
+const { isAuthenticated, login } = useAuth();
+
+function handleFundInitiative() {
+  if (!isAuthenticated.value) {
+    login();
+  } else {
+    openDonateDrawer({ id: props.initiative.id, name: props.initiative.name, logoUrl: props.initiative.logoUrl });
+  }
+}
+
+function handleStartInitiative() {
+  if (!isAuthenticated.value) {
+    login();
+  } else {
+    openFundraiseDrawer();
+  }
+}
 
 const { scrollTop } = useScroll();
 const isScrolled = computed(() => scrollTop.value > 10);
