@@ -12,7 +12,6 @@ SPDX-License-Identifier: MIT
           label="View all"
           type="transparent"
           button-style="pill"
-          size="small"
           icon="angle-right"
           icon-position="right"
         />

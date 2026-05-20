@@ -24,7 +24,7 @@ All components auto-registered via Nuxt; import is not required in `<template>`.
 Use the default slot instead of `label` when you need rich content:
 
 ```vue
-<lfx-button type="nav" button-style="pill" size="small">
+<lfx-button type="nav" button-style="pill">
   <lfx-icon name="ellipsis" type="light" :size="16" />
   More
 </lfx-button>
@@ -68,11 +68,11 @@ Renders a Font Awesome Pro icon (kit `d65f54d9ea` loaded globally).
 <lfx-icon name="folder-heart" type="light" :size="16" />
 ```
 
-| Prop   | Type   | Default | Notes                                     |
-| ------ | ------ | ------- | ----------------------------------------- |
-| `name` | string | —       | FA icon name without `fa-` prefix        |
+| Prop   | Type   | Default | Notes                                                  |
+| ------ | ------ | ------- | ------------------------------------------------------ |
+| `name` | string | —       | FA icon name without `fa-` prefix                      |
 | `type` | string | `light` | `light` \| `solid` \| `regular` \| `thin` \| `duotone` |
-| `size` | number | `16`    | px value, converted to rem internally    |
+| `size` | number | `16`    | px value, converted to rem internally                  |
 
 ---
 
@@ -250,14 +250,14 @@ Wraps form inputs with label and validation messages.
 </lfx-drawer>
 ```
 
-| Prop               | Type                        | Default      | Notes                                              |
-| ------------------ | --------------------------- | ------------ | -------------------------------------------------- |
-| `modelValue`       | `boolean`                   | —            | v-model open/closed state                          |
-| `position`         | `'left' \| 'right' \| 'bottom'` | `'right'`  | Slide direction                                    |
-| `width`            | `string`                    | `'37.5rem'`  | max-width for left/right positions                 |
-| `height`           | `string`                    | `'85vh'`     | max-height for bottom position                     |
-| `closeFunction`    | `() => boolean`             | `() => true` | Return false to veto close (e.g. unsaved changes)  |
-| `hideCloseButton`  | `boolean`                   | `false`      | Hide the built-in × button to add your own         |
+| Prop              | Type                            | Default      | Notes                                             |
+| ----------------- | ------------------------------- | ------------ | ------------------------------------------------- |
+| `modelValue`      | `boolean`                       | —            | v-model open/closed state                         |
+| `position`        | `'left' \| 'right' \| 'bottom'` | `'right'`    | Slide direction                                   |
+| `width`           | `string`                        | `'37.5rem'`  | max-width for left/right positions                |
+| `height`          | `string`                        | `'85vh'`     | max-height for bottom position                    |
+| `closeFunction`   | `() => boolean`                 | `() => true` | Return false to veto close (e.g. unsaved changes) |
+| `hideCloseButton` | `boolean`                       | `false`      | Hide the built-in × button to add your own        |
 
 The `bottom` position adds `rounded-t-2xl` to the panel and fills the full viewport width.
 

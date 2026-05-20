@@ -11,7 +11,6 @@ SPDX-License-Identifier: MIT
         <lfx-button
           :type="form.donorType === 'individual' ? 'primary' : 'outline'"
           button-style="pill"
-          size="small"
           icon="user"
           label="Individual"
           @click="setDonorType('individual')"
@@ -19,7 +18,6 @@ SPDX-License-Identifier: MIT
         <lfx-button
           :type="form.donorType === 'company' ? 'primary' : 'outline'"
           button-style="pill"
-          size="small"
           icon="building"
           label="Company"
           @click="setDonorType('company')"

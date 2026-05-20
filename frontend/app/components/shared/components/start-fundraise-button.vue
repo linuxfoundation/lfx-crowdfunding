@@ -9,13 +9,14 @@ SPDX-License-Identifier: MIT
     button-style="pill"
     :type="type"
     v-bind="$attrs"
-    @click="openFundraiseDrawer()"
+    @click="handleClick()"
   />
 </template>
 
 <script setup lang="ts">
 import LfxButton from '~/components/uikit/button/button.vue';
 import { useFundraiseDrawerStore } from '~/components/modules/fundraise/store/fundraise-drawer.store';
+import { useAuth } from '~/composables/useAuth';
 
 withDefaults(
   defineProps<{
@@ -26,6 +27,15 @@ withDefaults(
 );
 
 const { openFundraiseDrawer } = useFundraiseDrawerStore();
+const { isAuthenticated, login } = useAuth();
+
+function handleClick() {
+  if (!isAuthenticated.value) {
+    login();
+  } else {
+    openFundraiseDrawer();
+  }
+}
 </script>
 
 <script lang="ts">
