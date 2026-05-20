@@ -32,7 +32,7 @@ type Server struct {
 }
 
 // NewServer wires up all dependencies and builds the Chi router.
-func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
+func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, error) {
 	// Database pool
 	pool, err := db.NewPool(context.Background(), db.PoolConfig{
 		DSN:             cfg.Database.DSN,
@@ -71,11 +71,13 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	statisticsSvc := service.NewStatisticsService(statisticsRepo)
 
 	// JWT authenticator
-	jwtAuth, err := auth.NewJWTAuthenticator(auth.JWTAuthConfig{
+	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
 		JWKSURL:                    cfg.JWT.JWKSURL,
 		Audience:                   cfg.JWT.Audience,
 		Issuer:                     cfg.JWT.Issuer,
 		ClockSkew:                  cfg.JWT.ClockSkew,
+		M2MScopeRequired:           cfg.JWT.M2MScopeRequired,
+		M2MAllowedClientIDs:        cfg.JWT.M2MAllowedClientIDs,
 		DisabledMockLocalPrincipal: cfg.Local.DisabledMockLocalPrincipal,
 	})
 	if err != nil {
@@ -86,6 +88,9 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		logger.Warn("!!! JWT AUTHENTICATION IS DISABLED — ALL REQUESTS ARE    !!!")
 		logger.Warn("!!! TREATED AS AUTHENTICATED. NEVER USE IN PRODUCTION.   !!!")
 		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	}
+	if jwtAuth.IsM2MPartiallyConfigured() {
+		logger.Warn("M2M proxy auth is partially configured: set both M2M_SCOPE_REQUIRED and M2M_ALLOWED_CLIENT_IDS for full protection")
 	}
 
 	// Handlers
@@ -142,11 +147,15 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		r.Get("/me/donations", donationH.ListForUser)
 		r.Get("/me/subscriptions", subscriptionH.ListForUser)
 
-		// Payment account (saved card for 3DS flows)
-		r.Post("/me/setup-intent", paymentH.CreateSetupIntent)
-		r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
-		r.Get("/me/payment-account", paymentH.GetPaymentAccount)
-		r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
+		// Payment account (saved card for 3DS flows).
+		// RequireDirectAuth blocks M2M tokens — Stripe customer creation needs a real user email.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireDirectAuth)
+			r.Post("/me/setup-intent", paymentH.CreateSetupIntent)
+			r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
+			r.Get("/me/payment-account", paymentH.GetPaymentAccount)
+			r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
+		})
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

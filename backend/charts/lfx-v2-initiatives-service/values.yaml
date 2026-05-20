@@ -85,6 +85,12 @@ config:
   JWKS_URL: ""
   JWT_AUDIENCE: ""
   JWT_ISSUER: ""
+  # M2M proxy path — both must be set together for full protection.
+  # M2M_SCOPE_REQUIRED: scope the M2M token must carry (e.g. "access:api").
+  # M2M_ALLOWED_CLIENT_IDS: comma-separated Auth0 client IDs permitted to proxy
+  #   user requests via X-Username. Leave empty to disable the allowlist check.
+  M2M_SCOPE_REQUIRED: ""
+  M2M_ALLOWED_CLIENT_IDS: ""
   LEDGER_BASE_URL: ""
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   OTEL_SERVICE_NAME: "lfx-v2-initiatives-service"
