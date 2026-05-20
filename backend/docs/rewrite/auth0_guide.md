@@ -18,17 +18,17 @@ user.
 1. [Situation and Core Problem](#1-situation-and-core-problem)
 2. [Auth0 Concepts Primer](#2-auth0-concepts-primer)
 3. [The Recommended Architecture: Access Tokens with a Shared API Audience](#3-the-recommended-architecture-access-tokens-with-a-shared-api-audience)
-4. [Full Token Flow — Step by Step](#4-full-token-flow--step-by-step)
+4. [Full Token Flow: Step by Step](#4-full-token-flow-step-by-step)
 5. [Auth0 Dashboard Configuration](#5-auth0-dashboard-configuration)
-6. [Custom Claims — LF SSO Username in the Access Token](#6-custom-claims--lf-sso-username-in-the-access-token)
+6. [Custom Claims: LF SSO Username in the Access Token](#6-custom-claims-lf-sso-username-in-the-access-token)
 7. [Crowdfunding Backend Configuration](#7-crowdfunding-backend-configuration)
-8. [CORS — Browser Security Boundary](#8-cors--browser-security-boundary)
+8. [CORS: Browser Security Boundary](#8-cors-browser-security-boundary)
 9. [LfxSelfServe Frontend Implementation](#9-lfxselfserve-frontend-implementation)
 10. [What the Crowdfunding Backend Does with the Token](#10-what-the-crowdfunding-backend-does-with-the-token)
 11. [Local Development Without Auth0](#11-local-development-without-auth0)
 12. [Security Considerations](#12-security-considerations)
 13. [Troubleshooting](#13-troubleshooting)
-14. [Quick Reference — Configuration Matrix](#14-quick-reference--configuration-matrix)
+14. [Quick Reference: Configuration Matrix](#14-quick-reference-configuration-matrix)
 
 ---
 
@@ -216,7 +216,7 @@ Key points:
 
 ---
 
-## 4. Full Token Flow — Step by Step
+## 4. Full Token Flow: Step by Step
 
 ### 4.1 Login Flow (happens once per session)
 
@@ -397,7 +397,7 @@ additional configuration is needed — Auth0 manages key rotation automatically.
 
 ---
 
-## 6. Custom Claims — LF SSO Username in the Access Token
+## 6. Custom Claims: LF SSO Username in the Access Token
 
 The Crowdfunding backend reads the following custom claim from every token:
 
@@ -552,7 +552,7 @@ regardless of which app they authenticated through.
 
 ---
 
-## 8. CORS — Browser Security Boundary
+## 8. CORS: Browser Security Boundary
 
 When the LfxSelfServe frontend (served from `https://selfserve.lfx.linuxfoundation.org`)
 makes a fetch/axios call to the Crowdfunding API
@@ -950,7 +950,7 @@ needed.
 
 ---
 
-## 14. Quick Reference — Configuration Matrix
+## 14. Quick Reference: Configuration Matrix
 
 | Setting | LfxSelfServe (frontend) | Crowdfunding API (backend) |
 |---|---|---|
