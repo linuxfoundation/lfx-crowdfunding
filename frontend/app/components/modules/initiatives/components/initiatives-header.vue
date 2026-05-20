@@ -130,11 +130,13 @@ defineProps<{
 
 // Scroll anchoring compensates for header height changes by adjusting scrollTop,
 // which oscillates isScrolled. Disabling it prevents that feedback loop.
+let prevOverflowAnchor = '';
 onMounted(() => {
+  prevOverflowAnchor = document.documentElement.style.overflowAnchor;
   document.documentElement.style.overflowAnchor = 'none';
 });
 onUnmounted(() => {
-  document.documentElement.style.overflowAnchor = '';
+  document.documentElement.style.overflowAnchor = prevOverflowAnchor;
 });
 
 const { scrollTop } = useScroll();

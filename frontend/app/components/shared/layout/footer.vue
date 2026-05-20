@@ -57,6 +57,7 @@ SPDX-License-Identifier: MIT
                 </template>
                 <template v-else>
                   <button
+                    type="button"
                     class="text-sm leading-7 text-white hover:underline -ml-1"
                     @click="link.action"
                   >

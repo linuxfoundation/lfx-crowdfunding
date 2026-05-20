@@ -45,7 +45,6 @@ const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, error }
   pageSize: 12,
 });
 
-// @ts-expect-error - TanStack Query type inference issue with Vue
 const initiatives = computed(() => data.value?.pages.flatMap((p) => p.data) ?? []);
 
 const initiativeError = computed(() => error.value as Error | null);

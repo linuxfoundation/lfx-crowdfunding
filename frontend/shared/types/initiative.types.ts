@@ -4,6 +4,7 @@
 // Types in this file are accessible to both the Nuxt app (~/types) and the
 // Nitro server layer (server/api). Keep this file free of app-only imports
 // (Vue, vue-query, browser APIs, etc.).
+import type { Pagination } from './pagination';
 
 export interface InitiativeStats {
   supporters: number;
@@ -48,6 +49,5 @@ export interface InitiativesParams {
   pageSize?: number;
 }
 
-export type { Pagination } from './pagination';
-import type { Pagination } from './pagination';
+export type { Pagination };
 export type InitiativesResponse = Pagination<InitiativeBase>;

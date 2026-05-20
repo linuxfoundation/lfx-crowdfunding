@@ -1,6 +1,6 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
-import { type QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
+import { type InfiniteData, type QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
 import { type MaybeRef, computed, toValue } from 'vue';
 import type { InitiativeBase } from '#shared/types/initiative.types';
 import type { Pagination } from '#shared/types/pagination';
@@ -31,7 +31,16 @@ export function useInitiatives(params?: {
     pageSize: toValue(params?.pageSize ?? 0),
   }));
 
-  const queryKey = computed(() => ['initiatives', ...Object.values(resolvedParams.value)]);
+  const queryKey = computed(
+    () =>
+      [
+        'initiatives',
+        resolvedParams.value.search,
+        resolvedParams.value.type,
+        resolvedParams.value.sort,
+        resolvedParams.value.pageSize,
+      ] as const,
+  );
 
   const queryFn = fetchInitiativesQueryFn(() => {
     const { search, type, sort, pageSize } = resolvedParams.value;
@@ -46,7 +55,7 @@ export function useInitiatives(params?: {
   const result = useInfiniteQuery<
     Pagination<InitiativeBase>,
     Error,
-    Pagination<InitiativeBase>,
+    InfiniteData<Pagination<InitiativeBase>, number>,
     readonly unknown[],
     number
   >({

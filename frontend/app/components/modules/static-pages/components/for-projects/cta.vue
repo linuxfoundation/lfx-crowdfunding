@@ -17,6 +17,7 @@ SPDX-License-Identifier: MIT
       <start-fundraise-button
         label="Start a Fundraise"
         type="primary"
+        class="shrink-0 md:w-auto w-full justify-center"
       />
     </div>
   </div>

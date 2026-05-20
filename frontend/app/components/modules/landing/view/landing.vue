@@ -24,7 +24,6 @@ import LandingNavCards from '../components/landing-nav-cards.vue';
 import { useInitiatives } from '~/composables/initiatives/useInitiatives';
 
 const { data, isLoading, error } = useInitiatives({ pageSize: 3 });
-// @ts-expect-error - TanStack Query type inference issue with Vue
 const initiatives = computed(() => data.value?.pages.flatMap((p) => p.data) ?? []);
 const initiativeError = computed(() => error.value as Error | null);
 </script>
