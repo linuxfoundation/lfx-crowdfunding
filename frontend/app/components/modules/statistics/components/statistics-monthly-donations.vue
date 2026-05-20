@@ -79,6 +79,7 @@ SPDX-License-Identifier: MIT
 import { computed } from 'vue';
 import StatisticsMonthlyBarChart from './statistics-monthly-bar-chart.vue';
 import LfxCard from '~/components/uikit/card/card.vue';
+import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import { formatNumberCurrency } from '~/utils/formatter';
 import type { MonthlyDonations } from '#shared/types/statistics.types';
