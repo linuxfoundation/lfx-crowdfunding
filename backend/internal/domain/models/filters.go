@@ -49,12 +49,4 @@ type Principal struct {
 	GivenName     string
 	FamilyName    string
 	Picture       string
-	// IsM2M is true when the principal was derived from an M2M client-credentials
-	// token + X-Username header rather than a user's own ID token. Handlers and
-	// audit logs should use this to distinguish proxied actions from direct ones.
-	IsM2M bool
-	// M2MClientID is the Auth0 client_id of the M2M application that proxied
-	// this request (read from the token's "azp" claim, or derived from the
-	// "sub" claim if "azp" is absent). Empty for user tokens.
-	M2MClientID string
 }
