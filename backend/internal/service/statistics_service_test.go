@@ -100,8 +100,9 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		platformBalance: &clients.LedgerPlatformBalance{
-			TotalCredit:     1_000_000,
-			TotalSupporters: 10,
+			OrganizationsCents: 800_000,
+			IndividualsCents:   200_000,
+			TotalSupporters:    10,
 			TopOrganizations: []clients.LedgerSponsorRaw{
 				{ID: "org-1", Total: 500_000},
 			},
@@ -180,7 +181,6 @@ func TestGetPlatformDetails_MapsFields(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		platformBalance: &clients.LedgerPlatformBalance{
-			TotalCredit:        5_000_000,
 			TotalSupporters:    42,
 			OrganizationsCents: 3_000_000,
 			IndividualsCents:   2_000_000,
@@ -196,7 +196,7 @@ func TestGetPlatformDetails_MapsFields(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if details.TotalRaisedCents != 5_000_000 {
+	if details.TotalRaisedCents != 5_000_000 { // 3_000_000 + 2_000_000
 		t.Errorf("TotalRaisedCents: want 5000000, got %d", details.TotalRaisedCents)
 	}
 	if details.TotalSupporters != 42 {

@@ -257,8 +257,6 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 
 // LedgerPlatformBalance holds the platform-wide aggregate returned by GET /balance/platform.
 type LedgerPlatformBalance struct {
-	TotalCredit        int64
-	TotalDebit         int64
 	TotalSupporters    int64
 	OrganizationsCents int64
 	IndividualsCents   int64
@@ -308,8 +306,6 @@ type LedgerRecentDonation struct {
 
 // raw JSON types for platform balance response
 type ledgerPlatformBalanceResponse struct {
-	TotalCredit        int64 `json:"totalCredit"`
-	TotalDebit         int64 `json:"totalDebit"`
 	TotalSupporters    int64 `json:"totalSupporters"`
 	OrganizationsCents int64 `json:"organizationsCents"`
 	IndividualsCents   int64 `json:"individualsCents"`
@@ -371,8 +367,6 @@ func (c *ledgerHTTPClient) GetPlatformBalance(ctx context.Context) (*LedgerPlatf
 	}
 
 	out := &LedgerPlatformBalance{
-		TotalCredit:        resp.TotalCredit,
-		TotalDebit:         resp.TotalDebit,
 		TotalSupporters:    resp.TotalSupporters,
 		OrganizationsCents: resp.OrganizationsCents,
 		IndividualsCents:   resp.IndividualsCents,

@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -74,7 +75,7 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 	}
 
 	out := &models.PlatformDetails{
-		TotalRaisedCents:   raw.TotalCredit,
+		TotalRaisedCents:   raw.OrganizationsCents + raw.IndividualsCents,
 		TotalSupporters:    raw.TotalSupporters,
 		OrganizationsCents: raw.OrganizationsCents,
 		IndividualsCents:   raw.IndividualsCents,
@@ -113,6 +114,9 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 	raw, err := s.ledgerClient.GetPlatformMonthly(ctx, 12)
 	if err != nil {
 		span.RecordError(err)
+		if errors.Is(err, domain.ErrUpstreamUnavailable) {
+			return &models.PlatformMonthly{Buckets: []models.MonthlyBucket{}}, nil
+		}
 		return nil, fmt.Errorf("get platform monthly: %w", err)
 	}
 
@@ -137,6 +141,9 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	raw, err := s.ledgerClient.GetPlatformRecentDonations(ctx)
 	if err != nil {
 		span.RecordError(err)
+		if errors.Is(err, domain.ErrUpstreamUnavailable) {
+			return &models.RecentDonationsResponse{Data: []models.RecentDonation{}}, nil
+		}
 		return nil, fmt.Errorf("get platform recent donations: %w", err)
 	}
 
