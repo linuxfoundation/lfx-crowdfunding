@@ -12,6 +12,7 @@ if (isProduction) {
     'NUXT_AUTH0_CLIENT_SECRET',
     'NUXT_AUTH0_COOKIE_DOMAIN',
     'NUXT_JWT_SECRET',
+    'NUXT_PUBLIC_AUTH0_AUDIENCE',
   ];
   for (const key of required) {
     if (!process.env[key]) throw new Error(`Missing required env var: ${key}`);
@@ -29,6 +30,7 @@ export default {
   auth0CookieDomain,
   jwtSecret: process.env.NUXT_JWT_SECRET || '',
   githubOauthClientSecret: process.env.NUXT_GITHUB_OAUTH_CLIENT_SECRET || '',
+  backendBaseUrl: process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080',
 
   public: {
     apiBase: '/api',
@@ -37,6 +39,7 @@ export default {
     auth0Domain,
     auth0ClientId: process.env.NUXT_PUBLIC_AUTH0_CLIENT_ID || '',
     auth0RedirectUri: `${appUrl}/auth/callback`,
+    auth0Audience: process.env.NUXT_PUBLIC_AUTH0_AUDIENCE || '',
     stripePublishableKey: '', // populated from NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     githubOauthClientId: process.env.NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID || '',
     githubOauthRedirectUri: `${appUrl}/api/github/callback`,

@@ -121,7 +121,7 @@ SPDX-License-Identifier: MIT
               :label="continueLabel"
               icon="chevron-right"
               icon-position="right"
-              :disabled="!isCurrentStepValid"
+              :disabled="!isCurrentStepValid || donating"
               :loading="submitting"
               @click="handleContinue()"
             />
@@ -133,7 +133,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import DonateStepAmount from './donate-step-amount.vue';
 import DonateStepContact from './donate-step-contact.vue';
 import DonateStepPayment from './donate-step-payment.vue';
@@ -145,6 +145,9 @@ import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 
 const TOTAL_STEPS = 3;
+
+const { card, fetchCard, saveCard } = usePaymentAccount();
+const { donate, loading: donating } = useDonate();
 
 const props = defineProps<{
   modelValue: boolean;
@@ -216,6 +219,8 @@ const amountSummary = computed(() => {
   return amountForm.value.tierName ? `Amount: ${formatted} (${amountForm.value.tierName})` : `Amount: ${formatted}`;
 });
 
+onMounted(() => fetchCard());
+
 const close = () => {
   isOpen.value = false;
   step.value = 0;
@@ -254,22 +259,27 @@ const handleContinue = async () => {
 
   submitting.value = true;
   try {
-    const paymentMethodId = await paymentStepRef.value.createPaymentMethod();
-    await $fetch('/api/donate', {
-      method: 'POST',
-      body: {
-        initiativeId: props.initiative.id,
-        tierId: amountForm.value.tierId,
-        tierName: amountForm.value.tierName,
-        amountCents: amountForm.value.amountCents,
-        contact: contactForm.value,
-        paymentMethodId,
-      },
+    let paymentMethodId: string;
+    const useDifferent = paymentStepRef.value.useDifferentCard;
+
+    if (card.value?.payment_method_id && !useDifferent) {
+      paymentMethodId = card.value.payment_method_id;
+    } else {
+      const cardEl = paymentStepRef.value.cardNumberEl;
+      if (!cardEl) throw new Error('Card element not mounted');
+      await saveCard(cardEl);
+      paymentMethodId = card.value!.payment_method_id;
+    }
+
+    await donate(props.initiative.id, {
+      amount_in_cents: amountForm.value.amountCents,
+      stripe_payment_method_id: paymentMethodId,
     });
+
     submitted.value = true;
     emit('submitted');
   } catch {
-    // Payment step displays its own Stripe error; API errors surface via $fetch
+    // Errors are surfaced via stripeError in donate-step-payment or useDonate.error
   } finally {
     submitting.value = false;
   }

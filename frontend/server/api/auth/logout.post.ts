@@ -19,6 +19,7 @@ function clearAuthCookies(event: H3Event) {
   };
 
   setCookie(event, 'auth_oidc_token', '', opts);
+  setCookie(event, 'auth_user_profile', '', opts);
   setCookie(event, 'auth_refresh_token', '', opts);
   setCookie(event, 'auth_pkce', '', opts);
   setCookie(event, 'auth_redirect_to', '', opts);
