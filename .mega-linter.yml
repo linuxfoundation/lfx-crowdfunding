@@ -59,4 +59,4 @@ MARKDOWN_MARKDOWN_LINK_CHECK_CONFIG_FILE: .mlc_config.json
 #
 # Exclude Helm templates from YAML/prettier linting — Go template syntax
 # ({{ }}) is not valid YAML and cannot be parsed by any YAML linter.
-FILTER_REGEX_EXCLUDE: (\.claude/|backend/charts/.*/templates/)
+FILTER_REGEX_EXCLUDE: (\.claude/|backend/charts/.*/templates/|frontend/charts/.*/templates/)
