@@ -11,15 +11,7 @@ export default defineEventHandler(async (event) => {
     const oidcToken = getCookie(event, 'auth_oidc_token');
 
     if (!oidcToken) {
-      // Only suggest silent login for browser requests not already in a callback flow
-      const userAgent = getHeader(event, 'user-agent') || '';
-      const referer = getHeader(event, 'referer') || '';
-      const hasPkceCookie = !!getCookie(event, 'auth_pkce');
-
-      const shouldAttemptSilentLogin =
-        userAgent.includes('Mozilla') && !referer.includes('/api/auth/callback') && !hasPkceCookie;
-
-      return { isAuthenticated: false, user: null, token: null, shouldAttemptSilentLogin };
+      return { isAuthenticated: false, user: null, token: null };
     }
 
     if (!config.jwtSecret) {

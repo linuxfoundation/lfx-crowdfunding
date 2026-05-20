@@ -27,7 +27,7 @@ SPDX-License-Identifier: MIT
     </lfx-input>
 
     <div
-      v-if="isLoading"
+      v-if="props.isLoading"
       class="flex items-center justify-center py-10 text-sm text-neutral-500"
     >
       Loading repositories…

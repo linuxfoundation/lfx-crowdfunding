@@ -1,13 +1,15 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+import { getSafeRedirectUrl } from '../../utils/redirect';
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
   const isLocal =
     process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
 
-  const redirectTo = getCookie(event, 'github_redirect_to') || '/fundraise';
+  const redirectTo = getSafeRedirectUrl(getCookie(event, 'github_redirect_to'), '/fundraise');
 
   deleteCookie(event, 'github_redirect_to');
 

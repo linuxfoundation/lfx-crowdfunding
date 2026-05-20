@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 import { randomBytes } from 'node:crypto';
+import { getSafeRedirectUrl } from '../../utils/redirect';
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
-  const redirectTo = (query.redirectTo as string) || '/fundraise';
+  const redirectTo = getSafeRedirectUrl(query.redirectTo as string | undefined, '/fundraise');
 
   const state = randomBytes(16).toString('hex');
 

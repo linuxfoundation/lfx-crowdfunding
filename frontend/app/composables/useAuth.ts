@@ -19,7 +19,6 @@ export interface AuthState {
   isAuthenticated: boolean;
   user: AuthUser | null;
   token: string | null;
-  shouldAttemptSilentLogin?: boolean;
 }
 
 export const authState = ref<AuthState>({
