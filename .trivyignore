@@ -2,13 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 # AVD-KSV-0017 / readOnlyRootFilesystem: The frontend (Nuxt/Nitro) writes
-# temporary files to the container filesystem at runtime. Setting
-# readOnlyRootFilesystem: true would require a tmpfs mount and is not feasible
-# without significant application changes. The container runs as non-root with
-# all capabilities dropped and seccomp RuntimeDefault applied.
+# temporary files to the container filesystem at runtime. The container runs
+# as non-root with all capabilities dropped and seccomp RuntimeDefault applied.
 AVD-KSV-0017
 
 # AVD-KSV-0036 / sensitive ConfigMap keys: NITRO_PORT is a TCP port number,
-# not a secret. Trivy's heuristic flags it based on the substring "PORT" in the
-# key name, which is a false positive for a non-sensitive configuration value.
+# not a secret. Trivy's heuristic flags it based on the "PORT" substring —
+# false positive for a non-sensitive configuration value.
 AVD-KSV-0036
