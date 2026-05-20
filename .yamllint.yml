@@ -11,8 +11,9 @@ rules:
 
 # pnpm-lock.yaml is auto-generated and contains lines that exceed 120 chars.
 # Helm chart templates use Go template syntax ({{ }}, {{-) that yamllint
-# cannot parse as plain YAML — skip the entire charts directory.
+# cannot parse as plain YAML — skip only the templates subdirectory so
+# Chart.yaml and values.yaml still get linting coverage.
 ignore: |
   frontend/pnpm-lock.yaml
-  backend/charts/**
-  frontend/charts/**
+  backend/charts/**/templates/**
+  frontend/charts/**/templates/**

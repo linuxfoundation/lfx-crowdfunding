@@ -9,12 +9,14 @@ RUN corepack enable
 
 WORKDIR /build
 
-# Cache pnpm store separately from source — rebuild only when lockfile changes
-COPY pnpm-lock.yaml package.json ./
+# Cache pnpm store separately from source — rebuild only when manifest changes.
+# pnpm-workspace.yaml contains overrides/allowBuilds that affect resolution so
+# it must be in this layer alongside the lockfile.
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 RUN pnpm fetch
 
 COPY . .
-RUN pnpm install --prefer-offline && pnpm build
+RUN pnpm install --frozen-lockfile --prefer-offline && pnpm build
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
