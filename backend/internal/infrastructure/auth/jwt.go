@@ -183,9 +183,20 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 				return
 			}
 			// Prefer azp (client_id without suffix) over trimming sub.
+			// When azp is absent, only accept a sub that carries the
+			// expected "@clients" suffix and produces a non-empty ID;
+			// anything else indicates a malformed or unexpected token.
 			clientID := claims.AuthorizedParty
 			if clientID == "" {
+				if !strings.HasSuffix(claims.Subject, "@clients") {
+					jsonError(w, http.StatusUnauthorized, "M2M token missing azp claim and sub does not end with @clients")
+					return
+				}
 				clientID = strings.TrimSuffix(claims.Subject, "@clients")
+				if clientID == "" {
+					jsonError(w, http.StatusUnauthorized, "M2M token has empty client ID")
+					return
+				}
 			}
 			if len(a.cfg.M2MAllowedClientIDs) > 0 && !hasAllowedClientID(a.cfg.M2MAllowedClientIDs, clientID) {
 				jsonError(w, http.StatusForbidden, "M2M client not permitted to proxy user requests")

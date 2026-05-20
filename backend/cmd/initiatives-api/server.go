@@ -34,7 +34,7 @@ type Server struct {
 // NewServer wires up all dependencies and builds the Chi router.
 func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, error) {
 	// Database pool
-	pool, err := db.NewPool(context.Background(), db.PoolConfig{
+	pool, err := db.NewPool(ctx, db.PoolConfig{
 		DSN:             cfg.Database.DSN,
 		MaxConns:        cfg.Database.MaxConns,
 		MinConns:        cfg.Database.MinConns,

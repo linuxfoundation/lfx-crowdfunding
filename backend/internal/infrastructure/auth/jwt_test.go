@@ -94,7 +94,7 @@ func makeRequest(token, username string) *http.Request {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}
 	if username != "" {
-		r.Header.Set("X-Username", username)
+		r.Header.Set(headerXUsername, username)
 	}
 	return r
 }
@@ -175,6 +175,21 @@ func TestMiddleware_M2M(t *testing.T) {
 			wantUserID: "auth0|elim",
 		},
 		{
+			name: "azp absent and sub lacks @clients suffix",
+			token: sign(&JWTClaims{
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject:   "malformed-sub-without-suffix",
+					Issuer:    testIssuer,
+					Audience:  jwt.ClaimStrings{testAudience},
+					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				},
+				GrantType: "client-credentials",
+				Scope:     "access:api",
+			}),
+			username:   "elim",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
 			name:       "missing required scope",
 			token:      m2mToken(testClientID, "other:scope"),
 			username:   "elim",
@@ -244,7 +259,46 @@ func TestMiddleware_M2M(t *testing.T) {
 	}
 }
 
-// ── middleware: token validation errors ───────────────────────────────────────
+// ── middleware: algorithm restriction ───────────────────────────────────────
+
+func TestMiddleware_RejectsHS256(t *testing.T) {
+	// Build a parser restricted to asymmetric algorithms — matching production.
+	// The keyfunc accepts any key so the only failure is the method check.
+	parser := jwt.NewParser(
+		jwt.WithAudience(testAudience),
+		jwt.WithIssuer(testIssuer),
+		jwt.WithExpirationRequired(),
+		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}),
+	)
+	a := &JWTAuthenticator{
+		cfg:    defaultCfg(),
+		keyfn:  func(_ *jwt.Token) (any, error) { return []byte(testSecret), nil },
+		parser: parser,
+	}
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// userToken() and m2mToken() both sign with HS256 — must be rejected.
+	for _, name := range []string{"user token", "m2m token"} {
+		var tok string
+		if name == "user token" {
+			tok = userToken()
+		} else {
+			tok = m2mToken(testClientID, "access:api")
+		}
+		t.Run(name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, makeRequest(tok, "elim"))
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401 for HS256 %s, got %d", name, w.Code)
+			}
+		})
+	}
+}
+
+// ── middleware: token validation errors ────────────────────────────────────────
 
 func TestMiddleware_NoToken(t *testing.T) {
 	a := newTestAuthenticator(defaultCfg())
