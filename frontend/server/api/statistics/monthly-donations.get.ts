@@ -6,14 +6,17 @@ import type { MonthlyDonations } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<MonthlyDonations> => {
   const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
-  const res = await $fetch<BackendPlatformMonthly>(`${apiBase}/v1/statistics/monthly`);
-
-  return {
-    buckets: res.buckets.map((b) => ({
-      year: b.year,
-      month: b.month,
-      totalCents: b.total_cents,
-      supporters: b.supporters,
-    })),
-  };
+  try {
+    const res = await $fetch<BackendPlatformMonthly>(`${apiBase}/v1/statistics/monthly`);
+    return {
+      buckets: (res.buckets ?? []).map((b) => ({
+        year: b.year,
+        month: b.month,
+        totalCents: b.total_cents,
+        supporters: b.supporters,
+      })),
+    };
+  } catch {
+    return { buckets: [] };
+  }
 });

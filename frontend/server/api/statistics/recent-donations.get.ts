@@ -15,19 +15,21 @@ function timeAgo(unixSeconds: number): string {
 
 export default defineEventHandler(async (): Promise<RecentDonationsResponse> => {
   const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
-  const res = await $fetch<BackendRecentDonationsResponse>(
-    `${apiBase}/v1/statistics/recent-donations`,
-  );
-
-  const data: RecentDonation[] = res.data.map((d) => ({
-    id: d.txn_id,
-    donorName: d.donor_name,
-    donorLogoUrl: d.donor_avatar_url,
-    donorType: d.donor_type === 'organization' ? 'organization' : 'member',
-    amountCents: d.amount_cents,
-    timeAgo: timeAgo(d.txn_date),
-    initiativeId: d.project_id,
-  }));
-
-  return { data };
+  try {
+    const res = await $fetch<BackendRecentDonationsResponse>(
+      `${apiBase}/v1/statistics/recent-donations`,
+    );
+    const data: RecentDonation[] = (res.data ?? []).map((d) => ({
+      id: d.txn_id,
+      donorName: d.donor_name,
+      donorLogoUrl: d.donor_avatar_url,
+      donorType: d.donor_type === 'organization' ? 'organization' : 'member',
+      amountCents: d.amount_cents,
+      timeAgo: timeAgo(d.txn_date),
+      initiativeId: d.project_id,
+    }));
+    return { data };
+  } catch {
+    return { data: [] };
+  }
 });
