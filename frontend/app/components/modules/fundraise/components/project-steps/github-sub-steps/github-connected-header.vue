@@ -24,20 +24,33 @@ SPDX-License-Identifier: MIT
         />
       </div>
     </div>
-    <div class="flex flex-col gap-0.5">
+    <div class="flex-1 flex flex-col gap-0.5">
       <p class="text-sm font-semibold text-neutral-900">GitHub Connected</p>
       <p class="text-xs text-neutral-500 leading-4">
         Signed in as <span class="font-medium text-neutral-900">@{{ login }}</span>
       </p>
     </div>
+
+    <lfx-button
+      label="Disconnect"
+      type="ghost"
+      size="small"
+      button-style="pill"
+      @click="$emit('disconnect')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import LfxIcon from '~/components/uikit/icon/icon.vue';
+import LfxButton from '~/components/uikit/button/button.vue';
 
 defineProps<{
   login: string;
+}>();
+
+defineEmits<{
+  (e: 'disconnect'): void;
 }>();
 </script>
 
