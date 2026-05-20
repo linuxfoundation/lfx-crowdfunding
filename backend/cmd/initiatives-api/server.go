@@ -76,8 +76,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		Audience:                   cfg.JWT.Audience,
 		Issuer:                     cfg.JWT.Issuer,
 		ClockSkew:                  cfg.JWT.ClockSkew,
-		M2MScopeRequired:           cfg.JWT.M2MScopeRequired,
-		M2MAllowedClientIDs:        cfg.JWT.M2MAllowedClientIDs,
 		DisabledMockLocalPrincipal: cfg.Local.DisabledMockLocalPrincipal,
 	})
 	if err != nil {
@@ -88,9 +86,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		logger.Warn("!!! JWT AUTHENTICATION IS DISABLED — ALL REQUESTS ARE    !!!")
 		logger.Warn("!!! TREATED AS AUTHENTICATED. NEVER USE IN PRODUCTION.   !!!")
 		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	}
-	if jwtAuth.IsM2MPartiallyConfigured() {
-		logger.Warn("M2M proxy auth is partially configured: set both M2M_SCOPE_REQUIRED and M2M_ALLOWED_CLIENT_IDS for full protection")
 	}
 
 	// Handlers
@@ -148,14 +143,10 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Get("/me/subscriptions", subscriptionH.ListForUser)
 
 		// Payment account (saved card for 3DS flows).
-		// RequireDirectAuth blocks M2M tokens — Stripe customer creation needs a real user email.
-		r.Group(func(r chi.Router) {
-			r.Use(auth.RequireDirectAuth)
-			r.Post("/me/setup-intent", paymentH.CreateSetupIntent)
-			r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
-			r.Get("/me/payment-account", paymentH.GetPaymentAccount)
-			r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
-		})
+		r.Post("/me/setup-intent", paymentH.CreateSetupIntent)
+		r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
+		r.Get("/me/payment-account", paymentH.GetPaymentAccount)
+		r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

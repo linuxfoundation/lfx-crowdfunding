@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
@@ -48,13 +47,6 @@ type JWTConfig struct {
 	Audience  string
 	Issuer    string
 	ClockSkew time.Duration
-	// M2MScopeRequired is the scope an M2M token must carry to use the
-	// X-Username proxy path (e.g. "access:api"). Empty disables the check.
-	M2MScopeRequired string
-	// M2MAllowedClientIDs is the allowlist of Auth0 client IDs permitted to
-	// proxy user requests. Read from the "azp" claim (or derived from "sub"
-	// by stripping "@clients" if "azp" is absent). Empty disables the check.
-	M2MAllowedClientIDs []string
 }
 
 // StripeConfig holds Stripe API settings.
@@ -115,15 +107,6 @@ func LoadConfig() (*Config, error) {
 	jwtIssuer, ok := os.LookupEnv("JWT_ISSUER")
 	if !ok || jwtIssuer == "" {
 		jwtIssuer = auth.DefaultIssuer
-	}
-	m2mScope := getEnv("M2M_SCOPE_REQUIRED", "")
-	var m2mClientIDs []string
-	if raw := getEnv("M2M_ALLOWED_CLIENT_IDS", ""); raw != "" {
-		for _, id := range strings.Split(raw, ",") {
-			if id = strings.TrimSpace(id); id != "" {
-				m2mClientIDs = append(m2mClientIDs, id)
-			}
-		}
 	}
 	stripeKey := getEnv("STRIPE_SECRET_KEY", "")
 	if stripeKey == "" {
@@ -206,12 +189,10 @@ func LoadConfig() (*Config, error) {
 			ConnMaxLifetime: connMaxLifetime,
 		},
 		JWT: JWTConfig{
-			JWKSURL:             jwksURL,
-			Audience:            jwtAudience,
-			Issuer:              jwtIssuer,
-			ClockSkew:           auth.DefaultClockSkew,
-			M2MScopeRequired:    m2mScope,
-			M2MAllowedClientIDs: m2mClientIDs,
+			JWKSURL:   jwksURL,
+			Audience:  jwtAudience,
+			Issuer:    jwtIssuer,
+			ClockSkew: auth.DefaultClockSkew,
 		},
 		Stripe: StripeConfig{
 			SecretKey:                stripeKey,
