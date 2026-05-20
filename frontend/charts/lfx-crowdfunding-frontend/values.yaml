@@ -27,7 +27,7 @@ podSecurityContext:
 
 securityContext:
   allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: false   # Nuxt/Nitro writes tmp files at runtime
+  readOnlyRootFilesystem: false # Nuxt/Nitro writes tmp files at runtime
   runAsNonRoot: true
   runAsUser: 65532
   runAsGroup: 65532
@@ -82,14 +82,16 @@ affinity: {}
 # ── Non-secret environment variables ─────────────────────────────────────────
 config:
   NUXT_APP_ENV: "production"
+  NUXT_APP_URL: "" # set per environment, e.g. https://funding.platform.linuxfoundation.org
+  NUXT_AUTH0_COOKIE_DOMAIN: "" # set per environment, e.g. platform.linuxfoundation.org
   NUXT_PUBLIC_AUTH0_CLIENT_ID: ""
   NODE_ENV: "production"
   NITRO_HOST: "0.0.0.0"
   NITRO_PORT: "3000"
 
 # ── Secret environment variables ─────────────────────────────────────────────
-# Expected keys in the Secret:
-#   NUXT_AUTH0_CLIENT_SECRET, NUXT_JWT_SECRET, NUXT_APP_URL, NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+# Expected keys in the Secret (populated by ESO from AWS Secrets Manager):
+#   NUXT_AUTH0_CLIENT_SECRET, NUXT_JWT_SECRET, NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 secretName: lfx-crowdfunding-frontend-secrets
 
 # createPlaceholderSecret — same semantics as backend chart.
