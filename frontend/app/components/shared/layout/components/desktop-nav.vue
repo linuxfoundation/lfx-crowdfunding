@@ -30,7 +30,6 @@ SPDX-License-Identifier: MIT
         <lfx-button
           type="nav"
           button-style="pill"
-          size="small"
           :class="moreOpen ? '!bg-neutral-50 !text-neutral-600' : ''"
         >
           <lfx-icon

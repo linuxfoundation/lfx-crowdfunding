@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useFundraiseDrawerStore } from '~/components/modules/fundraise/store/fundraise-drawer.store';
+import { authState, login } from '~/composables/useAuth';
 import { AppRoute } from '~/config/routes';
 import type { FooterMenuSection } from '~/types/footer.types';
 
@@ -14,7 +15,11 @@ export const lfxFooterMenu: FooterMenuSection[] = [
       {
         name: 'Start a Fundraise',
         action: () => {
-          useFundraiseDrawerStore().openFundraiseDrawer();
+          if (!authState.value.isAuthenticated) {
+            login();
+          } else {
+            useFundraiseDrawerStore().openFundraiseDrawer();
+          }
         },
       },
       { name: 'About', link: AppRoute.About },

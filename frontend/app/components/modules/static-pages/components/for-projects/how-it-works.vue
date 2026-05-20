@@ -11,17 +11,12 @@ SPDX-License-Identifier: MIT
           Get started in minutes. No long applications, no gatekeeping.
         </p>
       </div>
-      <NuxtLink
-        :to="AppRoute.StartFundraise"
-        class="shrink-0 md:block hidden"
-      >
-        <lfx-button
-          icon="box-dollar"
-          label="Start a Fundraise"
+      <div class="md:block hidden">
+        <start-fundraise-button
           type="primary"
-          button-style="pill"
+          class="shrink-0"
         />
-      </NuxtLink>
+      </div>
     </div>
 
     <div class="flex gap-10 items-start md:flex-row flex-col">
@@ -48,24 +43,17 @@ SPDX-License-Identifier: MIT
       </div>
     </div>
 
-    <NuxtLink
-      :to="AppRoute.StartFundraise"
-      class="shrink-0 md:hidden block w-full"
-    >
-      <lfx-button
-        icon="box-dollar"
-        label="Start a Fundraise"
+    <div class="md:hidden block">
+      <start-fundraise-button
         type="primary"
-        button-style="pill"
-        class="w-full justify-center"
+        class="shrink-0 w-full justify-center"
       />
-    </NuxtLink>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import LfxButton from '~/components/uikit/button/button.vue';
-import { AppRoute } from '~/config/routes';
+import StartFundraiseButton from '~/components/shared/components/start-fundraise-button.vue';
 
 const STEPS = [
   {
