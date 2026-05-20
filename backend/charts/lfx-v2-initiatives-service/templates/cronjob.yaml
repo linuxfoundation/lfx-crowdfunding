@@ -1,0 +1,44 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+{{- if .Values.cronJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "lfx-v2-initiatives-service.fullname" . }}-ledger-sync
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ledger-stats-sync
+spec:
+  schedule: {{ .Values.cronJob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.cronJob.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronJob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronJob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "lfx-v2-initiatives-service.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: ledger-stats-sync
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "lfx-v2-initiatives-service.serviceAccountName" . }}
+          automountServiceAccountToken: false
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: ledger-stats-sync
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.cronJob.image.repository | default .Values.image.repository }}:{{ .Values.cronJob.image.tag | default (.Values.image.tag | default .Chart.AppVersion) }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/app/ledger-stats-sync"]
+              envFrom:
+                - configMapRef:
+                    name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
+                - secretRef:
+                    name: {{ .Values.secretName }}
+              resources:
+                {{- toYaml .Values.cronJob.resources | nindent 16 }}
+{{- end }}

@@ -117,3 +117,26 @@ secretName: lfx-v2-initiatives-service-secrets
 # creationPolicy: Merge — otherwise ESO will refuse to take ownership of a
 # Secret it did not create and the sync will fail silently.
 createPlaceholderSecret: false
+
+# ── CronJob: ledger-stats-sync ────────────────────────────────────────────────
+# Runs hourly to sync financial data from the ledger service into initiative_ledger_stats.
+cronJob:
+  enabled: true
+  schedule: "0 * * * *"    # every hour on the hour
+  image:
+    # Defaults to same repository and tag as the main API image.
+    # Override only if building a separate image for the CronJob.
+    repository: ""
+    tag: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  # Retain last 3 successful and 1 failed job for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  # Forbid concurrent runs (previous job must complete before next fires)
+  concurrencyPolicy: Forbid
