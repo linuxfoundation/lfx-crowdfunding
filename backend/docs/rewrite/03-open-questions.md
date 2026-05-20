@@ -143,6 +143,25 @@ The `spring-projects` index is owned and written by the Mentorship service (jobs
 
 ---
 
+### OQ-22: Feature-branch deployment — pattern and infrastructure
+
+**Status:** Open
+**Owner:** DevOps / Michal
+
+**Question:** Like LFX Self Serve, should Crowdfunding support per-feature-branch deployments in dev? This would let engineers test frontend and backend changes end-to-end before merging, without sharing a single dev environment.
+
+Key decisions:
+1. **ArgoCD ApplicationSet pattern** — does the existing LFX Self Serve ApplicationSet use a Git or PR generator to auto-create per-branch apps? What namespace isolation model does it use?
+2. **DNS / ingress** — are feature branches served at `<branch>.crowdfunding.dev.platform.linuxfoundation.org` or a different scheme?
+3. **Secret provisioning** — do feature-branch deployments share the dev ESO SecretStore and tag-based secrets, or do they need separate 1Password items?
+4. **Teardown** — are per-branch environments torn down automatically on PR merge/close, or manually?
+
+**Action:** Check `lfx-v2-argocd` for the Self Serve ApplicationSet definition and any PR/branch generator config. This is the fastest path to understanding the pattern already in use.
+
+**Blocking:** Feature-branch testing workflow.
+
+---
+
 ## Resolved
 
 | # | Question | Resolution |
