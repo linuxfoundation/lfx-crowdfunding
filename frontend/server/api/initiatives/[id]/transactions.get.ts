@@ -9,14 +9,14 @@ export default defineEventHandler(async (event): Promise<TransactionList> => {
   const id = getRouterParam(event, 'id');
   const { type, size, from } = getQuery(event);
 
-  const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
+  const { apiBaseUrl } = useRuntimeConfig();
   const params = new URLSearchParams();
   if (type) params.set('type', String(type));
   if (size) params.set('size', String(size));
   if (from) params.set('from', String(from));
 
   const res = await $fetch<BackendTransactionList>(
-    `${apiBase}/v1/initiatives/${id}/transactions?${params}`,
+    `${apiBaseUrl}/v1/initiatives/${id}/transactions?${params}`,
   );
 
   return {

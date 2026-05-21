@@ -52,7 +52,7 @@ SPDX-License-Identifier: MIT
       <!-- Combined stacked bar across all categories -->
       <lfx-progress-bar
         :values="categories.map(categoryBarPercent)"
-        :colors="categories.map((c) => categoryColor(c.id))"
+        :colors="categories.map((c) => categoryColor(c.name))"
         :hide-empty="true"
       />
 
@@ -67,10 +67,10 @@ SPDX-License-Identifier: MIT
           <div class="flex items-center gap-3">
             <div
               class="size-6 rounded-full flex items-center justify-center shrink-0"
-              :style="categoryBg(category.id)"
+              :style="categoryBg(category.name)"
             >
               <lfx-icon
-                :name="category.icon"
+                :name="getCategoryVisual(category.name).icon"
                 type="solid"
                 :size="12"
                 class="text-white"
@@ -95,7 +95,7 @@ import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
 import { formatNumberShort } from '~/utils/formatter';
-import { CATEGORY_HEX, FundingCategoryId } from '~/config/statistics/categories';
+import { getCategoryVisual } from '~/config/statistics/categories';
 import type { FundingCategory } from '#shared/types/statistics.types';
 
 const props = defineProps<{
@@ -104,9 +104,9 @@ const props = defineProps<{
   error: Error | null;
 }>();
 
-const categoryColor = (id: string): string => CATEGORY_HEX[id as FundingCategoryId] ?? '#e2e8f0';
+const categoryColor = (name: string): string => getCategoryVisual(name).color;
 
-const categoryBg = (id: string) => `background-color: ${categoryColor(id)}`;
+const categoryBg = (name: string) => `background-color: ${categoryColor(name)}`;
 
 const total = () => props.categories.reduce((sum, c) => sum + c.raisedCents, 0);
 

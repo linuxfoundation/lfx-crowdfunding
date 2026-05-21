@@ -5,12 +5,12 @@ import type { BackendStatistics } from '../../types/statistics.types';
 import type { StatisticsOverview } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<StatisticsOverview> => {
-  const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
-  const res = await $fetch<BackendStatistics>(`${apiBase}/v1/statistics`);
+  const { apiBaseUrl } = useRuntimeConfig();
+  const res = await $fetch<BackendStatistics>(`${apiBaseUrl}/v1/statistics`);
   return {
     totalRaisedCents: res.total_raised_cents,
     supporterCount: res.total_supporters,
     activeInitiatives: res.total_initiatives,
-    annualGoalCents: 0,
+    annualGoalCents: 1_000_000_000,
   };
 });
