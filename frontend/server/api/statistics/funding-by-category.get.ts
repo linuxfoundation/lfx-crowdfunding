@@ -7,10 +7,6 @@ import type { FundingByCategoryResponse } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<FundingByCategoryResponse> => {
   const { apiBaseUrl } = useRuntimeConfig();
-  try {
-    const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform`);
-    return { data: (res.categories ?? []).map(mapToFundingCategory) };
-  } catch {
-    return { data: [] };
-  }
+  const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform`);
+  return { data: (res.categories ?? []).map(mapToFundingCategory) };
 });
