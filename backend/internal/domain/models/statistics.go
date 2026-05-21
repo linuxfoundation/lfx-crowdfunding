@@ -57,6 +57,7 @@ type MonthlyBucket struct {
 type RecentDonation struct {
 	TxnID          string `json:"txn_id"`
 	ProjectID      string `json:"project_id"`
+	ProjectName    string `json:"project_name,omitempty"`
 	DonorName      string `json:"donor_name"`
 	DonorAvatarURL string `json:"donor_avatar_url,omitempty"`
 	DonorType      string `json:"donor_type"` // "organization" or "individual"

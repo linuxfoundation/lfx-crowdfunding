@@ -20,6 +20,8 @@ var statisticsSvcTracer = otel.Tracer("statistics-service")
 const (
 	donorTypeOrganization = "organization"
 	donorTypeIndividual   = "individual"
+	unknownOrgName        = "Unknown Organization"
+	anonymousName         = "Anonymous"
 )
 
 // StatisticsService provides platform-wide aggregate data.
@@ -108,7 +110,7 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 			entry.Name = org.Name
 			entry.AvatarURL = org.AvatarURL
 		} else {
-			entry.Name = "Unknown Organization"
+			entry.Name = unknownOrgName
 		}
 		out.TopOrganizations = append(out.TopOrganizations, entry)
 	}
@@ -118,7 +120,7 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 			entry.Name = user.Name
 			entry.AvatarURL = user.AvatarURL
 		} else {
-			entry.Name = "Anonymous"
+			entry.Name = anonymousName
 		}
 		out.TopIndividuals = append(out.TopIndividuals, entry)
 	}
@@ -170,11 +172,15 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	// Collect IDs for enrichment
 	orgIDs := make([]string, 0, len(raw))
 	userIDs := make([]string, 0, len(raw))
+	projectIDs := make([]string, 0, len(raw))
 	for _, d := range raw {
 		if d.OrganizationID != "" {
 			orgIDs = append(orgIDs, d.OrganizationID)
 		} else if d.UserID != "" {
 			userIDs = append(userIDs, d.UserID)
+		}
+		if d.ProjectID != "" {
+			projectIDs = append(projectIDs, d.ProjectID)
 		}
 	}
 
@@ -188,12 +194,18 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich donor users: %w", err)
 	}
+	projectNames, err := s.repo.GetInitiativeNamesByIDs(ctx, projectIDs)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("enrich project names: %w", err)
+	}
 
 	donations := make([]models.RecentDonation, 0, len(raw))
 	for _, d := range raw {
 		entry := models.RecentDonation{
 			TxnID:       d.TxnID,
 			ProjectID:   d.ProjectID,
+			ProjectName: projectNames[d.ProjectID],
 			AmountCents: d.Amount,
 			TxnDate:     d.TxnDate,
 			Category:    d.TxnCategory,
@@ -216,7 +228,7 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 			}
 		}
 		if entry.DonorName == "" {
-			entry.DonorName = "Anonymous"
+			entry.DonorName = anonymousName
 		}
 		donations = append(donations, entry)
 	}

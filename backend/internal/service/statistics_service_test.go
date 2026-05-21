@@ -16,10 +16,11 @@ import (
 // --- test doubles ---
 
 type testStatisticsRepo struct {
-	stats *models.PlatformStatistics
-	orgs  map[string]models.Organization
-	users map[string]models.User
-	err   error
+	stats        *models.PlatformStatistics
+	orgs         map[string]models.Organization
+	users        map[string]models.User
+	projectNames map[string]string
+	err          error
 }
 
 func (r *testStatisticsRepo) GetPlatformStatistics(_ context.Context) (*models.PlatformStatistics, error) {
@@ -53,6 +54,19 @@ func (r *testStatisticsRepo) GetUsersByIDs(_ context.Context, ids []string) (map
 	for _, id := range ids {
 		if u, ok := r.users[id]; ok {
 			result[id] = u
+		}
+	}
+	return result, nil
+}
+
+func (r *testStatisticsRepo) GetInitiativeNamesByIDs(_ context.Context, ids []string) (map[string]string, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	result := make(map[string]string)
+	for _, id := range ids {
+		if name, ok := r.projectNames[id]; ok {
+			result[id] = name
 		}
 	}
 	return result, nil
@@ -156,11 +170,11 @@ func TestGetPlatformDetails_MissingEnrichmentUsesFallbackName(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if details.TopOrganizations[0].Name != "Unknown Organization" {
-		t.Errorf("org name: want %q, got %q", "Unknown Organization", details.TopOrganizations[0].Name)
+	if details.TopOrganizations[0].Name != unknownOrgName {
+		t.Errorf("org name: want %q, got %q", unknownOrgName, details.TopOrganizations[0].Name)
 	}
-	if details.TopIndividuals[0].Name != "Anonymous" {
-		t.Errorf("individual name: want %q, got %q", "Anonymous", details.TopIndividuals[0].Name)
+	if details.TopIndividuals[0].Name != anonymousName {
+		t.Errorf("individual name: want %q, got %q", anonymousName, details.TopIndividuals[0].Name)
 	}
 }
 
@@ -239,7 +253,7 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000},
+			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, TxnCategory: "Development"},
 		},
 	}
 
@@ -252,8 +266,8 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 		t.Fatalf("expected 1 donation, got %d", len(resp.Data))
 	}
 	d := resp.Data[0]
-	if d.DonorType != "organization" {
-		t.Errorf("DonorType: want organization, got %s", d.DonorType)
+	if d.DonorType != donorTypeOrganization {
+		t.Errorf("DonorType: want %q, got %s", donorTypeOrganization, d.DonorType)
 	}
 	if d.DonorName != "BigCorp" {
 		t.Errorf("DonorName: want BigCorp, got %s", d.DonorName)
@@ -263,6 +277,35 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 	}
 	if d.AmountCents != 100_000 {
 		t.Errorf("AmountCents: want 100000, got %d", d.AmountCents)
+	}
+	if d.Category != "Development" {
+		t.Errorf("Category: want Development, got %q", d.Category)
+	}
+}
+
+func TestGetRecentDonations_EnrichesProjectName(t *testing.T) {
+	repo := &testStatisticsRepo{
+		orgs:         map[string]models.Organization{"org-1": {ID: "org-1", Name: "BigCorp"}},
+		users:        map[string]models.User{},
+		projectNames: map[string]string{"proj-1": "Kubernetes"},
+	}
+	ledger := &testLedgerClient{
+		recentDonations: []clients.LedgerRecentDonation{
+			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000},
+		},
+	}
+
+	svc := newStatsSvc(repo, ledger)
+	resp, err := svc.GetRecentDonations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	d := resp.Data[0]
+	if d.ProjectName != "Kubernetes" {
+		t.Errorf("ProjectName: want Kubernetes, got %q", d.ProjectName)
+	}
+	if d.ProjectID != "proj-1" {
+		t.Errorf("ProjectID: want proj-1, got %q", d.ProjectID)
 	}
 }
 
@@ -330,8 +373,8 @@ func TestGetRecentDonations_AnonymousFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Data[0].DonorName != "Anonymous" {
-		t.Errorf("DonorName: want Anonymous, got %s", resp.Data[0].DonorName)
+	if resp.Data[0].DonorName != anonymousName {
+		t.Errorf("DonorName: want %q, got %s", anonymousName, resp.Data[0].DonorName)
 	}
 }
 
@@ -397,5 +440,55 @@ func TestGetPlatformMonthly_LedgerError(t *testing.T) {
 	_, err := svc.GetPlatformMonthly(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestGetPlatformMonthly_UpstreamUnavailableReturnsEmpty(t *testing.T) {
+	repo := &testStatisticsRepo{}
+	ledger := &testLedgerClient{err: domain.ErrUpstreamUnavailable}
+
+	svc := newStatsSvc(repo, ledger)
+	monthly, err := svc.GetPlatformMonthly(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil error for upstream unavailable, got %v", err)
+	}
+	if monthly == nil {
+		t.Fatal("expected non-nil response, got nil")
+	}
+	if len(monthly.Buckets) != 0 {
+		t.Errorf("expected empty buckets, got %d", len(monthly.Buckets))
+	}
+}
+
+func TestGetPlatformDetails_EnrichmentRepoError(t *testing.T) {
+	// Ledger succeeds but CF DB fails during org enrichment.
+	repo := &testStatisticsRepo{err: errors.New("db connection lost")}
+	ledger := &testLedgerClient{
+		platformBalance: &clients.LedgerPlatformBalance{
+			TopOrganizations: []clients.LedgerSponsorRaw{{ID: "org-1", Total: 100_000}},
+			TopIndividuals:   []clients.LedgerSponsorRaw{},
+		},
+	}
+
+	svc := newStatsSvc(repo, ledger)
+	_, err := svc.GetPlatformDetails(context.Background())
+	if err == nil {
+		t.Fatal("expected error from repo during enrichment, got nil")
+	}
+}
+
+func TestGetRecentDonations_EnrichmentRepoError(t *testing.T) {
+	// Ledger succeeds but CF DB fails during donor enrichment.
+	repo := &testStatisticsRepo{err: errors.New("db connection lost")}
+	ledger := &testLedgerClient{
+		recentDonations: []clients.LedgerRecentDonation{
+			{TxnID: "txn-1", OrganizationID: "org-1", Amount: 50_000},
+		},
+	}
+
+	svc := newStatsSvc(repo, ledger)
+	_, err := svc.GetRecentDonations(context.Background())
+	if err == nil {
+		t.Fatal("expected error from repo during enrichment, got nil")
 	}
 }

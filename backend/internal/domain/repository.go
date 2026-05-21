@@ -82,6 +82,10 @@ type StatisticsRepository interface {
 	// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger sponsor/donor data.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
+
+	// GetInitiativeNamesByIDs returns a map of initiative UUID → name for the given IDs.
+	// Missing IDs are absent from the map. Used to enrich recent donation entries.
+	GetInitiativeNamesByIDs(ctx context.Context, ids []string) (map[string]string, error)
 }
 
 // LedgerStatsRepository defines the persistence operations used exclusively by

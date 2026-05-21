@@ -27,6 +27,7 @@ export default defineEventHandler(async (): Promise<RecentDonationsResponse> => 
       amountCents: d.amount_cents,
       timeAgo: timeAgo(d.txn_date),
       initiativeId: d.project_id,
+      initiativeName: d.project_name,
     }));
     return { data };
   } catch {

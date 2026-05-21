@@ -45,6 +45,7 @@ export interface BackendPlatformMonthly {
 export interface BackendRecentDonation {
   txn_id: string;
   project_id: string;
+  project_name?: string;
   donor_name: string;
   donor_avatar_url?: string;
   donor_type: 'organization' | 'individual';

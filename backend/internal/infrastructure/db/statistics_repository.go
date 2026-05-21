@@ -110,6 +110,40 @@ func (r *StatisticsRepository) GetOrganizationsByIDs(ctx context.Context, ids []
 	return result, nil
 }
 
+// GetInitiativeNamesByIDs returns a map of initiative UUID → name for the given IDs.
+// Missing IDs are absent from the map.
+func (r *StatisticsRepository) GetInitiativeNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {
+	ctx, span := statisticsTracer.Start(ctx, "db.statistics.GetInitiativeNamesByIDs")
+	defer span.End()
+	span.SetAttributes(attribute.Int("db.id_count", len(ids)))
+
+	result := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, name FROM initiatives WHERE id = ANY($1::uuid[])`
+
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get initiative names by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, fmt.Errorf("scan initiative name: %w", err)
+		}
+		result[id] = name
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate initiative names: %w", err)
+	}
+	return result, nil
+}
+
 // GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
 // Missing IDs are absent from the map.
 func (r *StatisticsRepository) GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error) {
