@@ -66,25 +66,21 @@ export const MOCK_DONOR_BREAKDOWN: DonorBreakdown = {
   individualsCents: 218_000_000,
 };
 
-const buildDailyData = (): MonthlyDonations['daily'] => {
-  const days: MonthlyDonations['daily'] = [];
-  for (let d = 1; d <= 30; d++) {
-    const date = `2025-04-${String(d).padStart(2, '0')}`;
-    // Simulate a natural spend curve — ramp up mid-month
-    const base = 10_000_000;
-    const variation = Math.sin((d / 30) * Math.PI) * 8_000_000;
-    const spike = d === 22 ? 15_000_000 : 0;
-    days.push({ date, cents: Math.round(base + variation + spike) });
-  }
-  return days;
-};
-
 export const MOCK_MONTHLY_DONATIONS: MonthlyDonations = {
-  totalCents: 48_200_000,
-  percentChange: 23,
-  newSupporters: 124,
-  periodLabel: 'April',
-  daily: buildDailyData(),
+  buckets: [
+    { year: 2024, month: 6, totalCents: 32_000_000, supporters: 89, newSupporters: 12 },
+    { year: 2024, month: 7, totalCents: 35_500_000, supporters: 97, newSupporters: 14 },
+    { year: 2024, month: 8, totalCents: 28_000_000, supporters: 74, newSupporters: 8 },
+    { year: 2024, month: 9, totalCents: 41_000_000, supporters: 112, newSupporters: 18 },
+    { year: 2024, month: 10, totalCents: 38_500_000, supporters: 105, newSupporters: 11 },
+    { year: 2024, month: 11, totalCents: 45_000_000, supporters: 118, newSupporters: 16 },
+    { year: 2024, month: 12, totalCents: 52_000_000, supporters: 143, newSupporters: 22 },
+    { year: 2025, month: 1, totalCents: 39_000_000, supporters: 101, newSupporters: 9 },
+    { year: 2025, month: 2, totalCents: 43_500_000, supporters: 115, newSupporters: 13 },
+    { year: 2025, month: 3, totalCents: 47_000_000, supporters: 128, newSupporters: 17 },
+    { year: 2025, month: 4, totalCents: 48_200_000, supporters: 124, newSupporters: 15 },
+    { year: 2025, month: 5, totalCents: 55_000_000, supporters: 151, newSupporters: 24 },
+  ],
 };
 
 export const MOCK_TOP_DONORS: TopDonorsResponse = {
