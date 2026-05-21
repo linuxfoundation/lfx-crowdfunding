@@ -10,8 +10,8 @@ export default defineEventHandler(async (): Promise<DonorBreakdown> => {
     const res = await $fetch<BackendPlatformDetails>(`${apiBase}/v1/statistics/platform`);
 
     const totalCents = res.organizations_cents + res.individuals_cents;
-    const avgDonationCents =
-      res.total_supporters > 0 ? Math.round(totalCents / res.total_supporters) : 0;
+    const totalDonations = (res.categories ?? []).reduce((sum, c) => sum + c.count, 0);
+    const avgDonationCents = totalDonations > 0 ? Math.round(totalCents / totalDonations) : 0;
 
     return {
       avgDonationCents,
