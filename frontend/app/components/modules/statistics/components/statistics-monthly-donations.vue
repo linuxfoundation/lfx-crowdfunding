@@ -70,7 +70,7 @@ SPDX-License-Identifier: MIT
       </div>
 
       <!-- Right: bar chart (all 12 buckets) -->
-      <statistics-monthly-bar-chart :buckets="monthly.buckets" />
+      <statistics-monthly-bar-chart :buckets="activeBuckets" />
     </div>
   </lfx-card>
 </template>
@@ -92,9 +92,15 @@ const props = defineProps<{
   error: Error | null;
 }>();
 
+const activeBuckets = computed(() => {
+  const buckets = props.monthly?.buckets ?? [];
+  const lastNonZero = buckets.reduce((acc, b, i) => (b.totalCents > 0 ? i : acc), -1);
+  return lastNonZero >= 0 ? buckets.slice(0, lastNonZero + 1) : buckets;
+});
+
 const latestBucket = computed(() => {
-  const buckets = props.monthly?.buckets;
-  return buckets && buckets.length > 0 ? buckets[buckets.length - 1] : undefined;
+  const buckets = activeBuckets.value;
+  return buckets.length > 0 ? buckets[buckets.length - 1] : undefined;
 });
 
 const totalFormatted = computed(() =>
