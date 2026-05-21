@@ -7,10 +7,12 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var statisticsTracer = otel.Tracer("statistics-db")
@@ -51,4 +53,148 @@ func (r *StatisticsRepository) GetPlatformStatistics(ctx context.Context) (*mode
 		return nil, fmt.Errorf("get platform statistics: %w", err)
 	}
 	return &s, nil
+}
+
+// GetOrganizationsByIDs returns a map of org UUID → Organization for the given IDs.
+// Missing IDs are absent from the map.
+func (r *StatisticsRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
+	ctx, span := statisticsTracer.Start(ctx, "db.statistics.GetOrganizationsByIDs")
+	defer span.End()
+	span.SetAttributes(attribute.Int("db.id_count", len(ids)))
+
+	result := make(map[string]models.Organization, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `
+		SELECT id, owner_id, name, avatar_url, status, created_on, updated_on
+		FROM organizations
+		WHERE id = ANY($1::uuid[])`
+
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get organizations by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var (
+			o         models.Organization
+			avatarURL *string
+			status    *string
+			createdOn *time.Time
+			updatedOn *time.Time
+		)
+		if err := rows.Scan(&o.ID, &o.OwnerID, &o.Name, &avatarURL, &status, &createdOn, &updatedOn); err != nil {
+			return nil, fmt.Errorf("scan organization: %w", err)
+		}
+		if avatarURL != nil {
+			o.AvatarURL = *avatarURL
+		}
+		if status != nil {
+			o.Status = *status
+		}
+		if createdOn != nil {
+			o.CreatedOn = *createdOn
+		}
+		if updatedOn != nil {
+			o.UpdatedOn = *updatedOn
+		}
+		result[o.ID] = o
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate organizations: %w", err)
+	}
+	return result, nil
+}
+
+// GetInitiativeNamesByIDs returns a map of initiative UUID → name for the given IDs.
+// Missing IDs are absent from the map.
+func (r *StatisticsRepository) GetInitiativeNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {
+	ctx, span := statisticsTracer.Start(ctx, "db.statistics.GetInitiativeNamesByIDs")
+	defer span.End()
+	span.SetAttributes(attribute.Int("db.id_count", len(ids)))
+
+	result := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, name FROM initiatives WHERE id = ANY($1::uuid[])`
+
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get initiative names by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, fmt.Errorf("scan initiative name: %w", err)
+		}
+		result[id] = name
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate initiative names: %w", err)
+	}
+	return result, nil
+}
+
+// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
+// Missing IDs are absent from the map.
+func (r *StatisticsRepository) GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error) {
+	ctx, span := statisticsTracer.Start(ctx, "db.statistics.GetUsersByIDs")
+	defer span.End()
+	span.SetAttributes(attribute.Int("db.id_count", len(userIDs)))
+
+	result := make(map[string]models.User, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	const q = `
+		SELECT id, user_id, name, avatar_url, created_on, updated_on
+		FROM users
+		WHERE user_id = ANY($1)`
+
+	rows, err := r.pool.Query(ctx, q, userIDs)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get users by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var (
+			u         models.User
+			name      *string
+			avatarURL *string
+			createdOn *time.Time
+			updatedOn *time.Time
+		)
+		if err := rows.Scan(&u.ID, &u.UserID, &name, &avatarURL, &createdOn, &updatedOn); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		if name != nil {
+			u.Name = *name
+		}
+		if avatarURL != nil {
+			u.AvatarURL = *avatarURL
+		}
+		if createdOn != nil {
+			u.CreatedOn = *createdOn
+		}
+		if updatedOn != nil {
+			u.UpdatedOn = *updatedOn
+		}
+		result[u.UserID] = u
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
+	}
+	return result, nil
 }
