@@ -74,6 +74,18 @@ type UserRepository interface {
 // StatisticsRepository defines persistence operations for platform-wide statistics.
 type StatisticsRepository interface {
 	GetPlatformStatistics(ctx context.Context) (*models.PlatformStatistics, error)
+
+	// GetOrganizationsByIDs returns a map of org UUID → Organization for the given IDs.
+	// Missing IDs are absent from the map. Used to enrich Ledger sponsor/donor data.
+	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
+
+	// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
+	// Missing IDs are absent from the map. Used to enrich Ledger sponsor/donor data.
+	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
+
+	// GetInitiativeNamesByIDs returns a map of initiative UUID → name for the given IDs.
+	// Missing IDs are absent from the map. Used to enrich recent donation entries.
+	GetInitiativeNamesByIDs(ctx context.Context, ids []string) (map[string]string, error)
 }
 
 // LedgerStatsRepository defines the persistence operations used exclusively by

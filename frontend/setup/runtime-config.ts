@@ -26,6 +26,7 @@ const auth0CookieDomain = process.env.NUXT_AUTH0_COOKIE_DOMAIN;
 
 export default {
   // Server-only
+  apiBaseUrl: process.env.NUXT_API_BASE_URL || 'http://localhost:8080',
   auth0ClientSecret: process.env.NUXT_AUTH0_CLIENT_SECRET || '',
   auth0CookieDomain,
   jwtSecret: process.env.NUXT_JWT_SECRET || '',
