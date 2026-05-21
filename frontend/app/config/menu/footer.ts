@@ -1,17 +1,10 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+import { useFundraiseDrawerStore } from '~/components/modules/fundraise/store/fundraise-drawer.store';
+import { authState, login } from '~/composables/useAuth';
 import { AppRoute } from '~/config/routes';
-
-export interface FooterMenuLink {
-  name: string;
-  link: string;
-}
-
-export interface FooterMenuSection {
-  title: string;
-  links: FooterMenuLink[];
-}
+import type { FooterMenuSection } from '~/types/footer.types';
 
 export const lfxFooterMenu: FooterMenuSection[] = [
   {
@@ -19,7 +12,16 @@ export const lfxFooterMenu: FooterMenuSection[] = [
     links: [
       { name: 'Explore initiatives', link: AppRoute.Initiatives },
       { name: 'Statistics', link: AppRoute.Statistics },
-      { name: 'Start a Fundraise', link: AppRoute.StartFundraise },
+      {
+        name: 'Start a Fundraise',
+        action: () => {
+          if (!authState.value.isAuthenticated) {
+            login();
+          } else {
+            useFundraiseDrawerStore().openFundraiseDrawer();
+          }
+        },
+      },
       { name: 'About', link: AppRoute.About },
     ],
   },

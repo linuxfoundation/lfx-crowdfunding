@@ -5,17 +5,17 @@ SPDX-License-Identifier: MIT
 <template>
   <pv-avatar
     :icon="icon"
-    :image="imageError ? undefined : props.src"
+    :image="imageFailed ? undefined : props.src"
     :shape="props.type === 'organization' ? 'square' : 'circle'"
     :size="props.size"
     :class="{
       [`type-${props.type}`]: true,
       'p-avatar-sm': props.size === 'small',
       'p-avatar-xsmall': props.size === 'xsmall',
-      'has-image': props.src && !imageError,
+      'has-image': props.src && !imageFailed,
     }"
     v-bind="$attrs"
-    @image-error="imageError = true"
+    @image-error="imageFailed = true"
   />
 </template>
 
@@ -36,17 +36,17 @@ const props = withDefaults(
   },
 );
 
-const imageError = ref(false);
+const imageFailed = ref(false);
 
 watch(
   () => props.src,
   () => {
-    imageError.value = false;
+    imageFailed.value = false;
   },
 );
 
 const icon = computed(() => {
-  if (props.src && !imageError.value) {
+  if (props.src && !imageFailed.value) {
     return undefined;
   }
 

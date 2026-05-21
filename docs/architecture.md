@@ -434,7 +434,7 @@ sequenceDiagram
 
 ## Deployment
 
-All application components run in Kubernetes, deployed via ArgoCD from [`linuxfoundation/lfx-v2-argocd`](https://github.com/linuxfoundation/lfx-v2-argocd).
+All application components run in Kubernetes, deployed via ArgoCD from `linuxfoundation/lfx-v2-argocd`.
 
 | Component | K8s resource |
 |---|---|

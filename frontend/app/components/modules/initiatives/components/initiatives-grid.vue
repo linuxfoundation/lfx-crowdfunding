@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <section class="container pb-16">
-    <!-- Loading skeletons -->
+    <!-- Loading skeletons (initial load) -->
     <div
       v-if="isLoading"
       class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
@@ -42,33 +42,95 @@ SPDX-License-Identifier: MIT
     </div>
 
     <!-- Initiative cards -->
-    <div
-      v-else
-      class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
-    >
-      <NuxtLink
-        v-for="initiative in initiatives"
-        :key="initiative.id"
-        :to="`/initiatives/${initiative.slug}`"
-        class="block"
+    <template v-else>
+      <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+        <initiative-card
+          v-for="initiative in initiatives"
+          :key="initiative.id"
+          :initiative="initiative"
+        />
+      </div>
+
+      <!-- Bottom loading cards while fetching next page -->
+      <div
+        v-if="isFetchingNextPage"
+        class="grid grid-cols-1 gap-8 mt-8 sm:grid-cols-2 lg:grid-cols-3"
       >
-        <initiative-card :initiative="initiative" />
-      </NuxtLink>
-    </div>
+        <initiative-card-loading
+          v-for="n in 3"
+          :key="n"
+        />
+      </div>
+
+      <!-- IntersectionObserver sentinel -->
+      <div
+        ref="sentinel"
+        class="h-1"
+      />
+    </template>
   </section>
 </template>
 
 <script setup lang="ts">
+import { ref, watch, onUnmounted } from 'vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import InitiativeCard from '~/components/shared/components/initiative-card/initiative-card.vue';
 import InitiativeCardLoading from '~/components/shared/components/initiative-card/initiative-card-loading.vue';
-import type { Initiative } from '~/types/initiative.types';
+import type { InitiativeBase } from '~/types/initiative.types';
 
-defineProps<{
-  initiatives: Initiative[];
+const props = defineProps<{
+  initiatives: InitiativeBase[];
   isLoading: boolean;
   error: Error | null;
+  isFetchingNextPage: boolean;
+  hasNextPage: boolean;
 }>();
+
+const emit = defineEmits<{ (e: 'loadMore'): void }>();
+
+const sentinel = ref<HTMLElement | null>(null);
+let observer: IntersectionObserver | null = null;
+
+const isSentinelVisible = (el: HTMLElement) => {
+  const rect = el.getBoundingClientRect();
+  const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+  return rect.top >= 0 && rect.bottom <= windowHeight;
+};
+
+const tryLoadMore = () => {
+  if (props.hasNextPage && !props.isFetchingNextPage) {
+    emit('loadMore');
+  }
+};
+
+// Set up the observer only once the sentinel actually renders (it lives inside v-else,
+// so it is absent from the DOM during the initial loading state).
+watch(sentinel, (el) => {
+  observer?.disconnect();
+  observer = null;
+  if (!el) return;
+
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0]?.isIntersecting) tryLoadMore();
+    },
+    { rootMargin: '200px' },
+  );
+  observer.observe(el);
+});
+
+watch(
+  () => props.isFetchingNextPage,
+  (fetching) => {
+    if (!fetching && sentinel.value && isSentinelVisible(sentinel.value)) {
+      tryLoadMore();
+    }
+  },
+);
+
+onUnmounted(() => {
+  observer?.disconnect();
+});
 </script>
 
 <script lang="ts">

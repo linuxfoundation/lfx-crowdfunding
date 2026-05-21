@@ -4,6 +4,10 @@
   @apply h-8 w-8 overflow-hidden rounded-md bg-neutral-100 inline-block text-neutral-300 transition-all ease-linear;
   @apply flex items-center justify-center;
 
+  img {
+    @apply w-full h-full object-cover;
+  }
+
   &.type-member {
     @apply rounded-full;
     .p-avatar-icon {

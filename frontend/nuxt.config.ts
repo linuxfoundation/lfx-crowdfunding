@@ -15,9 +15,16 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   experimental: { typedPages: true },
   modules,
-  plugins: ['~/plugins/vue-query.ts', '~/plugins/lfx-ui-core.client.ts'],
+  plugins: [
+    '~/plugins/vue-query.ts',
+    '~/plugins/lfx-ui-core.client.ts',
+    '~/plugins/auth.client.ts',
+  ],
   css: ['~/assets/styles/main.scss'],
   primevue,
+  routeRules: {
+    '/auth/callback': { proxy: '/api/auth/callback' },
+  },
   runtimeConfig,
   tailwindcss,
   vite,

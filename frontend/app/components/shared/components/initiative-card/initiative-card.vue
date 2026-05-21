@@ -3,7 +3,8 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div
+  <NuxtLink
+    :to="`/initiatives/${initiative.slug}`"
     class="flex flex-col justify-between border border-neutral-200 rounded-2xl p-6 h-[400px]"
     :style="{ backgroundImage: typeConfig.gradient }"
   >
@@ -74,7 +75,7 @@ SPDX-License-Identifier: MIT
 
       <p class="text-sm text-neutral-500">{{ supportersLabel }}</p>
     </div>
-  </div>
+  </NuxtLink>
 </template>
 
 <script setup lang="ts">

@@ -51,7 +51,6 @@ SPDX-License-Identifier: MIT
           :model-value="activeType"
           :tabs="filterTabs"
           tab-style="pill"
-          width-type="inline"
           @update:model-value="$emit('update:activeType', $event)"
         />
       </div>
@@ -67,7 +66,6 @@ SPDX-License-Identifier: MIT
               :label="selectedOption?.label ?? 'All Initiatives'"
               type="outline"
               button-style="pill"
-              size="small"
               icon="arrow-up-arrow-down"
             />
           </template>
@@ -88,11 +86,10 @@ SPDX-License-Identifier: MIT
       >
         <template #trigger="{ selectedOption }">
           <lfx-button
-            :label="selectedOption?.label ?? 'Sort'"
+            :label="selectedOption?.label ?? 'Most recent'"
             type="outline"
             button-style="pill"
-            size="small"
-            icon="arrow-up-arrow-down"
+            icon="arrow-down-wide-short"
           />
         </template>
         <lfx-dropdown-item
@@ -113,7 +110,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxInput from '~/components/uikit/input/input.vue';
 import LfxTabs from '~/components/uikit/tabs/tabs.vue';
@@ -128,6 +125,17 @@ defineProps<{
   sortBy: string;
 }>();
 
+// Scroll anchoring compensates for header height changes by adjusting scrollTop,
+// which oscillates isScrolled. Disabling it prevents that feedback loop.
+let prevOverflowAnchor = '';
+onMounted(() => {
+  prevOverflowAnchor = document.documentElement.style.overflowAnchor;
+  document.documentElement.style.overflowAnchor = 'none';
+});
+onUnmounted(() => {
+  document.documentElement.style.overflowAnchor = prevOverflowAnchor;
+});
+
 const { scrollTop } = useScroll();
 const isScrolled = computed(() => scrollTop.value > 10);
 
@@ -138,12 +146,12 @@ defineEmits<{
 }>();
 
 const filterTabs = [
-  { value: 'all', label: 'All' },
-  { value: 'project', label: 'Projects' },
-  { value: 'mentorship', label: 'Mentorships' },
-  { value: 'security_audit', label: 'Security Audits' },
-  { value: 'event', label: 'Events' },
-  { value: 'general_fund', label: 'General Funds' },
+  { value: 'all', label: 'All', icon: 'grid-round-2' },
+  { value: 'project', label: 'Projects', icon: 'laptop-code' },
+  { value: 'mentorship', label: 'Mentorships', icon: 'chalkboard-user' },
+  { value: 'security_audit', label: 'Security Audits', icon: 'box-magnifying-glass' },
+  { value: 'event', label: 'Events', icon: 'calendar' },
+  { value: 'general_fund', label: 'General Funds', icon: 'piggy-bank' },
 ];
 </script>
 

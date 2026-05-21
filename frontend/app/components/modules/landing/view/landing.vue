@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
   <div class="md:pb-30 pb-20">
     <landing-hero />
     <landing-initiatives
-      :initiatives="data?.data ?? []"
+      :initiatives="initiatives"
       :is-loading="isLoading"
       :error="initiativeError"
     />
@@ -23,7 +23,8 @@ import LandingImpactStories from '../components/landing-impact-stories.vue';
 import LandingNavCards from '../components/landing-nav-cards.vue';
 import { useInitiatives } from '~/composables/initiatives/useInitiatives';
 
-const { data, isLoading, error } = useInitiatives({ pageSize: '3' });
+const { data, isLoading, error } = useInitiatives({ pageSize: 3 });
+const initiatives = computed(() => data.value?.pages.flatMap((p) => p.data) ?? []);
 const initiativeError = computed(() => error.value as Error | null);
 </script>
 

@@ -26,19 +26,7 @@ SPDX-License-Identifier: MIT
 
     <!-- CTAs -->
     <div class="flex md:items-center items-start gap-6 md:flex-row flex-col">
-      <NuxtLink
-        :to="AppRoute.StartFundraise"
-        class="md:w-auto w-full"
-      >
-        <lfx-button
-          icon="box-dollar"
-          label="Start a Fundraise"
-          type="primary"
-          button-style="pill"
-          size="small"
-          class="w-full justify-center"
-        />
-      </NuxtLink>
+      <start-fundraise-button type="primary" />
       <NuxtLink
         :to="AppRoute.Initiatives"
         class="md:w-auto w-full"
@@ -48,7 +36,6 @@ SPDX-License-Identifier: MIT
           label="Explore Initiatives"
           type="transparent"
           button-style="pill"
-          size="small"
           class="w-full justify-center"
         />
       </NuxtLink>
@@ -60,6 +47,7 @@ SPDX-License-Identifier: MIT
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import { AppRoute } from '~/config/routes';
+import StartFundraiseButton from '~/components/shared/components/start-fundraise-button.vue';
 </script>
 
 <script lang="ts">
