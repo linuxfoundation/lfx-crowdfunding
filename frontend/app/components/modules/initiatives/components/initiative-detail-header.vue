@@ -97,6 +97,7 @@ SPDX-License-Identifier: MIT
             type="ghost"
             icon="share-nodes"
             icon-position="left"
+            button-style="pill"
           />
           <lfx-button
             v-if="initiative.githubURL"
@@ -105,6 +106,7 @@ SPDX-License-Identifier: MIT
             icon="github"
             icon-type="brands"
             icon-position="left"
+            button-style="pill"
           />
           <lfx-button
             label="Fund this initiative"
@@ -112,40 +114,19 @@ SPDX-License-Identifier: MIT
             icon="hand-heart"
             icon-position="left"
             class="!text-accent-500"
-            @click="openDonateDrawer({ id: initiative.id, name: initiative.name, logoUrl: initiative.logoUrl })"
-          />
-          <lfx-button
-            label="Start an initiative"
-            type="primary"
-            icon="box-dollar"
-            icon-position="left"
-            @click="openFundraiseDrawer()"
+            button-style="pill"
+            @click="handleFundInitiative()"
           />
         </div>
       </div>
 
       <!-- Tabs -->
-      <div class="flex gap-4">
-        <button
-          v-for="tab in tabs"
-          :key="tab.value"
-          class="flex items-center gap-1.5 h-9 px-3 py-1 rounded-full text-sm transition-colors"
-          :class="
-            activeTab === tab.value
-              ? 'bg-accent-100 text-neutral-900 font-semibold'
-              : 'text-neutral-900 font-medium hover:bg-neutral-50'
-          "
-          @click="$emit('update:activeTab', tab.value)"
-        >
-          <lfx-icon
-            :name="tab.icon"
-            :type="activeTab === tab.value ? 'solid' : 'light'"
-            :size="16"
-            :class="activeTab === tab.value ? 'text-accent-500' : 'text-neutral-900'"
-          />
-          <span>{{ tab.label }}</span>
-        </button>
-      </div>
+      <lfx-tabs
+        :model-value="activeTab"
+        :tabs="tabs"
+        tab-style="pill"
+        @update:model-value="$emit('update:activeTab', $event)"
+      />
     </div>
   </div>
 </template>
@@ -162,17 +143,26 @@ import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
+import LfxTabs from '~/components/uikit/tabs/tabs.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
-import { useFundraiseDrawerStore } from '~/components/modules/fundraise/store/fundraise-drawer.store';
+import { useAuth } from '~/composables/useAuth';
 import useScroll from '~/utils/scroll';
 
 const props = defineProps<{
   initiative: InitiativeDetail;
-  activeTab?: string;
+  activeTab: string;
 }>();
 
 const { openDonateDrawer } = useDonateDrawerStore();
-const { openFundraiseDrawer } = useFundraiseDrawerStore();
+const { isAuthenticated, login } = useAuth();
+
+function handleFundInitiative() {
+  if (!isAuthenticated.value) {
+    login();
+  } else {
+    openDonateDrawer({ id: props.initiative.id, name: props.initiative.name, logoUrl: props.initiative.logoUrl });
+  }
+}
 
 const { scrollTop } = useScroll();
 const isScrolled = computed(() => scrollTop.value > 10);
