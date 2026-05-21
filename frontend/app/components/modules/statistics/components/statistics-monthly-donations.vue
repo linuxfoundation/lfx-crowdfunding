@@ -56,8 +56,20 @@ SPDX-License-Identifier: MIT
         <p class="text-4xl font-normal leading-[56px] text-neutral-900 whitespace-nowrap">
           {{ totalFormatted }}
         </p>
-        <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
           <p class="text-sm text-neutral-600">Raised in {{ latestPeriodLabel }}</p>
+          <span
+            v-if="growthPercent !== null"
+            class="text-xs font-semibold flex items-center gap-1"
+            :class="growthPercent >= 0 ? 'text-positive-600' : 'text-negative-600'"
+          >
+            <lfx-icon
+              :name="growthPercent >= 0 ? 'arrow-trend-up' : 'arrow-trend-down'"
+              type="solid"
+              :size="12"
+            />
+            {{ Math.abs(growthPercent) }}% vs prev month
+          </span>
         </div>
       </div>
 
@@ -113,6 +125,15 @@ const latestPeriodLabel = computed(() => {
 });
 
 const latestSupporters = computed(() => latestBucket.value?.supporters ?? 0);
+
+const growthPercent = computed((): number | null => {
+  const buckets = activeBuckets.value;
+  if (buckets.length < 2) return null;
+  const prev = buckets[buckets.length - 2].totalCents;
+  const curr = buckets[buckets.length - 1].totalCents;
+  if (prev === 0) return null;
+  return Math.round(((curr - prev) / prev) * 100);
+});
 </script>
 
 <script lang="ts">

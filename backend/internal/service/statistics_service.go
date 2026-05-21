@@ -126,7 +126,7 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetPlatformMonthly")
 	defer span.End()
 
-	raw, err := s.ledgerClient.GetPlatformMonthly(ctx, 12)
+	raw, err := s.ledgerClient.GetPlatformMonthly(ctx, 13)
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUpstreamUnavailable) {
