@@ -6,6 +6,13 @@ package models
 
 import "time"
 
+// Donation status values stored in crowdfunding.donations.status.
+const (
+	DonationStatusPending   = "pending"
+	DonationStatusSucceeded = "succeeded"
+	DonationStatusFailed    = "failed"
+)
+
 // Donation maps to the crowdfunding.donations table.
 type Donation struct {
 	ID                    string    `json:"id"`
