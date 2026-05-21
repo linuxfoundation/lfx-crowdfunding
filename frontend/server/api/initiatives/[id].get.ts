@@ -11,8 +11,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Missing initiative id' });
   }
 
-  const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
-  const initiative = await $fetch<BackendInitiative>(`${apiBase}/v1/initiatives/${id}`).catch(
+  const { apiBaseUrl } = useRuntimeConfig();
+  const initiative = await $fetch<BackendInitiative>(`${apiBaseUrl}/v1/initiatives/${id}`).catch(
     (err) => {
       if (err?.status === 404) throw createError({ statusCode: 404, message: 'Not found' });
       throw err;
