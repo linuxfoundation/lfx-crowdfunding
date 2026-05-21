@@ -12,7 +12,7 @@ export function useStatisticsDonorBreakdown() {
   });
 
   onServerPrefetch(async () => {
-    await query.suspense();
+    await query.suspense().catch(() => {});
   });
 
   return query;

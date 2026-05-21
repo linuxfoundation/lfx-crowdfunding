@@ -68,7 +68,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
-	statisticsSvc := service.NewStatisticsService(statisticsRepo)
+	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 
 	// JWT authenticator
 	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
@@ -120,6 +120,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 	// Public API (no auth)
 	r.Get("/v1/statistics", statisticsH.GetPlatform)
+	r.Get("/v1/statistics/platform", statisticsH.GetPlatformDetails)
+	r.Get("/v1/statistics/monthly", statisticsH.GetPlatformMonthly)
+	r.Get("/v1/statistics/recent-donations", statisticsH.GetRecentDonations)
 	r.Get("/v1/initiatives", initiativeH.List)
 	r.Get("/v1/initiatives/{id}", initiativeH.GetByID)
 	r.Get("/v1/initiatives/{id}/transactions", initiativeH.GetTransactions)

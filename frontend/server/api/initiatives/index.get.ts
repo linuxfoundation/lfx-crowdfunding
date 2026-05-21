@@ -8,7 +8,7 @@ import type { InitiativesResponse } from '#shared/types/initiative.types';
 export default defineEventHandler(async (event): Promise<InitiativesResponse> => {
   const { search, type, sort, page, pageSize } = getQuery(event);
 
-  const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
+  const { apiBaseUrl } = useRuntimeConfig();
   const params = new URLSearchParams();
   if (search) params.set('search', String(search));
   if (type && type !== 'all') params.set('type', String(type));
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event): Promise<InitiativesResponse> =>
   params.set('limit', String(pageSizeNum));
   params.set('offset', String((pageNum - 1) * pageSizeNum));
 
-  const res = await $fetch<BackendResponse>(`${apiBase}/v1/initiatives?${params}`);
+  const res = await $fetch<BackendResponse>(`${apiBaseUrl}/v1/initiatives?${params}`);
 
   return {
     data: (res.data ?? []).map(mapToInitiativeBase),

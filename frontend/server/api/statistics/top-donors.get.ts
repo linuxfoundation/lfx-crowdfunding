@@ -1,12 +1,15 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+import type { BackendPlatformDetails } from '../../types/statistics.types';
+import { mapToTopDonor } from '../../services/statistics.service';
 import type { TopDonorsResponse } from '#shared/types/statistics.types';
-import { MOCK_TOP_DONORS } from '#server/mock-data/statistics';
 
 export default defineEventHandler(async (): Promise<TopDonorsResponse> => {
-  // TODO: replace with a proxy call to the Go backend API once wired up.
-  // In our architecture Nuxt's server layer owns auth only — business data comes
-  // from the Go microservice. This handler returns fixture data for scaffolding.
-  return MOCK_TOP_DONORS;
+  const { apiBaseUrl } = useRuntimeConfig();
+  const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform`);
+  return {
+    organizations: (res.top_organizations ?? []).map(mapToTopDonor),
+    individuals: (res.top_individuals ?? []).map(mapToTopDonor),
+  };
 });

@@ -81,7 +81,7 @@ import { useInitiativeTransactions } from '~/composables/initiatives/useInitiati
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useScroll from '~/utils/scroll';
-import { formatTimeAgo, formatShortDate } from '~/utils/date';
+import { formatShortDate } from '~/utils/date';
 import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/types/initiative-detail.types';
 
 const props = defineProps<{ initiativeId: string }>();
@@ -104,7 +104,7 @@ const recentDonations = computed<RecentDonation[]>(() =>
     donorLogoUrl: t.donorLogoUrl,
     donorType: t.donorType === 'organization' ? 'organization' : 'member',
     amountCents: t.amountCents,
-    timeAgo: formatTimeAgo(t.date),
+    date: Math.floor(new Date(t.date).getTime() / 1000),
   })),
 );
 
