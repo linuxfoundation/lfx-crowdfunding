@@ -46,10 +46,11 @@ type PlatformMonthly struct {
 
 // MonthlyBucket holds aggregate donation data for a single calendar month.
 type MonthlyBucket struct {
-	Year       int   `json:"year"`
-	Month      int   `json:"month"`
-	TotalCents int64 `json:"total_cents"`
-	Supporters int64 `json:"supporters"`
+	Year          int   `json:"year"`
+	Month         int   `json:"month"`
+	TotalCents    int64 `json:"total_cents"`
+	Supporters    int64 `json:"supporters"`
+	NewSupporters int64 `json:"new_supporters"`
 }
 
 // RecentDonation is one entry in the platform-wide recent donations feed.

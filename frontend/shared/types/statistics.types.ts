@@ -32,6 +32,7 @@ export interface MonthlyBucket {
   month: number; // 1–12
   totalCents: number;
   supporters: number;
+  newSupporters: number;
 }
 
 export interface MonthlyDonations {

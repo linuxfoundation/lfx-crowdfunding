@@ -14,6 +14,7 @@ export default defineEventHandler(async (): Promise<MonthlyDonations> => {
         month: b.month,
         totalCents: b.total_cents,
         supporters: b.supporters,
+        newSupporters: b.new_supporters,
       })),
     };
   } catch {

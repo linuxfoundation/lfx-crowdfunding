@@ -124,7 +124,7 @@ const latestPeriodLabel = computed(() => {
   return b ? `${MONTH_ABBR[b.month - 1]} ${b.year}` : '';
 });
 
-const latestSupporters = computed(() => latestBucket.value?.supporters ?? 0);
+const latestSupporters = computed(() => latestBucket.value?.newSupporters ?? 0);
 
 const growthPercent = computed((): number | null => {
   const buckets = activeBuckets.value;

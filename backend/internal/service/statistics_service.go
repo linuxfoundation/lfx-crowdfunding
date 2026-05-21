@@ -138,10 +138,11 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 	out := &models.PlatformMonthly{Buckets: []models.MonthlyBucket{}}
 	for _, b := range raw.Buckets {
 		out.Buckets = append(out.Buckets, models.MonthlyBucket{
-			Year:       b.Year,
-			Month:      b.Month,
-			TotalCents: b.TotalCents,
-			Supporters: b.Supporters,
+			Year:          b.Year,
+			Month:         b.Month,
+			TotalCents:    b.TotalCents,
+			Supporters:    b.Supporters,
+			NewSupporters: b.NewSupporters,
 		})
 	}
 	return out, nil

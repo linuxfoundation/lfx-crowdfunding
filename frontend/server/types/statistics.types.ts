@@ -35,6 +35,7 @@ export interface BackendMonthlyBucket {
   month: number;
   total_cents: number;
   supporters: number;
+  new_supporters: number;
 }
 
 export interface BackendPlatformMonthly {

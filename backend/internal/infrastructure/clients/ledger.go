@@ -285,10 +285,11 @@ type LedgerPlatformMonthly struct {
 
 // LedgerMonthlyBucket is one calendar-month entry from the platform monthly response.
 type LedgerMonthlyBucket struct {
-	Year       int
-	Month      int
-	TotalCents int64
-	Supporters int64
+	Year          int
+	Month         int
+	TotalCents    int64
+	Supporters    int64
+	NewSupporters int64
 }
 
 // LedgerRecentDonation is one entry from GET /transactions/platform/recent.
@@ -327,10 +328,11 @@ type ledgerPlatformBalanceResponse struct {
 // raw JSON types for platform monthly response
 type ledgerPlatformMonthlyResponse struct {
 	Buckets []struct {
-		Year       int   `json:"year"`
-		Month      int   `json:"month"`
-		TotalCents int64 `json:"totalCents"`
-		Supporters int64 `json:"supporters"`
+		Year          int   `json:"year"`
+		Month         int   `json:"month"`
+		TotalCents    int64 `json:"totalCents"`
+		Supporters    int64 `json:"supporters"`
+		NewSupporters int64 `json:"newSupporters"`
 	} `json:"buckets"`
 }
 
@@ -404,10 +406,11 @@ func (c *ledgerHTTPClient) GetPlatformMonthly(ctx context.Context, months int) (
 	out := &LedgerPlatformMonthly{}
 	for _, b := range resp.Buckets {
 		out.Buckets = append(out.Buckets, LedgerMonthlyBucket{
-			Year:       b.Year,
-			Month:      b.Month,
-			TotalCents: b.TotalCents,
-			Supporters: b.Supporters,
+			Year:          b.Year,
+			Month:         b.Month,
+			TotalCents:    b.TotalCents,
+			Supporters:    b.Supporters,
+			NewSupporters: b.NewSupporters,
 		})
 	}
 	return out, nil
