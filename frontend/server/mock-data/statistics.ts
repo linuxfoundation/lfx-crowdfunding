@@ -68,18 +68,18 @@ export const MOCK_DONOR_BREAKDOWN: DonorBreakdown = {
 
 export const MOCK_MONTHLY_DONATIONS: MonthlyDonations = {
   buckets: [
-    { year: 2024, month: 6, totalCents: 32_000_000, supporters: 89 },
-    { year: 2024, month: 7, totalCents: 35_500_000, supporters: 97 },
-    { year: 2024, month: 8, totalCents: 28_000_000, supporters: 74 },
-    { year: 2024, month: 9, totalCents: 41_000_000, supporters: 112 },
-    { year: 2024, month: 10, totalCents: 38_500_000, supporters: 105 },
-    { year: 2024, month: 11, totalCents: 45_000_000, supporters: 118 },
-    { year: 2024, month: 12, totalCents: 52_000_000, supporters: 143 },
-    { year: 2025, month: 1, totalCents: 39_000_000, supporters: 101 },
-    { year: 2025, month: 2, totalCents: 43_500_000, supporters: 115 },
-    { year: 2025, month: 3, totalCents: 47_000_000, supporters: 128 },
-    { year: 2025, month: 4, totalCents: 48_200_000, supporters: 124 },
-    { year: 2025, month: 5, totalCents: 55_000_000, supporters: 151 },
+    { year: 2024, month: 6, totalCents: 32_000_000, supporters: 89, newSupporters: 12 },
+    { year: 2024, month: 7, totalCents: 35_500_000, supporters: 97, newSupporters: 14 },
+    { year: 2024, month: 8, totalCents: 28_000_000, supporters: 74, newSupporters: 8 },
+    { year: 2024, month: 9, totalCents: 41_000_000, supporters: 112, newSupporters: 18 },
+    { year: 2024, month: 10, totalCents: 38_500_000, supporters: 105, newSupporters: 11 },
+    { year: 2024, month: 11, totalCents: 45_000_000, supporters: 118, newSupporters: 16 },
+    { year: 2024, month: 12, totalCents: 52_000_000, supporters: 143, newSupporters: 22 },
+    { year: 2025, month: 1, totalCents: 39_000_000, supporters: 101, newSupporters: 9 },
+    { year: 2025, month: 2, totalCents: 43_500_000, supporters: 115, newSupporters: 13 },
+    { year: 2025, month: 3, totalCents: 47_000_000, supporters: 128, newSupporters: 17 },
+    { year: 2025, month: 4, totalCents: 48_200_000, supporters: 124, newSupporters: 15 },
+    { year: 2025, month: 5, totalCents: 55_000_000, supporters: 151, newSupporters: 24 },
   ],
 };
 

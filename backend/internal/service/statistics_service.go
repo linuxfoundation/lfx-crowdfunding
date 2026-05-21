@@ -67,14 +67,18 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 		return nil, fmt.Errorf("get platform balance: %w", err)
 	}
 
-	// Collect IDs for enrichment
+	// Collect IDs for enrichment, skipping empty strings that would fail uuid[] cast.
 	orgIDs := make([]string, 0, len(raw.TopOrganizations))
 	for _, o := range raw.TopOrganizations {
-		orgIDs = append(orgIDs, o.ID)
+		if o.ID != "" {
+			orgIDs = append(orgIDs, o.ID)
+		}
 	}
 	userIDs := make([]string, 0, len(raw.TopIndividuals))
 	for _, u := range raw.TopIndividuals {
-		userIDs = append(userIDs, u.ID)
+		if u.ID != "" {
+			userIDs = append(userIDs, u.ID)
+		}
 	}
 
 	orgs, err := s.repo.GetOrganizationsByIDs(ctx, orgIDs)
@@ -132,7 +136,7 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetPlatformMonthly")
 	defer span.End()
 
-	raw, err := s.ledgerClient.GetPlatformMonthly(ctx, 13)
+	raw, err := s.ledgerClient.GetPlatformMonthly(ctx, 12)
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUpstreamUnavailable) {
