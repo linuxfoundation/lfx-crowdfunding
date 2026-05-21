@@ -11,6 +11,6 @@ export default defineEventHandler(async (): Promise<StatisticsOverview> => {
     totalRaisedCents: res.total_raised_cents,
     supporterCount: res.total_supporters,
     activeInitiatives: res.total_initiatives,
-    annualGoalCents: 0,
+    annualGoalCents: 1_000_000_000,
   };
 });

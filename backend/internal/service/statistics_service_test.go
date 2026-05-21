@@ -137,8 +137,8 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 	}
 }
 
-func TestGetPlatformDetails_MissingEnrichmentLeavesNameEmpty(t *testing.T) {
-	// Ledger has an org/user that doesn't exist in CF DB — name stays empty.
+func TestGetPlatformDetails_MissingEnrichmentUsesFallbackName(t *testing.T) {
+	// Ledger has an org/user that doesn't exist in CF DB — falls back to placeholder names.
 	repo := &testStatisticsRepo{
 		orgs:  map[string]models.Organization{},
 		users: map[string]models.User{},
@@ -156,11 +156,11 @@ func TestGetPlatformDetails_MissingEnrichmentLeavesNameEmpty(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if details.TopOrganizations[0].Name != "" {
-		t.Errorf("expected empty org name for unknown ID, got %q", details.TopOrganizations[0].Name)
+	if details.TopOrganizations[0].Name != "Unknown Organization" {
+		t.Errorf("org name: want %q, got %q", "Unknown Organization", details.TopOrganizations[0].Name)
 	}
-	if details.TopIndividuals[0].Name != "" {
-		t.Errorf("expected empty user name for unknown ID, got %q", details.TopIndividuals[0].Name)
+	if details.TopIndividuals[0].Name != "Anonymous" {
+		t.Errorf("individual name: want %q, got %q", "Anonymous", details.TopIndividuals[0].Name)
 	}
 }
 

@@ -107,6 +107,8 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 		if org, ok := orgs[o.ID]; ok {
 			entry.Name = org.Name
 			entry.AvatarURL = org.AvatarURL
+		} else {
+			entry.Name = "Unknown Organization"
 		}
 		out.TopOrganizations = append(out.TopOrganizations, entry)
 	}
@@ -115,6 +117,8 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 		if user, ok := users[u.ID]; ok {
 			entry.Name = user.Name
 			entry.AvatarURL = user.AvatarURL
+		} else {
+			entry.Name = "Anonymous"
 		}
 		out.TopIndividuals = append(out.TopIndividuals, entry)
 	}
