@@ -30,7 +30,7 @@ This is what Eric described in the architecture discussion: *"the UI checks if i
 
 SS already calls `user-service` via `apiGatewayToken`. Despite the name, this is not an M2M token — it is a user token derived from the admin's OIDC refresh token with a different audience. Its `sub` is always the **admin's** user ID, even during impersonation.
 
-This means calling CF with `apiGatewayToken` during impersonation would silently use the admin's identity instead of the target user's — the same bug that currently affects the Rewards tab (see Section 8). M2M + explicit `X-User-ID` avoids this: identity is always intentional, not inferred from whichever token happened to be available.
+This means calling CF with `apiGatewayToken` during impersonation would silently use the admin's identity instead of the target user's — the same bug that currently affects the Rewards tab (see Appendix). M2M + explicit `X-User-ID` avoids this: identity is always intentional, not inferred from whichever token happened to be available.
 
 ---
 
@@ -164,6 +164,17 @@ No changes to auth middleware, session types, or existing token exchange logic.
 
 ---
 
+## 9. What This Does Not Need
+
+- New Auth0 resource server beyond the dedicated CF one
+- Changes to Heimdall routing or `lfx-platform.yaml`
+- New token exchange logic in SS auth middleware
+- New session fields
+- Changes to the existing user JWT middleware in CF
+- Snowflake integration for CF data
+
+---
+
 ## 10. Long-term: Heimdall Alignment
 
 Every other LFX v2 native service sits behind Heimdall. Adding Heimdall to CF would normalise both user and M2M tokens through the platform gateway, making the `X-User-ID` header unnecessary — user identity would flow through the Heimdall-issued JWT directly, and impersonation would work transparently.
@@ -174,12 +185,14 @@ This is the correct long-term architecture but is not in scope for the current t
 
 ## 11. Open Items for Architect Sign-off
 
+
+
 | Item | Status | Detail |
 |---|---|---|
 | M2M + audience mechanism | ✅ Confirmed by Eric | Same pattern as sanctions screening |
 | `X-User-ID` header for identity injection | 🔲 Needs sign-off | Eric confirmed the pattern; this document proposes the concrete header name and CF's trust model (trusted only from verified M2M callers) |
 | Impersonation write access | 🔲 Product decision | Read-only gating is product-side for launch; future option is `read`/`write` scope split on the CF resource server |
-| Impersonation bug in SS (Section 8) | 🔲 Needs Eric's input | Affects Rewards, visa/travel applications, membership — data integrity risk. Recommend disabling affected features during impersonation (Option A) immediately. Should this be tracked as a separate SS ticket? |
+| Impersonation bug in SS (Appendix) | 🔲 Needs Eric's input | Affects Rewards, visa/travel applications, membership — data integrity risk. Recommend disabling affected features during impersonation (Option A) immediately. Should this be tracked as a separate SS ticket? |
 | Reimbursement Service M2M | 🔲 Not on critical path | Addressed when travel fund endpoint is implemented |
 | Heimdall alignment | 🔲 Planned follow-up | No hard deadline; does not block launch |
 
