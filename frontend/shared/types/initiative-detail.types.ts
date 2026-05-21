@@ -16,7 +16,7 @@ export interface RecentDonation {
   donorLogoUrl?: string;
   donorType: 'organization' | 'member';
   amountCents: number;
-  timeAgo: string;
+  date: number;
   initiativeId?: string;
   initiativeName?: string;
 }

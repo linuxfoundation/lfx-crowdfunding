@@ -2,21 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 import type { BackendPlatformDetails } from '../../types/statistics.types';
-import type { FundingByCategoryResponse, FundingCategory } from '#shared/types/statistics.types';
+import { mapToFundingCategory } from '../../services/statistics.service';
+import type { FundingByCategoryResponse } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<FundingByCategoryResponse> => {
-  const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
+  const { apiBaseUrl } = useRuntimeConfig();
   try {
-    const res = await $fetch<BackendPlatformDetails>(`${apiBase}/v1/statistics/platform`);
-    const data: FundingCategory[] = (res.categories ?? []).map((cat) => ({
-      id: cat.name,
-      name: cat.name,
-      icon: '',
-      raisedCents: cat.total_cents,
-      goalCents: 0,
-      supporterCount: cat.count,
-    }));
-    return { data };
+    const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform`);
+    return { data: (res.categories ?? []).map(mapToFundingCategory) };
   } catch {
     return { data: [] };
   }

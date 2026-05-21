@@ -30,7 +30,7 @@ SPDX-License-Identifier: MIT
           </NuxtLink>
           <span class="text-neutral-500 mx-0.5 shrink-0">・</span>
         </template>
-        <span class="text-neutral-500 shrink-0">{{ donation.timeAgo }}</span>
+        <span class="text-neutral-500 shrink-0">{{ formatTimeAgoFromUnix(donation.date) }}</span>
       </div>
     </div>
   </div>
@@ -39,6 +39,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import type { RecentDonation } from '#shared/types/initiative-detail.types';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
+import { formatTimeAgoFromUnix } from '~/utils/date';
 
 defineProps<{
   donation: RecentDonation;

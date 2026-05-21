@@ -5,9 +5,9 @@ import type { BackendPlatformDetails } from '../../types/statistics.types';
 import type { DonorBreakdown } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<DonorBreakdown> => {
-  const apiBase = process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080';
+  const { apiBaseUrl } = useRuntimeConfig();
   try {
-    const res = await $fetch<BackendPlatformDetails>(`${apiBase}/v1/statistics/platform`);
+    const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform`);
 
     const totalCents = res.organizations_cents + res.individuals_cents;
     const totalDonations = (res.categories ?? []).reduce((sum, c) => sum + c.count, 0);
