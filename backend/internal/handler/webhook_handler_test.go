@@ -415,7 +415,7 @@ func TestWebhookHandler_PaymentIntentSucceeded_DBError_Returns500(t *testing.T) 
 	}
 }
 
-// --- not-found: no local row for Stripe ID → non-200 so Stripe retries ---
+// --- not-found: no local row for Stripe ID → 200 to prevent retry loops (permanent not-found) ---
 
 func TestWebhookHandler_PaymentIntentSucceeded_DonationNotFound_Returns200(t *testing.T) {
 	dr := &wbDonationRepo{

@@ -141,7 +141,9 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		chargeID = pi.LatestCharge.ID
 	}
 	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusSucceeded, chargeID); err != nil {
-		h.logger.Error("payment_intent.succeeded: DB update failed", "pi_id", pi.ID, "error", err)
+		if !errors.Is(err, domain.ErrDonationNotFound) {
+			h.logger.Error("payment_intent.succeeded: DB update failed", "pi_id", pi.ID, "error", err)
+		}
 		return fmt.Errorf("payment_intent.succeeded: db update: %w", err)
 	}
 	h.logger.Info("payment_intent.succeeded: donation updated", "pi_id", pi.ID)
@@ -159,7 +161,9 @@ func (h *WebhookHandler) handlePaymentIntentFailed(r *http.Request, event stripe
 		return fmt.Errorf("payment_intent.payment_failed: unmarshal: %w", err)
 	}
 	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusFailed, ""); err != nil {
-		h.logger.Error("payment_intent.payment_failed: DB update failed", "pi_id", pi.ID, "error", err)
+		if !errors.Is(err, domain.ErrDonationNotFound) {
+			h.logger.Error("payment_intent.payment_failed: DB update failed", "pi_id", pi.ID, "error", err)
+		}
 		return fmt.Errorf("payment_intent.payment_failed: db update: %w", err)
 	}
 	h.logger.Info("payment_intent.payment_failed: donation updated", "pi_id", pi.ID)
@@ -181,8 +185,10 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	}
 	subID := inv.Parent.SubscriptionDetails.Subscription.ID
 	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, models.SubscriptionStatusActive); err != nil {
-		h.logger.Error("invoice.payment_succeeded: DB update failed",
-			"sub_id", subID, "error", err)
+		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+			h.logger.Error("invoice.payment_succeeded: DB update failed",
+				"sub_id", subID, "error", err)
+		}
 		return fmt.Errorf("invoice.payment_succeeded: db update: %w", err)
 	}
 	h.logger.Info("invoice.payment_succeeded: subscription activated", "sub_id", subID)
@@ -212,8 +218,10 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(r *http.Request, event strip
 	}
 	subID := inv.Parent.SubscriptionDetails.Subscription.ID
 	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, models.SubscriptionStatusPastDue); err != nil {
-		h.logger.Error("invoice.payment_failed: DB update failed",
-			"sub_id", subID, "error", err)
+		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+			h.logger.Error("invoice.payment_failed: DB update failed",
+				"sub_id", subID, "error", err)
+		}
 		return fmt.Errorf("invoice.payment_failed: db update: %w", err)
 	}
 	h.logger.Info("invoice.payment_failed: subscription marked past_due", "sub_id", subID)
@@ -232,7 +240,9 @@ func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe
 		return fmt.Errorf("customer.subscription.deleted: unmarshal: %w", err)
 	}
 	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), sub.ID, models.SubscriptionStatusCanceled); err != nil {
-		h.logger.Error("customer.subscription.deleted: DB update failed", "sub_id", sub.ID, "error", err)
+		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+			h.logger.Error("customer.subscription.deleted: DB update failed", "sub_id", sub.ID, "error", err)
+		}
 		return fmt.Errorf("customer.subscription.deleted: db update: %w", err)
 	}
 	h.logger.Info("customer.subscription.deleted: subscription cancelled", "sub_id", sub.ID)
