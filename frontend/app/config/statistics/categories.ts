@@ -14,10 +14,10 @@ const CATEGORY_VISUALS: Record<string, CategoryVisual> = {
   events: { color: '#00bc7d', icon: 'calendar' },
   travel: { color: '#8e51ff', icon: 'plane' },
   mentorship: { color: '#ec4899', icon: 'graduation-cap' },
-  'general fund': { color: '#0f172b', icon: 'hand-holding-dollar' },
-  other: { color: '#64748b', icon: 'circle-dot' },
-  uncategorised: { color: '#94a3b8', icon: 'circle-question' },
-  uncategorized: { color: '#94a3b8', icon: 'circle-question' },
+  'general fund': { color: '#f43f5e', icon: 'hand-holding-dollar' },
+  other: { color: '#f97316', icon: 'circle-dot' },
+  uncategorised: { color: '#14b8a6', icon: 'circle-question' },
+  uncategorized: { color: '#14b8a6', icon: 'circle-question' },
 };
 
 const FALLBACK: CategoryVisual = { color: '#e2e8f0', icon: 'tag' };
