@@ -19,7 +19,6 @@ spec:
       template:
         metadata:
           labels:
-            {{- include "lfx-v2-initiatives-service.selectorLabels" . | nindent 12 }}
             app.kubernetes.io/component: ledger-stats-sync
         spec:
           restartPolicy: OnFailure
