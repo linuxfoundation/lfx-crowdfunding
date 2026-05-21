@@ -6,6 +6,14 @@ package models
 
 import "time"
 
+// Subscription status values stored in crowdfunding.subscriptions.status.
+const (
+	SubscriptionStatusIncomplete = "incomplete"
+	SubscriptionStatusActive     = "active"
+	SubscriptionStatusPastDue    = "past_due"
+	SubscriptionStatusCanceled   = "canceled"
+)
+
 // Subscription maps to the crowdfunding.subscriptions table.
 type Subscription struct {
 	ID                       string    `json:"id"`

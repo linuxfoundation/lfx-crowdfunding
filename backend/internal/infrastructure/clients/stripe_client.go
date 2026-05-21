@@ -452,7 +452,7 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 		cs := sub.LatestInvoice.ConfirmationSecret
 		if cs.ClientSecret != "" {
 			result.ClientSecret = cs.ClientSecret
-			result.Status = "incomplete"
+			result.Status = models.SubscriptionStatusIncomplete
 		}
 	}
 	return result, nil
