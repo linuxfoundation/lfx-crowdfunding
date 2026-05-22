@@ -140,13 +140,13 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 
 No existing resources touched. Follows `grants_sanctions_screening.tf` exactly.
 
-> **Note on user tokens:** `deny_all` applies only to this new CF M2M audience. The CF Nuxt BFF forwards the user's Auth0 access token to the Go backend validated against the **CF's own Auth0 audience** (configured via `JWT_AUDIENCE` / `JWKS_URL` env vars, per `02-decisions.md`). That existing user-token flow uses a different audience and is unaffected by this resource server definition.
+> **Note on user tokens:** `deny_all` applies only to this new CF M2M audience. The CF Nuxt BFF forwards the user's Auth0 access token to the Go backend, where it is validated against `JWT_AUDIENCE` (currently `https://funding.{env}.platform.linuxfoundation.org/api/`, configured via `JWKS_URL` / `JWT_AUDIENCE` in `backend/cmd/initiatives-api/config.go`). That existing user-token audience is separate from the new M2M audience and is unaffected by this resource server definition.
 
 ### `lfx-v2-argocd`
 
 | File | Change |
 |---|---|
-| `values/{dev,staging,prod}/lfx-crowdfunding-backend.yaml` | Update `JWT_AUDIENCE` to the new CF audience per environment |
+| `values/{dev,staging,prod}/lfx-crowdfunding-backend.yaml` | Add `M2M_JWT_AUDIENCE` (new CF M2M audience per environment) and `M2M_JWKS_URL` if different from user token JWKS; `JWT_AUDIENCE` stays unchanged (user-token audience) |
 | `values/{dev,staging,prod}/lfx-self-serve.yaml` | Add `CROWDFUNDING_API_BASE_URL` and `CROWDFUNDING_API_AUDIENCE` |
 
 ### `lfx-self-serve`
@@ -160,9 +160,9 @@ No changes to auth middleware, session types, or existing token exchange logic.
 
 ### `lfx-crowdfunding` backend
 
-- New `M2MMiddleware`: validates CF-scoped Bearer token, checks `azp`, reads `X-User-ID` → `Principal.UserID`
+- New `M2MMiddleware`: validates CF-scoped Bearer token using `M2M_JWT_AUDIENCE`, checks `azp`, reads `X-User-ID` → `Principal.UserID`
 - Register as alternative to existing user JWT middleware on protected routes
-- `JWT_AUDIENCE` updated via ArgoCD (no code change)
+- Existing `JWT_AUDIENCE` (user-token audience) is unchanged
 
 ---
 
