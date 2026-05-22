@@ -336,12 +336,12 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 		initiative.Status = models.StatusDeclined
 	}
 
-	approved, err := s.repo.Update(ctx, initiative)
+	processed, err := s.repo.Update(ctx, initiative)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("update initiative: %w", err)
 	}
-	return approved, nil
+	return processed, nil
 }
 
 // GetTransactions fetches transactions from Ledger and enriches each with donor
