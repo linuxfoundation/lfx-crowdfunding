@@ -96,6 +96,12 @@ SPDX-License-Identifier: MIT
         </div>
 
         <!-- Footer -->
+        <lfx-field-message
+          v-if="donationError && step === 2"
+          class="px-8 pb-2"
+        >
+          {{ donationError }}
+        </lfx-field-message>
         <div class="flex items-center justify-between border-t border-neutral-200 px-8 py-4">
           <lfx-button
             type="ghost"
@@ -133,7 +139,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref } from 'vue';
 import DonateStepAmount from './donate-step-amount.vue';
 import DonateStepContact from './donate-step-contact.vue';
 import DonateStepPayment from './donate-step-payment.vue';
@@ -143,11 +149,12 @@ import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
+import LfxFieldMessage from '~/components/uikit/field/field-message.vue';
 
 const TOTAL_STEPS = 3;
 
-const { card, fetchCard, saveCard } = usePaymentAccount();
-const { donate, loading: donating } = useDonate();
+const { card, saveCard } = usePaymentAccount();
+const { donate, loading: donating, error: donationError } = useDonate();
 
 const props = defineProps<{
   modelValue: boolean;
@@ -219,13 +226,12 @@ const amountSummary = computed(() => {
   return amountForm.value.tierName ? `Amount: ${formatted} (${amountForm.value.tierName})` : `Amount: ${formatted}`;
 });
 
-onMounted(() => fetchCard());
-
 const close = () => {
   isOpen.value = false;
   step.value = 0;
   submitted.value = false;
   paymentComplete.value = false;
+  donationError.value = null;
   amountForm.value = { tierId: null, tierName: null, customAmountCents: null, amountCents: 0 };
   contactForm.value = {
     donorType: 'individual',
@@ -260,26 +266,26 @@ const handleContinue = async () => {
   submitting.value = true;
   try {
     let paymentMethodId: string;
-    const useDifferent = paymentStepRef.value.useDifferentCard;
+    const useDifferent = paymentStepRef.value.isUsingDifferentCard();
 
-    if (card.value?.payment_method_id && !useDifferent) {
-      paymentMethodId = card.value.payment_method_id;
+    if (card.value?.paymentMethodId && !useDifferent) {
+      paymentMethodId = card.value.paymentMethodId;
     } else {
-      const cardEl = paymentStepRef.value.cardNumberEl;
+      const cardEl = paymentStepRef.value.getCardNumberEl();
       if (!cardEl) throw new Error('Card element not mounted');
       await saveCard(cardEl);
-      paymentMethodId = card.value!.payment_method_id;
+      paymentMethodId = card.value!.paymentMethodId;
     }
 
     await donate(props.initiative.id, {
-      amount_in_cents: amountForm.value.amountCents,
-      stripe_payment_method_id: paymentMethodId,
+      amountInCents: amountForm.value.amountCents,
+      stripePaymentMethodId: paymentMethodId,
     });
 
     submitted.value = true;
     emit('submitted');
   } catch {
-    // Errors are surfaced via stripeError in donate-step-payment or useDonate.error
+    // stripeError is surfaced in donate-step-payment; donationError rendered below
   } finally {
     submitting.value = false;
   }

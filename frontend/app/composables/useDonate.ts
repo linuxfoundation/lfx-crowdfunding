@@ -22,10 +22,10 @@ export const useDonate = () => {
         headers: { 'Idempotency-Key': crypto.randomUUID() },
       });
 
-      if (result.client_secret) {
+      if (result.clientSecret) {
         const stripe = await getStripe();
         if (!stripe) throw new Error('Stripe.js failed to load.');
-        const { error: stripeError } = await stripe.confirmCardPayment(result.client_secret);
+        const { error: stripeError } = await stripe.confirmCardPayment(result.clientSecret);
         if (stripeError) throw new Error(stripeError.message);
       }
 

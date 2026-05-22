@@ -2,27 +2,27 @@
 // SPDX-License-Identifier: MIT
 
 export interface CardDetails {
-  payment_method_id: string;
-  last_four: string;
+  paymentMethodId: string;
+  lastFour: string;
   brand: string;
-  expiry_month: number;
-  expiry_year: number;
+  expiryMonth: number;
+  expiryYear: number;
 }
 
 export interface SetupIntentResult {
-  client_secret: string;
+  clientSecret: string;
 }
 
 export interface DonationRequest {
-  amount_in_cents: number;
-  stripe_payment_method_id: string;
+  amountInCents: number;
+  stripePaymentMethodId: string;
   category?: string;
-  organization_id?: string;
+  organizationId?: string;
 }
 
 export interface DonationResult {
   id: string;
   status: string;
-  client_secret?: string;
-  stripe_payment_intent_id?: string;
+  clientSecret?: string;
+  stripePaymentIntentId?: string;
 }

@@ -272,23 +272,24 @@ const switchToNewCard = () => {
   emit('update:complete', false);
 };
 
-// When card is found, signal complete to the parent so the Donate button activates.
-// When switching to the entry form, revert to form-validation control.
+// Signal complete to the parent: true when the saved card summary is shown, false otherwise
+// (lets the Donate button stay disabled until the new-card form is filled in).
 watch(
   [card, useDifferentCard],
   () => {
-    if (!showCardForm.value) {
-      emit('update:complete', true);
-    }
+    emit('update:complete', !showCardForm.value || allComplete.value);
   },
   { immediate: true },
 );
 
-// Mount Stripe elements when the card entry form becomes visible
+// Mount Stripe elements when the card entry form becomes visible; destroy them when hidden
+// to avoid dangling mounts after card is saved and the form is removed by v-if.
 watch(showCardForm, async (visible) => {
   if (visible && !cardNumberEl) {
     await nextTick(); // wait for v-if containers to render
     await mountElements();
+  } else if (!visible) {
+    destroyElements();
   }
 });
 
@@ -308,7 +309,10 @@ onBeforeUnmount(() => {
   destroyElements();
 });
 
-defineExpose({ cardNumberEl: computed(() => cardNumberEl), useDifferentCard });
+defineExpose({
+  getCardNumberEl: (): StripeCardNumberElement | null => cardNumberEl,
+  isUsingDifferentCard: (): boolean => useDifferentCard.value,
+});
 </script>
 
 <script lang="ts">

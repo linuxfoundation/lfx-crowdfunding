@@ -5,6 +5,13 @@ import { defineEventHandler } from 'h3';
 import { useBackendFetch } from '../../utils/backend-fetch';
 import type { SetupIntentResult } from '#shared/types/payment.types';
 
+interface SetupIntentWire {
+  client_secret: string;
+}
+
 export default defineEventHandler(async (event): Promise<SetupIntentResult> => {
-  return useBackendFetch<SetupIntentResult>(event, '/v1/me/setup-intent', { method: 'POST' });
+  const raw = await useBackendFetch<SetupIntentWire>(event, '/v1/me/setup-intent', {
+    method: 'POST',
+  });
+  return { clientSecret: raw.client_secret };
 });

@@ -111,8 +111,10 @@ export default defineEventHandler(async (event) => {
     // Store the Auth0 access token — forwarded by the BFF as Authorization: Bearer to the Go backend.
     setCookie(event, 'auth_oidc_token', tokenResponse.access_token, tokenCookieOptions);
 
-    // Store display-only profile claims separately so /api/auth/user can serve them without
-    // re-verifying the access token on every request.
+    // Store display-only profile claims for the /api/auth/user endpoint.
+    // IMPORTANT: this cookie is base64-encoded JSON with no HMAC signature — treat as
+    // display-only. Never use it for identity decisions or authorization; use auth_oidc_token
+    // (forwarded as Authorization: Bearer to the Go backend) for that.
     const userProfile = {
       sub: idTokenClaims.sub,
       name: idTokenClaims.name,

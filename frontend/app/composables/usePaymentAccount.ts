@@ -9,32 +9,46 @@ import type { CardDetails, SetupIntentResult } from '#shared/types/payment.types
 const card = ref<CardDetails | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+let fetchInFlight: Promise<void> | null = null;
 
 export const usePaymentAccount = () => {
   const { getStripe } = useStripe();
 
   const fetchCard = async () => {
-    loading.value = true;
-    error.value = null;
-    try {
-      card.value = await $fetch<CardDetails>('/api/payment/account');
-    } catch (e: unknown) {
-      const err = e as { statusCode?: number; data?: { message?: string } };
-      if (err?.statusCode === 404) {
-        card.value = null;
-      } else {
-        error.value = err?.data?.message ?? 'Could not load your payment account.';
+    if (fetchInFlight) return fetchInFlight;
+    fetchInFlight = (async () => {
+      loading.value = true;
+      error.value = null;
+      try {
+        card.value = await $fetch<CardDetails>('/api/payment/account');
+      } catch (e: unknown) {
+        const err = e as {
+          statusCode?: number;
+          message?: string;
+          data?: { message?: string; statusMessage?: string };
+        };
+        if (err?.statusCode === 404) {
+          card.value = null;
+        } else {
+          error.value =
+            err?.data?.message ??
+            err?.data?.statusMessage ??
+            err?.message ??
+            'Could not load your payment account.';
+        }
+      } finally {
+        loading.value = false;
+        fetchInFlight = null;
       }
-    } finally {
-      loading.value = false;
-    }
+    })();
+    return fetchInFlight;
   };
 
   const saveCard = async (cardElement: StripeCardNumberElement) => {
     loading.value = true;
     error.value = null;
     try {
-      const { client_secret } = await $fetch<SetupIntentResult>('/api/payment/setup-intent', {
+      const { clientSecret } = await $fetch<SetupIntentResult>('/api/payment/setup-intent', {
         method: 'POST',
       });
 
@@ -42,7 +56,7 @@ export const usePaymentAccount = () => {
       if (!stripe)
         throw new Error('Stripe.js failed to load — check NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY.');
 
-      const { setupIntent, error: stripeError } = await stripe.confirmCardSetup(client_secret, {
+      const { setupIntent, error: stripeError } = await stripe.confirmCardSetup(clientSecret, {
         payment_method: { card: cardElement },
       });
 
@@ -57,7 +71,7 @@ export const usePaymentAccount = () => {
 
       card.value = await $fetch<CardDetails>('/api/payment/method', {
         method: 'POST',
-        body: { payment_method_id: paymentMethodId },
+        body: { paymentMethodId },
       });
     } catch (e: unknown) {
       const err = e as { message?: string };
