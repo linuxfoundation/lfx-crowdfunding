@@ -3,6 +3,7 @@
 
 export interface FeaturedInitiative {
   id: string;
+  slug: string;
   name: string;
   logoUrl?: string;
   raisedCents: number;
