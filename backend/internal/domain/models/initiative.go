@@ -5,6 +5,7 @@
 package models
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -56,6 +57,28 @@ var ValidInitiativeStatuses = map[InitiativeStatus]bool{
 	StatusPublished: true,
 	StatusDeclined:  true,
 	StatusHidden:    true,
+}
+
+// InitiativeApprovalAction represents the approval decision submitted by an approver.
+type InitiativeApprovalAction string
+
+const (
+	ApprovalActionApprove InitiativeApprovalAction = "approve"
+	ApprovalActionDecline InitiativeApprovalAction = "decline"
+)
+
+// ParseApprovalAction parses a raw string into an InitiativeApprovalAction.
+// Input is trimmed and lowercased before matching so that callers may pass
+// any casing (e.g. "Approve", "DECLINE"). The canonical constant is returned.
+// Returns an error if s is not a recognised action value.
+func ParseApprovalAction(s string) (InitiativeApprovalAction, error) {
+	normalized := InitiativeApprovalAction(strings.ToLower(strings.TrimSpace(s)))
+	switch normalized {
+	case ApprovalActionApprove, ApprovalActionDecline:
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("approval action must be %q or %q", ApprovalActionApprove, ApprovalActionDecline)
+	}
 }
 
 // Financials holds funding statistics sourced from initiative_ledger_stats,

@@ -303,6 +303,47 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 	return updated, nil
 }
 
+// ProcessApproval updates an initiative's status based on the given approval action.
+// ApprovalActionApprove transitions the initiative to StatusPublished;
+// ApprovalActionDecline transitions it to StatusDeclined.
+func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID string, action models.InitiativeApprovalAction) (*models.Initiative, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ProcessApproval")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.id", initiativeID))
+
+	// Validate action at the service boundary so the method is self-contained.
+	if _, err := models.ParseApprovalAction(string(action)); err != nil {
+		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+	}
+
+	initiative, err := s.repo.GetByID(ctx, initiativeID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// Guard: only initiatives in a reviewable state can be approved or declined.
+	// Use EqualFold to handle any casing stored by earlier writes.
+	if !initiative.Status.EqualFold(models.StatusSubmitted) && !initiative.Status.EqualFold(models.StatusPending) {
+		return nil, fmt.Errorf("%w: initiative with status %q cannot be approved or declined",
+			domain.ErrInvalidInput, initiative.Status)
+	}
+
+	switch action {
+	case models.ApprovalActionApprove:
+		initiative.Status = models.StatusPublished
+	case models.ApprovalActionDecline:
+		initiative.Status = models.StatusDeclined
+	}
+
+	processed, err := s.repo.Update(ctx, initiative)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("update initiative: %w", err)
+	}
+	return processed, nil
+}
+
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
