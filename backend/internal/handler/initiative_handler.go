@@ -8,6 +8,8 @@ import (
 	"crypto/md5" //nolint:gosec // MD5 used for non-cryptographic ETag generation only
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -29,12 +31,16 @@ const (
 
 // InitiativeHandler holds Chi handlers for the /v1/initiatives resource.
 type InitiativeHandler struct {
-	svc *service.InitiativeService
+	svc              *service.InitiativeService
+	allowedApprovers []string
+	logger           *slog.Logger
 }
 
 // NewInitiativeHandler creates an InitiativeHandler.
-func NewInitiativeHandler(svc *service.InitiativeService) *InitiativeHandler {
-	return &InitiativeHandler{svc: svc}
+// allowedApprovers is the list of usernames permitted to approve or decline
+// initiatives (sourced from the ALLOWED_APPROVERS env var).
+func NewInitiativeHandler(svc *service.InitiativeService, allowedApprovers []string, logger *slog.Logger) *InitiativeHandler {
+	return &InitiativeHandler{svc: svc, allowedApprovers: allowedApprovers, logger: logger}
 }
 
 // List handles GET /v1/initiatives
@@ -219,6 +225,50 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// ProcessApproval handles POST /v1/initiatives/{id}/process-approval/{action} — requires JWT.
+// The caller's Username must appear in the AllowedApprovers list configured via
+// ALLOWED_APPROVERS. {action} must be "approve" or "decline".
+func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	// Validate action first to avoid reflecting unvalidated input in error messages.
+	rawAction := chi.URLParam(r, "action")
+	action, err := models.ParseApprovalAction(rawAction)
+	if err != nil {
+		Error(w, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err))
+		return
+	}
+
+	// Authorise: caller's username must be in the approvers list.
+	allowed := false
+	for _, a := range h.allowedApprovers {
+		if strings.EqualFold(a, principal.Username) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		h.logger.WarnContext(r.Context(), "initiative approval rejected: caller not in allowed list",
+			"username", principal.Username,
+			"action", action,
+			"initiative_id", chi.URLParam(r, "id"))
+		Error(w, domain.ErrForbidden)
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	updated, err := h.svc.ProcessApproval(r.Context(), id, action)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, updated)
 }
 
 // Delete handles DELETE /v1/initiatives/{id} — requires JWT.
