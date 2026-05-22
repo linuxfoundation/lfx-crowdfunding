@@ -476,15 +476,15 @@ func TestCreate_UnknownInitiativeType(t *testing.T) {
 
 // ── Approve ───────────────────────────────────────────────────────────────────
 
-func newApproveSvc(repo *mockInitiativeRepo) *InitiativeService {
+func newProcessApprovalSvc(repo *mockInitiativeRepo) *InitiativeService {
 	return NewInitiativeService(repo, &mockLedgerClient{}, &mockStripeClient{}, slog.Default())
 }
 
-func TestApprove_SetsStatusPublished(t *testing.T) {
+func TestProcessApproval_SetsStatusPublished(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", Status: models.StatusSubmitted},
 	}
-	updated, err := newApproveSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
+	updated, err := newProcessApprovalSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -496,11 +496,11 @@ func TestApprove_SetsStatusPublished(t *testing.T) {
 	}
 }
 
-func TestApprove_SetsStatusDeclined(t *testing.T) {
+func TestProcessApproval_SetsStatusDeclined(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", Status: models.StatusSubmitted},
 	}
-	updated, err := newApproveSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionDecline)
+	updated, err := newProcessApprovalSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionDecline)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -509,40 +509,40 @@ func TestApprove_SetsStatusDeclined(t *testing.T) {
 	}
 }
 
-func TestApprove_InitiativeNotFound(t *testing.T) {
+func TestProcessApproval_InitiativeNotFound(t *testing.T) {
 	repo := &mockInitiativeRepo{err: domain.ErrInitiativeNotFound}
-	_, err := newApproveSvc(repo).ProcessApproval(context.Background(), "missing", models.ApprovalActionApprove)
+	_, err := newProcessApprovalSvc(repo).ProcessApproval(context.Background(), "missing", models.ApprovalActionApprove)
 	if !errors.Is(err, domain.ErrInitiativeNotFound) {
 		t.Errorf("expected ErrInitiativeNotFound, got %v", err)
 	}
 }
 
-func TestApprove_UpdateError(t *testing.T) {
+func TestProcessApproval_UpdateError(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", Status: models.StatusSubmitted},
 		updateErr:  errors.New("db unavailable"),
 	}
-	_, err := newApproveSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
+	_, err := newProcessApprovalSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
 	if err == nil {
 		t.Fatal("expected error from repo.Update, got nil")
 	}
 }
 
-func TestApprove_InvalidAction(t *testing.T) {
+func TestProcessApproval_InvalidAction(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", Status: models.StatusSubmitted},
 	}
-	_, err := newApproveSvc(repo).ProcessApproval(context.Background(), "init-1", models.InitiativeApprovalAction("invalid"))
+	_, err := newProcessApprovalSvc(repo).ProcessApproval(context.Background(), "init-1", models.InitiativeApprovalAction("invalid"))
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput, got %v", err)
 	}
 }
 
-func TestApprove_RejectsNonApprovableStatus(t *testing.T) {
+func TestProcessApproval_RejectsNonApprovableStatus(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", Status: models.StatusPublished},
 	}
-	_, err := newApproveSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
+	_, err := newProcessApprovalSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput for non-approvable status, got %v", err)
 	}

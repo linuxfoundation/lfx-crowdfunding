@@ -131,7 +131,7 @@ func newApprovalHandler(repo *apprInitiativeRepo, approvers []string) *Initiativ
 // approvalRouter mounts only the approval route on a fresh Chi router.
 func approvalRouter(h *InitiativeHandler) chi.Router {
 	r := chi.NewRouter()
-	r.Post("/v1/initiatives/{id}/process-approval/{status}", h.ProcessApproval)
+	r.Post("/v1/initiatives/{id}/process-approval/{action}", h.ProcessApproval)
 	return r
 }
 

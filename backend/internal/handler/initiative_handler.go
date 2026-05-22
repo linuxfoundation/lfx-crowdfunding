@@ -226,9 +226,9 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write(body)
 }
 
-// ProcessApproval handles POST /v1/initiatives/{id}/process-approval/{status} — requires JWT.
+// ProcessApproval handles POST /v1/initiatives/{id}/process-approval/{action} — requires JWT.
 // The caller's Username must appear in the AllowedApprovers list configured via
-// ALLOWED_APPROVERS. {status} must be "approve" or "decline".
+// ALLOWED_APPROVERS. {action} must be "approve" or "decline".
 func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil {
@@ -237,7 +237,7 @@ func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Validate action first to avoid reflecting unvalidated input in error messages.
-	rawAction := chi.URLParam(r, "status")
+	rawAction := chi.URLParam(r, "action")
 	action, err := models.ParseApprovalAction(rawAction)
 	if err != nil {
 		Error(w, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err))
