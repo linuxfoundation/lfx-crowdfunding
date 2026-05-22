@@ -93,7 +93,7 @@ When impersonation is active, `getEffectiveSub()` returns the **impersonated use
 
 ## 6. Callers: Reimbursement Service
 
-The reimbursement service (AWS Lambda, outside the LFX v2 cluster) calls CF via M2M to update travel fund ticket statuses. The request carries only `ticketID` and `ticketStatus` — no user identity is needed. CF validates the M2M token and checks the `azp` is an allowed caller; no `X-User-ID` header required.
+The reimbursement service (AWS Lambda, outside the LFX v2 cluster) calls CF to update travel fund ticket statuses. Per the target architecture (`04-target-architecture.md`), RS→CF uses a shared **`X-Internal-Token`** secret — not Auth0 M2M. The request carries only `ticketID` and `ticketStatus`; no user identity is needed. CF validates the `X-Internal-Token` header and no Auth0 grant is required for RS.
 
 The endpoint (`POST /v1/service/travel-fund/ticket-status`) does not yet exist in the new CF backend and is not on the current critical path.
 
@@ -119,7 +119,7 @@ resource "auth0_resource_server" "lfx_crowdfunding" {
   signing_alg    = "RS256"
   token_lifetime = { "dev" = 86400, "staging" = 86400, "prod" = 86400 }[terraform.workspace]
   subject_type_authorization {
-    user   { policy = "deny_all" }           # user tokens cannot authenticate directly
+    user   { policy = "deny_all" }           # only M2M callers use this audience
     client { policy = "require_client_grant" }
   }
 }
@@ -139,6 +139,8 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 ```
 
 No existing resources touched. Follows `grants_sanctions_screening.tf` exactly.
+
+> **Note on user tokens:** `deny_all` applies only to this new CF-scoped audience. The CF Nuxt BFF forwards the user's OIDC access token to the Go backend on a **separate** audience (`lfx-v2-initiatives-service`, issued by Heimdall) — that flow is unaffected by this resource server definition. The two audiences are distinct and serve different callers.
 
 ### `lfx-v2-argocd`
 
