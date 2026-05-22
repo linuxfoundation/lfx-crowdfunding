@@ -9,11 +9,14 @@ import type { FeaturedInitiativesResponse } from '#shared/types/static-pages.typ
 export default defineEventHandler(async (): Promise<FeaturedInitiativesResponse> => {
   const { apiBaseUrl } = useRuntimeConfig();
 
-  const res = await $fetch<BackendResponse>(`${apiBaseUrl}/v1/initiatives?limit=6&offset=0`);
+  const res = await $fetch<BackendResponse>(
+    `${apiBaseUrl}/v1/initiatives?status=published&limit=6&offset=0`,
+  );
 
   return {
     data: (res.data ?? []).map((i) => ({
       id: i.id,
+      slug: i.slug,
       name: i.name,
       logoUrl: i.logo_url,
       raisedCents: i.financials?.total_raised_cents ?? 0,
