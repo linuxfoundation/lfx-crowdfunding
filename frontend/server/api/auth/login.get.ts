@@ -59,6 +59,7 @@ export default defineEventHandler(async (event) => {
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
       redirect_uri: config.public.auth0RedirectUri,
+      ...(config.public.auth0Audience ? { audience: config.public.auth0Audience } : {}),
       ...(query.silent === 'true' && { prompt: 'none' }),
     });
 
