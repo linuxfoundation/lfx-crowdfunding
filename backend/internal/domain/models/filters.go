@@ -41,8 +41,12 @@ type SubscriptionFilter struct {
 
 // Principal holds the authenticated user's identity extracted from the JWT.
 type Principal struct {
-	UserID   string // Auth0 subject — matches users.user_id
-	Username string // LF SSO username (https://sso.linuxfoundation.org/claims/username)
-	Email    string
-	Name     string
+	UserID        string // Auth0 subject (e.g. "auth0|elim") — matches users.user_id
+	Username      string // LF SSO username from custom claim
+	Email         string
+	EmailVerified bool
+	Name          string // full name
+	GivenName     string
+	FamilyName    string
+	Picture       string
 }

@@ -37,7 +37,12 @@ func main() {
 	}
 	defer shutdownOTel()
 
-	srv, err := NewServer(cfg, logger)
+	// Root context — cancelled on shutdown to stop background goroutines
+	// (e.g. the JWKS refresh goroutine started by NewJWTAuthenticator).
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	srv, err := NewServer(ctx, cfg, logger)
 	if err != nil {
 		logger.Error("server init error", "error", err)
 		os.Exit(1)
@@ -56,6 +61,7 @@ func main() {
 
 	<-quit
 	logger.Info("shutting down…")
+	cancel() // stop context-bound background goroutines (JWKS refresh, etc.)
 	srv.Shutdown()
 	logger.Info("stopped")
 }
