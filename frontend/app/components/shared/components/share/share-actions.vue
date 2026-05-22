@@ -131,7 +131,11 @@ const twitter = () => {
 const reddit = () => {
   const url = encodeURIComponent(props.defaults.url);
   const title = props.defaults?.title ? `Explore ${props.defaults.title}` : 'Explore this';
-  window?.open(`https://www.reddit.com/submit?title=${encodeURIComponent(title)}&url=${url}`, '_blank');
+  window?.open(
+    `https://www.reddit.com/submit?title=${encodeURIComponent(title)}&url=${url}`,
+    '_blank',
+    'noopener,noreferrer',
+  );
 };
 
 const linkedin = () => {
