@@ -93,6 +93,9 @@ config:
   #   https://crowdfunding.linuxfoundation.org/payment/complete
   # Leaving this empty will cause helm install/upgrade to fail.
   STRIPE_RETURN_URL: ""
+  # Comma-separated LF SSO usernames allowed to approve or decline initiatives.
+  # Example: "alice,bob,carol"
+  ALLOWED_APPROVERS: ""
 
 # ── Secret environment variables ─────────────────────────────────────────────
 # These are sourced from a Kubernetes Secret via envFrom.secretRef.

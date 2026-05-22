@@ -317,6 +317,12 @@ func (s *InitiativeService) Approve(ctx context.Context, initiativeID string, ac
 		return nil, err
 	}
 
+	// Guard: only initiatives in a reviewable state can be approved or declined.
+	if initiative.Status != models.StatusSubmitted && initiative.Status != models.StatusPending {
+		return nil, fmt.Errorf("%w: initiative with status %q cannot be approved or declined",
+			domain.ErrInvalidInput, initiative.Status)
+	}
+
 	switch action {
 	case models.ApprovalActionApprove:
 		initiative.Status = models.StatusPublished

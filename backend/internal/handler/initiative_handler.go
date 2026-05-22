@@ -235,7 +235,17 @@ func (h *InitiativeHandler) Approval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate action first to avoid reflecting unvalidated input in error messages.
 	rawAction := chi.URLParam(r, "status")
+	var action models.InitiativeApprovalAction
+	switch models.InitiativeApprovalAction(rawAction) {
+	case models.ApprovalActionApprove, models.ApprovalActionDecline:
+		action = models.InitiativeApprovalAction(rawAction)
+	default:
+		Error(w, fmt.Errorf("%w: approval status must be %q or %q",
+			domain.ErrInvalidInput, models.ApprovalActionApprove, models.ApprovalActionDecline))
+		return
+	}
 
 	// Authorise: caller's username must be in the approvers list.
 	allowed := false
@@ -246,20 +256,10 @@ func (h *InitiativeHandler) Approval(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !allowed {
-		JSON(w, http.StatusUnauthorized, errorBody{
+		JSON(w, http.StatusForbidden, errorBody{
 			Error: fmt.Sprintf("username %q is not allowed to perform the %q action on this initiative",
-				principal.Username, rawAction),
+				principal.Username, action),
 		})
-		return
-	}
-
-	var action models.InitiativeApprovalAction
-	switch models.InitiativeApprovalAction(rawAction) {
-	case models.ApprovalActionApprove, models.ApprovalActionDecline:
-		action = models.InitiativeApprovalAction(rawAction)
-	default:
-		Error(w, fmt.Errorf("%w: approval status must be %q or %q",
-			domain.ErrInvalidInput, models.ApprovalActionApprove, models.ApprovalActionDecline))
 		return
 	}
 
