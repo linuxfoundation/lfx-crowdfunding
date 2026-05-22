@@ -226,10 +226,10 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write(body)
 }
 
-// Approval handles POST /v1/initiatives/{id}/approval/{status} — requires JWT.
+// ProcessApproval handles POST /v1/initiatives/{id}/process-approval/{status} — requires JWT.
 // The caller's Username must appear in the AllowedApprovers list configured via
 // ALLOWED_APPROVERS. {status} must be "approve" or "decline".
-func (h *InitiativeHandler) Approval(w http.ResponseWriter, r *http.Request) {
+func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil {
 		Error(w, domain.ErrUnauthorized)
@@ -262,7 +262,7 @@ func (h *InitiativeHandler) Approval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := chi.URLParam(r, "id")
-	updated, err := h.svc.Approve(r.Context(), id, action)
+	updated, err := h.svc.ProcessApproval(r.Context(), id, action)
 	if err != nil {
 		Error(w, err)
 		return

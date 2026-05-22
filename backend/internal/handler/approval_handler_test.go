@@ -131,7 +131,7 @@ func newApprovalHandler(repo *apprInitiativeRepo, approvers []string) *Initiativ
 // approvalRouter mounts only the approval route on a fresh Chi router.
 func approvalRouter(h *InitiativeHandler) chi.Router {
 	r := chi.NewRouter()
-	r.Post("/v1/initiatives/{id}/approval/{status}", h.Approval)
+	r.Post("/v1/initiatives/{id}/process-approval/{status}", h.ProcessApproval)
 	return r
 }
 
@@ -139,7 +139,7 @@ func approvalRouter(h *InitiativeHandler) chi.Router {
 // injecting a principal into the request context.
 func approvalReq(initiativeID, status string, principal *models.Principal) *http.Request {
 	r := httptest.NewRequest(http.MethodPost,
-		"/v1/initiatives/"+initiativeID+"/approval/"+status, nil)
+		"/v1/initiatives/"+initiativeID+"/process-approval/"+status, nil)
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
 	}

@@ -303,10 +303,10 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 	return updated, nil
 }
 
-// Approve updates an initiative's status based on the given approval action.
+// ProcessApproval updates an initiative's status based on the given approval action.
 // ApprovalActionApprove transitions the initiative to StatusPublished;
 // ApprovalActionDecline transitions it to StatusDeclined.
-func (s *InitiativeService) Approve(ctx context.Context, initiativeID string, action models.InitiativeApprovalAction) (*models.Initiative, error) {
+func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID string, action models.InitiativeApprovalAction) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.Approve")
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.id", initiativeID))

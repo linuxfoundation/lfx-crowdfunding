@@ -135,7 +135,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Post("/", initiativeH.Create)
 			r.Patch("/{id}", initiativeH.Update)
 			r.Delete("/{id}", initiativeH.Delete)
-			r.Post("/{id}/approval/{status}", initiativeH.Approval)
+			r.Post("/{id}/process-approval/{status}", initiativeH.ProcessApproval)
 			r.Get("/{id}/donations", donationH.List)
 			r.Post("/{id}/donations", donationH.Create)
 			r.Get("/{id}/subscriptions", subscriptionH.List)
