@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
@@ -22,6 +23,7 @@ type Config struct {
 	Ledger   LedgerConfig
 	OTel     OTelConfig
 	Local    LocalConfig
+	Approval ApprovalConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -85,6 +87,13 @@ type LocalConfig struct {
 	DisabledMockLocalPrincipal string
 }
 
+// ApprovalConfig holds initiative approval settings.
+type ApprovalConfig struct {
+	// AllowedApprovers is the list of usernames permitted to approve or decline
+	// initiatives. Sourced from the ALLOWED_APPROVERS env var (comma-separated).
+	AllowedApprovers []string
+}
+
 // LoadConfig reads all configuration from environment variables.
 func LoadConfig() (*Config, error) {
 	dsn := getEnv("DATABASE_URL", "")
@@ -96,17 +105,16 @@ func LoadConfig() (*Config, error) {
 	if jwksURL == "" && mockPrincipal == "" {
 		return nil, fmt.Errorf("JWKS_URL is required (or set DISABLED_MOCK_LOCAL_PRINCIPAL for local dev)")
 	}
-	// Default audience and issuer values keep JWT validation configured even when
-	// the corresponding environment variables are not explicitly set. Treat
-	// empty-string values as unset as well, since Helm/Kubernetes may inject
-	// present-but-empty environment variables from default ConfigMap entries.
+	// JWT_AUDIENCE and JWT_ISSUER must be set explicitly — no fallback defaults
+	// to ensure misconfigured deployments fail obviously rather than silently
+	// validating tokens against a stale issuer.
 	jwtAudience, ok := os.LookupEnv("JWT_AUDIENCE")
 	if !ok || jwtAudience == "" {
-		jwtAudience = auth.DefaultAudience
+		return nil, fmt.Errorf("JWT_AUDIENCE is required")
 	}
 	jwtIssuer, ok := os.LookupEnv("JWT_ISSUER")
 	if !ok || jwtIssuer == "" {
-		jwtIssuer = auth.DefaultIssuer
+		return nil, fmt.Errorf("JWT_ISSUER is required")
 	}
 	stripeKey := getEnv("STRIPE_SECRET_KEY", "")
 	if stripeKey == "" {
@@ -214,7 +222,25 @@ func LoadConfig() (*Config, error) {
 		Local: LocalConfig{
 			DisabledMockLocalPrincipal: getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", ""),
 		},
+		Approval: ApprovalConfig{
+			AllowedApprovers: parseCommaList(getEnv("ALLOWED_APPROVERS", "")),
+		},
 	}, nil
+}
+
+// parseCommaList splits a comma-separated string into trimmed, non-empty tokens.
+func parseCommaList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {
