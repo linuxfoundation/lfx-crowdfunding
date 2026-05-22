@@ -5,6 +5,7 @@
 package models
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -65,6 +66,17 @@ const (
 	ApprovalActionApprove InitiativeApprovalAction = "approve"
 	ApprovalActionDecline InitiativeApprovalAction = "decline"
 )
+
+// ParseApprovalAction parses a raw string into an InitiativeApprovalAction.
+// Returns an error if s is not a recognised action value.
+func ParseApprovalAction(s string) (InitiativeApprovalAction, error) {
+	switch InitiativeApprovalAction(s) {
+	case ApprovalActionApprove, ApprovalActionDecline:
+		return InitiativeApprovalAction(s), nil
+	default:
+		return "", fmt.Errorf("approval action must be %q or %q", ApprovalActionApprove, ApprovalActionDecline)
+	}
+}
 
 // Financials holds funding statistics sourced from initiative_ledger_stats,
 // populated by the ledger-stats-sync CronJob. All fields are zero when the

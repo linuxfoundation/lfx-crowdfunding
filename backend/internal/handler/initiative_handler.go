@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -237,13 +238,9 @@ func (h *InitiativeHandler) Approval(w http.ResponseWriter, r *http.Request) {
 
 	// Validate action first to avoid reflecting unvalidated input in error messages.
 	rawAction := chi.URLParam(r, "status")
-	var action models.InitiativeApprovalAction
-	switch models.InitiativeApprovalAction(rawAction) {
-	case models.ApprovalActionApprove, models.ApprovalActionDecline:
-		action = models.InitiativeApprovalAction(rawAction)
-	default:
-		Error(w, fmt.Errorf("%w: approval status must be %q or %q",
-			domain.ErrInvalidInput, models.ApprovalActionApprove, models.ApprovalActionDecline))
+	action, err := models.ParseApprovalAction(rawAction)
+	if err != nil {
+		Error(w, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err))
 		return
 	}
 
@@ -256,10 +253,11 @@ func (h *InitiativeHandler) Approval(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !allowed {
-		JSON(w, http.StatusForbidden, errorBody{
-			Error: fmt.Sprintf("username %q is not allowed to perform the %q action on this initiative",
-				principal.Username, action),
-		})
+		slog.WarnContext(r.Context(), "initiative approval rejected: caller not in allowed list",
+			"username", principal.Username,
+			"action", action,
+			"initiative_id", chi.URLParam(r, "id"))
+		Error(w, domain.ErrForbidden)
 		return
 	}
 

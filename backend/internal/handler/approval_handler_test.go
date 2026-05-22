@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -193,21 +192,6 @@ func TestApprovalHandler_UsernameNotAllowed(t *testing.T) {
 	msg := decodeError(t, w.Body.Bytes())
 	if msg == "" {
 		t.Error("expected non-empty error message")
-	}
-}
-
-func TestApprovalHandler_UsernameNotAllowed_MessageContainsUsernameAndAction(t *testing.T) {
-	h := newApprovalHandler(&apprInitiativeRepo{}, []string{"alice"})
-	principal := &models.Principal{Username: "mallory"}
-	w := httptest.NewRecorder()
-	approvalRouter(h).ServeHTTP(w, approvalReq(testInitiativeID, "decline", principal))
-
-	msg := decodeError(t, w.Body.Bytes())
-	if !strings.Contains(msg, "mallory") {
-		t.Errorf("expected message to contain username, got: %s", msg)
-	}
-	if !strings.Contains(msg, "decline") {
-		t.Errorf("expected message to contain action, got: %s", msg)
 	}
 }
 

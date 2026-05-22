@@ -329,8 +329,8 @@ func (s *InitiativeService) Approve(ctx context.Context, initiativeID string, ac
 	case models.ApprovalActionDecline:
 		initiative.Status = models.StatusDeclined
 	default:
-		return nil, fmt.Errorf("%w: approval action must be %q or %q",
-			domain.ErrInvalidInput, models.ApprovalActionApprove, models.ApprovalActionDecline)
+		// unreachable: callers must use models.ParseApprovalAction to validate input.
+		return nil, fmt.Errorf("%w: unrecognised approval action %q", domain.ErrInvalidInput, action)
 	}
 
 	approved, err := s.repo.Update(ctx, initiative)
