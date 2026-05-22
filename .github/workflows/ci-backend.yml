@@ -6,8 +6,6 @@ name: CI — Backend
 on:
   push:
     branches: [main]
-    tags:
-      - "v*.*.*"
     paths:
       - "backend/**"
       - ".github/workflows/ci-backend.yml"
@@ -51,8 +49,6 @@ jobs:
           images: ghcr.io/linuxfoundation/lfx-crowdfunding-backend
           tags: |
             type=raw,value=development,enable={{is_default_branch}}
-            type=semver,pattern={{raw}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=ref,event=pr
 
       - name: Build and push
