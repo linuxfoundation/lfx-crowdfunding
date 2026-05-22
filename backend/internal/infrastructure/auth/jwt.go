@@ -43,8 +43,9 @@ type JWTAuthConfig struct {
 // JWTClaims extends standard JWT claims with LFX-specific fields.
 type JWTClaims struct {
 	jwt.RegisteredClaims
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	Username string `json:"https://sso.linuxfoundation.org/claims/username"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
 }
 
 // JWTAuthenticator validates JWTs using a JWKS endpoint.
@@ -107,7 +108,8 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		// Local dev bypass — never set DisabledMockLocalPrincipal in production.
 		if a.cfg.DisabledMockLocalPrincipal != "" {
 			ctx := ContextWithPrincipal(r.Context(), &models.Principal{
-				UserID: a.cfg.DisabledMockLocalPrincipal,
+				UserID:   a.cfg.DisabledMockLocalPrincipal,
+				Username: a.cfg.DisabledMockLocalPrincipal,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
@@ -126,9 +128,10 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		}
 
 		principal := &models.Principal{
-			UserID: claims.Subject,
-			Email:  claims.Email,
-			Name:   claims.Name,
+			UserID:   claims.Subject,
+			Username: claims.Username,
+			Email:    claims.Email,
+			Name:     claims.Name,
 		}
 		next.ServeHTTP(w, r.WithContext(ContextWithPrincipal(r.Context(), principal)))
 	})

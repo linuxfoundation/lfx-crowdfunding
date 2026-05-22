@@ -58,6 +58,14 @@ var ValidInitiativeStatuses = map[InitiativeStatus]bool{
 	StatusHidden:    true,
 }
 
+// InitiativeApprovalAction represents the approval decision submitted by an approver.
+type InitiativeApprovalAction string
+
+const (
+	ApprovalActionApprove InitiativeApprovalAction = "approve"
+	ApprovalActionDecline InitiativeApprovalAction = "decline"
+)
+
 // Financials holds funding statistics sourced from initiative_ledger_stats,
 // populated by the ledger-stats-sync CronJob. All fields are zero when the
 // cron has not yet run for this initiative.

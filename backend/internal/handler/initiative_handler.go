@@ -8,6 +8,7 @@ import (
 	"crypto/md5" //nolint:gosec // MD5 used for non-cryptographic ETag generation only
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -29,12 +30,15 @@ const (
 
 // InitiativeHandler holds Chi handlers for the /v1/initiatives resource.
 type InitiativeHandler struct {
-	svc *service.InitiativeService
+	svc              *service.InitiativeService
+	allowedApprovers []string
 }
 
 // NewInitiativeHandler creates an InitiativeHandler.
-func NewInitiativeHandler(svc *service.InitiativeService) *InitiativeHandler {
-	return &InitiativeHandler{svc: svc}
+// allowedApprovers is the list of usernames permitted to approve or decline
+// initiatives (sourced from the ALLOWED_APPROVERS env var).
+func NewInitiativeHandler(svc *service.InitiativeService, allowedApprovers []string) *InitiativeHandler {
+	return &InitiativeHandler{svc: svc, allowedApprovers: allowedApprovers}
 }
 
 // List handles GET /v1/initiatives
@@ -219,6 +223,53 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// Approval handles POST /v1/initiatives/{id}/approval/{status} — requires JWT.
+// The caller's Username must appear in the AllowedApprovers list configured via
+// ALLOWED_APPROVERS. {status} must be "approve" or "decline".
+func (h *InitiativeHandler) Approval(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	rawAction := chi.URLParam(r, "status")
+
+	// Authorise: caller's username must be in the approvers list.
+	allowed := false
+	for _, a := range h.allowedApprovers {
+		if strings.EqualFold(a, principal.Username) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		JSON(w, http.StatusUnauthorized, errorBody{
+			Error: fmt.Sprintf("username %q is not allowed to perform the %q action on this initiative",
+				principal.Username, rawAction),
+		})
+		return
+	}
+
+	var action models.InitiativeApprovalAction
+	switch models.InitiativeApprovalAction(rawAction) {
+	case models.ApprovalActionApprove, models.ApprovalActionDecline:
+		action = models.InitiativeApprovalAction(rawAction)
+	default:
+		Error(w, fmt.Errorf("%w: approval status must be %q or %q",
+			domain.ErrInvalidInput, models.ApprovalActionApprove, models.ApprovalActionDecline))
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	updated, err := h.svc.Approve(r.Context(), id, action)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, updated)
 }
 
 // Delete handles DELETE /v1/initiatives/{id} — requires JWT.

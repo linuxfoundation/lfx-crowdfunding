@@ -89,7 +89,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	}
 
 	// Handlers
-	initiativeH := handler.NewInitiativeHandler(initiativeSvc)
+	initiativeH := handler.NewInitiativeHandler(initiativeSvc, cfg.Approval.AllowedApprovers)
 	donationH := handler.NewDonationHandler(donationSvc)
 	subscriptionH := handler.NewSubscriptionHandler(subscriptionSvc)
 	paymentH := handler.NewPaymentHandler(paymentSvc)
@@ -135,6 +135,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 			r.Post("/", initiativeH.Create)
 			r.Patch("/{id}", initiativeH.Update)
 			r.Delete("/{id}", initiativeH.Delete)
+			r.Post("/{id}/approval/{status}", initiativeH.Approval)
 			r.Get("/{id}/donations", donationH.List)
 			r.Post("/{id}/donations", donationH.Create)
 			r.Get("/{id}/subscriptions", subscriptionH.List)

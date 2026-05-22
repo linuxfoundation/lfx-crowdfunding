@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
@@ -22,6 +23,7 @@ type Config struct {
 	Ledger   LedgerConfig
 	OTel     OTelConfig
 	Local    LocalConfig
+	Approval ApprovalConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -83,6 +85,13 @@ type LocalConfig struct {
 	// DisabledMockLocalPrincipal, when non-empty, bypasses JWT validation and
 	// injects the value as the mock principal sub. NEVER set in production.
 	DisabledMockLocalPrincipal string
+}
+
+// ApprovalConfig holds initiative approval settings.
+type ApprovalConfig struct {
+	// AllowedApprovers is the list of usernames permitted to approve or decline
+	// initiatives. Sourced from the ALLOWED_APPROVERS env var (comma-separated).
+	AllowedApprovers []string
 }
 
 // LoadConfig reads all configuration from environment variables.
@@ -214,7 +223,25 @@ func LoadConfig() (*Config, error) {
 		Local: LocalConfig{
 			DisabledMockLocalPrincipal: getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", ""),
 		},
+		Approval: ApprovalConfig{
+			AllowedApprovers: parseCommaList(getEnv("ALLOWED_APPROVERS", "")),
+		},
 	}, nil
+}
+
+// parseCommaList splits a comma-separated string into trimmed, non-empty tokens.
+func parseCommaList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {

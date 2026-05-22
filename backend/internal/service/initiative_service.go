@@ -303,6 +303,38 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 	return updated, nil
 }
 
+// Approve updates an initiative's status based on the given approval action.
+// ApprovalActionApprove transitions the initiative to StatusPublished;
+// ApprovalActionDecline transitions it to StatusDeclined.
+func (s *InitiativeService) Approve(ctx context.Context, initiativeID string, action models.InitiativeApprovalAction) (*models.Initiative, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.Approve")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.id", initiativeID))
+
+	initiative, err := s.repo.GetByID(ctx, initiativeID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	switch action {
+	case models.ApprovalActionApprove:
+		initiative.Status = models.StatusPublished
+	case models.ApprovalActionDecline:
+		initiative.Status = models.StatusDeclined
+	default:
+		return nil, fmt.Errorf("%w: approval action must be %q or %q",
+			domain.ErrInvalidInput, models.ApprovalActionApprove, models.ApprovalActionDecline)
+	}
+
+	approved, err := s.repo.Update(ctx, initiative)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("update initiative: %w", err)
+	}
+	return approved, nil
+}
+
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
