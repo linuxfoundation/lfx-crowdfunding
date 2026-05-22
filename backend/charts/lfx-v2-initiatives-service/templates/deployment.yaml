@@ -42,7 +42,9 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
-          env: []
+          env:
+            - name: DATABASE_URL
+              value: "postgres://$(username):$(password)@$(host):$(port)/$(dbname)?sslmode=require"
           envFrom:
             - configMapRef:
                 name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
