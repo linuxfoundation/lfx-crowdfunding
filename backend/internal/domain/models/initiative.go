@@ -68,11 +68,14 @@ const (
 )
 
 // ParseApprovalAction parses a raw string into an InitiativeApprovalAction.
+// Input is trimmed and lowercased before matching so that callers may pass
+// any casing (e.g. "Approve", "DECLINE"). The canonical constant is returned.
 // Returns an error if s is not a recognised action value.
 func ParseApprovalAction(s string) (InitiativeApprovalAction, error) {
-	switch InitiativeApprovalAction(s) {
+	normalized := InitiativeApprovalAction(strings.ToLower(strings.TrimSpace(s)))
+	switch normalized {
 	case ApprovalActionApprove, ApprovalActionDecline:
-		return InitiativeApprovalAction(s), nil
+		return normalized, nil
 	default:
 		return "", fmt.Errorf("approval action must be %q or %q", ApprovalActionApprove, ApprovalActionDecline)
 	}

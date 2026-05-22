@@ -224,6 +224,25 @@ func TestApprovalHandler_InvalidAction(t *testing.T) {
 	}
 }
 
+func TestApprovalHandler_ActionIsCaseInsensitive(t *testing.T) {
+	repo := &apprInitiativeRepo{
+		initiative: &models.Initiative{ID: testInitiativeID, Status: models.StatusSubmitted},
+	}
+	h := newApprovalHandler(repo, []string{"admin"})
+	principal := &models.Principal{Username: "admin"}
+	w := httptest.NewRecorder()
+	// "Approve" (title-case) must be accepted and result in StatusPublished.
+	approvalRouter(h).ServeHTTP(w, approvalReq(testInitiativeID, "Approve", principal))
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for title-case action, got %d", w.Code)
+	}
+	got := decodeInitiative(t, w.Body.Bytes())
+	if got.Status != models.StatusPublished {
+		t.Errorf("expected status %q, got %q", models.StatusPublished, got.Status)
+	}
+}
+
 func TestApprovalHandler_Approve(t *testing.T) {
 	repo := &apprInitiativeRepo{
 		initiative: &models.Initiative{ID: testInitiativeID, Status: models.StatusSubmitted},
