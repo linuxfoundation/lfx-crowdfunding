@@ -18,12 +18,8 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
-// DefaultAudience, DefaultIssuer, and DefaultClockSkew define the default JWT validation settings.
-const (
-	DefaultAudience  = "lfx-v2-initiatives-service"
-	DefaultIssuer    = "heimdall"
-	DefaultClockSkew = 5 * time.Second
-)
+// DefaultClockSkew is the default leeway applied when validating JWT expiry.
+const DefaultClockSkew = 5 * time.Second
 
 // contextKey is an unexported type for context keys to avoid collisions.
 type contextKey int
@@ -87,9 +83,6 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig) (*JWTAuthentica
 	return &JWTAuthenticator{cfg: cfg, keyfn: jwksProvider.Keyfunc, parser: parser}, nil
 }
 
-// Close is a no-op; keyfunc v3 goroutines are stopped via the context.
-func (a *JWTAuthenticator) Close() {}
-
 // IsBypassActive reports whether JWT validation is bypassed (local dev only).
 func (a *JWTAuthenticator) IsBypassActive() bool {
 	return a.cfg.DisabledMockLocalPrincipal != ""
@@ -103,6 +96,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 			ctx := ContextWithPrincipal(r.Context(), &models.Principal{
 				UserID:        a.cfg.DisabledMockLocalPrincipal,
 				Username:      a.cfg.DisabledMockLocalPrincipal,
+				Email:         a.cfg.DisabledMockLocalPrincipal + "@local.dev",
 				EmailVerified: true,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))

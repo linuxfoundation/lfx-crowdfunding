@@ -96,17 +96,16 @@ func LoadConfig() (*Config, error) {
 	if jwksURL == "" && mockPrincipal == "" {
 		return nil, fmt.Errorf("JWKS_URL is required (or set DISABLED_MOCK_LOCAL_PRINCIPAL for local dev)")
 	}
-	// Default audience and issuer values keep JWT validation configured even when
-	// the corresponding environment variables are not explicitly set. Treat
-	// empty-string values as unset as well, since Helm/Kubernetes may inject
-	// present-but-empty environment variables from default ConfigMap entries.
+	// JWT_AUDIENCE and JWT_ISSUER must be set explicitly — no fallback defaults
+	// to ensure misconfigured deployments fail obviously rather than silently
+	// validating tokens against a stale issuer.
 	jwtAudience, ok := os.LookupEnv("JWT_AUDIENCE")
 	if !ok || jwtAudience == "" {
-		jwtAudience = auth.DefaultAudience
+		return nil, fmt.Errorf("JWT_AUDIENCE is required")
 	}
 	jwtIssuer, ok := os.LookupEnv("JWT_ISSUER")
 	if !ok || jwtIssuer == "" {
-		jwtIssuer = auth.DefaultIssuer
+		return nil, fmt.Errorf("JWT_ISSUER is required")
 	}
 	stripeKey := getEnv("STRIPE_SECRET_KEY", "")
 	if stripeKey == "" {

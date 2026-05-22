@@ -5,6 +5,8 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -136,6 +138,59 @@ func TestMiddleware_RejectsHS256(t *testing.T) {
 	h.ServeHTTP(w, makeRequest(userToken()))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for HS256 token, got %d", w.Code)
+	}
+}
+
+func TestMiddleware_AcceptsRS256(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+	parser := jwt.NewParser(
+		jwt.WithAudience(testAudience),
+		jwt.WithIssuer(testIssuer),
+		jwt.WithExpirationRequired(),
+		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}),
+	)
+	a := &JWTAuthenticator{
+		cfg:    defaultCfg(),
+		keyfn:  func(_ *jwt.Token) (any, error) { return &key.PublicKey, nil },
+		parser: parser,
+	}
+	tok, err := jwt.NewWithClaims(jwt.SigningMethodRS256, &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "auth0|rs256user",
+			Issuer:    testIssuer,
+			Audience:  jwt.ClaimStrings{testAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+		Username:      "rs256user",
+		Email:         "rs256@example.com",
+		EmailVerified: true,
+	}).SignedString(key)
+	if err != nil {
+		t.Fatalf("sign RS256 token: %v", err)
+	}
+
+	var got *models.Principal
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = PrincipalFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(tok))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for RS256 token, got %d", w.Code)
+	}
+	if got == nil {
+		t.Fatal("principal not set in context")
+	}
+	if got.UserID != "auth0|rs256user" {
+		t.Errorf("UserID = %q, want %q", got.UserID, "auth0|rs256user")
+	}
+	if got.Email != "rs256@example.com" {
+		t.Errorf("Email = %q, want %q", got.Email, "rs256@example.com")
 	}
 }
 
