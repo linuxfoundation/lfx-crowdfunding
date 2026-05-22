@@ -18,12 +18,8 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
-// DefaultAudience, DefaultIssuer, and DefaultClockSkew define the default JWT validation settings.
-const (
-	DefaultAudience  = "lfx-v2-initiatives-service"
-	DefaultIssuer    = "heimdall"
-	DefaultClockSkew = 5 * time.Second
-)
+// DefaultClockSkew is the default leeway applied when validating JWT expiry.
+const DefaultClockSkew = 5 * time.Second
 
 // contextKey is an unexported type for context keys to avoid collisions.
 type contextKey int
@@ -43,30 +39,27 @@ type JWTAuthConfig struct {
 // JWTClaims extends standard JWT claims with LFX-specific fields.
 type JWTClaims struct {
 	jwt.RegisteredClaims
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	Username      string `json:"https://sso.linuxfoundation.org/claims/username"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+	GivenName     string `json:"given_name"`
+	FamilyName    string `json:"family_name"`
+	Picture       string `json:"picture"`
 }
 
 // JWTAuthenticator validates JWTs using a JWKS endpoint.
 type JWTAuthenticator struct {
 	cfg    JWTAuthConfig
-	jwks   keyfunc.Keyfunc
+	keyfn  jwt.Keyfunc
 	parser *jwt.Parser
 }
 
-// NewJWTAuthenticator creates and returns a JWTAuthenticator backed by the JWKS URL.
-// When DisabledMockLocalPrincipal is set the JWKS fetch is skipped entirely —
-// this allows local development without a real Auth0 domain.
-//
-// It is a configuration error to set both DisabledMockLocalPrincipal and JWKSURL
-// at the same time; this prevents the bypass from silently winning in a deployment
-// that also has a real JWKS URL configured.
-func NewJWTAuthenticator(cfg JWTAuthConfig) (*JWTAuthenticator, error) {
-	// Local dev bypass: skip remote JWKS fetch entirely.
+// NewJWTAuthenticator creates a JWTAuthenticator backed by the given JWKS URL.
+// ctx controls the lifecycle of the background JWKS refresh goroutine.
+// Set DisabledMockLocalPrincipal (without JWKSURL) to skip JWKS for local dev.
+func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig) (*JWTAuthenticator, error) {
 	if cfg.DisabledMockLocalPrincipal != "" {
-		// Reject ambiguous config: bypass + real JWKS URL set together is almost
-		// certainly a misconfiguration (e.g. a staging deployment with a leftover
-		// dev env var). Fail fast instead of silently bypassing auth.
 		if cfg.JWKSURL != "" {
 			return nil, fmt.Errorf(
 				"DISABLED_MOCK_LOCAL_PRINCIPAL and JWKS_URL are mutually exclusive: " +
@@ -76,7 +69,7 @@ func NewJWTAuthenticator(cfg JWTAuthConfig) (*JWTAuthenticator, error) {
 		return &JWTAuthenticator{cfg: cfg}, nil
 	}
 
-	jwks, err := keyfunc.NewDefaultCtx(context.Background(), []string{cfg.JWKSURL})
+	jwksProvider, err := keyfunc.NewDefaultCtx(ctx, []string{cfg.JWKSURL})
 	if err != nil {
 		return nil, fmt.Errorf("fetch JWKS: %w", err)
 	}
@@ -85,17 +78,12 @@ func NewJWTAuthenticator(cfg JWTAuthConfig) (*JWTAuthenticator, error) {
 		jwt.WithIssuer(cfg.Issuer),
 		jwt.WithLeeway(cfg.ClockSkew),
 		jwt.WithExpirationRequired(),
+		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}),
 	)
-	return &JWTAuthenticator{cfg: cfg, jwks: jwks, parser: parser}, nil
+	return &JWTAuthenticator{cfg: cfg, keyfn: jwksProvider.Keyfunc, parser: parser}, nil
 }
 
-// Close releases JWKS resources.
-func (a *JWTAuthenticator) Close() {
-	// keyfunc v3 manages its own goroutines; no explicit close required.
-}
-
-// IsBypassActive reports whether the JWT bypass mode is enabled.
-// Callers should log a prominent warning at startup when this returns true.
+// IsBypassActive reports whether JWT validation is bypassed (local dev only).
 func (a *JWTAuthenticator) IsBypassActive() bool {
 	return a.cfg.DisabledMockLocalPrincipal != ""
 }
@@ -104,10 +92,12 @@ func (a *JWTAuthenticator) IsBypassActive() bool {
 // and stores the Principal in the request context. Returns 401 on failure.
 func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Local dev bypass — never set DisabledMockLocalPrincipal in production.
 		if a.cfg.DisabledMockLocalPrincipal != "" {
 			ctx := ContextWithPrincipal(r.Context(), &models.Principal{
-				UserID: a.cfg.DisabledMockLocalPrincipal,
+				UserID:        a.cfg.DisabledMockLocalPrincipal,
+				Username:      a.cfg.DisabledMockLocalPrincipal,
+				Email:         a.cfg.DisabledMockLocalPrincipal + "@local.dev",
+				EmailVerified: true,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
@@ -126,9 +116,14 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		}
 
 		principal := &models.Principal{
-			UserID: claims.Subject,
-			Email:  claims.Email,
-			Name:   claims.Name,
+			UserID:        claims.Subject,
+			Username:      claims.Username,
+			Email:         claims.Email,
+			EmailVerified: claims.EmailVerified,
+			Name:          claims.Name,
+			GivenName:     claims.GivenName,
+			FamilyName:    claims.FamilyName,
+			Picture:       claims.Picture,
 		}
 		next.ServeHTTP(w, r.WithContext(ContextWithPrincipal(r.Context(), principal)))
 	})
@@ -146,7 +141,7 @@ func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*jwt.Token, erro
 	raw := parts[1]
 
 	claims := &JWTClaims{}
-	token, err := a.parser.ParseWithClaims(raw, claims, a.jwks.Keyfunc)
+	token, err := a.parser.ParseWithClaims(raw, claims, a.keyfn)
 	if err != nil {
 		return nil, fmt.Errorf("parse token: %w", err)
 	}

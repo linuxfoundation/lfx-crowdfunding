@@ -32,9 +32,9 @@ type Server struct {
 }
 
 // NewServer wires up all dependencies and builds the Chi router.
-func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
+func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, error) {
 	// Database pool
-	pool, err := db.NewPool(context.Background(), db.PoolConfig{
+	pool, err := db.NewPool(ctx, db.PoolConfig{
 		DSN:             cfg.Database.DSN,
 		MaxConns:        cfg.Database.MaxConns,
 		MinConns:        cfg.Database.MinConns,
@@ -71,7 +71,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 
 	// JWT authenticator
-	jwtAuth, err := auth.NewJWTAuthenticator(auth.JWTAuthConfig{
+	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
 		JWKSURL:                    cfg.JWT.JWKSURL,
 		Audience:                   cfg.JWT.Audience,
 		Issuer:                     cfg.JWT.Issuer,
@@ -145,7 +145,7 @@ func NewServer(cfg *Config, logger *slog.Logger) (*Server, error) {
 		r.Get("/me/donations", donationH.ListForUser)
 		r.Get("/me/subscriptions", subscriptionH.ListForUser)
 
-		// Payment account (saved card for 3DS flows)
+		// Payment account (saved card for 3DS flows).
 		r.Post("/me/setup-intent", paymentH.CreateSetupIntent)
 		r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
 		r.Get("/me/payment-account", paymentH.GetPaymentAccount)
