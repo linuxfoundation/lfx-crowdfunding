@@ -95,16 +95,22 @@ const emit = defineEmits<{ (e: 'copied'): void }>();
 
 const { showToast } = useToastService();
 
-const copy = () => {
-  navigator?.clipboard.writeText(props.defaults.url);
-  showToast('Link copied to clipboard', ToastTypesEnum.positive);
-  emit('copied');
+const copy = async () => {
+  if (navigator?.clipboard) {
+    try {
+      await navigator.clipboard.writeText(props.defaults.url);
+      showToast('Link copied to clipboard', ToastTypesEnum.positive);
+      emit('copied');
+    } catch {
+      showToast('Failed to copy link', ToastTypesEnum.negative);
+    }
+  }
 };
 
 const email = () => {
   const title = props.defaults?.title ? `Check this out: ${props.defaults.title}` : 'Check this out';
   const url = encodeURIComponent(props.defaults.url);
-  window?.open(`mailto:?subject=${title}&body=${url}`, '_blank');
+  window?.open(`mailto:?subject=${encodeURIComponent(title)}&body=${url}`, '_blank');
 };
 
 const twitter = () => {
@@ -118,14 +124,14 @@ const twitter = () => {
   window?.open(
     link,
     '_blank',
-    `width=${width},height=${height},top=${top},left=${left},menubar=no,location=no,status=no`,
+    `width=${width},height=${height},top=${top},left=${left},menubar=no,location=no,status=no,noopener,noreferrer`,
   );
 };
 
 const reddit = () => {
   const url = encodeURIComponent(props.defaults.url);
   const title = props.defaults?.title ? `Explore ${props.defaults.title}` : 'Explore this';
-  window?.open(`https://www.reddit.com/submit?title=${title}&url=${url}`, '_blank');
+  window?.open(`https://www.reddit.com/submit?title=${encodeURIComponent(title)}&url=${url}`, '_blank');
 };
 
 const linkedin = () => {
@@ -138,7 +144,7 @@ const linkedin = () => {
   window?.open(
     link,
     '_blank',
-    `width=${width},height=${height},top=${top},left=${left},menubar=no,location=no,status=no`,
+    `width=${width},height=${height},top=${top},left=${left},menubar=no,location=no,status=no,noopener,noreferrer`,
   );
 };
 </script>
