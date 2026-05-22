@@ -89,7 +89,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	}
 
 	// Handlers
-	initiativeH := handler.NewInitiativeHandler(initiativeSvc, cfg.Approval.AllowedApprovers)
+	initiativeH := handler.NewInitiativeHandler(initiativeSvc, cfg.Approval.AllowedApprovers, logger)
 	donationH := handler.NewDonationHandler(donationSvc)
 	subscriptionH := handler.NewSubscriptionHandler(subscriptionSvc)
 	paymentH := handler.NewPaymentHandler(paymentSvc)

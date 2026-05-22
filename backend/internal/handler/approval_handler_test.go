@@ -125,7 +125,7 @@ func (c *apprStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64
 // approvers list. Ledger and Stripe clients are no-op stubs.
 func newApprovalHandler(repo *apprInitiativeRepo, approvers []string) *InitiativeHandler {
 	svc := service.NewInitiativeService(repo, &apprLedgerClient{}, &apprStripeClient{}, slog.Default())
-	return NewInitiativeHandler(svc, approvers)
+	return NewInitiativeHandler(svc, approvers, slog.Default())
 }
 
 // approvalRouter mounts only the approval route on a fresh Chi router.

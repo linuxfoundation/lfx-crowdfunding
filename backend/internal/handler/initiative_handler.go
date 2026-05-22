@@ -33,13 +33,14 @@ const (
 type InitiativeHandler struct {
 	svc              *service.InitiativeService
 	allowedApprovers []string
+	logger           *slog.Logger
 }
 
 // NewInitiativeHandler creates an InitiativeHandler.
 // allowedApprovers is the list of usernames permitted to approve or decline
 // initiatives (sourced from the ALLOWED_APPROVERS env var).
-func NewInitiativeHandler(svc *service.InitiativeService, allowedApprovers []string) *InitiativeHandler {
-	return &InitiativeHandler{svc: svc, allowedApprovers: allowedApprovers}
+func NewInitiativeHandler(svc *service.InitiativeService, allowedApprovers []string, logger *slog.Logger) *InitiativeHandler {
+	return &InitiativeHandler{svc: svc, allowedApprovers: allowedApprovers, logger: logger}
 }
 
 // List handles GET /v1/initiatives
@@ -253,7 +254,7 @@ func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if !allowed {
-		slog.WarnContext(r.Context(), "initiative approval rejected: caller not in allowed list",
+		h.logger.WarnContext(r.Context(), "initiative approval rejected: caller not in allowed list",
 			"username", principal.Username,
 			"action", action,
 			"initiative_id", chi.URLParam(r, "id"))
