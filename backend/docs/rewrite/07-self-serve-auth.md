@@ -93,9 +93,9 @@ When impersonation is active, `getEffectiveSub()` returns the **impersonated use
 
 ## 6. Callers: Reimbursement Service
 
-The reimbursement service (AWS Lambda, outside the LFX v2 cluster) calls CF to update travel fund ticket statuses. Per the target architecture (`04-target-architecture.md`), RS→CF uses a shared **`X-Internal-Token`** secret — not Auth0 M2M. The request carries only `ticketID` and `ticketStatus`; no user identity is needed. CF validates the `X-Internal-Token` header and no Auth0 grant is required for RS.
+The target architecture (`04-target-architecture.md`) defines three **read-only** RS→CF endpoints (`GET /internal/v1/...`) authenticated via `X-Internal-Token` shared secret — these replace RS's current OpenSearch reads of CF-owned data. No Auth0 M2M is needed for this integration.
 
-The endpoint (`POST /v1/service/travel-fund/ticket-status`) does not yet exist in the new CF backend and is not on the current critical path.
+The ticket-status write endpoint (`POST /v1/service/travel-fund/ticket-status`) is a **separate future integration**, not part of the Phase 1 RS→CF plan. It does not yet exist in the new CF backend and is not on the current critical path. Its auth pattern (whether `X-Internal-Token` or another mechanism) will be decided when it is implemented.
 
 ---
 
@@ -140,7 +140,7 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 
 No existing resources touched. Follows `grants_sanctions_screening.tf` exactly.
 
-> **Note on user tokens:** `deny_all` applies only to this new CF-scoped audience. The CF Nuxt BFF forwards the user's OIDC access token to the Go backend on a **separate** audience (`lfx-v2-initiatives-service`, issued by Heimdall) — that flow is unaffected by this resource server definition. The two audiences are distinct and serve different callers.
+> **Note on user tokens:** `deny_all` applies only to this new CF M2M audience. The CF Nuxt BFF forwards the user's Auth0 access token to the Go backend validated against the **CF's own Auth0 audience** (configured via `JWT_AUDIENCE` / `JWKS_URL` env vars, per `02-decisions.md`). That existing user-token flow uses a different audience and is unaffected by this resource server definition.
 
 ### `lfx-v2-argocd`
 
