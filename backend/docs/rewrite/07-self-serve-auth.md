@@ -92,21 +92,13 @@ When impersonation is active, `getEffectiveSub()` returns the **impersonated use
 
 ---
 
-## 6. Callers: Reimbursement Service
-
-The target architecture (`04-target-architecture.md`) defines three **read-only** RS→CF endpoints (`GET /internal/v1/...`) authenticated via `X-Internal-Token` shared secret — these replace RS's current OpenSearch reads of CF-owned data. No Auth0 M2M is needed for this integration.
-
-The ticket-status write endpoint (`POST /v1/service/travel-fund/ticket-status`) is a **separate future integration**, not part of the Phase 1 RS→CF plan. It does not yet exist in the new CF backend and is not on the current critical path. Its auth pattern (whether `X-Internal-Token` or another mechanism) will be decided when it is implemented.
-
----
-
-## 7. Callers: Stripe Webhook
+## 6. Callers: Stripe Webhook
 
 Stripe calls CF directly via `POST /v1/stripe/webhook`, already outside the JWT middleware, validated with HMAC (`STRIPE_WEBHOOK_SECRET`). No changes needed.
 
 ---
 
-## 8. Required Changes
+## 7. Required Changes
 
 ### `auth0-terraform` — new file `grants_crowdfunding.tf` (~40 lines, pure addition)
 
@@ -167,7 +159,7 @@ No changes to auth middleware, session types, or existing token exchange logic.
 
 ---
 
-## 9. What This Does Not Need
+## 8. What This Does Not Need
 
 - New Auth0 resource server beyond the dedicated CF one
 - Changes to Heimdall routing or `lfx-platform.yaml`
@@ -178,7 +170,7 @@ No changes to auth middleware, session types, or existing token exchange logic.
 
 ---
 
-## 10. Long-term: Heimdall Alignment
+## 9. Long-term: Heimdall Alignment
 
 Every other LFX v2 native service sits behind Heimdall. Adding Heimdall to CF would normalise both user and M2M tokens through the platform gateway, making the `X-User-ID` header unnecessary — user identity would flow through the Heimdall-issued JWT directly, and impersonation would work transparently.
 
@@ -186,7 +178,7 @@ This is the correct long-term architecture but is not in scope for the current t
 
 ---
 
-## 11. Open Items for Architect Sign-off
+## 10. Open Items for Architect Sign-off
 
 
 
@@ -196,12 +188,11 @@ This is the correct long-term architecture but is not in scope for the current t
 | `X-User-ID` header for identity injection | 🔲 Needs sign-off | Eric confirmed the pattern; this document proposes the concrete header name and CF's trust model (trusted only from verified M2M callers) |
 | Impersonation write access | 🔲 Product decision | Read-only gating is product-side for launch; future option is `read`/`write` scope split on the CF resource server |
 | Impersonation bug in SS (Appendix) | 🔲 Needs Eric's input | Affects Rewards, visa/travel applications, membership — data integrity risk. Recommend disabling affected features during impersonation (Option A) immediately. Should this be tracked as a separate SS ticket? |
-| Reimbursement Service M2M | 🔲 Not on critical path | Addressed when travel fund endpoint is implemented |
 | Heimdall alignment | 🔲 Planned follow-up | No hard deadline; does not block launch |
 
 ---
 
-## 12. Appendix: Known Impersonation Bug in Self Serve (separate ticket)
+## 11. Appendix: Known Impersonation Bug in Self Serve (separate ticket)
 
 Analysing this auth approach exposed a broader impersonation bug in SS. Because `apiGatewayToken` is always derived from the admin's refresh token, it always carries the **admin's** identity. Every feature that uses it during impersonation silently operates on the admin's data instead of the target user's:
 
