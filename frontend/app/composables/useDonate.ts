@@ -11,6 +11,7 @@ const error = ref<string | null>(null);
 
 export const useDonate = () => {
   const { getStripe } = useStripe();
+  const { showError } = useErrorToast();
 
   const donate = async (initiativeId: string, input: DonationRequest): Promise<DonationResult> => {
     loading.value = true;
@@ -33,6 +34,7 @@ export const useDonate = () => {
     } catch (e: unknown) {
       const err = e as { data?: { message?: string }; message?: string };
       error.value = err?.data?.message ?? err?.message ?? 'Donation failed. Please try again.';
+      showError(error.value);
       throw e;
     } finally {
       loading.value = false;
