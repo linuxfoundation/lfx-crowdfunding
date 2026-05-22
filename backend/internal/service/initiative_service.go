@@ -307,9 +307,14 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 // ApprovalActionApprove transitions the initiative to StatusPublished;
 // ApprovalActionDecline transitions it to StatusDeclined.
 func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID string, action models.InitiativeApprovalAction) (*models.Initiative, error) {
-	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.Approve")
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ProcessApproval")
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.id", initiativeID))
+
+	// Validate action at the service boundary so the method is self-contained.
+	if _, err := models.ParseApprovalAction(string(action)); err != nil {
+		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+	}
 
 	initiative, err := s.repo.GetByID(ctx, initiativeID)
 	if err != nil {
@@ -318,7 +323,8 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	}
 
 	// Guard: only initiatives in a reviewable state can be approved or declined.
-	if initiative.Status != models.StatusSubmitted && initiative.Status != models.StatusPending {
+	// Use EqualFold to handle any casing stored by earlier writes.
+	if !initiative.Status.EqualFold(models.StatusSubmitted) && !initiative.Status.EqualFold(models.StatusPending) {
 		return nil, fmt.Errorf("%w: initiative with status %q cannot be approved or declined",
 			domain.ErrInvalidInput, initiative.Status)
 	}
@@ -328,9 +334,6 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 		initiative.Status = models.StatusPublished
 	case models.ApprovalActionDecline:
 		initiative.Status = models.StatusDeclined
-	default:
-		// unreachable: callers must use models.ParseApprovalAction to validate input.
-		return nil, fmt.Errorf("%w: unrecognised approval action %q", domain.ErrInvalidInput, action)
 	}
 
 	approved, err := s.repo.Update(ctx, initiative)
