@@ -63,6 +63,7 @@ SS server start / first CF call
        client_id     = PCC_AUTH0_CLIENT_ID
        client_secret = PCC_AUTH0_CLIENT_SECRET
        audience      = https://crowdfunding.{env}.platform.linuxfoundation.org/
+                        (new M2M-only audience — distinct from the existing user-token audience https://funding.{env}.platform.linuxfoundation.org/api/)
        → M2M access token (cached, ~24hr lifetime)
 
 User (or admin impersonating user) navigates to a CF feature in SS
@@ -140,7 +141,7 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 
 No existing resources touched. Follows `grants_sanctions_screening.tf` exactly.
 
-> **Note on user tokens:** `deny_all` applies only to this new CF M2M audience. The CF Nuxt BFF forwards the user's Auth0 access token to the Go backend, where it is validated against `JWT_AUDIENCE` (currently `https://funding.{env}.platform.linuxfoundation.org/api/`, configured via `JWKS_URL` / `JWT_AUDIENCE` in `backend/cmd/initiatives-api/config.go`). That existing user-token audience is separate from the new M2M audience and is unaffected by this resource server definition.
+> **Note on user tokens:** `deny_all` applies only to this new CF M2M audience. The CF Nuxt BFF forwards the user's Auth0 access token to the Go backend, where it is validated against `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` (all three required — see `backend/cmd/initiatives-api/config.go`; per-environment values are in `lfx-v2-argocd` values files). That existing user-token audience is separate from the new M2M audience and is unaffected by this resource server definition.
 
 ### `lfx-v2-argocd`
 
