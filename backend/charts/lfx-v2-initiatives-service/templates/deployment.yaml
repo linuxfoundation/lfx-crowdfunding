@@ -44,7 +44,7 @@ spec:
               protocol: TCP
           env:
             - name: DATABASE_URL
-              value: "postgres://$(username):$(password)@$(host):$(port)/$(dbname)?sslmode=require"
+              value: "host=$(host) port=$(port) user=$(username) password=$(password) dbname=$(dbname) sslmode=require"
           envFrom:
             - configMapRef:
                 name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
