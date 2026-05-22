@@ -7,68 +7,97 @@ SPDX-License-Identifier: MIT
     <div>
       <p class="text-sm font-medium text-neutral-700 mb-3">Payment method</p>
       <div class="rounded-xl border border-neutral-200 p-5 flex flex-col gap-4">
-        <!-- Card number -->
-        <lfx-field
-          label="Card number"
-          :required="true"
+        <!-- Saved card summary — shown when a card is on file and user hasn't chosen to change -->
+        <div
+          v-if="card && !useDifferentCard"
+          class="flex items-center justify-between"
         >
-          <div
-            class="flex items-center border transition-all rounded-md shadow-xs"
-            :class="
-              cardNumberFocused ? 'border-neutral-900' : cardNumberError ? 'border-negative-600' : 'border-neutral-200'
-            "
-          >
-            <div
-              ref="cardNumberContainer"
-              class="w-full py-2 px-2"
+          <div class="flex items-center gap-2">
+            <lfx-icon
+              name="credit-card"
+              type="light"
+              :size="16"
+              class="text-neutral-500"
             />
+            <span class="text-sm text-neutral-900 capitalize"> {{ card.brand }} ···· {{ card.last_four }} </span>
           </div>
-          <lfx-field-message v-if="cardNumberError">{{ cardNumberError }}</lfx-field-message>
-        </lfx-field>
+          <lfx-button
+            type="tertiary"
+            size="small"
+            label="Use a different card"
+            @click="switchToNewCard()"
+          />
+        </div>
 
-        <!-- Expiry + CVC -->
-        <div class="grid grid-cols-3 gap-4">
+        <!-- Card entry form — shown for new users or when changing card -->
+        <template v-if="!card || useDifferentCard">
+          <!-- Card number -->
           <lfx-field
-            class="col-span-2"
-            label="Expiry"
+            label="Card number"
             :required="true"
           >
             <div
               class="flex items-center border transition-all rounded-md shadow-xs"
               :class="
-                cardExpiryFocused
+                cardNumberFocused
                   ? 'border-neutral-900'
-                  : cardExpiryError
+                  : cardNumberError
                     ? 'border-negative-600'
                     : 'border-neutral-200'
               "
             >
               <div
-                ref="cardExpiryContainer"
+                ref="cardNumberContainer"
                 class="w-full py-2 px-2"
               />
             </div>
-            <lfx-field-message v-if="cardExpiryError">{{ cardExpiryError }}</lfx-field-message>
+            <lfx-field-message v-if="cardNumberError">{{ cardNumberError }}</lfx-field-message>
           </lfx-field>
 
-          <lfx-field
-            label="CVC"
-            :required="true"
-          >
-            <div
-              class="flex items-center border transition-all rounded-md shadow-xs"
-              :class="
-                cardCvcFocused ? 'border-neutral-900' : cardCvcError ? 'border-negative-600' : 'border-neutral-200'
-              "
+          <!-- Expiry + CVC -->
+          <div class="grid grid-cols-3 gap-4">
+            <lfx-field
+              class="col-span-2"
+              label="Expiry"
+              :required="true"
             >
               <div
-                ref="cardCvcContainer"
-                class="w-full py-2 px-2"
-              />
-            </div>
-            <lfx-field-message v-if="cardCvcError">{{ cardCvcError }}</lfx-field-message>
-          </lfx-field>
-        </div>
+                class="flex items-center border transition-all rounded-md shadow-xs"
+                :class="
+                  cardExpiryFocused
+                    ? 'border-neutral-900'
+                    : cardExpiryError
+                      ? 'border-negative-600'
+                      : 'border-neutral-200'
+                "
+              >
+                <div
+                  ref="cardExpiryContainer"
+                  class="w-full py-2 px-2"
+                />
+              </div>
+              <lfx-field-message v-if="cardExpiryError">{{ cardExpiryError }}</lfx-field-message>
+            </lfx-field>
+
+            <lfx-field
+              label="CVC"
+              :required="true"
+            >
+              <div
+                class="flex items-center border transition-all rounded-md shadow-xs"
+                :class="
+                  cardCvcFocused ? 'border-neutral-900' : cardCvcError ? 'border-negative-600' : 'border-neutral-200'
+                "
+              >
+                <div
+                  ref="cardCvcContainer"
+                  class="w-full py-2 px-2"
+                />
+              </div>
+              <lfx-field-message v-if="cardCvcError">{{ cardCvcError }}</lfx-field-message>
+            </lfx-field>
+          </div>
+        </template>
 
         <!-- Order summary -->
         <div class="border-t border-neutral-200 pt-4 flex flex-col gap-2.5">
@@ -88,7 +117,7 @@ SPDX-License-Identifier: MIT
       </div>
     </div>
 
-    <!-- Stripe general error -->
+    <!-- Stripe / save-card error -->
     <lfx-field-message v-if="stripeError">{{ stripeError }}</lfx-field-message>
 
     <!-- Tier note -->
@@ -109,10 +138,12 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import type { StripeCardNumberElement, StripeCardExpiryElement, StripeCardCvcElement } from '@stripe/stripe-js';
 import LfxField from '~/components/uikit/field/field.vue';
 import LfxFieldMessage from '~/components/uikit/field/field-message.vue';
+import LfxButton from '~/components/uikit/button/button.vue';
+import LfxIcon from '~/components/uikit/icon/icon.vue';
 
 const props = defineProps<{
   amountCents: number;
@@ -125,6 +156,9 @@ const emit = defineEmits<{
 }>();
 
 const { getStripe } = useStripe();
+const { card, fetchCard, error: saveCardError } = usePaymentAccount();
+
+const useDifferentCard = ref(false);
 
 // DOM refs for Stripe element mounts
 const cardNumberContainer = ref<HTMLElement | null>(null);
@@ -152,6 +186,7 @@ const cardCvcComplete = ref(false);
 const stripeError = ref('');
 
 const allComplete = computed(() => cardNumberComplete.value && cardExpiryComplete.value && cardCvcComplete.value);
+const showCardForm = computed(() => !card.value || useDifferentCard.value);
 
 const formattedAmount = computed(() => {
   const dollars = props.amountCents / 100;
@@ -168,12 +203,11 @@ const STRIPE_STYLE = {
     '::placeholder': { color: '#94A3B8' },
   },
   invalid: {
-    // Let the container border convey the error; keep text colour neutral
     color: '#0F172A',
   },
 };
 
-onMounted(async () => {
+const mountElements = async () => {
   const stripe = await getStripe();
   if (!stripe || !cardNumberContainer.value || !cardExpiryContainer.value || !cardCvcContainer.value) return;
 
@@ -222,34 +256,63 @@ onMounted(async () => {
   cardCvcEl.on('blur', () => {
     cardCvcFocused.value = false;
   });
-});
+};
 
-onBeforeUnmount(() => {
+const destroyElements = () => {
   cardNumberEl?.destroy();
   cardExpiryEl?.destroy();
   cardCvcEl?.destroy();
-});
-
-const createPaymentMethod = async (): Promise<string> => {
-  const stripe = await getStripe();
-  if (!stripe || !cardNumberEl) throw new Error('Stripe not loaded');
-
-  stripeError.value = '';
-
-  const { paymentMethod, error } = await stripe.createPaymentMethod({
-    type: 'card',
-    card: cardNumberEl,
-  });
-
-  if (error) {
-    stripeError.value = error.message ?? 'Payment failed. Please try again.';
-    throw new Error(error.message);
-  }
-
-  return paymentMethod!.id;
+  cardNumberEl = null;
+  cardExpiryEl = null;
+  cardCvcEl = null;
 };
 
-defineExpose({ createPaymentMethod });
+const switchToNewCard = () => {
+  useDifferentCard.value = true;
+  emit('update:complete', false);
+};
+
+// Signal complete to the parent: true when the saved card summary is shown, false otherwise
+// (lets the Donate button stay disabled until the new-card form is filled in).
+watch(
+  [card, useDifferentCard],
+  () => {
+    emit('update:complete', !showCardForm.value || allComplete.value);
+  },
+  { immediate: true },
+);
+
+// Mount Stripe elements when the card entry form becomes visible; destroy them when hidden
+// to avoid dangling mounts after card is saved and the form is removed by v-if.
+watch(showCardForm, async (visible) => {
+  if (visible && !cardNumberEl) {
+    await nextTick(); // wait for v-if containers to render
+    await mountElements();
+  } else if (!visible) {
+    destroyElements();
+  }
+});
+
+// Surface save-card errors in the Stripe error slot
+watch(saveCardError, (msg) => {
+  if (msg) stripeError.value = msg;
+});
+
+onMounted(async () => {
+  await fetchCard();
+  if (showCardForm.value) {
+    await mountElements();
+  }
+});
+
+onBeforeUnmount(() => {
+  destroyElements();
+});
+
+defineExpose({
+  getCardNumberEl: (): StripeCardNumberElement | null => cardNumberEl,
+  isUsingDifferentCard: (): boolean => useDifferentCard.value,
+});
 </script>
 
 <script lang="ts">

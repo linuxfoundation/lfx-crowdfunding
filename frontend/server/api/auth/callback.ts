@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { discovery, authorizationCodeGrant, ClientSecretPost } from 'openid-client';
-import { SignJWT, decodeJwt } from 'jose';
+import { decodeJwt } from 'jose';
 import { H3Error } from 'h3';
 import { getSafeRedirectUrl } from '../../utils/redirect';
 import type { DecodedIdToken } from '~~/types/auth/auth-jwt.types';
@@ -88,37 +88,16 @@ export default defineEventHandler(async (event) => {
     setCookie(event, 'auth_pkce', '', clearCookieOptions);
     setCookie(event, 'auth_redirect_to', '', clearCookieOptions);
 
-    if (!config.jwtSecret) {
-      throw createError({ statusCode: 500, statusMessage: 'JWT secret not configured' });
-    }
-
     if (!tokenResponse.id_token) {
       throw createError({ statusCode: 500, statusMessage: 'No ID token received from Auth0' });
     }
 
+    if (!tokenResponse.access_token) {
+      throw createError({ statusCode: 500, statusMessage: 'No access token received from Auth0' });
+    }
+
     const idTokenClaims = decodeJwt(tokenResponse.id_token) as DecodedIdToken;
-
-    const jwtPayload = {
-      sub: idTokenClaims.sub,
-      name: idTokenClaims.name,
-      email: idTokenClaims.email,
-      picture: idTokenClaims.picture,
-      email_verified: idTokenClaims.email_verified,
-      updated_at: idTokenClaims.updated_at,
-      username: idTokenClaims['https://sso.linuxfoundation.org/claims/username'] as
-        | string
-        | undefined,
-      iss: config.public.auth0Domain,
-    };
-
-    const secret = new TextEncoder().encode(config.jwtSecret);
     const expiresIn = tokenResponse.expires_in || 86400;
-
-    const oidcToken = await new SignJWT(jwtPayload)
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime(Math.floor(Date.now() / 1000) + expiresIn)
-      .sign(secret);
 
     const tokenCookieOptions = {
       httpOnly: true,
@@ -129,7 +108,30 @@ export default defineEventHandler(async (event) => {
       maxAge: expiresIn,
     };
 
-    setCookie(event, 'auth_oidc_token', oidcToken, tokenCookieOptions);
+    // Store the Auth0 access token — forwarded by the BFF as Authorization: Bearer to the Go backend.
+    setCookie(event, 'auth_oidc_token', tokenResponse.access_token, tokenCookieOptions);
+
+    // Store display-only profile claims for the /api/auth/user endpoint.
+    // IMPORTANT: this cookie is base64-encoded JSON with no HMAC signature — treat as
+    // display-only. Never use it for identity decisions or authorization; use auth_oidc_token
+    // (forwarded as Authorization: Bearer to the Go backend) for that.
+    const userProfile = {
+      sub: idTokenClaims.sub,
+      name: idTokenClaims.name,
+      email: idTokenClaims.email,
+      picture: idTokenClaims.picture,
+      email_verified: idTokenClaims.email_verified,
+      updated_at: idTokenClaims.updated_at,
+      username: idTokenClaims['https://sso.linuxfoundation.org/claims/username'] as
+        | string
+        | undefined,
+    };
+    setCookie(
+      event,
+      'auth_user_profile',
+      Buffer.from(JSON.stringify(userProfile)).toString('base64'),
+      tokenCookieOptions,
+    );
 
     if (tokenResponse.refresh_token) {
       setCookie(event, 'auth_refresh_token', tokenResponse.refresh_token, {
@@ -145,6 +147,7 @@ export default defineEventHandler(async (event) => {
     setCookie(event, 'auth_pkce', '', clearCookieOptions);
     setCookie(event, 'auth_redirect_to', '', clearCookieOptions);
     setCookie(event, 'auth_oidc_token', '', clearCookieOptions);
+    setCookie(event, 'auth_user_profile', '', clearCookieOptions);
     setCookie(event, 'auth_refresh_token', '', clearCookieOptions);
 
     let statusCode = 500;
