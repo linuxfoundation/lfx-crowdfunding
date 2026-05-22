@@ -38,8 +38,33 @@ spec:
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command: ["/app/ledger-stats-sync"]
               env:
+                - name: DB_HOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secretName }}
+                      key: host
+                - name: DB_PORT
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secretName }}
+                      key: port
+                - name: DB_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secretName }}
+                      key: username
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secretName }}
+                      key: password
+                - name: DB_NAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secretName }}
+                      key: dbname
                 - name: DATABASE_URL
-                  value: "host=$(host) port=$(port) user=$(username) password=$(password) dbname=$(dbname) sslmode=require"
+                  value: "host=$(DB_HOST) port=$(DB_PORT) user=$(DB_USER) password=$(DB_PASSWORD) dbname=$(DB_NAME) sslmode=require"
               envFrom:
                 - configMapRef:
                     name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
