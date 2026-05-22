@@ -211,7 +211,7 @@ func (s *SubscriptionService) Cancel(ctx context.Context, id, callerID string) e
 		return fmt.Errorf("cancel stripe subscription: %w", err)
 	}
 
-	sub.Status = "canceled"
+	sub.Status = models.SubscriptionStatusCanceled
 	if _, err := s.repo.Update(ctx, sub); err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("update subscription status: %w", err)
