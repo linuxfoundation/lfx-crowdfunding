@@ -7,6 +7,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -399,4 +402,79 @@ func TestNewJWTAuthenticator_MutualExclusion(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when both bypass and JWKS_URL are set")
 	}
+}
+
+// TestNewJWTAuthenticator_EnforcesValidMethods exercises NewJWTAuthenticator
+// end-to-end with a real in-process JWKS server, verifying that the constructor
+// wires WithValidMethods correctly: HS256 must be rejected and RS256 accepted.
+func TestNewJWTAuthenticator_EnforcesValidMethods(t *testing.T) {
+	const kid = "test-key"
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+
+	// Minimal JWKS endpoint backed by the generated public key.
+	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": []map[string]any{{
+				"kty": "RSA", "use": "sig", "kid": kid, "alg": "RS256",
+				"n": n, "e": e,
+			}},
+		})
+	}))
+	defer jwksServer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a, err := NewJWTAuthenticator(ctx, JWTAuthConfig{
+		JWKSURL:   jwksServer.URL,
+		Audience:  testAudience,
+		Issuer:    testIssuer,
+		ClockSkew: 0,
+	})
+	if err != nil {
+		t.Fatalf("NewJWTAuthenticator: %v", err)
+	}
+
+	handler := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// HS256 token must be rejected by the asymmetric-only WithValidMethods list.
+	t.Run("rejects HS256", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, makeRequest(userToken()))
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for HS256 token, got %d", w.Code)
+		}
+	})
+
+	// RS256 token signed with the matching private key must be accepted.
+	t.Run("accepts RS256", func(t *testing.T) {
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, &JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   "auth0|e2euser",
+				Issuer:    testIssuer,
+				Audience:  jwt.ClaimStrings{testAudience},
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			},
+			Email: "e2e@example.com",
+		})
+		tok.Header["kid"] = kid
+		signed, err := tok.SignedString(key)
+		if err != nil {
+			t.Fatalf("sign RS256 token: %v", err)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, makeRequest(signed))
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200 for RS256 token via constructor, got %d", w.Code)
+		}
+	})
 }
