@@ -23,6 +23,7 @@ SPDX-License-Identifier: MIT
               <lfx-icon-button
                 type="outline"
                 icon="share-nodes"
+                @click="handleShare()"
               />
               <lfx-icon-button
                 type="outline"
@@ -98,6 +99,7 @@ SPDX-License-Identifier: MIT
             icon="share-nodes"
             icon-position="left"
             button-style="pill"
+            @click="handleShare()"
           />
           <lfx-button
             v-if="initiative.githubURL"
@@ -145,6 +147,7 @@ import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxTabs from '~/components/uikit/tabs/tabs.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
+import { useShareModalStore } from '~/components/shared/components/share/store/share-modal.store';
 import { useAuth } from '~/composables/useAuth';
 import useScroll from '~/utils/scroll';
 
@@ -154,7 +157,15 @@ const props = defineProps<{
 }>();
 
 const { openDonateDrawer } = useDonateDrawerStore();
+const { openShareModal } = useShareModalStore();
 const { isAuthenticated, login } = useAuth();
+
+function handleShare() {
+  openShareModal({
+    title: props.initiative.name,
+    url: import.meta.client ? window.location.href : '',
+  });
+}
 
 function handleFundInitiative() {
   if (!isAuthenticated.value) {
