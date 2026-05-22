@@ -11,6 +11,7 @@ SPDX-License-Identifier: MIT
     <crowdfunding-footer />
     <donate-drawer-global />
     <fundraise-drawer-global />
+    <lfx-toast />
   </div>
 </template>
 
@@ -19,4 +20,5 @@ import CrowdfundingHeader from '~/components/shared/layout/header.vue';
 import CrowdfundingFooter from '~/components/shared/layout/footer.vue';
 import DonateDrawerGlobal from '~/components/modules/donate/components/donate-drawer-global.vue';
 import FundraiseDrawerGlobal from '~/components/modules/fundraise/components/fundraise-drawer-global.vue';
+import LfxToast from '~/components/uikit/toast/toast.vue';
 </script>
