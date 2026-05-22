@@ -3,15 +3,8 @@
 
 import { defineEventHandler, readBody } from 'h3';
 import { useBackendFetch } from '../../utils/backend-fetch';
+import type { CardDetailsWire } from '../../types/payment.types';
 import type { CardDetails } from '#shared/types/payment.types';
-
-interface CardDetailsWire {
-  payment_method_id: string;
-  last_four: string;
-  brand: string;
-  expiry_month: number;
-  expiry_year: number;
-}
 
 export default defineEventHandler(async (event): Promise<CardDetails> => {
   const { paymentMethodId } = await readBody<{ paymentMethodId: string }>(event);
