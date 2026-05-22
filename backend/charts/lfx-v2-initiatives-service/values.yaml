@@ -94,13 +94,20 @@ config:
   # Leaving this empty will cause helm install/upgrade to fail.
   STRIPE_RETURN_URL: ""
 
+# ── Additional environment variables ─────────────────────────────────────────
+# Rendered as a Kubernetes env: list on the Deployment and CronJob.
+# Supports the full env entry schema (value:, valueFrom:, etc.).
+# Override in ArgoCD values to inject secretKeyRef entries (e.g. DB components).
+env: []
+
 # ── Secret environment variables ─────────────────────────────────────────────
 # These are sourced from a Kubernetes Secret via envFrom.secretRef.
 # The Secret itself is managed externally (e.g. External Secrets Operator
 # syncing from AWS Secrets Manager).
 #
 # Expected keys in the Secret:
-#   DATABASE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LEDGER_API_KEY
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LEDGER_API_KEY
+#   username, password, host, port, dbname — RDS components (referenced via env: above)
 secretName: lfx-v2-initiatives-service-secrets
 
 # createPlaceholderSecret — opt-in, defaults to false.
