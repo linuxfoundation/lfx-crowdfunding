@@ -6,56 +6,38 @@
 **Status:** Proposed — pending architect review
 **Author:** Michal Lehotsky
 **Related:** `auth0-terraform`, `lfx-self-serve`, `lfx-v2-argocd`
-**Context:** Follows architecture discussion with Eric Searcy and David Deal. Eric confirmed M2M + audience pattern (same as sanctions screening service) and explicit identity injection for impersonation.
+**Context:** Follows architecture discussion with Eric Searcy and David Deal. Eric confirmed M2M + audience pattern and explicit identity injection for impersonation.
 
 ---
 
 ## 1. Problem
 
-LFX Self Serve (SS) needs to call Crowdfunding (CF) backend APIs on behalf of authenticated users, including when an admin is impersonating another user. CF validates JWTs on every protected route, so SS must obtain a token CF will accept and communicate the correct user identity — including the impersonated user's identity when applicable.
-
-All CF data in SS is served in real time via direct API calls. There is no Snowflake dependency for crowdfunding — donations and subscription changes must be visible immediately.
+LFX Self Serve (SS) needs to call Crowdfunding (CF) backend APIs on behalf of authenticated users, including when an admin is impersonating another user. CF validates JWTs on every protected route, so SS must obtain a token CF will accept and communicate the correct acting-user identity.
 
 ---
 
-## 2. Approach: M2M + Explicit User Identity Header
+## 2. Approach: M2M + Explicit Identity Header
 
-SS authenticates to CF using **M2M client credentials** — the same pattern as the sanctions screening service. SS obtains a CF-scoped Auth0 access token using its own `client_id`/`client_secret`, and passes it as the Bearer token on every CF API call.
+SS authenticates to CF using **M2M client credentials** — the same pattern SS already uses for CDP. SS obtains a CF-scoped Auth0 access token via `client_credentials`, passes it as the Bearer token, and sends the acting user's identity in an **`X-User-ID` header**. CF trusts this header only from verified M2M callers.
 
-The acting user's identity is passed separately as an **`X-User-ID` header**. CF trusts this header only from authenticated M2M callers. SS populates it using the existing `getEffectiveSub()` helper, which returns the impersonated user's `sub` when impersonation is active and the logged-in user's `sub` otherwise.
-
-This is what Eric described in the architecture discussion: *"the UI checks if it's currently impersonating someone else, and injects that identity into the machine-authorised API call."*
-
-### Why not forward the user token directly
-
-SS already calls `user-service` via `apiGatewayToken`. Despite the name, this is not an M2M token — it is a user token derived from the admin's OIDC refresh token with a different audience. Its `sub` is always the **admin's** user ID, even during impersonation.
-
-This means calling CF with `apiGatewayToken` during impersonation would silently use the admin's identity instead of the target user's — the same bug that currently affects the Rewards tab (see Appendix). M2M + explicit `X-User-ID` avoids this: identity is always intentional, not inferred from whichever token happened to be available.
-
----
-
-## 3. How SS Does M2M Today
-
-SS already uses this exact pattern for CDP. The `lfx_one` Auth0 client has `client_credentials` grant enabled, and SS uses `PCC_AUTH0_CLIENT_ID` / `PCC_AUTH0_CLIENT_SECRET` to obtain audience-scoped tokens, cached with a buffer before expiry.
-
-The CF integration follows `cdp.service.ts`:
+SS populates `X-User-ID` using the existing `getEffectiveSub()` helper, which returns the impersonated user's `sub` when impersonation is active and the logged-in user's `sub` otherwise.
 
 ```typescript
-// M2M token obtained via client_credentials, cached ~24hr
-const token = await this.getM2MToken(CROWDFUNDING_API_AUDIENCE);
+const token = await this.getM2MToken(CROWDFUNDING_API_AUDIENCE); // cached ~24hr
 
-// Every CF API call includes the M2M token + acting user identity
 await fetch(`${CROWDFUNDING_API_BASE_URL}/v1/initiatives`, {
   headers: {
     'Authorization': `Bearer ${token}`,
-    'X-User-ID': getEffectiveSub(req),  // impersonated sub when active, otherwise logged-in sub
+    'X-User-ID': getEffectiveSub(req),
   },
 });
 ```
 
+**Why not forward the user token directly?** SS calls `user-service` via `apiGatewayToken`, but that token always carries the **admin's** identity — even during impersonation. Forwarding it to CF would silently operate on the admin's data instead of the target user's (see Appendix for the broader impact of this bug). M2M + explicit `X-User-ID` makes identity intentional.
+
 ---
 
-## 4. Token Flow
+## 3. Token Flow
 
 ```
 SS server start / first CF call
@@ -63,20 +45,21 @@ SS server start / first CF call
        client_id     = PCC_AUTH0_CLIENT_ID
        client_secret = PCC_AUTH0_CLIENT_SECRET
        audience      = https://crowdfunding.{env}.platform.linuxfoundation.org/
-                        (new M2M-only audience — distinct from the existing user-token audience https://funding.{env}.platform.linuxfoundation.org/api/)
+                        (new M2M-only audience — separate from the user-token
+                         audience https://funding.{env}.platform.linuxfoundation.org/api/)
        → M2M access token (cached, ~24hr lifetime)
 
-User (or admin impersonating user) navigates to a CF feature in SS
-  └─ SS resolves acting user identity
+User navigates to a CF feature in SS
+  └─ SS resolves acting user identity via getEffectiveSub()
        normal:        X-User-ID = logged-in user's sub
-       impersonating: X-User-ID = impersonated user's sub  ← via getEffectiveSub()
+       impersonating: X-User-ID = impersonated user's sub
 
   └─ SS BFF proxies request to CF
        Authorization: Bearer {M2M token}
        X-User-ID:     {acting user sub}
 
 CF M2M middleware
-  1. Validates Bearer token: signature, issuer, CF audience, expiry
+  1. Validates Bearer token: signature, issuer, CF M2M audience, expiry
   2. Checks azp claim matches SS client ID (rejects unknown callers)
   3. Reads X-User-ID → Principal.UserID
   4. Handler proceeds with correct user identity
@@ -84,23 +67,19 @@ CF M2M middleware
 
 ---
 
-## 5. Impersonation
+## 4. Impersonation
 
-When impersonation is active, `getEffectiveSub()` returns the **impersonated user's** `sub`. CF receives a correctly identified M2M call and has no need to know impersonation is occurring. The audit trail (who impersonated whom) is maintained in SS's session (`impersonator` and `impersonationUser` fields).
+When impersonation is active, `getEffectiveSub()` returns the impersonated user's `sub`. CF receives a correctly identified call and has no need to know impersonation is occurring. The audit trail (who impersonated whom) is maintained in SS's session.
 
-**Write access under impersonation** is a product-level decision. Eric noted any read-only gating would be implemented on the product side. A future option is splitting the CF Auth0 scope into `read` and `write`, enforcing this at the API level — not in scope for initial release.
-
----
-
-## 6. Callers: Stripe Webhook
-
-Stripe calls CF directly via `POST /v1/stripe/webhook`, already outside the JWT middleware, validated with HMAC (`STRIPE_WEBHOOK_SECRET`). No changes needed.
+**Write access under impersonation** is a product-level decision. Any read-only gating is implemented on the product side. A future option is splitting the CF Auth0 scope into `read` and `write` — not in scope for initial release.
 
 ---
 
-## 7. Required Changes
+## 5. Required Changes
 
-### `auth0-terraform` — new file `grants_crowdfunding.tf` (~40 lines, pure addition)
+### `auth0-terraform` — new file `grants_crowdfunding.tf`
+
+Pure addition, ~40 lines. Follows `grants_sanctions_screening.tf` exactly. No existing resources touched.
 
 ```hcl
 resource "auth0_resource_server" "lfx_crowdfunding" {
@@ -112,7 +91,7 @@ resource "auth0_resource_server" "lfx_crowdfunding" {
   signing_alg    = "RS256"
   token_lifetime = { "dev" = 86400, "staging" = 86400, "prod" = 86400 }[terraform.workspace]
   subject_type_authorization {
-    user   { policy = "deny_all" }           # only M2M callers use this audience
+    user   { policy = "deny_all" }           # M2M-only audience
     client { policy = "require_client_grant" }
   }
 }
@@ -122,7 +101,6 @@ resource "auth0_resource_server_scopes" "lfx_crowdfunding" {
   scopes { name = "access:api" description = "Access Crowdfunding API" }
 }
 
-# Grant SS (lfx_one) permission to request CF-scoped tokens
 resource "auth0_client_grant" "lfxone_crowdfunding" {
   client_id  = auth0_client.lfx_one.id
   audience   = auth0_resource_server.lfx_crowdfunding.identifier
@@ -131,35 +109,33 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 }
 ```
 
-No existing resources touched. Follows `grants_sanctions_screening.tf` exactly.
-
-> **Note on user tokens:** `deny_all` applies only to this new CF M2M audience. The CF Nuxt BFF forwards the user's Auth0 access token to the Go backend, where it is validated against `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` (all three required — see `backend/cmd/initiatives-api/config.go`; per-environment values are in `lfx-v2-argocd` values files). That existing user-token audience is separate from the new M2M audience and is unaffected by this resource server definition.
+> **Note:** `deny_all` applies only to this new M2M audience. The existing user-token flow uses a separate audience (`https://funding.{env}.platform.linuxfoundation.org/api/`) validated via `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` (see `backend/cmd/initiatives-api/config.go`; per-environment values in `lfx-v2-argocd`). It is unaffected.
 
 ### `lfx-v2-argocd`
 
 | File | Change |
 |---|---|
-| `values/{dev,staging,prod}/lfx-crowdfunding-backend.yaml` | Add `M2M_JWT_AUDIENCE` (new CF M2M audience per environment) and `M2M_JWKS_URL` if different from user token JWKS; `JWT_AUDIENCE` stays unchanged (user-token audience) |
+| `values/{dev,staging,prod}/lfx-crowdfunding-backend.yaml` | Add `M2M_JWT_AUDIENCE` and `M2M_JWKS_URL`; `JWT_AUDIENCE` unchanged |
 | `values/{dev,staging,prod}/lfx-self-serve.yaml` | Add `CROWDFUNDING_API_BASE_URL` and `CROWDFUNDING_API_AUDIENCE` |
 
 ### `lfx-self-serve`
 
-New `crowdfunding.service.ts` following `cdp.service.ts`:
+New `crowdfunding.service.ts` modelled on `cdp.service.ts`:
 - M2M token via `client_credentials` using existing `PCC_AUTH0_CLIENT_ID/SECRET`
-- Proxy routes under `/api/crowdfunding/*` with M2M Bearer + `X-User-ID` header
+- Proxy routes under `/api/crowdfunding/*` with M2M Bearer + `X-User-ID`
 - `getEffectiveSub()` for identity resolution (already exists)
 
 No changes to auth middleware, session types, or existing token exchange logic.
 
 ### `lfx-crowdfunding` backend
 
-- New `M2MMiddleware`: validates CF-scoped Bearer token using `M2M_JWT_AUDIENCE`, checks `azp`, reads `X-User-ID` → `Principal.UserID`
-- Register as alternative to existing user JWT middleware on protected routes
-- Existing `JWT_AUDIENCE` (user-token audience) is unchanged
+- New `M2MMiddleware`: validates CF-scoped Bearer token against `M2M_JWT_AUDIENCE`, checks `azp`, reads `X-User-ID` → `Principal.UserID`
+- Registered as an alternative to the existing user JWT middleware on protected routes
+- Stripe webhook (`POST /v1/stripe/webhook`) is already outside the JWT middleware — no changes needed
 
 ---
 
-## 8. What This Does Not Need
+## 6. What This Does Not Need
 
 - New Auth0 resource server beyond the dedicated CF one
 - Changes to Heimdall routing or `lfx-platform.yaml`
@@ -170,45 +146,43 @@ No changes to auth middleware, session types, or existing token exchange logic.
 
 ---
 
-## 9. Long-term: Heimdall Alignment
+## 7. Long-term: Heimdall Alignment
 
-Every other LFX v2 native service sits behind Heimdall. Adding Heimdall to CF would normalise both user and M2M tokens through the platform gateway, making the `X-User-ID` header unnecessary — user identity would flow through the Heimdall-issued JWT directly, and impersonation would work transparently.
+Every other LFX v2 service sits behind Heimdall. Adding Heimdall to CF would normalise both user and M2M tokens through the platform gateway, making `X-User-ID` unnecessary — impersonation identity would flow through the Heimdall-issued JWT directly.
 
-This is the correct long-term architecture but is not in scope for the current timeline. The M2M approach proposed here does not block it — migrating CF to Heimdall later is a contained ArgoCD + CF Helm chart change with no SS BFF changes required.
+This is the correct long-term architecture but is not in scope now. The M2M approach proposed here does not block it — migrating CF to Heimdall later is a contained ArgoCD + Helm chart change with no SS BFF changes required.
 
 ---
 
-## 10. Open Items for Architect Sign-off
-
-
+## 8. Open Items for Architect Sign-off
 
 | Item | Status | Detail |
 |---|---|---|
 | M2M + audience mechanism | ✅ Confirmed by Eric | Same pattern as sanctions screening |
-| `X-User-ID` header for identity injection | 🔲 Needs sign-off | Eric confirmed the pattern; this document proposes the concrete header name and CF's trust model (trusted only from verified M2M callers) |
-| Impersonation write access | 🔲 Product decision | Read-only gating is product-side for launch; future option is `read`/`write` scope split on the CF resource server |
-| Impersonation bug in SS (Appendix) | 🔲 Needs Eric's input | Affects Rewards, visa/travel applications, membership — data integrity risk. Recommend disabling affected features during impersonation (Option A) immediately. Should this be tracked as a separate SS ticket? |
+| `X-User-ID` header trust model | 🔲 Needs sign-off | Concrete header name and CF's trust policy (trusted only from verified M2M callers) |
+| Impersonation write access | 🔲 Product decision | Read-only gating is product-side for launch; future option is `read`/`write` scope split |
+| Impersonation bug in SS (Appendix) | 🔲 Needs Eric's input | Data integrity risk — should this be tracked as a separate SS ticket? |
 | Heimdall alignment | 🔲 Planned follow-up | No hard deadline; does not block launch |
 
 ---
 
-## 11. Appendix: Known Impersonation Bug in Self Serve (separate ticket)
+## Appendix: Known Impersonation Bug in Self Serve
 
-Analysing this auth approach exposed a broader impersonation bug in SS. Because `apiGatewayToken` is always derived from the admin's refresh token, it always carries the **admin's** identity. Every feature that uses it during impersonation silently operates on the admin's data instead of the target user's:
+Analysing this auth approach exposed a broader impersonation bug in SS. `apiGatewayToken` is always derived from the admin's refresh token, so it always carries the **admin's** identity. Every feature that uses it during impersonation silently operates on the admin's data:
 
 | Feature | Impact |
 |---|---|
 | Rewards tab | Shows admin's points and coupons, not the target user's |
-| Visa letter requests | Submits under admin's Salesforce ID — wrong person's record created |
-| Travel fund requests | Submits under admin's Salesforce ID — wrong person's record created |
-| Membership / enrollment | Reads and modifies admin's membership, not target's |
+| Visa letter requests | Submits under admin's Salesforce ID — wrong record created |
+| Travel fund requests | Submits under admin's Salesforce ID — wrong record created |
+| Membership / enrollment | Reads and modifies admin's membership, not the target's |
 
-Visa and travel fund submissions are a **data integrity issue** — records are created under the wrong person's identity. This is also why the `apiGatewayToken` forwarding pattern was not adopted for CF.
+Visa and travel fund submissions are a **data integrity issue**. This is also why the `apiGatewayToken` forwarding pattern was not adopted for CF.
 
 This is a separate SS bug, not CF scope. Proposed resolution:
 
-**Option A (ship now):** Disable the affected features during impersonation with a clear "not available during impersonation" message. Stops bad data being written immediately.
+**Option A (ship now):** Disable the affected features during impersonation with a clear "not available during impersonation" message.
 
-**Option B (follow-up):** Fix the root cause — derive `apiGatewayToken` from the impersonation token when impersonation is active rather than the admin's refresh token. Requires investigating whether Auth0 supports this token exchange.
+**Option B (follow-up):** Fix the root cause — derive `apiGatewayToken` from the impersonation token when impersonation is active.
 
 **Recommendation:** ship Option A now, track Option B separately.
