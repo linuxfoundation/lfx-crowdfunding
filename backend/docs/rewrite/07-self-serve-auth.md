@@ -115,7 +115,7 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 
 | File | Change |
 |---|---|
-| `values/{dev,staging,prod}/lfx-crowdfunding-backend.yaml` | Add `M2M_JWT_AUDIENCE` and `M2M_JWKS_URL`; `JWT_AUDIENCE` unchanged |
+| `values/{dev,staging,prod}/lfx-crowdfunding-backend.yaml` | Add `M2M_JWT_AUDIENCE` only; `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` unchanged — M2M middleware reuses the same issuer and JWKS endpoint (same Auth0 tenant) |
 | `values/{dev,staging,prod}/lfx-self-serve.yaml` | Add `CROWDFUNDING_API_BASE_URL` and `CROWDFUNDING_API_AUDIENCE` |
 
 ### `lfx-self-serve`
@@ -129,7 +129,7 @@ No changes to auth middleware, session types, or existing token exchange logic.
 
 ### `lfx-crowdfunding` backend
 
-- New `M2MMiddleware`: validates CF-scoped Bearer token against `M2M_JWT_AUDIENCE`, checks `azp`, reads `X-User-ID` → `Principal.UserID`
+- New `M2MMiddleware`: validates CF-scoped Bearer token against `M2M_JWT_AUDIENCE` (new env var), reusing existing `JWKS_URL` and `JWT_ISSUER`; checks `azp` claim matches SS client ID; reads `X-User-ID` → `Principal.UserID`
 - Registered as an alternative to the existing user JWT middleware on protected routes
 - Stripe webhook (`POST /v1/stripe/webhook`) is already outside the JWT middleware — no changes needed
 
