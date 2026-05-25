@@ -21,6 +21,7 @@ type Config struct {
 	JWT      JWTConfig
 	Stripe   StripeConfig
 	Ledger   LedgerConfig
+	Mandrill MandrillConfig
 	OTel     OTelConfig
 	Local    LocalConfig
 	Approval ApprovalConfig
@@ -92,6 +93,16 @@ type ApprovalConfig struct {
 	// AllowedApprovers is the list of usernames permitted to approve or decline
 	// initiatives. Sourced from the ALLOWED_APPROVERS env var (comma-separated).
 	AllowedApprovers []string
+}
+
+// MandrillConfig holds Mandrill transactional email settings.
+type MandrillConfig struct {
+	APIKey            string
+	FromEmail         string
+	FromName          string
+	FrontendBase      string // base URL for initiative deep-links in emails
+	NotificationEmail string // inbox that receives new-submission alerts
+	Timeout           time.Duration
 }
 
 // LoadConfig reads all configuration from environment variables.
@@ -224,6 +235,14 @@ func LoadConfig() (*Config, error) {
 		},
 		Approval: ApprovalConfig{
 			AllowedApprovers: parseCommaList(getEnv("ALLOWED_APPROVERS", "")),
+		},
+		Mandrill: MandrillConfig{
+			APIKey:            getEnv("MANDRILL_API_KEY", ""),
+			FromEmail:         getEnv("MANDRILL_FROM_EMAIL", "noreply@lfx.linuxfoundation.org"),
+			FromName:          getEnv("MANDRILL_FROM_NAME", "LFX Crowdfunding"),
+			FrontendBase:      getEnv("MANDRILL_FRONTEND_BASE", "https://crowdfunding.lfx.linuxfoundation.org"),
+			NotificationEmail: getEnv("MANDRILL_NOTIFICATION_EMAIL", ""),
+			Timeout:           10 * time.Second,
 		},
 	}, nil
 }
