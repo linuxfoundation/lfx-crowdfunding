@@ -25,6 +25,13 @@ import (
 
 var initiativeSvcTracer = otel.Tracer("initiatives-service")
 
+// allowedContactTypes is the exhaustive set of valid contact_type values.
+var allowedContactTypes = map[string]struct{}{
+	"primary":        {},
+	"secondary":      {},
+	"technical_lead": {},
+}
+
 // InitiativeService orchestrates initiative reads and writes.
 // Cached financials come from initiative_ledger_stats (CronJob); per-goal
 // donated/spent is enriched live from Ledger GetBalance on each detail request.
@@ -226,8 +233,8 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 		}
 	}
 	for idx, c := range input.Contacts {
-		if c.ContactType == "" {
-			return nil, fmt.Errorf("%w: contacts[%d]: contact_type is required", domain.ErrInvalidInput, idx)
+		if _, ok := allowedContactTypes[c.ContactType]; !ok {
+			return nil, fmt.Errorf("%w: contacts[%d]: contact_type %q must be one of primary, secondary, technical_lead", domain.ErrInvalidInput, idx, c.ContactType)
 		}
 	}
 
@@ -393,8 +400,8 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		}
 	}
 	for idx, c := range input.Contacts {
-		if c.ContactType == "" {
-			return nil, fmt.Errorf("%w: contacts[%d]: contact_type is required", domain.ErrInvalidInput, idx)
+		if _, ok := allowedContactTypes[c.ContactType]; !ok {
+			return nil, fmt.Errorf("%w: contacts[%d]: contact_type %q must be one of primary, secondary, technical_lead", domain.ErrInvalidInput, idx, c.ContactType)
 		}
 	}
 

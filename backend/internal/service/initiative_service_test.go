@@ -142,12 +142,12 @@ func (m *mockUserRepository) ClearStripePaymentMethod(_ context.Context, _ strin
 
 type mockEmailService struct {
 	approvedCalled      bool
-	rejectedCalled      bool
+	declinedCalled      bool
 	forReviewCalled     bool
 	approvedToEmail     string
 	approvedToName      string
-	rejectedToEmail     string
-	rejectedToName      string
+	declinedToEmail     string
+	declinedToName      string
 	forReviewOwnerName  string
 	forReviewOwnerEmail string
 	forReviewInitName   string
@@ -162,9 +162,9 @@ func (m *mockEmailService) SendProjectApprovedEmail(_ context.Context, toEmail, 
 	return m.err
 }
 func (m *mockEmailService) SendProjectDeclinedEmail(_ context.Context, toEmail, toName, _, _ string) error {
-	m.rejectedCalled = true
-	m.rejectedToEmail = toEmail
-	m.rejectedToName = toName
+	m.declinedCalled = true
+	m.declinedToEmail = toEmail
+	m.declinedToName = toName
 	return m.err
 }
 func (m *mockEmailService) SendProjectForReviewEmail(_ context.Context, ownerName, ownerEmail, initiativeName, initiativeURL, _, _ string) error {
@@ -895,8 +895,8 @@ func TestProcessApproval_SendsApprovedEmail(t *testing.T) {
 	if !emailSvc.approvedCalled {
 		t.Error("expected SendProjectApprovedEmail to be called")
 	}
-	if emailSvc.rejectedCalled {
-		t.Error("expected SendProjectRejectedEmail NOT to be called on approve")
+	if emailSvc.declinedCalled {
+		t.Error("expected SendProjectDeclinedEmail NOT to be called on approve")
 	}
 	if emailSvc.approvedToEmail != "owner@example.com" {
 		t.Errorf("expected email to owner@example.com, got %q", emailSvc.approvedToEmail)
@@ -906,7 +906,7 @@ func TestProcessApproval_SendsApprovedEmail(t *testing.T) {
 	}
 }
 
-func TestProcessApproval_SendsRejectedEmail(t *testing.T) {
+func TestProcessApproval_SendsDeclinedEmail(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{
 			ID:      "init-1",
@@ -926,17 +926,17 @@ func TestProcessApproval_SendsRejectedEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !emailSvc.rejectedCalled {
-		t.Error("expected SendProjectRejectedEmail to be called")
+	if !emailSvc.declinedCalled {
+		t.Error("expected SendProjectDeclinedEmail to be called")
 	}
 	if emailSvc.approvedCalled {
 		t.Error("expected SendProjectApprovedEmail NOT to be called on decline")
 	}
-	if emailSvc.rejectedToEmail != "owner@example.com" {
-		t.Errorf("expected email to owner@example.com, got %q", emailSvc.rejectedToEmail)
+	if emailSvc.declinedToEmail != "owner@example.com" {
+		t.Errorf("expected email to owner@example.com, got %q", emailSvc.declinedToEmail)
 	}
-	if emailSvc.rejectedToName != "Bob" {
-		t.Errorf("expected name Bob, got %q", emailSvc.rejectedToName)
+	if emailSvc.declinedToName != "Bob" {
+		t.Errorf("expected name Bob, got %q", emailSvc.declinedToName)
 	}
 }
 

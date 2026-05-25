@@ -106,6 +106,14 @@ type mandrillSendTemplateRequest struct {
 
 const mandrillAPIURL = "https://mandrillapp.com/api/1.0/messages/send-template.json"
 
+// mandrillSendResult is the per-recipient result object returned inside the
+// Mandrill send-template response array.
+type mandrillSendResult struct {
+	Email        string `json:"email"`
+	Status       string `json:"status"`        // "sent", "queued", "scheduled", "rejected", "invalid"
+	RejectReason string `json:"reject_reason"` // non-empty when status == "rejected"
+}
+
 // SendTemplate sends a transactional template via the Mandrill API.
 func (c *mandrillClient) SendTemplate(ctx context.Context, templateName MandrillTemplateName, toEmail, toName string, mergeVars map[string]string) error {
 	if c.cfg.APIKey == "" {
@@ -150,11 +158,31 @@ func (c *mandrillClient) SendTemplate(ctx context.Context, templateName Mandrill
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
-	// Always drain the body so the underlying TCP connection can be reused.
-	respBody, _ := io.ReadAll(resp.Body)
+	// Bound and drain the body so the underlying TCP connection can be reused.
+	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MiB cap
+	if readErr != nil {
+		return fmt.Errorf("mandrill: read response body: %w", readErr)
+	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("mandrill: unexpected status %d for template %q: %s", resp.StatusCode, templateName, respBody)
+	}
+
+	// Mandrill can return HTTP 200 while flagging per-recipient delivery failures
+	// (e.g. status "rejected" or "invalid") inside the JSON array. Parse and surface them.
+	var results []mandrillSendResult
+	if err := json.Unmarshal(respBody, &results); err != nil {
+		// Non-fatal: if parsing fails, the HTTP-level response was still 2xx.
+		return nil
+	}
+	for _, r := range results {
+		switch r.Status {
+		case "sent", "queued", "scheduled":
+			// accepted
+		default:
+			return fmt.Errorf("mandrill: recipient %q status %q (reason: %q) for template %q",
+				r.Email, r.Status, r.RejectReason, templateName)
+		}
 	}
 
 	return nil

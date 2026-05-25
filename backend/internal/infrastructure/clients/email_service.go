@@ -7,6 +7,7 @@ package clients
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 )
@@ -21,7 +22,7 @@ type emailService struct {
 func NewEmailService(mandrill MandrillClient, frontendBase, notificationEmail string) domain.EmailService {
 	return &emailService{
 		mandrill:          mandrill,
-		frontendBase:      frontendBase,
+		frontendBase:      strings.TrimRight(frontendBase, "/"),
 		notificationEmail: notificationEmail,
 	}
 }

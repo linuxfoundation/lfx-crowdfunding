@@ -374,7 +374,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// 1. Main initiatives row — includes entity-only fields (NULLed when not applicable).
+	// 1. Main initiatives row — optional string fields use nullableString(); is_online is always written.
 	if _, err = tx.Exec(ctx, insertInitiative,
 		i.ID, i.InitiativeType, i.OwnerID, i.Name, nullableString(i.Slug), nullableString(string(i.Status)),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
