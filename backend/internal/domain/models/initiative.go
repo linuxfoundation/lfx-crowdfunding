@@ -123,6 +123,18 @@ type Initiative struct {
 	// Always populated — cheap indexed query, needed by every consumer
 	Goals []Goal `json:"goals"`
 
+	// Detail-only fields — populated by GetByID/GetBySlug; omitted in list responses.
+	Beneficiaries    []Beneficiary     `json:"beneficiaries,omitempty"`
+	CustomWebsites   []CustomWebsite   `json:"custom_websites,omitempty"`
+	Contributors     []Contributor     `json:"contributors,omitempty"`
+	Mentors          []Mentor          `json:"mentors,omitempty"`
+	ProgramInfo      *ProgramInfo      `json:"program_info,omitempty"`
+	SponsorshipTiers []SponsorshipTier `json:"sponsorship_tiers,omitempty"`
+	OSTIFDetail      *OSTIFDetail      `json:"ostif_detail,omitempty"`
+	Contacts         []Contact         `json:"contacts,omitempty"`
+	EntityDetails    map[string]string `json:"entity_details,omitempty"`
+	GitHubStats      *GitHubStats      `json:"github_stats,omitempty"`
+
 	// Populated from initiative_ledger_stats; zero when cron has not yet run
 	Financials Financials `json:"financials"`
 

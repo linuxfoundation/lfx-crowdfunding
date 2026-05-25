@@ -91,3 +91,90 @@ type ContactInput struct {
 	OtherContactOption     string `json:"other_contact_option,omitempty"`
 	PreferredContactMethod string `json:"preferred_contact_method,omitempty"`
 }
+
+// ── Read models (populated on detail GET, absent in list responses) ───────────
+
+// Beneficiary is a read row from initiative_beneficiaries.
+type Beneficiary struct {
+	ID    string `json:"id"`
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+}
+
+// CustomWebsite is a read row from initiative_custom_websites.
+type CustomWebsite struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+	URL  string `json:"url"`
+}
+
+// Contributor is a read row from initiative_contributors (project only).
+type Contributor struct {
+	ID    string `json:"id"`
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+}
+
+// Mentor is a read row from initiative_mentors (mentorship only).
+type Mentor struct {
+	ID           string `json:"id"`
+	Name         string `json:"name,omitempty"`
+	Email        string `json:"email,omitempty"`
+	AvatarURL    string `json:"avatar_url,omitempty"`
+	Introduction string `json:"introduction,omitempty"`
+}
+
+// ProgramCustomTerm is read from initiative_program_info_custom_term.
+type ProgramCustomTerm struct {
+	TermName   string `json:"term_name"`
+	StartMonth string `json:"start_month,omitempty"`
+	EndMonth   string `json:"end_month,omitempty"`
+	Year       int    `json:"year"`
+}
+
+// ProgramInfo aggregates rows from the four initiative_program_info_* tables
+// (mentorship only). Nil when the initiative has no program info.
+type ProgramInfo struct {
+	Terms           []string           `json:"terms"`
+	Skills          []string           `json:"skills"`
+	TermsConditions bool               `json:"terms_conditions"`
+	CustomTerm      *ProgramCustomTerm `json:"custom_term,omitempty"`
+}
+
+// SponsorshipTier is a read row from initiative_sponsorship_tiers (entity only).
+type SponsorshipTier struct {
+	ID          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Color       string `json:"color,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Minimum     int64  `json:"minimum"`
+}
+
+// OSTIFDetail is read from initiative_ostif_detail (ostif only).
+type OSTIFDetail struct {
+	MonetizationStrategy    string `json:"monetization_strategy,omitempty"`
+	CurrentSecurityStrategy string `json:"current_security_strategy,omitempty"`
+	LicenseType             string `json:"license_type,omitempty"`
+	TotalBudgetInCents      int64  `json:"total_budget_in_cents"`
+	TermsConditions         bool   `json:"terms_conditions"`
+}
+
+// Contact is a read row from initiative_contacts (ostif only).
+type Contact struct {
+	ID                     string `json:"id"`
+	ContactType            string `json:"contact_type"`
+	FirstName              string `json:"first_name,omitempty"`
+	LastName               string `json:"last_name,omitempty"`
+	Email                  string `json:"email,omitempty"`
+	PhoneNumber            string `json:"phone_number,omitempty"`
+	OtherContactOption     string `json:"other_contact_option,omitempty"`
+	PreferredContactMethod string `json:"preferred_contact_method,omitempty"`
+}
+
+// GitHubStats is read from initiative_github_stats (project only).
+type GitHubStats struct {
+	Forks      int `json:"forks"`
+	Stars      int `json:"stars"`
+	OpenIssues int `json:"open_issues"`
+}

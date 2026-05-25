@@ -76,12 +76,10 @@ func (r *InitiativeRepository) GetByID(ctx context.Context, id string) (*models.
 		return nil, err
 	}
 
-	goals, err := r.listGoals(ctx, id)
-	if err != nil {
+	if err := r.enrichDetail(ctx, initiative); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	initiative.Goals = goals
 	return initiative, nil
 }
 
@@ -101,12 +99,10 @@ func (r *InitiativeRepository) GetBySlug(ctx context.Context, slug string) (*mod
 		return nil, err
 	}
 
-	goals, err := r.listGoals(ctx, initiative.ID)
-	if err != nil {
+	if err := r.enrichDetail(ctx, initiative); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	initiative.Goals = goals
 	return initiative, nil
 }
 
@@ -850,6 +846,316 @@ func scanGoal(row scanner) (models.Goal, error) {
 	g.Color = derefString(color)
 	g.Icon = derefString(icon)
 	return g, nil
+}
+
+// ── enrichDetail ──────────────────────────────────────────────────────────────
+// enrichDetail loads every child-table collection for a single initiative and
+// populates the corresponding fields on i. It is called by GetByID and
+// GetBySlug. List does NOT call enrichDetail — it fetches goals only.
+
+func (r *InitiativeRepository) enrichDetail(ctx context.Context, i *models.Initiative) error {
+	id := i.ID
+
+	goals, err := r.listGoals(ctx, id)
+	if err != nil {
+		return err
+	}
+	i.Goals = goals
+
+	if i.Beneficiaries, err = r.listBeneficiaries(ctx, id); err != nil {
+		return err
+	}
+	if i.CustomWebsites, err = r.listCustomWebsites(ctx, id); err != nil {
+		return err
+	}
+	if i.Contributors, err = r.listContributors(ctx, id); err != nil {
+		return err
+	}
+	if i.Mentors, err = r.listMentors(ctx, id); err != nil {
+		return err
+	}
+	if i.ProgramInfo, err = r.loadProgramInfo(ctx, id); err != nil {
+		return err
+	}
+	if i.SponsorshipTiers, err = r.listSponsorshipTiers(ctx, id); err != nil {
+		return err
+	}
+	if i.OSTIFDetail, err = r.loadOSTIFDetail(ctx, id); err != nil {
+		return err
+	}
+	if i.Contacts, err = r.listContacts(ctx, id); err != nil {
+		return err
+	}
+	if i.EntityDetails, err = r.loadEntityDetails(ctx, id); err != nil {
+		return err
+	}
+	if i.GitHubStats, err = r.loadGitHubStats(ctx, id); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *InitiativeRepository) listBeneficiaries(ctx context.Context, id string) ([]models.Beneficiary, error) {
+	const q = `SELECT id, name, email FROM initiative_beneficiaries WHERE initiative_id = $1 ORDER BY created_on ASC`
+	rows, err := r.pool.Query(ctx, q, id)
+	if err != nil {
+		return nil, fmt.Errorf("list beneficiaries: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	var out []models.Beneficiary
+	for rows.Next() {
+		var b models.Beneficiary
+		var name, email *string
+		if err := rows.Scan(&b.ID, &name, &email); err != nil {
+			return nil, fmt.Errorf("scan beneficiary: %w", err)
+		}
+		b.Name = derefString(name)
+		b.Email = derefString(email)
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (r *InitiativeRepository) listCustomWebsites(ctx context.Context, id string) ([]models.CustomWebsite, error) {
+	const q = `SELECT id, name, url FROM initiative_custom_websites WHERE initiative_id = $1 ORDER BY created_on ASC`
+	rows, err := r.pool.Query(ctx, q, id)
+	if err != nil {
+		return nil, fmt.Errorf("list custom websites: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	var out []models.CustomWebsite
+	for rows.Next() {
+		var w models.CustomWebsite
+		var name *string
+		if err := rows.Scan(&w.ID, &name, &w.URL); err != nil {
+			return nil, fmt.Errorf("scan custom website: %w", err)
+		}
+		w.Name = derefString(name)
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+func (r *InitiativeRepository) listContributors(ctx context.Context, id string) ([]models.Contributor, error) {
+	const q = `SELECT id, name, email FROM initiative_contributors WHERE initiative_id = $1 ORDER BY created_on ASC`
+	rows, err := r.pool.Query(ctx, q, id)
+	if err != nil {
+		return nil, fmt.Errorf("list contributors: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	var out []models.Contributor
+	for rows.Next() {
+		var c models.Contributor
+		var name, email *string
+		if err := rows.Scan(&c.ID, &name, &email); err != nil {
+			return nil, fmt.Errorf("scan contributor: %w", err)
+		}
+		c.Name = derefString(name)
+		c.Email = derefString(email)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r *InitiativeRepository) listMentors(ctx context.Context, id string) ([]models.Mentor, error) {
+	const q = `SELECT id, name, email, avatar_url, introduction FROM initiative_mentors WHERE initiative_id = $1 ORDER BY created_on ASC`
+	rows, err := r.pool.Query(ctx, q, id)
+	if err != nil {
+		return nil, fmt.Errorf("list mentors: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	var out []models.Mentor
+	for rows.Next() {
+		var m models.Mentor
+		var name, email, avatarURL, introduction *string
+		if err := rows.Scan(&m.ID, &name, &email, &avatarURL, &introduction); err != nil {
+			return nil, fmt.Errorf("scan mentor: %w", err)
+		}
+		m.Name = derefString(name)
+		m.Email = derefString(email)
+		m.AvatarURL = derefString(avatarURL)
+		m.Introduction = derefString(introduction)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// loadProgramInfo assembles the ProgramInfo from four tables.
+// Returns nil when no config row exists (initiative has no program info).
+func (r *InitiativeRepository) loadProgramInfo(ctx context.Context, id string) (*models.ProgramInfo, error) {
+	var termsConditions bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT terms_conditions FROM initiative_program_info_config WHERE initiative_id = $1`, id,
+	).Scan(&termsConditions)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil // not a mentorship initiative
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load program config: %w", err)
+	}
+
+	pi := &models.ProgramInfo{
+		Terms:           []string{},
+		Skills:          []string{},
+		TermsConditions: termsConditions,
+	}
+
+	// Terms (ordered by sort_order)
+	termRows, err := r.pool.Query(ctx,
+		`SELECT term FROM initiative_program_info_terms WHERE initiative_id = $1 ORDER BY sort_order ASC`, id)
+	if err != nil {
+		return nil, fmt.Errorf("list program terms: %w", err)
+	}
+	defer termRows.Close() //nolint:errcheck
+	for termRows.Next() {
+		var t string
+		if err := termRows.Scan(&t); err != nil {
+			return nil, fmt.Errorf("scan program term: %w", err)
+		}
+		pi.Terms = append(pi.Terms, t)
+	}
+	if err := termRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate program terms: %w", err)
+	}
+
+	// Skills
+	skillRows, err := r.pool.Query(ctx,
+		`SELECT skill FROM initiative_program_info_skills WHERE initiative_id = $1 ORDER BY created_on ASC`, id)
+	if err != nil {
+		return nil, fmt.Errorf("list program skills: %w", err)
+	}
+	defer skillRows.Close() //nolint:errcheck
+	for skillRows.Next() {
+		var s string
+		if err := skillRows.Scan(&s); err != nil {
+			return nil, fmt.Errorf("scan program skill: %w", err)
+		}
+		pi.Skills = append(pi.Skills, s)
+	}
+	if err := skillRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate program skills: %w", err)
+	}
+
+	// Custom term (0-or-1 row)
+	var ct models.ProgramCustomTerm
+	var startMonth, endMonth *string
+	err = r.pool.QueryRow(ctx,
+		`SELECT term_name, start_month, end_month, year FROM initiative_program_info_custom_term WHERE initiative_id = $1`, id,
+	).Scan(&ct.TermName, &startMonth, &endMonth, &ct.Year)
+	if err == nil && ct.TermName != "" {
+		ct.StartMonth = derefString(startMonth)
+		ct.EndMonth = derefString(endMonth)
+		pi.CustomTerm = &ct
+	}
+
+	return pi, nil
+}
+
+func (r *InitiativeRepository) listSponsorshipTiers(ctx context.Context, id string) ([]models.SponsorshipTier, error) {
+	const q = `SELECT id, name, description, color, icon, minimum FROM initiative_sponsorship_tiers WHERE initiative_id = $1 ORDER BY sort_order ASC`
+	rows, err := r.pool.Query(ctx, q, id)
+	if err != nil {
+		return nil, fmt.Errorf("list sponsorship tiers: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	var out []models.SponsorshipTier
+	for rows.Next() {
+		var t models.SponsorshipTier
+		var name, description, color, icon *string
+		if err := rows.Scan(&t.ID, &name, &description, &color, &icon, &t.Minimum); err != nil {
+			return nil, fmt.Errorf("scan sponsorship tier: %w", err)
+		}
+		t.Name = derefString(name)
+		t.Description = derefString(description)
+		t.Color = derefString(color)
+		t.Icon = derefString(icon)
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// loadOSTIFDetail returns nil when no row exists.
+func (r *InitiativeRepository) loadOSTIFDetail(ctx context.Context, id string) (*models.OSTIFDetail, error) {
+	var d models.OSTIFDetail
+	var ms, css, lt *string
+	err := r.pool.QueryRow(ctx,
+		`SELECT monetization_strategy, current_security_strategy, license_type,
+		        total_budget_in_cents, terms_conditions
+		 FROM initiative_ostif_detail WHERE initiative_id = $1`, id,
+	).Scan(&ms, &css, &lt, &d.TotalBudgetInCents, &d.TermsConditions)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load ostif detail: %w", err)
+	}
+	d.MonetizationStrategy = derefString(ms)
+	d.CurrentSecurityStrategy = derefString(css)
+	d.LicenseType = derefString(lt)
+	return &d, nil
+}
+
+func (r *InitiativeRepository) listContacts(ctx context.Context, id string) ([]models.Contact, error) {
+	const q = `SELECT id, contact_type, first_name, last_name, email,
+	                  phone_number, other_contact_option, preferred_contact_method
+	           FROM initiative_contacts WHERE initiative_id = $1 ORDER BY contact_type ASC`
+	rows, err := r.pool.Query(ctx, q, id)
+	if err != nil {
+		return nil, fmt.Errorf("list contacts: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	var out []models.Contact
+	for rows.Next() {
+		var c models.Contact
+		var firstName, lastName, email, phone, other, preferred *string
+		if err := rows.Scan(&c.ID, &c.ContactType,
+			&firstName, &lastName, &email, &phone, &other, &preferred,
+		); err != nil {
+			return nil, fmt.Errorf("scan contact: %w", err)
+		}
+		c.FirstName = derefString(firstName)
+		c.LastName = derefString(lastName)
+		c.Email = derefString(email)
+		c.PhoneNumber = derefString(phone)
+		c.OtherContactOption = derefString(other)
+		c.PreferredContactMethod = derefString(preferred)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// loadEntityDetails returns nil when no row exists.
+func (r *InitiativeRepository) loadEntityDetails(ctx context.Context, id string) (map[string]string, error) {
+	var raw []byte
+	err := r.pool.QueryRow(ctx,
+		`SELECT details FROM initiative_entity_details WHERE initiative_id = $1`, id,
+	).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load entity details: %w", err)
+	}
+	var details map[string]string
+	if err := json.Unmarshal(raw, &details); err != nil {
+		return nil, fmt.Errorf("unmarshal entity details: %w", err)
+	}
+	return details, nil
+}
+
+// loadGitHubStats returns nil when no row exists (non-project initiative types).
+func (r *InitiativeRepository) loadGitHubStats(ctx context.Context, id string) (*models.GitHubStats, error) {
+	var s models.GitHubStats
+	err := r.pool.QueryRow(ctx,
+		`SELECT forks, stars, open_issues FROM initiative_github_stats WHERE initiative_id = $1`, id,
+	).Scan(&s.Forks, &s.Stars, &s.OpenIssues)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load github stats: %w", err)
+	}
+	return &s, nil
 }
 
 type scanner interface {
