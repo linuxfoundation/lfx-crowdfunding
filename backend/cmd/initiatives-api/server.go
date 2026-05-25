@@ -63,8 +63,17 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		ReturnURL: cfg.Stripe.ReturnURL,
 	})
 
+	// Mandrill email client
+	mandrillClient := clients.NewMandrillClient(clients.MandrillConfig{
+		APIKey:    cfg.Mandrill.APIKey,
+		FromEmail: cfg.Mandrill.FromEmail,
+		FromName:  cfg.Mandrill.FromName,
+		Timeout:   cfg.Mandrill.Timeout,
+	})
+	emailSvc := clients.NewEmailService(mandrillClient, cfg.Mandrill.FrontendBase, cfg.Mandrill.NotificationEmail)
+
 	// Services
-	initiativeSvc := service.NewInitiativeService(initiativeRepo, ledgerClient, stripeClient, logger)
+	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, logger)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
