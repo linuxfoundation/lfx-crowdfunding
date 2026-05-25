@@ -9,7 +9,7 @@
 
 1. [Quick-start cheat sheet](#1-quick-start-cheat-sheet)
 2. [Authentication](#2-authentication)
-3. [Initiative types & statuses](#3-initiative-types--statuses)
+3. [Initiative types and statuses](#3-initiative-types-and-statuses)
 4. [Creating an initiative — POST /v1/initiatives](#4-creating-an-initiative)
 5. [Full payload reference by type](#5-full-payload-reference-by-type)
    - 5.1 project
@@ -20,9 +20,9 @@
    - 5.6 ostif
 6. [Updating an initiative — PATCH /v1/initiatives/{id}](#6-updating-an-initiative)
 7. [Child-table replace semantics (IMPORTANT)](#7-child-table-replace-semantics)
-8. [Status lifecycle & the approval workflow](#8-status-lifecycle--the-approval-workflow)
+8. [Status lifecycle and the approval workflow](#8-status-lifecycle-and-the-approval-workflow)
 9. [The email approval flow — step by step](#9-the-email-approval-flow)
-10. [Implementing the approve / decline page](#10-implementing-the-approve--decline-page)
+10. [Implementing the approve or decline page](#10-implementing-the-approve-or-decline-page)
 11. [Error reference](#11-error-reference)
 12. [End-to-end worked example](#12-end-to-end-worked-example)
 
@@ -58,7 +58,7 @@ The **approval** endpoint additionally requires that the authenticated user's `u
 
 ---
 
-## 3. Initiative types & statuses
+## 3. Initiative types and statuses
 
 ### 3.1 Valid `initiative_type` values
 
@@ -533,7 +533,7 @@ await $fetch(`/v1/initiatives/${id}`, { method: 'PATCH', body: patch });
 
 ---
 
-## 8. Status lifecycle & the approval workflow
+## 8. Status lifecycle and the approval workflow
 
 ### What the API automatically does
 
@@ -596,7 +596,7 @@ This is the complete sequence from submission to a live initiative:
 
 ---
 
-## 10. Implementing the approve / decline page
+## 10. Implementing the approve or decline page
 
 When a reviewer clicks a link in the email they are directed to a URL like:
 
