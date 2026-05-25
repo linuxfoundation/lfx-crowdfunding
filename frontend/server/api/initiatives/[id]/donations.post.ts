@@ -3,14 +3,8 @@
 
 import { defineEventHandler, readBody, getHeader, createError } from 'h3';
 import { useBackendFetch } from '../../../utils/backend-fetch';
+import type { DonationResultWire } from '../../../types/payment.types';
 import type { DonationRequest, DonationResult } from '#shared/types/payment.types';
-
-interface DonationResultWire {
-  id: string;
-  status: string;
-  client_secret?: string;
-  stripe_payment_intent_id?: string;
-}
 
 export default defineEventHandler(async (event): Promise<DonationResult> => {
   const id = event.context.params!.id;
