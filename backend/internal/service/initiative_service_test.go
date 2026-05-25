@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	stripe "github.com/stripe/stripe-go/v82"
 
@@ -19,11 +21,13 @@ import (
 // --- mocks ---
 
 type mockInitiativeRepo struct {
-	initiative  *models.Initiative
-	lastCreated *models.Initiative
-	lastUpdated *models.Initiative
-	err         error
-	updateErr   error
+	initiative      *models.Initiative
+	lastCreated     *models.Initiative
+	lastInput       models.InitiativeCreateInput
+	lastUpdated     *models.Initiative
+	lastUpdateInput models.InitiativeUpdateInput
+	err             error
+	updateErr       error
 }
 
 func (m *mockInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -44,12 +48,14 @@ func (m *mockInitiativeRepo) GetIDBySlug(_ context.Context, _ string) (string, e
 func (m *mockInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }
-func (m *mockInitiativeRepo) Create(_ context.Context, i *models.Initiative) (*models.Initiative, error) {
+func (m *mockInitiativeRepo) Create(_ context.Context, i *models.Initiative, input models.InitiativeCreateInput) (*models.Initiative, error) {
 	m.lastCreated = i
+	m.lastInput = input
 	return i, nil
 }
-func (m *mockInitiativeRepo) Update(_ context.Context, i *models.Initiative) (*models.Initiative, error) {
+func (m *mockInitiativeRepo) Update(_ context.Context, i *models.Initiative, input models.InitiativeUpdateInput) (*models.Initiative, error) {
 	m.lastUpdated = i
+	m.lastUpdateInput = input
 	return i, m.updateErr
 }
 func (m *mockInitiativeRepo) Delete(_ context.Context, _ string) error { return nil }
@@ -119,6 +125,59 @@ func (m *mockStripeClient) CreateProduct(_ context.Context, _, _ string) (string
 	return "prod_mock", nil
 }
 func (m *mockStripeClient) DeleteProduct(_ context.Context, _ string) error { return nil }
+
+type mockUserRepository struct {
+	user *models.User
+	err  error
+}
+
+func (m *mockUserRepository) GetByUserID(_ context.Context, _ string) (*models.User, error) {
+	return m.user, m.err
+}
+func (m *mockUserRepository) Upsert(_ context.Context, u *models.User) (*models.User, error) {
+	return u, nil
+}
+func (m *mockUserRepository) UpdateStripeInfo(_ context.Context, _, _, _ string) error   { return nil }
+func (m *mockUserRepository) ClearStripePaymentMethod(_ context.Context, _ string) error { return nil }
+
+type mockEmailService struct {
+	approvedCalled      bool
+	rejectedCalled      bool
+	forReviewCalled     bool
+	approvedToEmail     string
+	approvedToName      string
+	rejectedToEmail     string
+	rejectedToName      string
+	forReviewOwnerName  string
+	forReviewOwnerEmail string
+	forReviewInitName   string
+	forReviewInitURL    string
+	err                 error
+}
+
+func (m *mockEmailService) SendProjectApprovedEmail(_ context.Context, toEmail, toName, _, _ string) error {
+	m.approvedCalled = true
+	m.approvedToEmail = toEmail
+	m.approvedToName = toName
+	return m.err
+}
+func (m *mockEmailService) SendProjectDeclinedEmail(_ context.Context, toEmail, toName, _, _ string) error {
+	m.rejectedCalled = true
+	m.rejectedToEmail = toEmail
+	m.rejectedToName = toName
+	return m.err
+}
+func (m *mockEmailService) SendProjectForReviewEmail(_ context.Context, ownerName, ownerEmail, initiativeName, initiativeURL, _, _ string) error {
+	m.forReviewCalled = true
+	m.forReviewOwnerName = ownerName
+	m.forReviewOwnerEmail = ownerEmail
+	m.forReviewInitName = initiativeName
+	m.forReviewInitURL = initiativeURL
+	return m.err
+}
+func (m *mockEmailService) InitiativeURL(slug string) string {
+	return "https://crowdfunding.lfx.linuxfoundation.org/initiatives/" + slug
+}
 
 // --- flattenSponsors ---
 
@@ -289,10 +348,10 @@ func (m *mockRepoForEnrich) GetIDBySlug(_ context.Context, _ string) (string, er
 func (m *mockRepoForEnrich) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }
-func (m *mockRepoForEnrich) Create(_ context.Context, i *models.Initiative) (*models.Initiative, error) {
+func (m *mockRepoForEnrich) Create(_ context.Context, i *models.Initiative, _ models.InitiativeCreateInput) (*models.Initiative, error) {
 	return i, nil
 }
-func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative) (*models.Initiative, error) {
+func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative, _ models.InitiativeUpdateInput) (*models.Initiative, error) {
 	return i, nil
 }
 func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error { return nil }
@@ -392,8 +451,10 @@ func TestGetByID_FlattensSponsorsList(t *testing.T) {
 
 	svc := NewInitiativeService(
 		&mockInitiativeRepo{initiative: initiative},
+		&mockUserRepository{},
 		&mockLedgerClient{},
 		&mockStripeClient{},
+		&mockEmailService{},
 		slog.Default(),
 	)
 
@@ -412,8 +473,10 @@ func TestGetByID_FlattensSponsorsList(t *testing.T) {
 func TestGetByID_RepoError(t *testing.T) {
 	svc := NewInitiativeService(
 		&mockInitiativeRepo{err: errors.New("not found")},
+		&mockUserRepository{},
 		&mockLedgerClient{},
 		&mockStripeClient{},
+		&mockEmailService{},
 		slog.Default(),
 	)
 
@@ -424,7 +487,7 @@ func TestGetByID_RepoError(t *testing.T) {
 }
 
 func newCreateSvc(repo domain.InitiativeRepository) *InitiativeService {
-	return NewInitiativeService(repo, &mockLedgerClient{}, &mockStripeClient{}, slog.Default())
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
 }
 
 func TestCreate_MissingName(t *testing.T) {
@@ -474,10 +537,265 @@ func TestCreate_UnknownInitiativeType(t *testing.T) {
 	}
 }
 
+func TestCreate_GoalMissingName(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Project",
+			Slug:           "my-project",
+			InitiativeType: "project",
+			Goals:          []models.GoalInput{{AmountInCents: 50000}},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for empty goal name, got %v", err)
+	}
+}
+
+func TestCreate_CustomWebsiteMissingURL(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Project",
+			Slug:           "my-project",
+			InitiativeType: "project",
+			CustomWebsites: []models.CustomWebsiteInput{{Name: "Docs"}},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for empty website URL, got %v", err)
+	}
+}
+
+func TestCreate_ContactMissingType(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My OSTIF",
+			Slug:           "my-ostif",
+			InitiativeType: "ostif",
+			Contacts:       []models.ContactInput{{FirstName: "Jane"}},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for empty contact type, got %v", err)
+	}
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+
+func newUpdateSvc(repo *mockInitiativeRepo) *InitiativeService {
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
+}
+
+func TestUpdate_GoalMissingName(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			Goals: []models.GoalInput{{AmountInCents: 5000}},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for empty goal name, got %v", err)
+	}
+}
+
+func TestUpdate_CustomWebsiteMissingURL(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			CustomWebsites: []models.CustomWebsiteInput{{Name: "Docs"}},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for empty website URL, got %v", err)
+	}
+}
+
+func TestUpdate_ContactMissingType(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			Contacts: []models.ContactInput{{FirstName: "Jane"}},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for empty contact type, got %v", err)
+	}
+}
+
+func TestUpdate_ChildInputPassedToRepo(t *testing.T) {
+	goals := []models.GoalInput{{Name: "MVP", AmountInCents: 10000}}
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{Goals: goals},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repo.lastUpdateInput.Goals) != 1 || repo.lastUpdateInput.Goals[0].Name != "MVP" {
+		t.Errorf("expected goals to be passed to repo, got %+v", repo.lastUpdateInput.Goals)
+	}
+}
+
+func TestUpdate_NilChildFieldsAreNoOp(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastUpdateInput.Goals != nil {
+		t.Error("expected nil Goals (no-op), but got non-nil")
+	}
+}
+
+func TestUpdate_ForbiddenForNonOwner(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "other-user",
+		models.InitiativeUpdateInput{},
+	)
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+}
+
+func TestUpdate_CannotSetApprovalControlledStatus(t *testing.T) {
+	restricted := []models.InitiativeStatus{
+		models.StatusPublished,
+		models.StatusDeclined,
+		models.StatusPending,
+	}
+	for _, s := range restricted {
+		s := s
+		t.Run(string(s), func(t *testing.T) {
+			repo := &mockInitiativeRepo{
+				initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+			}
+			_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+				models.InitiativeUpdateInput{Status: &s},
+			)
+			if !errors.Is(err, domain.ErrForbidden) {
+				t.Fatalf("expected ErrForbidden for status %q, got %v", s, err)
+			}
+		})
+	}
+}
+
+// ── Create — for-review email notification ────────────────────────────────────
+
+func newCreateSvcWithEmail(repo domain.InitiativeRepository, userRepo *mockUserRepository, emailSvc *mockEmailService) *InitiativeService {
+	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, slog.Default())
+}
+
+func TestCreate_SendsForReviewEmail(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	userRepo := &mockUserRepository{
+		user: &models.User{UserID: "owner-1", Email: "owner@example.com", Name: "Alice"},
+	}
+	emailSvc := &mockEmailService{}
+
+	svc := newCreateSvcWithEmail(repo, userRepo, emailSvc)
+	created, err := svc.Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Project", Slug: "my-project", InitiativeType: "project"},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !emailSvc.forReviewCalled {
+		t.Error("expected SendProjectForReviewEmail to be called")
+	}
+	if emailSvc.forReviewOwnerName != "Alice" {
+		t.Errorf("expected ownerName Alice, got %q", emailSvc.forReviewOwnerName)
+	}
+	if emailSvc.forReviewOwnerEmail != "owner@example.com" {
+		t.Errorf("expected ownerEmail owner@example.com, got %q", emailSvc.forReviewOwnerEmail)
+	}
+	if emailSvc.forReviewInitName != "My Project" {
+		t.Errorf("expected initiativeName My Project, got %q", emailSvc.forReviewInitName)
+	}
+	if emailSvc.forReviewInitURL == "" {
+		t.Error("expected non-empty initiativeURL")
+	}
+	if created.Slug != "" && !contains(emailSvc.forReviewInitURL, created.Slug) {
+		t.Errorf("expected initiativeURL to contain slug %q, got %q", created.Slug, emailSvc.forReviewInitURL)
+	}
+}
+
+func TestCreate_ForReviewEmail_UserLookupErrorIsNonFatal(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	userRepo := &mockUserRepository{err: errors.New("user not found")}
+	emailSvc := &mockEmailService{}
+
+	svc := newCreateSvcWithEmail(repo, userRepo, emailSvc)
+	_, err := svc.Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Project", Slug: "my-project", InitiativeType: "project"},
+	)
+	if err != nil {
+		t.Fatalf("user lookup failure must not propagate, got %v", err)
+	}
+	if emailSvc.forReviewCalled {
+		t.Error("expected no email when owner lookup fails")
+	}
+}
+
+func TestCreate_ForReviewEmail_EmailErrorIsNonFatal(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	userRepo := &mockUserRepository{
+		user: &models.User{UserID: "owner-1", Email: "owner@example.com", Name: "Alice"},
+	}
+	emailSvc := &mockEmailService{err: errors.New("mandrill down")}
+
+	svc := newCreateSvcWithEmail(repo, userRepo, emailSvc)
+	_, err := svc.Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Project", Slug: "my-project", InitiativeType: "project"},
+	)
+	if err != nil {
+		t.Fatalf("email failure must not propagate, got %v", err)
+	}
+}
+
+func TestCreate_ForReviewEmail_FallsBackToEmailWhenNameEmpty(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	userRepo := &mockUserRepository{
+		user: &models.User{UserID: "owner-1", Email: "owner@example.com", Name: ""},
+	}
+	emailSvc := &mockEmailService{}
+
+	svc := newCreateSvcWithEmail(repo, userRepo, emailSvc)
+	_, _ = svc.Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Project", Slug: "my-project", InitiativeType: "project"},
+	)
+	if emailSvc.forReviewOwnerName != "owner@example.com" {
+		t.Errorf("expected ownerName to fall back to email, got %q", emailSvc.forReviewOwnerName)
+	}
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
+}
+
 // ── Approve ───────────────────────────────────────────────────────────────────
 
 func newProcessApprovalSvc(repo *mockInitiativeRepo) *InitiativeService {
-	return NewInitiativeService(repo, &mockLedgerClient{}, &mockStripeClient{}, slog.Default())
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
 }
 
 func TestProcessApproval_SetsStatusPublished(t *testing.T) {
@@ -545,5 +863,508 @@ func TestProcessApproval_RejectsNonApprovableStatus(t *testing.T) {
 	_, err := newProcessApprovalSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput for non-approvable status, got %v", err)
+	}
+}
+
+// ── Email notification tests ──────────────────────────────────────────────────
+
+func newProcessApprovalSvcWithEmail(repo *mockInitiativeRepo, userRepo *mockUserRepository, emailSvc *mockEmailService) *InitiativeService {
+	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, slog.Default())
+}
+
+func TestProcessApproval_SendsApprovedEmail(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:      "init-1",
+			Status:  models.StatusSubmitted,
+			OwnerID: "auth0|owner-1",
+			Name:    "My Project",
+			Slug:    "my-project",
+		},
+	}
+	userRepo := &mockUserRepository{
+		user: &models.User{UserID: "auth0|owner-1", Email: "owner@example.com", Name: "Alice"},
+	}
+	emailSvc := &mockEmailService{}
+
+	svc := newProcessApprovalSvcWithEmail(repo, userRepo, emailSvc)
+	_, err := svc.ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !emailSvc.approvedCalled {
+		t.Error("expected SendProjectApprovedEmail to be called")
+	}
+	if emailSvc.rejectedCalled {
+		t.Error("expected SendProjectRejectedEmail NOT to be called on approve")
+	}
+	if emailSvc.approvedToEmail != "owner@example.com" {
+		t.Errorf("expected email to owner@example.com, got %q", emailSvc.approvedToEmail)
+	}
+	if emailSvc.approvedToName != "Alice" {
+		t.Errorf("expected name Alice, got %q", emailSvc.approvedToName)
+	}
+}
+
+func TestProcessApproval_SendsRejectedEmail(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:      "init-1",
+			Status:  models.StatusSubmitted,
+			OwnerID: "auth0|owner-1",
+			Name:    "My Project",
+			Slug:    "my-project",
+		},
+	}
+	userRepo := &mockUserRepository{
+		user: &models.User{UserID: "auth0|owner-1", Email: "owner@example.com", Name: "Bob"},
+	}
+	emailSvc := &mockEmailService{}
+
+	svc := newProcessApprovalSvcWithEmail(repo, userRepo, emailSvc)
+	_, err := svc.ProcessApproval(context.Background(), "init-1", models.ApprovalActionDecline)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !emailSvc.rejectedCalled {
+		t.Error("expected SendProjectRejectedEmail to be called")
+	}
+	if emailSvc.approvedCalled {
+		t.Error("expected SendProjectApprovedEmail NOT to be called on decline")
+	}
+	if emailSvc.rejectedToEmail != "owner@example.com" {
+		t.Errorf("expected email to owner@example.com, got %q", emailSvc.rejectedToEmail)
+	}
+	if emailSvc.rejectedToName != "Bob" {
+		t.Errorf("expected name Bob, got %q", emailSvc.rejectedToName)
+	}
+}
+
+func TestProcessApproval_EmailErrorIsNonFatal(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:      "init-1",
+			Status:  models.StatusSubmitted,
+			OwnerID: "auth0|owner-1",
+			Name:    "My Project",
+			Slug:    "my-project",
+		},
+	}
+	userRepo := &mockUserRepository{
+		user: &models.User{UserID: "auth0|owner-1", Email: "owner@example.com", Name: "Alice"},
+	}
+	emailSvc := &mockEmailService{err: errors.New("mandrill down")}
+
+	svc := newProcessApprovalSvcWithEmail(repo, userRepo, emailSvc)
+	_, err := svc.ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
+	// Email failure must NOT propagate — the approval itself must succeed.
+	if err != nil {
+		t.Fatalf("expected nil error (email failure is non-fatal), got %v", err)
+	}
+}
+
+func TestProcessApproval_UserLookupErrorIsNonFatal(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:      "init-1",
+			Status:  models.StatusSubmitted,
+			OwnerID: "auth0|owner-1",
+			Name:    "My Project",
+			Slug:    "my-project",
+		},
+	}
+	userRepo := &mockUserRepository{err: errors.New("user not found")}
+	emailSvc := &mockEmailService{}
+
+	svc := newProcessApprovalSvcWithEmail(repo, userRepo, emailSvc)
+	_, err := svc.ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
+	// User lookup failure must NOT propagate.
+	if err != nil {
+		t.Fatalf("expected nil error (user lookup failure is non-fatal), got %v", err)
+	}
+	// Email must not be sent if owner lookup failed.
+	if emailSvc.approvedCalled {
+		t.Error("expected no email to be sent when owner lookup fails")
+	}
+}
+
+func TestProcessApproval_FallsBackToEmailWhenNameEmpty(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:      "init-1",
+			Status:  models.StatusSubmitted,
+			OwnerID: "auth0|owner-1",
+			Name:    "My Project",
+			Slug:    "my-project",
+		},
+	}
+	userRepo := &mockUserRepository{
+		user: &models.User{UserID: "auth0|owner-1", Email: "owner@example.com", Name: ""},
+	}
+	emailSvc := &mockEmailService{}
+
+	svc := newProcessApprovalSvcWithEmail(repo, userRepo, emailSvc)
+	_, _ = svc.ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
+
+	if emailSvc.approvedToName != "owner@example.com" {
+		t.Errorf("expected display name to fall back to email, got %q", emailSvc.approvedToName)
+	}
+}
+
+// ── Create — child-table and entity-only field propagation ────────────────────
+// These tests verify that every field added to InitiativeCreateInput in the
+// recent refactor is correctly mapped onto the Initiative struct that gets
+// passed through to the repository layer.
+
+func TestCreate_PropagatesEntityOnlyFields(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	end := now.Add(24 * time.Hour)
+
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Event",
+		Slug:           "my-event",
+		InitiativeType: "event",
+		EventbriteURL:  "https://eventbrite.com/e/123",
+		ApplicationURL: "https://apply.example.com",
+		EventStartDate: &now,
+		EventEndDate:   &end,
+		Country:        "US",
+		City:           "San Francisco",
+		IsOnline:       true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := repo.lastCreated
+	if got.EventbriteURL != "https://eventbrite.com/e/123" {
+		t.Errorf("EventbriteURL: want %q got %q", "https://eventbrite.com/e/123", got.EventbriteURL)
+	}
+	if got.ApplicationURL != "https://apply.example.com" {
+		t.Errorf("ApplicationURL: want %q got %q", "https://apply.example.com", got.ApplicationURL)
+	}
+	if got.EventStartDate == nil || !got.EventStartDate.Equal(now) {
+		t.Errorf("EventStartDate: want %v got %v", now, got.EventStartDate)
+	}
+	if got.EventEndDate == nil || !got.EventEndDate.Equal(end) {
+		t.Errorf("EventEndDate: want %v got %v", end, got.EventEndDate)
+	}
+	if got.Country != "US" {
+		t.Errorf("Country: want %q got %q", "US", got.Country)
+	}
+	if got.City != "San Francisco" {
+		t.Errorf("City: want %q got %q", "San Francisco", got.City)
+	}
+	if !got.IsOnline {
+		t.Error("IsOnline: want true got false")
+	}
+}
+
+func TestCreate_PropagatesGoals(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		Slug:           "my-project",
+		InitiativeType: "project",
+		Goals: []models.GoalInput{
+			{Name: "Development", AmountInCents: 50000, Allocation: "eng", SortOrder: 0},
+			{Name: "Marketing", AmountInCents: 10000, SortOrder: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	goals := repo.lastInput.Goals
+	if len(goals) != 2 {
+		t.Fatalf("expected 2 goals, got %d", len(goals))
+	}
+	if goals[0].Name != "Development" || goals[0].AmountInCents != 50000 || goals[0].Allocation != "eng" {
+		t.Errorf("goal[0] mismatch: %+v", goals[0])
+	}
+	if goals[1].Name != "Marketing" || goals[1].SortOrder != 1 {
+		t.Errorf("goal[1] mismatch: %+v", goals[1])
+	}
+}
+
+func TestCreate_PropagatesBeneficiaries(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		Slug:           "my-project",
+		InitiativeType: "project",
+		Beneficiaries: []models.BeneficiaryInput{
+			{Name: "Alice", Email: "alice@example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repo.lastInput.Beneficiaries) != 1 {
+		t.Fatalf("expected 1 beneficiary, got %d", len(repo.lastInput.Beneficiaries))
+	}
+	b := repo.lastInput.Beneficiaries[0]
+	if b.Name != "Alice" || b.Email != "alice@example.com" {
+		t.Errorf("beneficiary mismatch: %+v", b)
+	}
+}
+
+func TestCreate_PropagatesCustomWebsites(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		Slug:           "my-project",
+		InitiativeType: "project",
+		CustomWebsites: []models.CustomWebsiteInput{
+			{Name: "Docs", URL: "https://docs.example.com"},
+			{Name: "Blog", URL: "https://blog.example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ws := repo.lastInput.CustomWebsites
+	if len(ws) != 2 {
+		t.Fatalf("expected 2 custom websites, got %d", len(ws))
+	}
+	if ws[0].URL != "https://docs.example.com" {
+		t.Errorf("custom website[0] URL mismatch: %q", ws[0].URL)
+	}
+}
+
+func TestCreate_PropagatesContributors(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		Slug:           "my-project",
+		InitiativeType: "project",
+		Contributors: []models.ContributorInput{
+			{Name: "Bob", Email: "bob@example.com"},
+			{Name: "Carol", Email: "carol@example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cs := repo.lastInput.Contributors
+	if len(cs) != 2 {
+		t.Fatalf("expected 2 contributors, got %d", len(cs))
+	}
+	if cs[0].Name != "Bob" || cs[1].Name != "Carol" {
+		t.Errorf("contributor names mismatch: %q, %q", cs[0].Name, cs[1].Name)
+	}
+}
+
+func TestCreate_PropagatesMentors(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Mentorship",
+		Slug:           "my-mentorship",
+		InitiativeType: "mentorship",
+		Mentors: []models.MentorInput{
+			{Name: "Dr. Smith", Email: "smith@uni.edu", Introduction: "Expert in Go"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ms := repo.lastInput.Mentors
+	if len(ms) != 1 {
+		t.Fatalf("expected 1 mentor, got %d", len(ms))
+	}
+	if ms[0].Name != "Dr. Smith" || ms[0].Introduction != "Expert in Go" {
+		t.Errorf("mentor mismatch: %+v", ms[0])
+	}
+}
+
+func TestCreate_PropagatesProgramInfo(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Mentorship",
+		Slug:           "my-mentorship",
+		InitiativeType: "mentorship",
+		ProgramInfo: &models.ProgramInfoInput{
+			Terms:           []string{"Spring 2026", "Fall 2026"},
+			Skills:          []string{"Go", "Kubernetes"},
+			TermsConditions: true,
+			CustomTerm: &models.CustomTermInput{
+				TermName:   "Custom",
+				StartMonth: "January",
+				EndMonth:   "June",
+				Year:       2026,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	pi := repo.lastInput.ProgramInfo
+	if pi == nil {
+		t.Fatal("expected ProgramInfo to be non-nil")
+	}
+	if len(pi.Terms) != 2 || pi.Terms[0] != "Spring 2026" {
+		t.Errorf("terms mismatch: %v", pi.Terms)
+	}
+	if len(pi.Skills) != 2 || pi.Skills[1] != "Kubernetes" {
+		t.Errorf("skills mismatch: %v", pi.Skills)
+	}
+	if !pi.TermsConditions {
+		t.Error("expected TermsConditions true")
+	}
+	if pi.CustomTerm == nil || pi.CustomTerm.TermName != "Custom" || pi.CustomTerm.Year != 2026 {
+		t.Errorf("custom term mismatch: %+v", pi.CustomTerm)
+	}
+}
+
+func TestCreate_PropagatesSponsorshipTiers(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Event",
+		Slug:           "my-event",
+		InitiativeType: "event",
+		SponsorshipTiers: []models.SponsorshipTierInput{
+			{Name: "Gold", Minimum: 500000, SortOrder: 0},
+			{Name: "Silver", Minimum: 100000, SortOrder: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	tiers := repo.lastInput.SponsorshipTiers
+	if len(tiers) != 2 {
+		t.Fatalf("expected 2 sponsorship tiers, got %d", len(tiers))
+	}
+	if tiers[0].Name != "Gold" || tiers[0].Minimum != 500000 {
+		t.Errorf("tier[0] mismatch: %+v", tiers[0])
+	}
+	if tiers[1].Name != "Silver" || tiers[1].SortOrder != 1 {
+		t.Errorf("tier[1] mismatch: %+v", tiers[1])
+	}
+}
+
+func TestCreate_PropagatesOSTIFDetail(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My OSTIF Audit",
+		Slug:           "my-ostif",
+		InitiativeType: "ostif",
+		OSTIFDetail: &models.OSTIFDetailInput{
+			MonetizationStrategy:    "donations",
+			CurrentSecurityStrategy: "manual review",
+			LicenseType:             "MIT",
+			TotalBudgetInCents:      1000000,
+			TermsConditions:         true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	d := repo.lastInput.OSTIFDetail
+	if d == nil {
+		t.Fatal("expected OSTIFDetail to be non-nil")
+	}
+	if d.MonetizationStrategy != "donations" {
+		t.Errorf("MonetizationStrategy: want %q got %q", "donations", d.MonetizationStrategy)
+	}
+	if d.CurrentSecurityStrategy != "manual review" {
+		t.Errorf("CurrentSecurityStrategy: want %q got %q", "manual review", d.CurrentSecurityStrategy)
+	}
+	if d.LicenseType != "MIT" {
+		t.Errorf("LicenseType: want %q got %q", "MIT", d.LicenseType)
+	}
+	if d.TotalBudgetInCents != 1000000 {
+		t.Errorf("TotalBudgetInCents: want 1000000 got %d", d.TotalBudgetInCents)
+	}
+	if !d.TermsConditions {
+		t.Error("expected TermsConditions true")
+	}
+}
+
+func TestCreate_PropagatesContacts(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My OSTIF Audit",
+		Slug:           "my-ostif",
+		InitiativeType: "ostif",
+		Contacts: []models.ContactInput{
+			{ContactType: "primary", FirstName: "Jane", LastName: "Doe", Email: "jane@example.com", PhoneNumber: "555-1234"},
+			{ContactType: "technical_lead", FirstName: "John", Email: "john@example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cs := repo.lastInput.Contacts
+	if len(cs) != 2 {
+		t.Fatalf("expected 2 contacts, got %d", len(cs))
+	}
+	if cs[0].ContactType != "primary" || cs[0].FirstName != "Jane" || cs[0].PhoneNumber != "555-1234" {
+		t.Errorf("contact[0] mismatch: %+v", cs[0])
+	}
+	if cs[1].ContactType != "technical_lead" || cs[1].FirstName != "John" {
+		t.Errorf("contact[1] mismatch: %+v", cs[1])
+	}
+}
+
+func TestCreate_PropagatesEntityDetails(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Event",
+		Slug:           "my-event",
+		InitiativeType: "event",
+		EntityDetails:  map[string]string{"category": "open-source", "tier": "top"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ed := repo.lastInput.EntityDetails
+	if len(ed) != 2 {
+		t.Fatalf("expected 2 entity detail entries, got %d", len(ed))
+	}
+	if ed["category"] != "open-source" {
+		t.Errorf("EntityDetails[category]: want %q got %q", "open-source", ed["category"])
+	}
+	if ed["tier"] != "top" {
+		t.Errorf("EntityDetails[tier]: want %q got %q", "top", ed["tier"])
+	}
+}
+
+func TestCreate_NilChildFieldsWhenNotProvided(t *testing.T) {
+	// Verifies that omitting child-table fields leaves them nil/empty on the
+	// Initiative — no accidental default population.
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "Bare Project",
+		Slug:           "bare-project",
+		InitiativeType: "project",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repo.lastInput.Goals) != 0 {
+		t.Errorf("expected empty Goals, got %d", len(repo.lastInput.Goals))
+	}
+	if len(repo.lastInput.Beneficiaries) != 0 {
+		t.Errorf("expected empty Beneficiaries, got %d", len(repo.lastInput.Beneficiaries))
+	}
+	if repo.lastInput.ProgramInfo != nil {
+		t.Error("expected nil ProgramInfo")
+	}
+	if repo.lastInput.OSTIFDetail != nil {
+		t.Error("expected nil OSTIFDetail")
+	}
+	if repo.lastInput.EntityDetails != nil {
+		t.Error("expected nil EntityDetails")
 	}
 }

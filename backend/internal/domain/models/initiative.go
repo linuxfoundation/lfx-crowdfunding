@@ -140,6 +140,7 @@ type Initiative struct {
 	JobspringProjectID string            `json:"-"`
 	StacksIdentifier   string            `json:"-"`
 	RawSponsors        LedgerSponsorList `json:"-"` // set by DB layer; flattened into Sponsors by service layer
+
 }
 
 // InitiativeCreateInput is the request body for creating an initiative.
@@ -154,10 +155,33 @@ type InitiativeCreateInput struct {
 	WebsiteURL     string `json:"website_url,omitempty"`
 	CocURL         string `json:"coc_url,omitempty"`
 	AcceptFunding  bool   `json:"accept_funding"`
+
+	// Entity-only fields — null for non-entity initiative types.
+	EventbriteURL  string     `json:"eventbrite_url,omitempty"`
+	ApplicationURL string     `json:"application_url,omitempty"`
+	EventStartDate *time.Time `json:"event_start_date,omitempty"`
+	EventEndDate   *time.Time `json:"event_end_date,omitempty"`
+	Country        string     `json:"country,omitempty"`
+	City           string     `json:"city,omitempty"`
+	IsOnline       bool       `json:"is_online,omitempty"`
+
+	// Child table data — each slice/pointer may be nil/empty when not applicable
+	// to the given initiative_type.
+	Goals            []GoalInput            `json:"goals,omitempty"`
+	Beneficiaries    []BeneficiaryInput     `json:"beneficiaries,omitempty"`
+	CustomWebsites   []CustomWebsiteInput   `json:"custom_websites,omitempty"`
+	Contributors     []ContributorInput     `json:"contributors,omitempty"`      // project only
+	Mentors          []MentorInput          `json:"mentors,omitempty"`           // mentorship only
+	ProgramInfo      *ProgramInfoInput      `json:"program_info,omitempty"`      // mentorship only
+	SponsorshipTiers []SponsorshipTierInput `json:"sponsorship_tiers,omitempty"` // entity only
+	OSTIFDetail      *OSTIFDetailInput      `json:"ostif_detail,omitempty"`      // ostif only
+	Contacts         []ContactInput         `json:"contacts,omitempty"`          // ostif only
+	EntityDetails    map[string]string      `json:"entity_details,omitempty"`    // entity only
 }
 
 // InitiativeUpdateInput is the request body for updating an initiative.
 type InitiativeUpdateInput struct {
+	// Core fields — nil means "leave unchanged".
 	Name          *string           `json:"name,omitempty"`
 	Slug          *string           `json:"slug,omitempty"`
 	Status        *InitiativeStatus `json:"status,omitempty"`
@@ -168,4 +192,26 @@ type InitiativeUpdateInput struct {
 	WebsiteURL    *string           `json:"website_url,omitempty"`
 	CocURL        *string           `json:"coc_url,omitempty"`
 	AcceptFunding *bool             `json:"accept_funding,omitempty"`
+
+	// Entity-only fields — nil means "leave unchanged".
+	EventbriteURL  *string    `json:"eventbrite_url,omitempty"`
+	ApplicationURL *string    `json:"application_url,omitempty"`
+	EventStartDate *time.Time `json:"event_start_date,omitempty"`
+	EventEndDate   *time.Time `json:"event_end_date,omitempty"`
+	Country        *string    `json:"country,omitempty"`
+	City           *string    `json:"city,omitempty"`
+	IsOnline       *bool      `json:"is_online,omitempty"`
+
+	// Child table data — nil slice/pointer means "leave table unchanged";
+	// non-nil (including empty) replaces all existing rows.
+	Goals            []GoalInput            `json:"goals,omitempty"`
+	Beneficiaries    []BeneficiaryInput     `json:"beneficiaries,omitempty"`
+	CustomWebsites   []CustomWebsiteInput   `json:"custom_websites,omitempty"`
+	Contributors     []ContributorInput     `json:"contributors,omitempty"`
+	Mentors          []MentorInput          `json:"mentors,omitempty"`
+	ProgramInfo      *ProgramInfoInput      `json:"program_info,omitempty"`
+	SponsorshipTiers []SponsorshipTierInput `json:"sponsorship_tiers,omitempty"`
+	OSTIFDetail      *OSTIFDetailInput      `json:"ostif_detail,omitempty"`
+	Contacts         []ContactInput         `json:"contacts,omitempty"`
+	EntityDetails    map[string]string      `json:"entity_details,omitempty"`
 }

@@ -1,0 +1,161 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
+// Package clients provides outbound HTTP clients for external services.
+package clients
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+)
+
+var mandrillTracer = otel.Tracer("mandrill-client")
+
+// ErrMandrillNotConfigured is returned by SendTemplate when the API key is empty.
+// The email service propagates this sentinel; callers should log at WARN and continue.
+var ErrMandrillNotConfigured = errors.New("mandrill: API key not configured")
+
+// MandrillTemplateName is a strongly-typed Mandrill template slug.
+type MandrillTemplateName string
+
+const (
+	// MandrillTemplateSubmittedForReview is sent to the reviewer inbox when a new
+	// initiative is submitted and is awaiting approval.
+	MandrillTemplateSubmittedForReview MandrillTemplateName = "communitybridge-review-mentorship-submission"
+	// MandrillTemplateApproved is sent to the initiative owner when their
+	// initiative is approved and goes live.
+	MandrillTemplateApproved MandrillTemplateName = "admin-mentorship-submission-approved"
+	// MandrillTemplateDeclined is sent to the initiative owner when their
+	// initiative is declined.
+	MandrillTemplateDeclined MandrillTemplateName = "admin-mentorship-submission-rejected"
+)
+
+// MandrillClient is the interface consumed by the email service layer.
+type MandrillClient interface {
+	// SendTemplate sends a Mandrill transactional template to a single recipient.
+	// templateName must match the slug configured in Mandrill.
+	// mergeVars is the map of UPPERCASE merge-tag names to their string values.
+	SendTemplate(ctx context.Context, templateName MandrillTemplateName, toEmail, toName string, mergeVars map[string]string) error
+}
+
+// MandrillConfig holds Mandrill transactional email settings.
+type MandrillConfig struct {
+	APIKey    string
+	FromEmail string        // e.g. "noreply@lfx.linuxfoundation.org"
+	FromName  string        // e.g. "LFX Crowdfunding"
+	Timeout   time.Duration // default 10s
+}
+
+type mandrillClient struct {
+	cfg        MandrillConfig
+	httpClient *http.Client
+}
+
+// NewMandrillClient creates a Mandrill HTTP client with OTel-traced transport.
+func NewMandrillClient(cfg MandrillConfig) MandrillClient {
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 10 * time.Second
+	}
+	return &mandrillClient{
+		cfg: cfg,
+		httpClient: &http.Client{
+			Timeout:   cfg.Timeout,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
+	}
+}
+
+// mandrillMergeVar is the wire format for a single global merge variable.
+type mandrillMergeVar struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
+// mandrillRecipient is the wire format for an email recipient.
+type mandrillRecipient struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+}
+
+// mandrillMessage is the wire format for the Mandrill message object.
+type mandrillMessage struct {
+	FromEmail       string              `json:"from_email"`
+	FromName        string              `json:"from_name"`
+	To              []mandrillRecipient `json:"to"`
+	GlobalMergeVars []mandrillMergeVar  `json:"global_merge_vars"`
+}
+
+// mandrillSendTemplateRequest is the full Mandrill send-template request body.
+type mandrillSendTemplateRequest struct {
+	Key             string          `json:"key"`
+	TemplateName    string          `json:"template_name"`
+	TemplateContent []struct{}      `json:"template_content"`
+	Message         mandrillMessage `json:"message"`
+}
+
+const mandrillAPIURL = "https://mandrillapp.com/api/1.0/messages/send-template.json"
+
+// SendTemplate sends a transactional template via the Mandrill API.
+func (c *mandrillClient) SendTemplate(ctx context.Context, templateName MandrillTemplateName, toEmail, toName string, mergeVars map[string]string) error {
+	if c.cfg.APIKey == "" {
+		return ErrMandrillNotConfigured
+	}
+
+	ctx, span := mandrillTracer.Start(ctx, "mandrill.send-template")
+	defer span.End()
+	span.SetAttributes(attribute.String("mandrill.template", string(templateName)))
+
+	globalMergeVars := make([]mandrillMergeVar, 0, len(mergeVars))
+	for k, v := range mergeVars {
+		globalMergeVars = append(globalMergeVars, mandrillMergeVar{Name: k, Content: v})
+	}
+
+	payload := mandrillSendTemplateRequest{
+		Key:             c.cfg.APIKey,
+		TemplateName:    string(templateName),
+		TemplateContent: []struct{}{},
+		Message: mandrillMessage{
+			FromEmail:       c.cfg.FromEmail,
+			FromName:        c.cfg.FromName,
+			To:              []mandrillRecipient{{Email: toEmail, Name: toName, Type: "to"}},
+			GlobalMergeVars: globalMergeVars,
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("mandrill: marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mandrillAPIURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("mandrill: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("mandrill: execute request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	// Always drain the body so the underlying TCP connection can be reused.
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("mandrill: unexpected status %d for template %q: %s", resp.StatusCode, templateName, respBody)
+	}
+
+	return nil
+}

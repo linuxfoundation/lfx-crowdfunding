@@ -36,7 +36,7 @@ type apprInitiativeRepo struct {
 func (r *apprInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
 	return r.initiative, r.getErr
 }
-func (r *apprInitiativeRepo) Update(_ context.Context, i *models.Initiative) (*models.Initiative, error) {
+func (r *apprInitiativeRepo) Update(_ context.Context, i *models.Initiative, _ models.InitiativeUpdateInput) (*models.Initiative, error) {
 	r.lastUpdated = i
 	return i, r.updateErr
 }
@@ -49,7 +49,7 @@ func (r *apprInitiativeRepo) GetIDBySlug(_ context.Context, _ string) (string, e
 func (r *apprInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }
-func (r *apprInitiativeRepo) Create(_ context.Context, i *models.Initiative) (*models.Initiative, error) {
+func (r *apprInitiativeRepo) Create(_ context.Context, i *models.Initiative, _ models.InitiativeCreateInput) (*models.Initiative, error) {
 	return i, nil
 }
 func (r *apprInitiativeRepo) Delete(_ context.Context, _ string) error { return nil }
@@ -119,12 +119,42 @@ func (c *apprStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64
 	return "", nil
 }
 
+// apprUserRepository is a no-op UserRepository stub.
+type apprUserRepository struct{}
+
+func (r *apprUserRepository) GetByUserID(_ context.Context, _ string) (*models.User, error) {
+	return nil, errors.New("user not found")
+}
+func (r *apprUserRepository) Upsert(_ context.Context, u *models.User) (*models.User, error) {
+	return u, nil
+}
+func (r *apprUserRepository) UpdateStripeInfo(_ context.Context, _, _, _ string) error { return nil }
+func (r *apprUserRepository) ClearStripePaymentMethod(_ context.Context, _ string) error {
+	return nil
+}
+
+// apprEmailService is a no-op EmailService stub.
+type apprEmailService struct{}
+
+func (e *apprEmailService) SendProjectApprovedEmail(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+func (e *apprEmailService) SendProjectDeclinedEmail(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+func (e *apprEmailService) SendProjectForReviewEmail(_ context.Context, _, _, _, _, _, _ string) error {
+	return nil
+}
+func (e *apprEmailService) InitiativeURL(slug string) string {
+	return "https://crowdfunding.lfx.linuxfoundation.org/initiatives/" + slug
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // newApprovalHandler builds an InitiativeHandler wired to the given repo and
 // approvers list. Ledger and Stripe clients are no-op stubs.
 func newApprovalHandler(repo *apprInitiativeRepo, approvers []string) *InitiativeHandler {
-	svc := service.NewInitiativeService(repo, &apprLedgerClient{}, &apprStripeClient{}, slog.Default())
+	svc := service.NewInitiativeService(repo, &apprUserRepository{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
 	return NewInitiativeHandler(svc, approvers, slog.Default())
 }
 

@@ -70,11 +70,15 @@ func (r *InitiativeRepository) GetByID(ctx context.Context, id string) (*models.
 	row := r.pool.QueryRow(ctx, q, id)
 	initiative, err := scanInitiative(row)
 	if err != nil {
+		if !errors.Is(err, domain.ErrInitiativeNotFound) {
+			span.RecordError(err)
+		}
 		return nil, err
 	}
 
 	goals, err := r.listGoals(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
 	initiative.Goals = goals
@@ -91,11 +95,15 @@ func (r *InitiativeRepository) GetBySlug(ctx context.Context, slug string) (*mod
 	row := r.pool.QueryRow(ctx, q, slug)
 	initiative, err := scanInitiative(row)
 	if err != nil {
+		if !errors.Is(err, domain.ErrInitiativeNotFound) {
+			span.RecordError(err)
+		}
 		return nil, err
 	}
 
 	goals, err := r.listGoals(ctx, initiative.ID)
 	if err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
 	initiative.Goals = goals
@@ -115,6 +123,7 @@ func (r *InitiativeRepository) GetIDBySlug(ctx context.Context, slug string) (st
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", domain.ErrInitiativeNotFound
 		}
+		span.RecordError(err)
 		return "", fmt.Errorf("get id by slug: %w", err)
 	}
 	return id, nil
@@ -196,19 +205,21 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list initiatives: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var initiatives []*models.Initiative
 	var ids []string
 	for rows.Next() {
 		i, err := scanInitiative(rows)
 		if err != nil {
+			span.RecordError(err)
 			return nil, nil, fmt.Errorf("scan initiative: %w", err)
 		}
 		initiatives = append(initiatives, i)
 		ids = append(ids, i.ID)
 	}
 	if err := rows.Err(); err != nil {
+		span.RecordError(err)
 		return nil, nil, fmt.Errorf("iterate initiatives: %w", err)
 	}
 
@@ -216,6 +227,7 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	if len(ids) > 0 {
 		goalsByID, err := r.listGoalsForIDs(ctx, ids)
 		if err != nil {
+			span.RecordError(err)
 			return nil, nil, err
 		}
 		for _, i := range initiatives {
@@ -229,65 +241,507 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	return initiatives, meta, nil
 }
 
-// Create inserts a new initiative row.
-func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative) (*models.Initiative, error) {
-	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.Create")
-	defer span.End()
-	span.SetAttributes(attribute.String("db.initiative_id", i.ID))
-
-	const q = `
+// SQL constants for Create — grouped here so they can be read together and
+// linted independently of the surrounding logic.
+const (
+	insertInitiative = `
 		INSERT INTO initiatives
 		       (id, initiative_type, owner_id, name, slug, status, industry,
 		        description, color, logo_url, website_url, coc_url,
-		        stripe_plan_id, stripe_product_id, accept_funding)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`
+		        stripe_plan_id, stripe_product_id, accept_funding,
+		        eventbrite_url, application_url, event_start_date, event_end_date,
+		        country, city, is_online)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+		        $16,$17,$18,$19,$20,$21,$22)`
 
-	_, err := r.pool.Exec(ctx, q,
+	insertGoal = `
+		INSERT INTO initiative_goals
+		       (id, initiative_id, name, amount_in_cents, allocation,
+		        repo_link, description, color, icon, sort_order)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)`
+
+	insertBeneficiary = `
+		INSERT INTO initiative_beneficiaries (id, initiative_id, name, email)
+		VALUES (gen_random_uuid(), $1, $2, $3)`
+
+	insertCustomWebsite = `
+		INSERT INTO initiative_custom_websites (id, initiative_id, name, url)
+		VALUES (gen_random_uuid(), $1, $2, $3)`
+
+	insertContributor = `
+		INSERT INTO initiative_contributors (id, initiative_id, name, email)
+		VALUES (gen_random_uuid(), $1, $2, $3)`
+
+	insertMentor = `
+		INSERT INTO initiative_mentors
+		       (id, initiative_id, name, email, avatar_url, introduction)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)`
+
+	insertProgramTerm = `
+		INSERT INTO initiative_program_info_terms
+		       (id, initiative_id, term, sort_order)
+		VALUES (gen_random_uuid(), $1, $2, $3)`
+
+	insertProgramSkill = `
+		INSERT INTO initiative_program_info_skills (id, initiative_id, skill)
+		VALUES (gen_random_uuid(), $1, $2)
+		ON CONFLICT (initiative_id, skill) DO NOTHING`
+
+	insertProgramConfig = `
+		INSERT INTO initiative_program_info_config (initiative_id, terms_conditions)
+		VALUES ($1, $2)`
+
+	insertProgramCustomTerm = `
+		INSERT INTO initiative_program_info_custom_term
+		       (initiative_id, term_name, start_month, end_month, year)
+		VALUES ($1, $2, $3, $4, $5)`
+
+	insertSponsorshipTier = `
+		INSERT INTO initiative_sponsorship_tiers
+		       (id, initiative_id, name, description, color, icon, minimum, sort_order)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)`
+
+	insertOSTIFDetail = `
+		INSERT INTO initiative_ostif_detail
+		       (initiative_id, monetization_strategy, current_security_strategy,
+		        license_type, total_budget_in_cents, terms_conditions)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+
+	insertContact = `
+		INSERT INTO initiative_contacts
+		       (id, initiative_id, contact_type, first_name, last_name, email,
+		        phone_number, other_contact_option, preferred_contact_method)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)`
+
+	insertGitHubStats = `
+		INSERT INTO initiative_github_stats (initiative_id, forks, stars, open_issues)
+		VALUES ($1, 0, 0, 0)`
+
+	insertEntityDetails = `
+		INSERT INTO initiative_entity_details (initiative_id, details)
+		VALUES ($1, $2)`
+
+	// DELETE constants used by the transactional Update to replace child rows.
+	deleteGoals             = `DELETE FROM initiative_goals WHERE initiative_id = $1`
+	deleteBeneficiaries     = `DELETE FROM initiative_beneficiaries WHERE initiative_id = $1`
+	deleteCustomWebsites    = `DELETE FROM initiative_custom_websites WHERE initiative_id = $1`
+	deleteContributors      = `DELETE FROM initiative_contributors WHERE initiative_id = $1`
+	deleteMentors           = `DELETE FROM initiative_mentors WHERE initiative_id = $1`
+	deleteProgramTerms      = `DELETE FROM initiative_program_info_terms WHERE initiative_id = $1`
+	deleteProgramSkills     = `DELETE FROM initiative_program_info_skills WHERE initiative_id = $1`
+	deleteProgramConfig     = `DELETE FROM initiative_program_info_config WHERE initiative_id = $1`
+	deleteProgramCustomTerm = `DELETE FROM initiative_program_info_custom_term WHERE initiative_id = $1`
+	deleteSponsorshipTiers  = `DELETE FROM initiative_sponsorship_tiers WHERE initiative_id = $1`
+	deleteOSTIFDetail       = `DELETE FROM initiative_ostif_detail WHERE initiative_id = $1`
+	deleteContacts          = `DELETE FROM initiative_contacts WHERE initiative_id = $1`
+	deleteEntityDetails     = `DELETE FROM initiative_entity_details WHERE initiative_id = $1`
+
+	updateInitiative = `
+		UPDATE initiatives SET
+		    name              = $2,
+		    slug              = $3,
+		    status            = $4,
+		    industry          = $5,
+		    description       = $6,
+		    color             = $7,
+		    logo_url          = $8,
+		    website_url       = $9,
+		    coc_url           = $10,
+		    accept_funding    = $11,
+		    eventbrite_url    = $12,
+		    application_url   = $13,
+		    event_start_date  = $14,
+		    event_end_date    = $15,
+		    country           = $16,
+		    city              = $17,
+		    is_online         = $18
+		WHERE id = $1`
+)
+
+// Create inserts a new initiative and all of its child-table rows in a single
+// transaction. If any insert fails the transaction is rolled back and the error
+// is returned. On success it re-fetches the row via GetByID so that all
+// computed columns (e.g. ledger stats) are correctly zero-initialised.
+func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative, input models.InitiativeCreateInput) (_ *models.Initiative, retErr error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.Create")
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+		}
+		span.End()
+	}()
+	span.SetAttributes(attribute.String("db.initiative_id", i.ID))
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// 1. Main initiatives row — includes entity-only fields (NULLed when not applicable).
+	if _, err = tx.Exec(ctx, insertInitiative,
 		i.ID, i.InitiativeType, i.OwnerID, i.Name, nullableString(i.Slug), nullableString(string(i.Status)),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
 		nullableString(i.StripePlanID), nullableString(i.StripeProductID),
 		i.AcceptFunding,
-	)
-	if err != nil {
-		span.RecordError(err)
+		nullableString(i.EventbriteURL), nullableString(i.ApplicationURL),
+		i.EventStartDate, i.EventEndDate,
+		nullableString(i.Country), nullableString(i.City), i.IsOnline,
+	); err != nil {
 		return nil, fmt.Errorf("create initiative: %w", err)
+	}
+
+	// 2. Goals
+	for _, g := range input.Goals {
+		if _, err = tx.Exec(ctx, insertGoal,
+			i.ID, g.Name, g.AmountInCents,
+			nullableString(g.Allocation), nullableString(g.RepoLink), nullableString(g.Description),
+			nullableString(g.Color), nullableString(g.Icon), g.SortOrder,
+		); err != nil {
+			return nil, fmt.Errorf("insert goal %q: %w", g.Name, err)
+		}
+	}
+
+	// 3. Beneficiaries
+	for _, b := range input.Beneficiaries {
+		if _, err = tx.Exec(ctx, insertBeneficiary,
+			i.ID, nullableString(b.Name), nullableString(b.Email),
+		); err != nil {
+			return nil, fmt.Errorf("insert beneficiary %q: %w", b.Email, err)
+		}
+	}
+
+	// 4. Custom websites
+	for _, w := range input.CustomWebsites {
+		if _, err = tx.Exec(ctx, insertCustomWebsite,
+			i.ID, nullableString(w.Name), w.URL,
+		); err != nil {
+			return nil, fmt.Errorf("insert custom website %q: %w", w.URL, err)
+		}
+	}
+
+	// 5. Contributors (project only)
+	for _, c := range input.Contributors {
+		if _, err = tx.Exec(ctx, insertContributor,
+			i.ID, nullableString(c.Name), nullableString(c.Email),
+		); err != nil {
+			return nil, fmt.Errorf("insert contributor %q: %w", c.Email, err)
+		}
+	}
+
+	// 6. Mentors (mentorship only)
+	for _, m := range input.Mentors {
+		if _, err = tx.Exec(ctx, insertMentor,
+			i.ID, nullableString(m.Name), nullableString(m.Email),
+			nullableString(m.AvatarURL), nullableString(m.Introduction),
+		); err != nil {
+			return nil, fmt.Errorf("insert mentor %q: %w", m.Email, err)
+		}
+	}
+
+	// 7. Program info (mentorship only)
+	if input.ProgramInfo != nil {
+		for idx, term := range input.ProgramInfo.Terms {
+			if _, err = tx.Exec(ctx, insertProgramTerm,
+				i.ID, term, idx,
+			); err != nil {
+				return nil, fmt.Errorf("insert program term %q: %w", term, err)
+			}
+		}
+
+		for _, skill := range input.ProgramInfo.Skills {
+			if _, err = tx.Exec(ctx, insertProgramSkill,
+				i.ID, skill,
+			); err != nil {
+				return nil, fmt.Errorf("insert program skill %q: %w", skill, err)
+			}
+		}
+
+		if _, err = tx.Exec(ctx, insertProgramConfig,
+			i.ID, input.ProgramInfo.TermsConditions,
+		); err != nil {
+			return nil, fmt.Errorf("insert program config: %w", err)
+		}
+
+		if ct := input.ProgramInfo.CustomTerm; ct != nil && ct.TermName != "" {
+			if _, err = tx.Exec(ctx, insertProgramCustomTerm,
+				i.ID, ct.TermName,
+				nullableString(ct.StartMonth), nullableString(ct.EndMonth),
+				ct.Year,
+			); err != nil {
+				return nil, fmt.Errorf("insert program custom term: %w", err)
+			}
+		}
+	}
+
+	// 8. Sponsorship tiers (entity only)
+	for _, t := range input.SponsorshipTiers {
+		if _, err = tx.Exec(ctx, insertSponsorshipTier,
+			i.ID, nullableString(t.Name), nullableString(t.Description),
+			nullableString(t.Color), nullableString(t.Icon),
+			t.Minimum, t.SortOrder,
+		); err != nil {
+			return nil, fmt.Errorf("insert sponsorship tier %q: %w", t.Name, err)
+		}
+	}
+
+	// 9. OSTIF detail (ostif only)
+	if input.OSTIFDetail != nil {
+		d := input.OSTIFDetail
+		if _, err = tx.Exec(ctx, insertOSTIFDetail,
+			i.ID,
+			nullableString(d.MonetizationStrategy), nullableString(d.CurrentSecurityStrategy),
+			nullableString(d.LicenseType), d.TotalBudgetInCents, d.TermsConditions,
+		); err != nil {
+			return nil, fmt.Errorf("insert ostif detail: %w", err)
+		}
+	}
+
+	// 10. Contacts (ostif only)
+	for _, c := range input.Contacts {
+		if _, err = tx.Exec(ctx, insertContact,
+			i.ID, c.ContactType,
+			nullableString(c.FirstName), nullableString(c.LastName), nullableString(c.Email),
+			nullableString(c.PhoneNumber), nullableString(c.OtherContactOption),
+			nullableString(c.PreferredContactMethod),
+		); err != nil {
+			return nil, fmt.Errorf("insert contact %q: %w", c.ContactType, err)
+		}
+	}
+
+	// 11. GitHub stats (project only — initialised at zero; updated by the sync cron).
+	if i.InitiativeType == "project" {
+		if _, err = tx.Exec(ctx, insertGitHubStats, i.ID); err != nil {
+			return nil, fmt.Errorf("insert github stats: %w", err)
+		}
+	}
+
+	// 12. Entity details (entity only)
+	if len(input.EntityDetails) > 0 {
+		detailsJSON, jsonErr := json.Marshal(input.EntityDetails)
+		if jsonErr != nil {
+			return nil, fmt.Errorf("marshal entity details: %w", jsonErr)
+		}
+		if _, err = tx.Exec(ctx, insertEntityDetails,
+			i.ID, detailsJSON,
+		); err != nil {
+			return nil, fmt.Errorf("insert entity details: %w", err)
+		}
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit initiative create: %w", err)
 	}
 	return r.GetByID(ctx, i.ID)
 }
 
-// Update applies changes to an existing initiative.
-func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative) (*models.Initiative, error) {
+// Update applies changes to an existing initiative and its child-table rows in a single
+// transaction. For each child collection a nil value means "leave unchanged"; a non-nil
+// value (even empty) replaces all existing rows with the provided set.
+func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative, input models.InitiativeUpdateInput) (_ *models.Initiative, retErr error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.Update")
-	defer span.End()
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+		}
+		span.End()
+	}()
 	span.SetAttributes(attribute.String("db.initiative_id", i.ID))
 
-	const q = `
-		UPDATE initiatives SET
-		    name           = $2,
-		    slug           = $3,
-		    status         = $4,
-		    industry       = $5,
-		    description    = $6,
-		    color          = $7,
-		    logo_url       = $8,
-		    website_url    = $9,
-		    coc_url        = $10,
-		    accept_funding = $11
-		WHERE id = $1`
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
 
-	tag, err := r.pool.Exec(ctx, q,
+	// 1. Main initiatives row — all scalar and entity-only fields are always written.
+	tag, err := tx.Exec(ctx, updateInitiative,
 		i.ID, i.Name, nullableString(i.Slug), nullableString(string(i.Status)),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
 		i.AcceptFunding,
+		nullableString(i.EventbriteURL), nullableString(i.ApplicationURL),
+		i.EventStartDate, i.EventEndDate,
+		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 	)
 	if err != nil {
-		span.RecordError(err)
 		return nil, fmt.Errorf("update initiative: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return nil, domain.ErrInitiativeNotFound
+	}
+
+	// 2. Goals — nil means no-op; non-nil (even empty) replaces all rows.
+	if input.Goals != nil {
+		if _, err = tx.Exec(ctx, deleteGoals, i.ID); err != nil {
+			return nil, fmt.Errorf("delete goals: %w", err)
+		}
+		for _, g := range input.Goals {
+			if _, err = tx.Exec(ctx, insertGoal,
+				i.ID, g.Name, g.AmountInCents,
+				nullableString(g.Allocation), nullableString(g.RepoLink), nullableString(g.Description),
+				nullableString(g.Color), nullableString(g.Icon), g.SortOrder,
+			); err != nil {
+				return nil, fmt.Errorf("insert goal %q: %w", g.Name, err)
+			}
+		}
+	}
+
+	// 3. Beneficiaries
+	if input.Beneficiaries != nil {
+		if _, err = tx.Exec(ctx, deleteBeneficiaries, i.ID); err != nil {
+			return nil, fmt.Errorf("delete beneficiaries: %w", err)
+		}
+		for _, b := range input.Beneficiaries {
+			if _, err = tx.Exec(ctx, insertBeneficiary,
+				i.ID, nullableString(b.Name), nullableString(b.Email),
+			); err != nil {
+				return nil, fmt.Errorf("insert beneficiary %q: %w", b.Email, err)
+			}
+		}
+	}
+
+	// 4. Custom websites
+	if input.CustomWebsites != nil {
+		if _, err = tx.Exec(ctx, deleteCustomWebsites, i.ID); err != nil {
+			return nil, fmt.Errorf("delete custom websites: %w", err)
+		}
+		for _, w := range input.CustomWebsites {
+			if _, err = tx.Exec(ctx, insertCustomWebsite,
+				i.ID, nullableString(w.Name), w.URL,
+			); err != nil {
+				return nil, fmt.Errorf("insert custom website %q: %w", w.URL, err)
+			}
+		}
+	}
+
+	// 5. Contributors
+	if input.Contributors != nil {
+		if _, err = tx.Exec(ctx, deleteContributors, i.ID); err != nil {
+			return nil, fmt.Errorf("delete contributors: %w", err)
+		}
+		for _, c := range input.Contributors {
+			if _, err = tx.Exec(ctx, insertContributor,
+				i.ID, nullableString(c.Name), nullableString(c.Email),
+			); err != nil {
+				return nil, fmt.Errorf("insert contributor %q: %w", c.Email, err)
+			}
+		}
+	}
+
+	// 6. Mentors
+	if input.Mentors != nil {
+		if _, err = tx.Exec(ctx, deleteMentors, i.ID); err != nil {
+			return nil, fmt.Errorf("delete mentors: %w", err)
+		}
+		for _, m := range input.Mentors {
+			if _, err = tx.Exec(ctx, insertMentor,
+				i.ID, nullableString(m.Name), nullableString(m.Email),
+				nullableString(m.AvatarURL), nullableString(m.Introduction),
+			); err != nil {
+				return nil, fmt.Errorf("insert mentor %q: %w", m.Email, err)
+			}
+		}
+	}
+
+	// 7. Program info — nil pointer = no-op; non-nil = replace all four sub-tables.
+	if input.ProgramInfo != nil {
+		for _, q := range []string{deleteProgramTerms, deleteProgramSkills, deleteProgramConfig, deleteProgramCustomTerm} {
+			if _, err = tx.Exec(ctx, q, i.ID); err != nil {
+				return nil, fmt.Errorf("delete program info: %w", err)
+			}
+		}
+		for idx, term := range input.ProgramInfo.Terms {
+			if _, err = tx.Exec(ctx, insertProgramTerm, i.ID, term, idx); err != nil {
+				return nil, fmt.Errorf("insert program term %q: %w", term, err)
+			}
+		}
+		for _, skill := range input.ProgramInfo.Skills {
+			if _, err = tx.Exec(ctx, insertProgramSkill, i.ID, skill); err != nil {
+				return nil, fmt.Errorf("insert program skill %q: %w", skill, err)
+			}
+		}
+		if _, err = tx.Exec(ctx, insertProgramConfig, i.ID, input.ProgramInfo.TermsConditions); err != nil {
+			return nil, fmt.Errorf("insert program config: %w", err)
+		}
+		if ct := input.ProgramInfo.CustomTerm; ct != nil && ct.TermName != "" {
+			if _, err = tx.Exec(ctx, insertProgramCustomTerm,
+				i.ID, ct.TermName,
+				nullableString(ct.StartMonth), nullableString(ct.EndMonth),
+				ct.Year,
+			); err != nil {
+				return nil, fmt.Errorf("insert program custom term: %w", err)
+			}
+		}
+	}
+
+	// 8. Sponsorship tiers
+	if input.SponsorshipTiers != nil {
+		if _, err = tx.Exec(ctx, deleteSponsorshipTiers, i.ID); err != nil {
+			return nil, fmt.Errorf("delete sponsorship tiers: %w", err)
+		}
+		for _, t := range input.SponsorshipTiers {
+			if _, err = tx.Exec(ctx, insertSponsorshipTier,
+				i.ID, nullableString(t.Name), nullableString(t.Description),
+				nullableString(t.Color), nullableString(t.Icon),
+				t.Minimum, t.SortOrder,
+			); err != nil {
+				return nil, fmt.Errorf("insert sponsorship tier %q: %w", t.Name, err)
+			}
+		}
+	}
+
+	// 9. OSTIF detail — nil pointer = no-op; non-nil = replace.
+	if input.OSTIFDetail != nil {
+		if _, err = tx.Exec(ctx, deleteOSTIFDetail, i.ID); err != nil {
+			return nil, fmt.Errorf("delete ostif detail: %w", err)
+		}
+		d := input.OSTIFDetail
+		if _, err = tx.Exec(ctx, insertOSTIFDetail,
+			i.ID,
+			nullableString(d.MonetizationStrategy), nullableString(d.CurrentSecurityStrategy),
+			nullableString(d.LicenseType), d.TotalBudgetInCents, d.TermsConditions,
+		); err != nil {
+			return nil, fmt.Errorf("insert ostif detail: %w", err)
+		}
+	}
+
+	// 10. Contacts
+	if input.Contacts != nil {
+		if _, err = tx.Exec(ctx, deleteContacts, i.ID); err != nil {
+			return nil, fmt.Errorf("delete contacts: %w", err)
+		}
+		for _, c := range input.Contacts {
+			if _, err = tx.Exec(ctx, insertContact,
+				i.ID, c.ContactType,
+				nullableString(c.FirstName), nullableString(c.LastName), nullableString(c.Email),
+				nullableString(c.PhoneNumber), nullableString(c.OtherContactOption),
+				nullableString(c.PreferredContactMethod),
+			); err != nil {
+				return nil, fmt.Errorf("insert contact %q: %w", c.ContactType, err)
+			}
+		}
+	}
+
+	// 11. Entity details — nil map = no-op; non-nil (even empty) = replace.
+	if input.EntityDetails != nil {
+		if _, err = tx.Exec(ctx, deleteEntityDetails, i.ID); err != nil {
+			return nil, fmt.Errorf("delete entity details: %w", err)
+		}
+		if len(input.EntityDetails) > 0 {
+			detailsJSON, jsonErr := json.Marshal(input.EntityDetails)
+			if jsonErr != nil {
+				return nil, fmt.Errorf("marshal entity details: %w", jsonErr)
+			}
+			if _, err = tx.Exec(ctx, insertEntityDetails, i.ID, detailsJSON); err != nil {
+				return nil, fmt.Errorf("insert entity details: %w", err)
+			}
+		}
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit initiative update: %w", err)
 	}
 	return r.GetByID(ctx, i.ID)
 }
@@ -324,21 +778,21 @@ func (r *InitiativeRepository) listGoals(ctx context.Context, initiativeID strin
 	if err != nil {
 		return nil, fmt.Errorf("list goals: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	return scanGoals(rows)
 }
 
 // listGoalsForIDs fetches goals for a set of initiative IDs in one query,
 // returning a map of initiativeID → []Goal.
 func (r *InitiativeRepository) listGoalsForIDs(ctx context.Context, ids []string) (map[string][]models.Goal, error) {
-	// Build $1,$2,... placeholders
+	// Build $1,$2,... placeholders using a Builder to avoid quadratic string copies.
 	args := make([]any, len(ids))
-	placeholders := ""
+	var sb strings.Builder
 	for i, id := range ids {
 		if i > 0 {
-			placeholders += ","
+			sb.WriteByte(',')
 		}
-		placeholders += fmt.Sprintf("$%d", i+1)
+		fmt.Fprintf(&sb, "$%d", i+1)
 		args[i] = id
 	}
 
@@ -348,13 +802,13 @@ func (r *InitiativeRepository) listGoalsForIDs(ctx context.Context, ids []string
 		       created_on, updated_on
 		FROM initiative_goals
 		WHERE initiative_id IN (%s)
-		ORDER BY initiative_id, sort_order ASC`, placeholders)
+		ORDER BY initiative_id, sort_order ASC`, sb.String())
 
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list goals for ids: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	result := make(map[string][]models.Goal)
 	for rows.Next() {
@@ -495,6 +949,7 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 	const q = `SELECT id, user_id, name, avatar_url FROM users WHERE user_id = ANY($1)`
 	rows, err := r.pool.Query(ctx, q, userIDs)
 	if err != nil {
+		span.RecordError(err)
 		return nil, fmt.Errorf("get users by IDs: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck
@@ -503,6 +958,7 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 		var u models.User
 		var name, avatarURL *string
 		if err := rows.Scan(&u.ID, &u.UserID, &name, &avatarURL); err != nil {
+			span.RecordError(err)
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		if name != nil {
@@ -513,7 +969,11 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 		}
 		result[u.UserID] = u
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return result, fmt.Errorf("iterate users: %w", err)
+	}
+	return result, nil
 }
 
 // GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs provided.
@@ -530,6 +990,7 @@ func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []
 	const q = `SELECT id, name, avatar_url FROM organizations WHERE id = ANY($1::uuid[])`
 	rows, err := r.pool.Query(ctx, q, ids)
 	if err != nil {
+		span.RecordError(err)
 		return nil, fmt.Errorf("get organizations by IDs: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck
@@ -538,6 +999,7 @@ func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []
 		var o models.Organization
 		var avatarURL *string
 		if err := rows.Scan(&o.ID, &o.Name, &avatarURL); err != nil {
+			span.RecordError(err)
 			return nil, fmt.Errorf("scan organization: %w", err)
 		}
 		if avatarURL != nil {
@@ -545,7 +1007,11 @@ func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []
 		}
 		result[o.ID] = o
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return result, fmt.Errorf("iterate organizations: %w", err)
+	}
+	return result, nil
 }
 
 func derefString(s *string) string {
