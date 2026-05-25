@@ -31,12 +31,13 @@ export const usePaymentAccount = () => {
         if (err?.statusCode === 404) {
           card.value = null;
         } else {
-          error.value =
+          const message =
             err?.data?.message ??
             err?.data?.statusMessage ??
             err?.message ??
             'Could not load your payment account.';
-          showError(error.value);
+          error.value = message;
+          showError(message);
         }
       } finally {
         loading.value = false;
@@ -77,8 +78,9 @@ export const usePaymentAccount = () => {
       });
     } catch (e: unknown) {
       const err = e as { message?: string };
-      error.value = err?.message ?? 'Failed to save your card.';
-      showError(error.value);
+      const message = err?.message ?? 'Failed to save your card.';
+      error.value = message;
+      showError(message);
       throw e;
     } finally {
       loading.value = false;

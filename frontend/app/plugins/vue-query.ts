@@ -9,9 +9,15 @@ export default defineNuxtPlugin((nuxtApp) => {
         if (import.meta.client) {
           nuxtApp.runWithContext(() => {
             const { showError } = useErrorToast();
-            const err = error as { data?: { message?: string }; message?: string };
+            const err = error as {
+              data?: { message?: string; statusMessage?: string };
+              message?: string;
+            };
             showError(
-              err?.data?.message ?? err?.message ?? 'Failed to load data. Please try again.',
+              err?.data?.message ??
+                err?.data?.statusMessage ??
+                err?.message ??
+                'Failed to load data. Please try again.',
             );
           });
         }

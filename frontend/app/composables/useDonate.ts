@@ -33,8 +33,9 @@ export const useDonate = () => {
       return result;
     } catch (e: unknown) {
       const err = e as { data?: { message?: string }; message?: string };
-      error.value = err?.data?.message ?? err?.message ?? 'Donation failed. Please try again.';
-      showError(error.value);
+      const message = err?.data?.message ?? err?.message ?? 'Donation failed. Please try again.';
+      error.value = message;
+      showError(message);
       throw e;
     } finally {
       loading.value = false;
