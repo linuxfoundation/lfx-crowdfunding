@@ -72,7 +72,7 @@ func (c *apprLedgerClient) GetAllBalances(_ context.Context) ([]models.LedgerRaw
 func (c *apprLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
 	return nil, nil
 }
-func (c *apprLedgerClient) GetPlatformBalance(_ context.Context) (*clients.LedgerPlatformBalance, error) {
+func (c *apprLedgerClient) GetPlatformBalance(_ context.Context, _ int) (*clients.LedgerPlatformBalance, error) {
 	return nil, nil
 }
 func (c *apprLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clients.LedgerPlatformMonthly, error) {

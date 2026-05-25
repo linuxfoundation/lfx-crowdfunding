@@ -54,7 +54,7 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.Pla
 	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetPlatformDetails")
 	defer span.End()
 
-	raw, err := s.ledgerClient.GetPlatformBalance(ctx)
+	raw, err := s.ledgerClient.GetPlatformBalance(ctx, 20)
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUpstreamUnavailable) {

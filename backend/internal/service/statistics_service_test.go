@@ -88,7 +88,7 @@ func (c *testLedgerClient) GetAllBalances(_ context.Context) ([]models.LedgerRaw
 func (c *testLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
 	return nil, nil
 }
-func (c *testLedgerClient) GetPlatformBalance(_ context.Context) (*clients.LedgerPlatformBalance, error) {
+func (c *testLedgerClient) GetPlatformBalance(_ context.Context, _ int) (*clients.LedgerPlatformBalance, error) {
 	return c.platformBalance, c.err
 }
 func (c *testLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clients.LedgerPlatformMonthly, error) {
