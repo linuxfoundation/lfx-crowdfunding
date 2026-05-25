@@ -2,31 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { defineEventHandler, readBody, createError } from 'h3';
-
-interface FundraiseSubmission {
-  initiativeType: string;
-  details: {
-    name: string;
-    description: string;
-    githubUrl?: string;
-    tags?: string;
-    auditScope?: string;
-    eventDate?: string;
-    location?: string;
-    eventbriteUrl?: string;
-  };
-  goals: {
-    goalAmountCents: number;
-    deadline?: string;
-    expectedAttendees?: string;
-  } | null;
-}
-
-interface FundraiseRecord extends FundraiseSubmission {
-  id: string;
-  status: 'pending_review';
-  createdAt: string;
-}
+import type { FundraiseSubmission, FundraiseRecord } from '../../types/fundraise.types';
 
 const submissions: FundraiseRecord[] = [];
 
