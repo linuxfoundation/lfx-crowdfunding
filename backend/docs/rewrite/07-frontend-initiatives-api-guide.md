@@ -787,7 +787,6 @@ All errors are returned as:
 | `401` | JWT missing, expired, or invalid | Re-authenticate; refresh the session token |
 | `403` | Updating another user's initiative; trying to set a restricted status (`published`, `declined`, `pending`) directly; approver not in `ALLOWED_APPROVERS` | Use the approval flow; check approver permissions |
 | `404` | Initiative not found; GET of a non-published initiative | Verify the ID/slug is correct |
-| `409` | Slug already in use by another initiative | Generate a different slug |
 | `429` | Rate limited | Back off and retry with exponential backoff |
 | `503` | Upstream service (Ledger/Stripe) is unavailable | Display "service temporarily unavailable" |
 

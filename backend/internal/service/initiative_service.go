@@ -222,20 +222,30 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 
 	// Validate required child-record fields early to produce clear errors before
 	// any Stripe or DB calls are made.
+	seenGoalNames := make(map[string]struct{}, len(input.Goals))
 	for idx, g := range input.Goals {
 		if g.Name == "" {
 			return nil, fmt.Errorf("%w: goals[%d]: name is required", domain.ErrInvalidInput, idx)
 		}
+		if _, dup := seenGoalNames[g.Name]; dup {
+			return nil, fmt.Errorf("%w: goals[%d]: duplicate goal name %q", domain.ErrInvalidInput, idx, g.Name)
+		}
+		seenGoalNames[g.Name] = struct{}{}
 	}
 	for idx, w := range input.CustomWebsites {
 		if w.URL == "" {
 			return nil, fmt.Errorf("%w: custom_websites[%d]: url is required", domain.ErrInvalidInput, idx)
 		}
 	}
+	seenContactTypes := make(map[string]struct{}, len(input.Contacts))
 	for idx, c := range input.Contacts {
 		if _, ok := allowedContactTypes[c.ContactType]; !ok {
 			return nil, fmt.Errorf("%w: contacts[%d]: contact_type %q must be one of primary, secondary, technical_lead", domain.ErrInvalidInput, idx, c.ContactType)
 		}
+		if _, dup := seenContactTypes[c.ContactType]; dup {
+			return nil, fmt.Errorf("%w: contacts[%d]: duplicate contact_type %q (at most one per type)", domain.ErrInvalidInput, idx, c.ContactType)
+		}
+		seenContactTypes[c.ContactType] = struct{}{}
 	}
 
 	// Pre-generate the UUID so the same ID is embedded in both the Stripe
@@ -389,20 +399,30 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 	}
 
 	// Validate required child-record fields before any DB calls.
+	seenGoalNames := make(map[string]struct{}, len(input.Goals))
 	for idx, g := range input.Goals {
 		if g.Name == "" {
 			return nil, fmt.Errorf("%w: goals[%d]: name is required", domain.ErrInvalidInput, idx)
 		}
+		if _, dup := seenGoalNames[g.Name]; dup {
+			return nil, fmt.Errorf("%w: goals[%d]: duplicate goal name %q", domain.ErrInvalidInput, idx, g.Name)
+		}
+		seenGoalNames[g.Name] = struct{}{}
 	}
 	for idx, w := range input.CustomWebsites {
 		if w.URL == "" {
 			return nil, fmt.Errorf("%w: custom_websites[%d]: url is required", domain.ErrInvalidInput, idx)
 		}
 	}
+	seenContactTypes := make(map[string]struct{}, len(input.Contacts))
 	for idx, c := range input.Contacts {
 		if _, ok := allowedContactTypes[c.ContactType]; !ok {
 			return nil, fmt.Errorf("%w: contacts[%d]: contact_type %q must be one of primary, secondary, technical_lead", domain.ErrInvalidInput, idx, c.ContactType)
 		}
+		if _, dup := seenContactTypes[c.ContactType]; dup {
+			return nil, fmt.Errorf("%w: contacts[%d]: duplicate contact_type %q (at most one per type)", domain.ErrInvalidInput, idx, c.ContactType)
+		}
+		seenContactTypes[c.ContactType] = struct{}{}
 	}
 
 	updated, err := s.repo.Update(ctx, existing, input)

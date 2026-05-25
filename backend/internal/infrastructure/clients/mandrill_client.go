@@ -170,10 +170,15 @@ func (c *mandrillClient) SendTemplate(ctx context.Context, templateName Mandrill
 
 	// Mandrill can return HTTP 200 while flagging per-recipient delivery failures
 	// (e.g. status "rejected" or "invalid") inside the JSON array. Parse and surface them.
+	// An unmarshal failure means an unexpected response format (e.g. error object or proxy HTML);
+	// surface it so the caller can log a warning rather than silently treating it as success.
 	var results []mandrillSendResult
 	if err := json.Unmarshal(respBody, &results); err != nil {
-		// Non-fatal: if parsing fails, the HTTP-level response was still 2xx.
-		return nil
+		trunc := respBody
+		if len(trunc) > 200 {
+			trunc = trunc[:200]
+		}
+		return fmt.Errorf("mandrill: unexpected response format for template %q: %s", templateName, trunc)
 	}
 	for _, r := range results {
 		switch r.Status {
