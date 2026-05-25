@@ -25,24 +25,42 @@ import (
 
 var initiativeSvcTracer = otel.Tracer("initiatives-service")
 
+// allowedContactTypes is the exhaustive set of valid contact_type values.
+var allowedContactTypes = map[string]struct{}{
+	"primary":        {},
+	"secondary":      {},
+	"technical_lead": {},
+}
+
 // InitiativeService orchestrates initiative reads and writes.
 // Cached financials come from initiative_ledger_stats (CronJob); per-goal
 // donated/spent is enriched live from Ledger GetBalance on each detail request.
 type InitiativeService struct {
-	repo   domain.InitiativeRepository
-	ledger clients.LedgerClient
-	stripe clients.StripeClient
-	logger *slog.Logger
+	repo         domain.InitiativeRepository
+	userRepo     domain.UserRepository
+	ledger       clients.LedgerClient
+	stripe       clients.StripeClient
+	emailService domain.EmailService
+	logger       *slog.Logger
 }
 
 // NewInitiativeService returns an InitiativeService.
 func NewInitiativeService(
 	repo domain.InitiativeRepository,
+	userRepo domain.UserRepository,
 	ledger clients.LedgerClient,
 	stripe clients.StripeClient,
+	emailService domain.EmailService,
 	logger *slog.Logger,
 ) *InitiativeService {
-	return &InitiativeService{repo: repo, ledger: ledger, stripe: stripe, logger: logger}
+	return &InitiativeService{
+		repo:         repo,
+		userRepo:     userRepo,
+		ledger:       ledger,
+		stripe:       stripe,
+		emailService: emailService,
+		logger:       logger,
+	}
 }
 
 // GetByID retrieves an initiative with goals, financials, and sponsors.
@@ -202,6 +220,34 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 		return nil, fmt.Errorf("%w: unknown initiative_type %q", domain.ErrInvalidInput, input.InitiativeType)
 	}
 
+	// Validate required child-record fields early to produce clear errors before
+	// any Stripe or DB calls are made.
+	seenGoalNames := make(map[string]struct{}, len(input.Goals))
+	for idx, g := range input.Goals {
+		if g.Name == "" {
+			return nil, fmt.Errorf("%w: goals[%d]: name is required", domain.ErrInvalidInput, idx)
+		}
+		if _, dup := seenGoalNames[g.Name]; dup {
+			return nil, fmt.Errorf("%w: goals[%d]: duplicate goal name %q", domain.ErrInvalidInput, idx, g.Name)
+		}
+		seenGoalNames[g.Name] = struct{}{}
+	}
+	for idx, w := range input.CustomWebsites {
+		if w.URL == "" {
+			return nil, fmt.Errorf("%w: custom_websites[%d]: url is required", domain.ErrInvalidInput, idx)
+		}
+	}
+	seenContactTypes := make(map[string]struct{}, len(input.Contacts))
+	for idx, c := range input.Contacts {
+		if _, ok := allowedContactTypes[c.ContactType]; !ok {
+			return nil, fmt.Errorf("%w: contacts[%d]: contact_type %q must be one of primary, secondary, technical_lead", domain.ErrInvalidInput, idx, c.ContactType)
+		}
+		if _, dup := seenContactTypes[c.ContactType]; dup {
+			return nil, fmt.Errorf("%w: contacts[%d]: duplicate contact_type %q (at most one per type)", domain.ErrInvalidInput, idx, c.ContactType)
+		}
+		seenContactTypes[c.ContactType] = struct{}{}
+	}
+
 	// Pre-generate the UUID so the same ID is embedded in both the Stripe
 	// Product metadata and the DB INSERT — no follow-up UPDATE needed.
 	initiativeID := uuid.New().String()
@@ -230,9 +276,18 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 		AcceptFunding:   input.AcceptFunding,
 		Status:          models.StatusSubmitted,
 		StripeProductID: productID,
+
+		// Entity-only display fields
+		EventbriteURL:  input.EventbriteURL,
+		ApplicationURL: input.ApplicationURL,
+		EventStartDate: input.EventStartDate,
+		EventEndDate:   input.EventEndDate,
+		Country:        input.Country,
+		City:           input.City,
+		IsOnline:       input.IsOnline,
 	}
 
-	created, err := s.repo.Create(ctx, initiative)
+	created, err := s.repo.Create(ctx, initiative, input)
 	if err != nil {
 		span.RecordError(err)
 		// Compensating transaction: remove the Stripe Product so Stripe stays in sync.
@@ -242,6 +297,25 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 				"product_id", productID, "error", delErr)
 		}
 		return nil, fmt.Errorf("create initiative: %w", err)
+	}
+
+	// Notify reviewers that a new initiative has been submitted. Non-fatal.
+	owner, ownerErr := s.userRepo.GetByUserID(ctx, ownerID)
+	if ownerErr != nil {
+		s.logger.WarnContext(ctx, "initiative create: could not fetch owner for review notification",
+			"initiative_id", created.ID, "owner_id", ownerID, "error", ownerErr)
+	} else if owner != nil {
+		displayName := owner.Name
+		if displayName == "" {
+			displayName = owner.Email
+		}
+		initiativeURL := s.emailService.InitiativeURL(created.Slug)
+		approveURL := s.emailService.InitiativeURL(created.Slug) + "/process-approval/approve"
+		declineURL := s.emailService.InitiativeURL(created.Slug) + "/process-approval/decline"
+		if emailErr := s.emailService.SendProjectForReviewEmail(ctx, displayName, owner.Email, created.Name, initiativeURL, approveURL, declineURL); emailErr != nil {
+			s.logger.WarnContext(ctx, "initiative create: failed to send for-review notification",
+				"initiative_id", created.ID, "error", emailErr)
+		}
 	}
 	return created, nil
 }
@@ -271,6 +345,13 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		if !input.Status.IsValid() {
 			return nil, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, *input.Status)
 		}
+		// published, declined, and pending are exclusively set by the approval workflow.
+		// Allowing owners to set these directly would bypass the review process.
+		switch *input.Status {
+		case models.StatusPublished, models.StatusDeclined, models.StatusPending:
+			return nil, fmt.Errorf("%w: status %q cannot be set directly; use the approval workflow",
+				domain.ErrForbidden, *input.Status)
+		}
 		existing.Status = *input.Status
 	}
 	if input.Description != nil {
@@ -295,7 +376,56 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		existing.AcceptFunding = *input.AcceptFunding
 	}
 
-	updated, err := s.repo.Update(ctx, existing)
+	if input.EventbriteURL != nil {
+		existing.EventbriteURL = *input.EventbriteURL
+	}
+	if input.ApplicationURL != nil {
+		existing.ApplicationURL = *input.ApplicationURL
+	}
+	if input.EventStartDate != nil {
+		existing.EventStartDate = input.EventStartDate
+	}
+	if input.EventEndDate != nil {
+		existing.EventEndDate = input.EventEndDate
+	}
+	if input.Country != nil {
+		existing.Country = *input.Country
+	}
+	if input.City != nil {
+		existing.City = *input.City
+	}
+	if input.IsOnline != nil {
+		existing.IsOnline = *input.IsOnline
+	}
+
+	// Validate required child-record fields before any DB calls.
+	seenGoalNames := make(map[string]struct{}, len(input.Goals))
+	for idx, g := range input.Goals {
+		if g.Name == "" {
+			return nil, fmt.Errorf("%w: goals[%d]: name is required", domain.ErrInvalidInput, idx)
+		}
+		if _, dup := seenGoalNames[g.Name]; dup {
+			return nil, fmt.Errorf("%w: goals[%d]: duplicate goal name %q", domain.ErrInvalidInput, idx, g.Name)
+		}
+		seenGoalNames[g.Name] = struct{}{}
+	}
+	for idx, w := range input.CustomWebsites {
+		if w.URL == "" {
+			return nil, fmt.Errorf("%w: custom_websites[%d]: url is required", domain.ErrInvalidInput, idx)
+		}
+	}
+	seenContactTypes := make(map[string]struct{}, len(input.Contacts))
+	for idx, c := range input.Contacts {
+		if _, ok := allowedContactTypes[c.ContactType]; !ok {
+			return nil, fmt.Errorf("%w: contacts[%d]: contact_type %q must be one of primary, secondary, technical_lead", domain.ErrInvalidInput, idx, c.ContactType)
+		}
+		if _, dup := seenContactTypes[c.ContactType]; dup {
+			return nil, fmt.Errorf("%w: contacts[%d]: duplicate contact_type %q (at most one per type)", domain.ErrInvalidInput, idx, c.ContactType)
+		}
+		seenContactTypes[c.ContactType] = struct{}{}
+	}
+
+	updated, err := s.repo.Update(ctx, existing, input)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("update initiative: %w", err)
@@ -336,11 +466,37 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 		initiative.Status = models.StatusDeclined
 	}
 
-	processed, err := s.repo.Update(ctx, initiative)
+	processed, err := s.repo.Update(ctx, initiative, models.InitiativeUpdateInput{})
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("update initiative: %w", err)
 	}
+
+	// Notify the initiative owner by email. Errors are non-fatal — log at WARN and continue.
+	owner, ownerErr := s.userRepo.GetByUserID(ctx, processed.OwnerID)
+	if ownerErr != nil {
+		s.logger.WarnContext(ctx, "initiative approval: could not fetch owner for email notification",
+			"initiative_id", initiativeID, "owner_id", processed.OwnerID, "error", ownerErr)
+	} else if owner != nil {
+		displayName := owner.Name
+		if displayName == "" {
+			displayName = owner.Email
+		}
+		initiativeURL := s.emailService.InitiativeURL(processed.Slug)
+		switch action {
+		case models.ApprovalActionApprove:
+			if emailErr := s.emailService.SendProjectApprovedEmail(ctx, owner.Email, displayName, processed.Name, initiativeURL); emailErr != nil {
+				s.logger.WarnContext(ctx, "initiative approval: failed to send approved email",
+					"initiative_id", initiativeID, "error", emailErr)
+			}
+		case models.ApprovalActionDecline:
+			if emailErr := s.emailService.SendProjectDeclinedEmail(ctx, owner.Email, displayName, processed.Name, initiativeURL); emailErr != nil {
+				s.logger.WarnContext(ctx, "initiative approval: failed to send declined email",
+					"initiative_id", initiativeID, "error", emailErr)
+			}
+		}
+	}
+
 	return processed, nil
 }
 

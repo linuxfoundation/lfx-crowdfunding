@@ -18,8 +18,8 @@ type InitiativeRepository interface {
 	// Used by the transactions handler to resolve a slug without triggering Ledger enrichment.
 	GetIDBySlug(ctx context.Context, slug string) (string, error)
 	List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error)
-	Create(ctx context.Context, initiative *models.Initiative) (*models.Initiative, error)
-	Update(ctx context.Context, initiative *models.Initiative) (*models.Initiative, error)
+	Create(ctx context.Context, initiative *models.Initiative, input models.InitiativeCreateInput) (*models.Initiative, error)
+	Update(ctx context.Context, initiative *models.Initiative, input models.InitiativeUpdateInput) (*models.Initiative, error)
 	Delete(ctx context.Context, id string) error
 
 	// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
