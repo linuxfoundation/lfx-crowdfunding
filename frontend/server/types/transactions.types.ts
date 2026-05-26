@@ -16,6 +16,6 @@ export interface BackendTransaction {
 export interface BackendTransactionList {
   data: BackendTransaction[];
   total_count: number;
-  from: number;
-  size: number;
+  limit: number;
+  offset: number;
 }

@@ -7,14 +7,39 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 )
 
 type errorBody struct {
 	Error string `json:"error"`
+}
+
+// parsePaginationParams parses ?limit= and ?offset= from r. Returns 400 if
+// either value is present but not a valid integer.
+func parsePaginationParams(w http.ResponseWriter, r *http.Request) (limit, offset int, ok bool) {
+	q := r.URL.Query()
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			Error(w, fmt.Errorf("%w: limit must be an integer", domain.ErrInvalidInput))
+			return 0, 0, false
+		}
+		limit = n
+	}
+	if v := q.Get("offset"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			Error(w, fmt.Errorf("%w: offset must be an integer", domain.ErrInvalidInput))
+			return 0, 0, false
+		}
+		offset = n
+	}
+	return limit, offset, true
 }
 
 // JSON writes a JSON-encoded body with the given status code.

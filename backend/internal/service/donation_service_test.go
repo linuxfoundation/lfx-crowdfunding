@@ -7,10 +7,226 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
+
+// summaryInitiativeRepo is a minimal InitiativeRepository stub for
+// projectDonationSummaries tests. Only the lookup methods are configurable.
+type summaryInitiativeRepo struct {
+	onGetUsersByIDs         func(context.Context, []string) (map[string]models.User, error)
+	onGetOrganizationsByIDs func(context.Context, []string) (map[string]models.Organization, error)
+}
+
+func (r *summaryInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
+	return nil, nil
+}
+func (r *summaryInitiativeRepo) GetBySlug(_ context.Context, _ string) (*models.Initiative, error) {
+	return nil, nil
+}
+func (r *summaryInitiativeRepo) GetIDBySlug(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+func (r *summaryInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+	return nil, nil, nil
+}
+func (r *summaryInitiativeRepo) Create(_ context.Context, i *models.Initiative, _ models.InitiativeCreateInput) (*models.Initiative, error) {
+	return i, nil
+}
+func (r *summaryInitiativeRepo) Update(_ context.Context, i *models.Initiative, _ models.InitiativeUpdateInput) (*models.Initiative, error) {
+	return i, nil
+}
+func (r *summaryInitiativeRepo) Delete(_ context.Context, _ string) error { return nil }
+func (r *summaryInitiativeRepo) GetUsersByIDs(ctx context.Context, ids []string) (map[string]models.User, error) {
+	if r.onGetUsersByIDs != nil {
+		return r.onGetUsersByIDs(ctx, ids)
+	}
+	return map[string]models.User{}, nil
+}
+func (r *summaryInitiativeRepo) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
+	if r.onGetOrganizationsByIDs != nil {
+		return r.onGetOrganizationsByIDs(ctx, ids)
+	}
+	return map[string]models.Organization{}, nil
+}
+
+// --- projectDonationSummaries ---
+
+func TestProjectDonationSummaries_Empty(t *testing.T) {
+	result := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, nil)
+	if len(result) != 0 {
+		t.Errorf("expected empty slice, got %d elements", len(result))
+	}
+}
+
+func TestProjectDonationSummaries_IndividualDonor(t *testing.T) {
+	now := time.Now()
+	donations := []models.Donation{
+		{ID: "d1", UserID: "u1", CurrentAmountCents: 1000, Status: "succeeded", Category: "general", CreatedOn: now},
+	}
+	repo := &summaryInitiativeRepo{
+		onGetUsersByIDs: func(_ context.Context, ids []string) (map[string]models.User, error) {
+			if len(ids) != 1 || ids[0] != "u1" {
+				t.Errorf("unexpected userIDs: %v", ids)
+			}
+			return map[string]models.User{
+				"u1": {UserID: "u1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
+			}, nil
+		},
+	}
+
+	result := projectDonationSummaries(context.Background(), repo, donations)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(result))
+	}
+	s := result[0]
+	if s.ID != "d1" {
+		t.Errorf("ID = %q, want d1", s.ID)
+	}
+	if s.AmountCents != 1000 {
+		t.Errorf("AmountCents = %d, want 1000", s.AmountCents)
+	}
+	if s.DonorType != donorTypeIndividual {
+		t.Errorf("DonorType = %q, want %q", s.DonorType, donorTypeIndividual)
+	}
+	if s.DonorName != "Alice" {
+		t.Errorf("DonorName = %q, want Alice", s.DonorName)
+	}
+	if s.DonorAvatarURL != "https://example.com/alice.png" {
+		t.Errorf("DonorAvatar = %q, want alice.png URL", s.DonorAvatarURL)
+	}
+}
+
+func TestProjectDonationSummaries_OrganizationDonor(t *testing.T) {
+	donations := []models.Donation{
+		{ID: "d2", OrganizationID: "org1", CurrentAmountCents: 5000, Status: "succeeded"},
+	}
+	repo := &summaryInitiativeRepo{
+		onGetOrganizationsByIDs: func(_ context.Context, ids []string) (map[string]models.Organization, error) {
+			return map[string]models.Organization{
+				"org1": {ID: "org1", Name: "Acme Corp", AvatarURL: "https://example.com/acme.png"},
+			}, nil
+		},
+	}
+
+	result := projectDonationSummaries(context.Background(), repo, donations)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(result))
+	}
+	s := result[0]
+	if s.DonorType != donorTypeOrganization {
+		t.Errorf("DonorType = %q, want %q", s.DonorType, donorTypeOrganization)
+	}
+	if s.DonorName != "Acme Corp" {
+		t.Errorf("DonorName = %q, want Acme Corp", s.DonorName)
+	}
+}
+
+func TestProjectDonationSummaries_DeduplicatesUserIDs(t *testing.T) {
+	lookupCount := 0
+	donations := []models.Donation{
+		{ID: "d1", UserID: "u1", CurrentAmountCents: 100},
+		{ID: "d2", UserID: "u1", CurrentAmountCents: 200},
+	}
+	repo := &summaryInitiativeRepo{
+		onGetUsersByIDs: func(_ context.Context, ids []string) (map[string]models.User, error) {
+			lookupCount++
+			if len(ids) != 1 {
+				t.Errorf("expected 1 unique userID, got %d: %v", len(ids), ids)
+			}
+			return map[string]models.User{"u1": {UserID: "u1", Name: "Bob"}}, nil
+		},
+	}
+
+	result := projectDonationSummaries(context.Background(), repo, donations)
+
+	if lookupCount != 1 {
+		t.Errorf("GetUsersByIDs called %d times, want 1", lookupCount)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 summaries, got %d", len(result))
+	}
+	for _, s := range result {
+		if s.DonorName != "Bob" {
+			t.Errorf("DonorName = %q, want Bob", s.DonorName)
+		}
+	}
+}
+
+func TestProjectDonationSummaries_UserLookupError_DegradeGracefully(t *testing.T) {
+	donations := []models.Donation{
+		{ID: "d1", UserID: "u1", CurrentAmountCents: 500},
+	}
+	repo := &summaryInitiativeRepo{
+		onGetUsersByIDs: func(_ context.Context, _ []string) (map[string]models.User, error) {
+			return nil, errors.New("db timeout")
+		},
+	}
+
+	result := projectDonationSummaries(context.Background(), repo, donations)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 summary even on lookup error, got %d", len(result))
+	}
+	s := result[0]
+	if s.ID != "d1" {
+		t.Errorf("ID = %q, want d1", s.ID)
+	}
+	if s.DonorName != "" || s.DonorAvatarURL != "" {
+		t.Errorf("expected empty donor info on lookup error, got name=%q avatar=%q", s.DonorName, s.DonorAvatarURL)
+	}
+	if s.DonorType != donorTypeIndividual {
+		t.Errorf("DonorType = %q, want %q", s.DonorType, donorTypeIndividual)
+	}
+}
+
+func TestProjectDonationSummaries_OrgLookupError_DegradeGracefully(t *testing.T) {
+	donations := []models.Donation{
+		{ID: "d1", OrganizationID: "org1", CurrentAmountCents: 999},
+	}
+	repo := &summaryInitiativeRepo{
+		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
+			return nil, errors.New("connection reset")
+		},
+	}
+
+	result := projectDonationSummaries(context.Background(), repo, donations)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 summary even on lookup error, got %d", len(result))
+	}
+	s := result[0]
+	if s.DonorType != donorTypeOrganization {
+		t.Errorf("DonorType = %q, want %q", s.DonorType, donorTypeOrganization)
+	}
+	if s.DonorName != "" {
+		t.Errorf("DonorName should be empty on lookup error, got %q", s.DonorName)
+	}
+}
+
+func TestProjectDonationSummaries_UnknownUserID_NoName(t *testing.T) {
+	donations := []models.Donation{
+		{ID: "d1", UserID: "u-unknown", CurrentAmountCents: 100},
+	}
+	repo := &summaryInitiativeRepo{
+		onGetUsersByIDs: func(_ context.Context, _ []string) (map[string]models.User, error) {
+			return map[string]models.User{}, nil // user not in DB
+		},
+	}
+
+	result := projectDonationSummaries(context.Background(), repo, donations)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(result))
+	}
+	if result[0].DonorName != "" || result[0].DonorAvatarURL != "" {
+		t.Errorf("expected empty name/avatar for unknown user, got name=%q avatar=%q", result[0].DonorName, result[0].DonorAvatarURL)
+	}
+}
 
 func newDonationSvc(
 	donRepo *testDonationRepo,

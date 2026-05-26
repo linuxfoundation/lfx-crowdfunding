@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -22,7 +21,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
 
-var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 const (
 	maxTransactionPageSize     = 100
@@ -45,9 +44,11 @@ func NewInitiativeHandler(svc *service.InitiativeService, allowedApprovers []str
 
 // List handles GET /v1/initiatives
 func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
 	q := r.URL.Query()
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
 
 	filter := models.InitiativeFilter{
 		OwnerID:        q.Get("owner_id"),
@@ -159,7 +160,7 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetTransactions handles GET /v1/initiatives/{id}/transactions
-// Accepts ?type=donations|expenses&size=N&page=N (1-based page, defaults to 1).
+// Accepts ?type=donations|expenses&limit=N&offset=N.
 // Resolves the initiative by slug or UUID, verifies it is published, then calls Ledger.
 func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	value := chi.URLParam(r, "id")
@@ -174,16 +175,17 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 		ledgerTxnType = "reimbursement"
 	}
 
-	size, _ := strconv.Atoi(q.Get("size"))
-	if size <= 0 {
-		size = defaultTransactionPageSize
-	} else if size > maxTransactionPageSize {
-		size = maxTransactionPageSize
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
 	}
-
-	page, _ := strconv.Atoi(q.Get("page"))
-	if page <= 0 {
-		page = 1
+	if limit <= 0 {
+		limit = defaultTransactionPageSize
+	} else if limit > maxTransactionPageSize {
+		limit = maxTransactionPageSize
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
 	// Resolve identifier to a UUID, verifying the initiative exists and is published.
@@ -204,7 +206,7 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 		initiativeID = id
 	}
 
-	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, size, page)
+	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, limit, offset)
 	if err != nil {
 		Error(w, err)
 		return
@@ -263,6 +265,14 @@ func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Reque
 	}
 
 	id := chi.URLParam(r, "id")
+	if !uuidPattern.MatchString(id) {
+		resolved, resolveErr := h.svc.ResolveSlug(r.Context(), id)
+		if resolveErr != nil {
+			Error(w, resolveErr)
+			return
+		}
+		id = resolved
+	}
 	updated, err := h.svc.ProcessApproval(r.Context(), id, action)
 	if err != nil {
 		Error(w, err)

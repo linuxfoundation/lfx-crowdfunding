@@ -13,6 +13,7 @@ let fetchInFlight: Promise<void> | null = null;
 
 export const usePaymentAccount = () => {
   const { getStripe } = useStripe();
+  const { showError } = useErrorToast();
 
   const fetchCard = async () => {
     if (fetchInFlight) return fetchInFlight;
@@ -30,11 +31,13 @@ export const usePaymentAccount = () => {
         if (err?.statusCode === 404) {
           card.value = null;
         } else {
-          error.value =
+          const message =
             err?.data?.message ??
             err?.data?.statusMessage ??
             err?.message ??
             'Could not load your payment account.';
+          error.value = message;
+          showError(message);
         }
       } finally {
         loading.value = false;
@@ -75,7 +78,9 @@ export const usePaymentAccount = () => {
       });
     } catch (e: unknown) {
       const err = e as { message?: string };
-      error.value = err?.message ?? 'Failed to save your card.';
+      const message = err?.message ?? 'Failed to save your card.';
+      error.value = message;
+      showError(message);
       throw e;
     } finally {
       loading.value = false;
