@@ -95,8 +95,8 @@ func TestProjectDonationSummaries_IndividualDonor(t *testing.T) {
 	if s.DonorName != "Alice" {
 		t.Errorf("DonorName = %q, want Alice", s.DonorName)
 	}
-	if s.DonorAvatar != "https://example.com/alice.png" {
-		t.Errorf("DonorAvatar = %q, want alice.png URL", s.DonorAvatar)
+	if s.DonorAvatarURL != "https://example.com/alice.png" {
+		t.Errorf("DonorAvatar = %q, want alice.png URL", s.DonorAvatarURL)
 	}
 }
 
@@ -176,8 +176,8 @@ func TestProjectDonationSummaries_UserLookupError_DegradeGracefully(t *testing.T
 	if s.ID != "d1" {
 		t.Errorf("ID = %q, want d1", s.ID)
 	}
-	if s.DonorName != "" || s.DonorAvatar != "" {
-		t.Errorf("expected empty donor info on lookup error, got name=%q avatar=%q", s.DonorName, s.DonorAvatar)
+	if s.DonorName != "" || s.DonorAvatarURL != "" {
+		t.Errorf("expected empty donor info on lookup error, got name=%q avatar=%q", s.DonorName, s.DonorAvatarURL)
 	}
 	if s.DonorType != donorTypeIndividual {
 		t.Errorf("DonorType = %q, want %q", s.DonorType, donorTypeIndividual)
@@ -223,8 +223,8 @@ func TestProjectDonationSummaries_UnknownUserID_NoName(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 summary, got %d", len(result))
 	}
-	if result[0].DonorName != "" || result[0].DonorAvatar != "" {
-		t.Errorf("expected empty name/avatar for unknown user, got name=%q avatar=%q", result[0].DonorName, result[0].DonorAvatar)
+	if result[0].DonorName != "" || result[0].DonorAvatarURL != "" {
+		t.Errorf("expected empty name/avatar for unknown user, got name=%q avatar=%q", result[0].DonorName, result[0].DonorAvatarURL)
 	}
 }
 

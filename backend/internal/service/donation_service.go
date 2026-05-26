@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -78,17 +79,19 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 		}
 	}
 
-	_, span := donationSvcTracer.Start(ctx, "projectDonationSummaries")
+	ctx, span := donationSvcTracer.Start(ctx, "projectDonationSummaries")
 	defer span.End()
 
 	users, err := repo.GetUsersByIDs(ctx, userIDs)
 	if err != nil {
 		span.RecordError(err)
+		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
 		users = map[string]models.User{}
 	}
 	orgs, err := repo.GetOrganizationsByIDs(ctx, orgIDs)
 	if err != nil {
 		span.RecordError(err)
+		slog.WarnContext(ctx, "failed to look up donor organizations", "error", err)
 		orgs = map[string]models.Organization{}
 	}
 
@@ -105,13 +108,13 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 			s.DonorType = donorTypeOrganization
 			if org, ok := orgs[d.OrganizationID]; ok {
 				s.DonorName = org.Name
-				s.DonorAvatar = org.AvatarURL
+				s.DonorAvatarURL = org.AvatarURL
 			}
 		} else {
 			s.DonorType = donorTypeIndividual
 			if user, ok := users[d.UserID]; ok {
 				s.DonorName = user.Name
-				s.DonorAvatar = user.AvatarURL
+				s.DonorAvatarURL = user.AvatarURL
 			}
 		}
 		summaries = append(summaries, s)
@@ -147,7 +150,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	)
 
 	if input.AmountCents <= 0 {
-		return nil, fmt.Errorf("%w: amount_in_cents must be positive", domain.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: amount_cents must be positive", domain.ErrInvalidInput)
 	}
 	if input.StripePaymentMethodID == "" {
 		return nil, fmt.Errorf("%w: stripe_payment_method_id is required", domain.ErrInvalidInput)

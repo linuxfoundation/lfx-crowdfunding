@@ -50,15 +50,16 @@ type DonationCreateInput struct {
 }
 
 // DonationSummary is the public-facing projection returned by the initiative
-// donation list (GET /v1/initiatives/{id}/donations). It contains only what is
-// safe to show on a public page — no user_id, no Stripe IDs, no PII.
+// donation list (GET /v1/initiatives/{id}/donations). It omits internal
+// identifiers (user_id, organization_id) and Stripe IDs; donor_name and
+// donor_avatar_url are display-only fields intentionally included.
 type DonationSummary struct {
-	ID          string    `json:"id"`
-	AmountCents int64     `json:"amount_cents"`
-	Status      string    `json:"status,omitempty"`
-	Category    string    `json:"category,omitempty"`
-	DonorName   string    `json:"donor_name,omitempty"`
-	DonorType   string    `json:"donor_type,omitempty"` // "organization" | "individual"
-	DonorAvatar string    `json:"donor_avatar_url,omitempty"`
-	CreatedOn   time.Time `json:"created_on"`
+	ID             string    `json:"id"`
+	AmountCents    int64     `json:"amount_cents"`
+	Status         string    `json:"status,omitempty"`
+	Category       string    `json:"category,omitempty"`
+	DonorName      string    `json:"donor_name,omitempty"`
+	DonorType      string    `json:"donor_type,omitempty"` // "organization" | "individual"
+	DonorAvatarURL string    `json:"donor_avatar_url,omitempty"`
+	CreatedOn      time.Time `json:"created_on"`
 }

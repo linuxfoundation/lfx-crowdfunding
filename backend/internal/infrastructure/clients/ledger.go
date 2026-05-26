@@ -168,8 +168,12 @@ type ledgerTransactionsResponse struct {
 // GetTransactions fetches a paginated list of transactions for an initiative
 // from the Ledger service's Postgres-backed GET /transactions/ endpoint.
 // startDate=0 retrieves all-time transactions.
-// The Ledger API uses 1-based page numbers internally; limit/offset are
-// converted to page/perPage before the upstream call.
+//
+// Pagination constraint: the Ledger API is page-based (1-based). offset is
+// converted to a page number via offset/limit + 1, which is only exact when
+// offset is a multiple of limit. In practice all callers use limit-aligned
+// offsets (0, limit, 2*limit, ...) so this is not an issue. True arbitrary
+// offset semantics would require fetching across page boundaries.
 func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter TransactionFilter) (*models.TransactionList, error) {
 	ctx, span := ledgerTracer.Start(ctx, "ledger.GetTransactions")
 	defer span.End()
