@@ -50,11 +50,11 @@ func (s *StatisticsService) GetPlatformStatistics(ctx context.Context) (*models.
 
 // GetPlatformDetails returns category totals, donor split, and top sponsors
 // by fetching from the Ledger service and enriching sponsor names/avatars from CF DB.
-func (s *StatisticsService) GetPlatformDetails(ctx context.Context) (*models.PlatformDetails, error) {
+func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int) (*models.PlatformDetails, error) {
 	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetPlatformDetails")
 	defer span.End()
 
-	raw, err := s.ledgerClient.GetPlatformBalance(ctx, 20)
+	raw, err := s.ledgerClient.GetPlatformBalance(ctx, topLimit)
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUpstreamUnavailable) {

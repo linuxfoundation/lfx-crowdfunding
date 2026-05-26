@@ -6,7 +6,7 @@ import type { InvestingCompaniesResponse } from '#shared/types/static-pages.type
 
 export default defineEventHandler(async (): Promise<InvestingCompaniesResponse> => {
   const { apiBaseUrl } = useRuntimeConfig();
-  const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform`);
+  const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform?top_limit=20`);
   return {
     data: (res.top_organizations ?? []).map((org) => ({
       id: org.id,

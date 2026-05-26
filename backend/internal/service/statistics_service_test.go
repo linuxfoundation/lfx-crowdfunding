@@ -128,7 +128,7 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 	}
 
 	svc := newStatsSvc(repo, ledger)
-	details, err := svc.GetPlatformDetails(context.Background())
+	details, err := svc.GetPlatformDetails(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestGetPlatformDetails_MissingEnrichmentUsesFallbackName(t *testing.T) {
 	}
 
 	svc := newStatsSvc(repo, ledger)
-	details, err := svc.GetPlatformDetails(context.Background())
+	details, err := svc.GetPlatformDetails(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestGetPlatformDetails_LedgerError(t *testing.T) {
 	ledger := &testLedgerClient{err: errors.New("ledger down")}
 
 	svc := newStatsSvc(repo, ledger)
-	_, err := svc.GetPlatformDetails(context.Background())
+	_, err := svc.GetPlatformDetails(context.Background(), 10)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -194,7 +194,7 @@ func TestGetPlatformDetails_LedgerUnavailableReturnsEmpty(t *testing.T) {
 	ledger := &testLedgerClient{err: domain.ErrUpstreamUnavailable}
 
 	svc := newStatsSvc(repo, ledger)
-	details, err := svc.GetPlatformDetails(context.Background())
+	details, err := svc.GetPlatformDetails(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("expected nil error for upstream unavailable, got %v", err)
 	}
@@ -223,7 +223,7 @@ func TestGetPlatformDetails_MapsFields(t *testing.T) {
 	}
 
 	svc := newStatsSvc(repo, ledger)
-	details, err := svc.GetPlatformDetails(context.Background())
+	details, err := svc.GetPlatformDetails(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -471,7 +471,7 @@ func TestGetPlatformDetails_EnrichmentRepoError(t *testing.T) {
 	}
 
 	svc := newStatsSvc(repo, ledger)
-	_, err := svc.GetPlatformDetails(context.Background())
+	_, err := svc.GetPlatformDetails(context.Background(), 10)
 	if err == nil {
 		t.Fatal("expected error from repo during enrichment, got nil")
 	}
