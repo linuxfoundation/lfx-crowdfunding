@@ -16,17 +16,19 @@ const (
 
 // Subscription maps to the crowdfunding.subscriptions table.
 type Subscription struct {
-	ID                       string    `json:"id"`
-	UserID                   string    `json:"user_id"`
-	InitiativeID             string    `json:"initiative_id"`
-	OrganizationID           string    `json:"organization_id,omitempty"`
-	Category                 string    `json:"category,omitempty"`
-	CurrentAmountCents       int64     `json:"current_amount_in_cents"`
-	Frequency                string    `json:"frequency,omitempty"`
-	Status                   string    `json:"status,omitempty"`
-	StripeSubscriptionID     string    `json:"stripe_subscription_id,omitempty"`
-	StripeSubscriptionItemID string    `json:"stripe_subscription_item_id,omitempty"`
-	StripePriceID            string    `json:"stripe_price_id,omitempty"`
+	ID             string    `json:"id"`
+	UserID         string    `json:"-"`
+	InitiativeID   string    `json:"initiative_id"`
+	OrganizationID string    `json:"-"`
+	Category       string    `json:"category,omitempty"`
+	CurrentAmountCents int64 `json:"amount_cents"`
+	Frequency      string    `json:"frequency,omitempty"`
+	Status         string    `json:"status,omitempty"`
+	// Stripe IDs are internal operational fields used by webhook reconciliation.
+	// They are never serialised to API consumers.
+	StripeSubscriptionID     string    `json:"-"`
+	StripeSubscriptionItemID string    `json:"-"`
+	StripePriceID            string    `json:"-"`
 	CreatedOn                time.Time `json:"created_on"`
 	UpdatedOn                time.Time `json:"updated_on"`
 
@@ -36,7 +38,7 @@ type Subscription struct {
 
 // SubscriptionCreateInput is the request body for creating a subscription.
 type SubscriptionCreateInput struct {
-	AmountCents           int64  `json:"amount_in_cents"`
+	AmountCents           int64  `json:"amount_cents"`
 	Frequency             string `json:"frequency"`
 	Category              string `json:"category,omitempty"`
 	OrganizationID        string `json:"organization_id,omitempty"`

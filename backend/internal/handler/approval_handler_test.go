@@ -46,6 +46,13 @@ func (r *apprInitiativeRepo) GetBySlug(_ context.Context, _ string) (*models.Ini
 func (r *apprInitiativeRepo) GetIDBySlug(_ context.Context, _ string) (string, error) {
 	return "", nil
 }
+func (r *apprInitiativeRepo) ResolveSlug(_ context.Context, slug string) (string, error) {
+	// Simulate slug → UUID resolution: if slug matches the initiative's slug, return its ID.
+	if r.initiative != nil && r.initiative.Slug == slug {
+		return r.initiative.ID, nil
+	}
+	return "", domain.ErrInitiativeNotFound
+}
 func (r *apprInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }
@@ -351,5 +358,48 @@ func TestApprovalHandler_UpdateError(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
+	}
+}
+
+// TestApprovalHandler_SlugResolution verifies that a slug in the {id} path param is resolved
+// to the initiative's UUID before ProcessApproval is called. This covers the email link flow
+// where approval URLs are built from the slug (e.g. /initiatives/my-project/process-approval/approve).
+func TestApprovalHandler_SlugResolution(t *testing.T) {
+	const slug = "my-submitted-project"
+	repo := &apprInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:     testInitiativeID,
+			Slug:   slug,
+			Status: models.StatusSubmitted,
+		},
+	}
+	h := newApprovalHandler(repo, []string{"admin"})
+	principal := &models.Principal{Username: "admin"}
+	w := httptest.NewRecorder()
+	// Use the slug (not the UUID) in the path — matches what the email approval link contains.
+	approvalRouter(h).ServeHTTP(w, approvalReq(slug, "approve", principal))
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 when slug is used in path, got %d: %s", w.Code, w.Body.String())
+	}
+	got := decodeInitiative(t, w.Body.Bytes())
+	if got.Status != models.StatusPublished {
+		t.Errorf("expected status %q after approval via slug, got %q", models.StatusPublished, got.Status)
+	}
+	if repo.lastUpdated == nil || repo.lastUpdated.ID != testInitiativeID {
+		t.Errorf("expected repo.Update called with initiative ID %q, got %v", testInitiativeID, repo.lastUpdated)
+	}
+}
+
+func TestApprovalHandler_SlugNotFound(t *testing.T) {
+	// Repo has no initiative matching the slug — ResolveSlug returns 404.
+	repo := &apprInitiativeRepo{}
+	h := newApprovalHandler(repo, []string{"admin"})
+	principal := &models.Principal{Username: "admin"}
+	w := httptest.NewRecorder()
+	approvalRouter(h).ServeHTTP(w, approvalReq("nonexistent-slug", "approve", principal))
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for unknown slug, got %d", w.Code)
 	}
 }

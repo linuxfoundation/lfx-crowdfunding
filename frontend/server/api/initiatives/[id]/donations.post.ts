@@ -16,7 +16,7 @@ export default defineEventHandler(async (event): Promise<DonationResult> => {
   const raw = await useBackendFetch<DonationResultWire>(event, `/v1/initiatives/${id}/donations`, {
     method: 'POST',
     body: {
-      amount_in_cents: body.amountInCents,
+      amount_cents: body.amountInCents,
       stripe_payment_method_id: body.stripePaymentMethodId,
       ...(body.category ? { category: body.category } : {}),
       ...(body.organizationId ? { organization_id: body.organizationId } : {}),
@@ -27,8 +27,5 @@ export default defineEventHandler(async (event): Promise<DonationResult> => {
     id: raw.id,
     status: raw.status,
     ...(raw.client_secret ? { clientSecret: raw.client_secret } : {}),
-    ...(raw.stripe_payment_intent_id
-      ? { stripePaymentIntentId: raw.stripe_payment_intent_id }
-      : {}),
   };
 });

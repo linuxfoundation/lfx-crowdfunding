@@ -125,8 +125,8 @@ func (s *InitiativeService) CheckPublishedByID(ctx context.Context, id string) e
 	return nil
 }
 
-// GetIDBySlug returns only the UUID for the given slug.
-// Used by handlers that need to resolve a slug without triggering Ledger enrichment.
+// GetIDBySlug returns only the UUID for the given slug (published initiatives only).
+// Used by handlers that need to resolve a public slug without triggering Ledger enrichment.
 func (s *InitiativeService) GetIDBySlug(ctx context.Context, slug string) (string, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetIDBySlug")
 	defer span.End()
@@ -136,6 +136,21 @@ func (s *InitiativeService) GetIDBySlug(ctx context.Context, slug string) (strin
 	if err != nil {
 		span.RecordError(err)
 		return "", fmt.Errorf("get id by slug: %w", err)
+	}
+	return id, nil
+}
+
+// ResolveSlug returns the UUID for the given slug regardless of status.
+// Used by admin flows (e.g. approval) where the initiative may not yet be published.
+func (s *InitiativeService) ResolveSlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ResolveSlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.slug", slug))
+
+	id, err := s.repo.ResolveSlug(ctx, slug)
+	if err != nil {
+		span.RecordError(err)
+		return "", fmt.Errorf("resolve slug: %w", err)
 	}
 	return id, nil
 }
@@ -503,15 +518,15 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
-func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, size, page int) (*models.TransactionList, error) {
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, limit, offset int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
 	defer span.End()
 
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
 		ProjectID: initiativeID,
 		TxnType:   txnType,
-		Size:      size,
-		Page:      page,
+		Limit:     limit,
+		Offset:    offset,
 	})
 	if err != nil {
 		return nil, err
