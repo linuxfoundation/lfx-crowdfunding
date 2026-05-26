@@ -75,7 +75,8 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
-// Only published initiatives are returned; others produce a 404.
+// Only published initiatives are returned to anonymous callers; approvers may
+// retrieve initiatives in any status (e.g. "submitted") for review purposes.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var (
@@ -92,8 +93,12 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !initiative.Status.EqualFold(models.StatusPublished) {
-		Error(w, domain.ErrInitiativeNotFound)
-		return
+		// Non-published initiatives are visible to approvers only.
+		principal := auth.PrincipalFromContext(r.Context())
+		if !h.isApprover(principal) {
+			Error(w, domain.ErrInitiativeNotFound)
+			return
+		}
 	}
 
 	body, err := json.Marshal(initiative)
@@ -293,6 +298,27 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// isApprover reports whether the principal is in the allowed approvers list.
+// It matches against both the raw Username claim and the localpart of UserID
+// (the portion after the last "|", e.g. "elim" from "auth0|elim") to handle
+// IdPs that populate UserID but leave Username empty.
+func (h *InitiativeHandler) isApprover(principal *models.Principal) bool {
+	if principal == nil {
+		return false
+	}
+	// Derive a bare username from UserID by stripping the IdP prefix (e.g. "auth0|").
+	bareID := principal.UserID
+	if idx := strings.LastIndex(bareID, "|"); idx >= 0 {
+		bareID = bareID[idx+1:]
+	}
+	for _, a := range h.allowedApprovers {
+		if strings.EqualFold(a, principal.Username) || strings.EqualFold(a, bareID) {
+			return true
+		}
+	}
+	return false
 }
 
 // etagOf returns a quoted ETag for the given response body using MD5.
