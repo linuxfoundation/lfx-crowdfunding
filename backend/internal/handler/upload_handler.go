@@ -47,6 +47,10 @@ type presignedURLResponse struct {
 	UploadURL string `json:"upload_url"`
 	// DestinationURL is the permanent public URL of the object once uploaded.
 	DestinationURL string `json:"destination_url"`
+	// RequiredHeaders are HTTP headers the client MUST include on the PUT request
+	// to S3. The presigned URL signature covers these headers; omitting any one
+	// will cause S3 to return 403. Typical entries: "Content-Type", "x-amz-acl".
+	RequiredHeaders map[string]string `json:"required_headers"`
 }
 
 // CreatePresignedURL handles POST /v1/presigned-url.
@@ -75,14 +79,15 @@ func (h *UploadHandler) CreatePresignedURL(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	uploadURL, destinationURL, err := h.s3.PresignLogoUpload(r.Context(), contentType)
+	uploadURL, destinationURL, requiredHeaders, err := h.s3.PresignLogoUpload(r.Context(), contentType)
 	if err != nil {
 		Error(w, err)
 		return
 	}
 
 	JSON(w, http.StatusOK, presignedURLResponse{
-		UploadURL:      uploadURL,
-		DestinationURL: destinationURL,
+		UploadURL:       uploadURL,
+		DestinationURL:  destinationURL,
+		RequiredHeaders: requiredHeaders,
 	})
 }

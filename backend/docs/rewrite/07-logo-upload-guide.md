@@ -59,7 +59,11 @@ Browser saves destination_url as logo_url in the initiative form
 ```json
 {
   "upload_url": "https://lfx-logos.s3.us-east-1.amazonaws.com/a1b2c3...?X-Amz-Signature=...",
-  "destination_url": "https://lfx-logos.s3.us-east-1.amazonaws.com/a1b2c3..."
+  "destination_url": "https://lfx-logos.s3.us-east-1.amazonaws.com/a1b2c3...",
+  "required_headers": {
+    "Content-Type": "image/png",
+    "x-amz-acl": "public-read"
+  }
 }
 ```
 
@@ -67,6 +71,7 @@ Browser saves destination_url as logo_url in the initiative form
 |-------|-------------|
 | `upload_url` | Presigned PUT URL. Valid for **3 minutes**. Use it once then discard. |
 | `destination_url` | Permanent public URL. This is what you store as `logo_url` on the initiative. |
+| `required_headers` | HTTP headers the client **must** include verbatim on the PUT request. They are part of the presigned URL signature — omitting any one causes S3 to return `403 SignatureDoesNotMatch`. |
 
 **Error responses:**
 
@@ -95,11 +100,13 @@ import { useBackendFetch } from '../utils/backend-fetch'
 interface PresignedURLWire {
   upload_url: string
   destination_url: string
+  required_headers: Record<string, string>
 }
 
 export interface PresignedURLResult {
   uploadUrl: string
   destinationUrl: string
+  requiredHeaders: Record<string, string>
 }
 
 export default defineEventHandler(async (event): Promise<PresignedURLResult> => {
@@ -113,6 +120,7 @@ export default defineEventHandler(async (event): Promise<PresignedURLResult> => 
   return {
     uploadUrl: raw.upload_url,
     destinationUrl: raw.destination_url,
+    requiredHeaders: raw.required_headers,
   }
 })
 ```
@@ -133,6 +141,7 @@ Add to **`frontend/shared/types/upload.types.ts`** (create if it doesn't exist):
 export interface PresignedURLResult {
   uploadUrl: string
   destinationUrl: string
+  requiredHeaders: Record<string, string>
 }
 
 export type AllowedLogoMimeType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
@@ -189,7 +198,11 @@ export const useLogoUpload = () => {
       }
 
       // 2. Ask the BFF for a presigned URL
-      const { uploadUrl, destinationUrl } = await $fetch<{ uploadUrl: string; destinationUrl: string }>(
+      const { uploadUrl, destinationUrl, requiredHeaders } = await $fetch<{
+        uploadUrl: string
+        destinationUrl: string
+        requiredHeaders: Record<string, string>
+      }>(
         '/api/presigned-url',
         {
           method: 'POST',
@@ -197,11 +210,12 @@ export const useLogoUpload = () => {
         }
       )
 
-      // 3. PUT the file directly to S3 — NOT through the backend
-      //    The Content-Type header MUST match what was requested in step 2.
+      // 3. PUT the file directly to S3 — NOT through the backend.
+      //    requiredHeaders contains the headers that were signed into the presigned URL
+      //    (e.g. Content-Type, x-amz-acl). They MUST be sent verbatim or S3 returns 403.
       const s3Response = await fetch(uploadUrl, {
         method: 'PUT',
-        headers: { 'Content-Type': file.type },
+        headers: requiredHeaders,
         body: file,
       })
 
@@ -213,9 +227,9 @@ export const useLogoUpload = () => {
       // 4. Return the permanent URL for the caller to store on the initiative
       return destinationUrl
     } catch (e: unknown) {
-      const err = e as { data?: { message?: string }; message?: string }
+      const err = e as { data?: { error?: string }; message?: string }
       error.value =
-        err?.data?.message ?? err?.message ?? 'Logo upload failed. Please try again.'
+        err?.data?.error ?? err?.message ?? 'Logo upload failed. Please try again.'
       return null
     } finally {
       uploading.value = false
@@ -316,7 +330,7 @@ CORS rule that allows `PUT` from the frontend origin:
 ```json
 [
   {
-    "AllowedHeaders": ["Content-Type"],
+    "AllowedHeaders": ["Content-Type", "x-amz-acl"],
     "AllowedMethods": ["PUT"],
     "AllowedOrigins": ["https://crowdfunding.lfx.linuxfoundation.org"],
     "ExposeHeaders": []

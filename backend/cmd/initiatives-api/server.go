@@ -62,7 +62,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		Timeout:   cfg.Stripe.Timeout,
 		ReturnURL: cfg.Stripe.ReturnURL,
 	})
-	s3Client, err := clients.NewS3PresignClient(context.Background(), clients.S3Config{
+	s3Client, err := clients.NewS3PresignClient(ctx, clients.S3Config{
 		BucketName:    cfg.S3.BucketName,
 		Region:        cfg.S3.Region,
 		PresignExpiry: cfg.S3.PresignExpiry,

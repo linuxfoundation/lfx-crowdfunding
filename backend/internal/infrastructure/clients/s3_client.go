@@ -7,6 +7,7 @@ package clients
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -24,10 +25,12 @@ const defaultPresignExpiry = 3 * time.Minute
 
 // S3PresignClient generates short-lived presigned PUT URLs for logo uploads.
 type S3PresignClient interface {
-	// PresignLogoUpload returns a presigned PUT URL (uploadURL) and the
-	// permanent public destination URL (destinationURL) for the uploaded object.
+	// PresignLogoUpload returns a presigned PUT URL (uploadURL), the permanent
+	// public destination URL (destinationURL), and the headers (requiredHeaders)
+	// that the client MUST include on the PUT request for the signature to
+	// validate. The map is derived from the SDK's SignedHeader field.
 	// contentType must be a valid MIME type (e.g. "image/png").
-	PresignLogoUpload(ctx context.Context, contentType string) (uploadURL, destinationURL string, err error)
+	PresignLogoUpload(ctx context.Context, contentType string) (uploadURL, destinationURL string, requiredHeaders map[string]string, err error)
 }
 
 // S3Config holds settings for the S3 presign client.
@@ -78,7 +81,9 @@ func NewS3PresignClient(ctx context.Context, cfg S3Config) (S3PresignClient, err
 
 // PresignLogoUpload generates a presigned PUT URL and the resulting public URL.
 // A fresh UUID key is generated for every call so uploads never overwrite each other.
-func (c *s3PresignClient) PresignLogoUpload(ctx context.Context, contentType string) (string, string, error) {
+// The returned requiredHeaders map must be sent verbatim on the PUT request;
+// omitting any of them will cause S3 to reject the upload with a signature error.
+func (c *s3PresignClient) PresignLogoUpload(ctx context.Context, contentType string) (string, string, map[string]string, error) {
 	ctx, span := s3Tracer.Start(ctx, "S3PresignClient.PresignLogoUpload")
 	defer span.End()
 	span.SetAttributes(
@@ -98,11 +103,18 @@ func (c *s3PresignClient) PresignLogoUpload(ctx context.Context, contentType str
 	})
 	if err != nil {
 		span.RecordError(err)
-		return "", "", fmt.Errorf("s3: presign put object: %w", err)
+		return "", "", nil, fmt.Errorf("s3: presign put object: %w", err)
+	}
+
+	// Flatten the SDK's SignedHeader map (multi-value → comma-joined) so the
+	// caller has a simple map[string]string to return to the frontend.
+	requiredHeaders := make(map[string]string, len(req.SignedHeader))
+	for k, vs := range req.SignedHeader {
+		requiredHeaders[k] = strings.Join(vs, ",")
 	}
 
 	// Use the regional endpoint so the URL works without an HTTP redirect.
 	// awsCfg.Region is always populated after LoadDefaultConfig succeeds.
 	destinationURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", c.cfg.BucketName, c.region, key)
-	return req.URL, destinationURL, nil
+	return req.URL, destinationURL, requiredHeaders, nil
 }
