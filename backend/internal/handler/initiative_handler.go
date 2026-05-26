@@ -22,7 +22,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
 
-var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 const (
 	maxTransactionPageSize     = 100

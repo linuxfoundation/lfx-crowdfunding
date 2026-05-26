@@ -46,6 +46,9 @@ func (m *mockInitiativeRepo) GetIDBySlug(_ context.Context, _ string) (string, e
 	return "", nil
 }
 func (m *mockInitiativeRepo) ResolveSlug(_ context.Context, _ string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
 	if m.initiative != nil {
 		return m.initiative.ID, nil
 	}
