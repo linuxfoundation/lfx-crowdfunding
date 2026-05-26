@@ -358,6 +358,9 @@ func (c *ledgerHTTPClient) GetPlatformBalance(ctx context.Context, topLimit int)
 	ctx, span := ledgerTracer.Start(ctx, "ledger.GetPlatformBalance")
 	defer span.End()
 
+	if topLimit <= 0 {
+		topLimit = 10
+	}
 	endpoint := fmt.Sprintf("%s/balance/platform?top_limit=%d", c.baseURL, topLimit)
 	headers := map[string]string{"Authorization": c.apiKey}
 
