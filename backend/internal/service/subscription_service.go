@@ -78,7 +78,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	)
 
 	if input.AmountCents <= 0 {
-		return nil, fmt.Errorf("%w: amount_in_cents must be positive", domain.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: amount_cents must be positive", domain.ErrInvalidInput)
 	}
 	if input.Frequency == "" {
 		return nil, fmt.Errorf("%w: frequency is required", domain.ErrInvalidInput)

@@ -16,6 +16,6 @@ export interface Transaction {
 export interface TransactionList {
   data: Transaction[];
   totalCount: number;
-  from: number;
-  size: number;
+  limit: number;
+  offset: number;
 }

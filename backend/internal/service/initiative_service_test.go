@@ -89,7 +89,7 @@ func (m *mockLedgerClient) GetAllBalances(_ context.Context) ([]models.LedgerRaw
 func (m *mockLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
 	return nil, nil
 }
-func (m *mockLedgerClient) GetPlatformBalance(_ context.Context) (*clients.LedgerPlatformBalance, error) {
+func (m *mockLedgerClient) GetPlatformBalance(_ context.Context, _ int) (*clients.LedgerPlatformBalance, error) {
 	return nil, nil
 }
 func (m *mockLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clients.LedgerPlatformMonthly, error) {

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -30,9 +29,11 @@ func NewSubscriptionHandler(svc *service.SubscriptionService) *SubscriptionHandl
 // List handles GET /v1/initiatives/{id}/subscriptions
 func (h *SubscriptionHandler) List(w http.ResponseWriter, r *http.Request) {
 	initiativeID := chi.URLParam(r, "id")
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
 	q := r.URL.Query()
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
 
 	subs, meta, err := h.svc.ListByInitiative(r.Context(), initiativeID, models.SubscriptionFilter{
 		Status: q.Get("status"),
@@ -91,9 +92,11 @@ func (h *SubscriptionHandler) ListForUser(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
 	q := r.URL.Query()
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
 
 	subs, meta, err := h.svc.ListByUser(r.Context(), principal.UserID, models.SubscriptionFilter{
 		Status: q.Get("status"),
