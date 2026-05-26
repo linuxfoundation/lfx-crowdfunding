@@ -62,6 +62,14 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		Timeout:   cfg.Stripe.Timeout,
 		ReturnURL: cfg.Stripe.ReturnURL,
 	})
+	s3Client, err := clients.NewS3PresignClient(ctx, clients.S3Config{
+		BucketName:    cfg.S3.BucketName,
+		Region:        cfg.S3.Region,
+		PresignExpiry: cfg.S3.PresignExpiry,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("s3 client: %w", err)
+	}
 
 	// Mandrill email client
 	mandrillClient := clients.NewMandrillClient(clients.MandrillConfig{
@@ -104,6 +112,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	paymentH := handler.NewPaymentHandler(paymentSvc)
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, donationRepo, subscriptionRepo, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
+	uploadH := handler.NewUploadHandler(s3Client)
 
 	// Router
 	r := chi.NewRouter()
@@ -160,6 +169,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
 		r.Get("/me/payment-account", paymentH.GetPaymentAccount)
 		r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
+
+		// Logo uploads
+		r.Post("/presigned-url", uploadH.CreatePresignedURL)
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
