@@ -42,8 +42,8 @@ type LedgerBalance struct {
 type TransactionFilter struct {
 	ProjectID string
 	TxnType   string // "donation" | "reimbursement" — empty = all
-	Size      int    // page size; 0 defaults to 10
-	Page      int    // 1-based page number; 0 or negative defaults to 1
+	Limit     int    // page size; 0 defaults to 10
+	Offset    int    // number of records to skip; negative treated as 0
 }
 
 // LedgerClient is the interface consumed by the service layer and the
@@ -168,25 +168,28 @@ type ledgerTransactionsResponse struct {
 // GetTransactions fetches a paginated list of transactions for an initiative
 // from the Ledger service's Postgres-backed GET /transactions/ endpoint.
 // startDate=0 retrieves all-time transactions.
-// Page is 1-based; filter.From is converted to page number using filter.Size.
+// The Ledger API uses 1-based page numbers internally; limit/offset are
+// converted to page/perPage before the upstream call.
 func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter TransactionFilter) (*models.TransactionList, error) {
 	ctx, span := ledgerTracer.Start(ctx, "ledger.GetTransactions")
 	defer span.End()
 	span.SetAttributes(attribute.String("ledger.project_id", filter.ProjectID))
 
-	size := filter.Size
-	if size <= 0 {
-		size = 10
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 10
 	}
-	page := filter.Page
-	if page <= 0 {
-		page = 1
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
 	}
+	// Convert offset/limit to the Ledger's 1-based page model.
+	page := offset/limit + 1
 
 	q := url.Values{}
 	q.Set("projectID", filter.ProjectID)
 	q.Set("startDate", "0")
-	q.Set("perPage", fmt.Sprintf("%d", size))
+	q.Set("perPage", fmt.Sprintf("%d", limit))
 	q.Set("page", fmt.Sprintf("%d", page))
 	if filter.TxnType != "" {
 		// Ledger uses "credit"/"debit"; our API accepts "donation"/"reimbursement"
@@ -241,17 +244,17 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 		})
 	}
 
-	// Ledger doesn't return a total count on this endpoint; use HasNext to signal more pages.
-	totalCount := (page-1)*size + len(txns)
+	// Ledger doesn't return a total count on this endpoint; use HasNext to estimate.
+	totalCount := offset + len(txns)
 	if resp.HasNext {
-		totalCount += size // at least one more page
+		totalCount += limit // at least one more page
 	}
 
 	return &models.TransactionList{
 		Data:       txns,
 		TotalCount: totalCount,
-		Page:       page,
-		Size:       size,
+		Limit:      limit,
+		Offset:     offset,
 	}, nil
 }
 

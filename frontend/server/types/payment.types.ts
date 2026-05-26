@@ -17,5 +17,4 @@ export interface DonationResultWire {
   id: string;
   status: string;
   client_secret?: string;
-  stripe_payment_intent_id?: string;
 }

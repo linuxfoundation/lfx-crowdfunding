@@ -503,15 +503,15 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
-func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, size, page int) (*models.TransactionList, error) {
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, limit, offset int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
 	defer span.End()
 
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
 		ProjectID: initiativeID,
 		TxnType:   txnType,
-		Size:      size,
-		Page:      page,
+		Limit:     limit,
+		Offset:    offset,
 	})
 	if err != nil {
 		return nil, err
