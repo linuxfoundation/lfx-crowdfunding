@@ -62,7 +62,9 @@ type LedgerClient interface {
 
 	// GetPlatformBalance returns platform-wide aggregate data including category
 	// totals, donor split, and top sponsors from the Ledger service.
-	GetPlatformBalance(ctx context.Context) (*LedgerPlatformBalance, error)
+	// topLimit controls how many top organizations and individuals are returned;
+	// callers are responsible for supplying a sensible value (handler defaults to 10).
+	GetPlatformBalance(ctx context.Context, topLimit int) (*LedgerPlatformBalance, error)
 
 	// GetPlatformMonthly returns monthly donation buckets for the last N months.
 	GetPlatformMonthly(ctx context.Context, months int) (*LedgerPlatformMonthly, error)
@@ -359,11 +361,14 @@ type ledgerPlatformRecentResponse struct {
 }
 
 // GetPlatformBalance fetches platform-wide aggregate data from the Ledger service.
-func (c *ledgerHTTPClient) GetPlatformBalance(ctx context.Context) (*LedgerPlatformBalance, error) {
+func (c *ledgerHTTPClient) GetPlatformBalance(ctx context.Context, topLimit int) (*LedgerPlatformBalance, error) {
 	ctx, span := ledgerTracer.Start(ctx, "ledger.GetPlatformBalance")
 	defer span.End()
 
-	endpoint := fmt.Sprintf("%s/balance/platform", c.baseURL)
+	if topLimit <= 0 {
+		topLimit = 10
+	}
+	endpoint := fmt.Sprintf("%s/balance/platform?top_limit=%d", c.baseURL, topLimit)
 	headers := map[string]string{"Authorization": c.apiKey}
 
 	var resp ledgerPlatformBalanceResponse
