@@ -1,9 +1,28 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
-import { VueQueryPlugin, QueryClient, dehydrate, hydrate } from '@tanstack/vue-query';
+import { VueQueryPlugin, QueryClient, QueryCache, dehydrate, hydrate } from '@tanstack/vue-query';
 
 export default defineNuxtPlugin((nuxtApp) => {
   const queryClient = new QueryClient({
+    queryCache: new QueryCache({
+      onError: (error) => {
+        if (import.meta.client) {
+          nuxtApp.runWithContext(() => {
+            const { showError } = useErrorToast();
+            const err = error as {
+              data?: { message?: string; statusMessage?: string };
+              message?: string;
+            };
+            showError(
+              err?.data?.message ??
+                err?.data?.statusMessage ??
+                err?.message ??
+                'Failed to load data. Please try again.',
+            );
+          });
+        }
+      },
+    }),
     defaultOptions: {
       queries: {
         staleTime: 5 * 60 * 1000,
