@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -30,11 +29,13 @@ func NewDonationHandler(svc *service.DonationService) *DonationHandler {
 // List handles GET /v1/initiatives/{id}/donations
 func (h *DonationHandler) List(w http.ResponseWriter, r *http.Request) {
 	initiativeID := chi.URLParam(r, "id")
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
 	q := r.URL.Query()
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
 
-	donations, meta, err := h.svc.ListByInitiative(r.Context(), initiativeID, models.DonationFilter{
+	summaries, meta, err := h.svc.ListByInitiative(r.Context(), initiativeID, models.DonationFilter{
 		Status: q.Get("status"),
 		Limit:  limit,
 		Offset: offset,
@@ -44,7 +45,7 @@ func (h *DonationHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{
-		"data": donations,
+		"data": summaries,
 		"meta": meta,
 	})
 }
@@ -58,9 +59,11 @@ func (h *DonationHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
 	q := r.URL.Query()
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
 
 	donations, meta, err := h.svc.ListByUser(r.Context(), principal.UserID, models.DonationFilter{
 		Status: q.Get("status"),
