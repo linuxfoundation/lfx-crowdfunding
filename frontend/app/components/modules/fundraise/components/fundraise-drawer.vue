@@ -63,6 +63,7 @@ import FundraiseStepDetails from './fundraise-step-details.vue';
 import FundraiseHeader from './main/fundraise-header.vue';
 import FundraiseFooter from './main/fundraise-footer.vue';
 import FundraiseSuccess from './main/fundraise-success.vue';
+import { useErrorToast } from '~/composables/useErrorToast';
 import type { InitiativeType } from '~/types/fundraise.types';
 import LfxModal from '~/components/uikit/modal/modal.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
@@ -89,6 +90,7 @@ const submitted = ref(false);
 const selectedType = ref<InitiativeType | null>(null);
 
 const detailsStepRef = ref<InstanceType<typeof FundraiseStepDetails> | null>(null);
+const { showError } = useErrorToast();
 
 const totalSteps = computed(() => 2);
 const isLastStep = computed(() => step.value === totalSteps.value - 1);
@@ -187,8 +189,9 @@ const handleContinue = async () => {
     });
     submitted.value = true;
     emit('submitted');
-  } catch {
-    // API errors surface via $fetch
+  } catch (e: unknown) {
+    const err = e as { data?: { message?: string }; message?: string };
+    showError(err?.data?.message ?? err?.message ?? 'Failed to submit initiative. Please try again.');
   } finally {
     submitting.value = false;
   }
