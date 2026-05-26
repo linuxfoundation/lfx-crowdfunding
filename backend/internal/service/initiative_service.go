@@ -125,8 +125,8 @@ func (s *InitiativeService) CheckPublishedByID(ctx context.Context, id string) e
 	return nil
 }
 
-// GetIDBySlug returns only the UUID for the given slug.
-// Used by handlers that need to resolve a slug without triggering Ledger enrichment.
+// GetIDBySlug returns only the UUID for the given slug (published initiatives only).
+// Used by handlers that need to resolve a public slug without triggering Ledger enrichment.
 func (s *InitiativeService) GetIDBySlug(ctx context.Context, slug string) (string, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetIDBySlug")
 	defer span.End()
@@ -136,6 +136,21 @@ func (s *InitiativeService) GetIDBySlug(ctx context.Context, slug string) (strin
 	if err != nil {
 		span.RecordError(err)
 		return "", fmt.Errorf("get id by slug: %w", err)
+	}
+	return id, nil
+}
+
+// ResolveSlug returns the UUID for the given slug regardless of status.
+// Used by admin flows (e.g. approval) where the initiative may not yet be published.
+func (s *InitiativeService) ResolveSlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ResolveSlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.slug", slug))
+
+	id, err := s.repo.ResolveSlug(ctx, slug)
+	if err != nil {
+		span.RecordError(err)
+		return "", fmt.Errorf("resolve slug: %w", err)
 	}
 	return id, nil
 }
