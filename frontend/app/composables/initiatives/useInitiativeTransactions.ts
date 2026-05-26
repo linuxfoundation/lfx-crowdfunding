@@ -3,7 +3,7 @@
 
 import { useQuery } from '@tanstack/vue-query';
 import type { MaybeRef } from 'vue';
-import { toValue } from 'vue';
+import { computed, toValue } from 'vue';
 import type { TransactionList } from '#shared/types/transaction.types';
 
 export function useInitiativeTransactions(
