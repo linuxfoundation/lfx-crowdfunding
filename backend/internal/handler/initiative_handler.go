@@ -263,6 +263,14 @@ func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Reque
 	}
 
 	id := chi.URLParam(r, "id")
+	if !uuidPattern.MatchString(id) {
+		resolved, resolveErr := h.svc.GetIDBySlug(r.Context(), id)
+		if resolveErr != nil {
+			Error(w, resolveErr)
+			return
+		}
+		id = resolved
+	}
 	updated, err := h.svc.ProcessApproval(r.Context(), id, action)
 	if err != nil {
 		Error(w, err)
