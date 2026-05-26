@@ -62,7 +62,8 @@ type LedgerClient interface {
 
 	// GetPlatformBalance returns platform-wide aggregate data including category
 	// totals, donor split, and top sponsors from the Ledger service.
-	// topLimit controls how many top organizations and individuals are returned (default 10).
+	// topLimit controls how many top organizations and individuals are returned;
+	// callers are responsible for supplying a sensible value (handler defaults to 10).
 	GetPlatformBalance(ctx context.Context, topLimit int) (*LedgerPlatformBalance, error)
 
 	// GetPlatformMonthly returns monthly donation buckets for the last N months.

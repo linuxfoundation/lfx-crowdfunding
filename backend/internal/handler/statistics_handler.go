@@ -40,8 +40,11 @@ func (h *StatisticsHandler) GetPlatformDetails(w http.ResponseWriter, r *http.Re
 	if v := r.URL.Query().Get("top_limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 {
-			Error(w, fmt.Errorf("top_limit must be a positive integer: %w", domain.ErrInvalidInput))
+			Error(w, fmt.Errorf("%w: top_limit must be a positive integer", domain.ErrInvalidInput))
 			return
+		}
+		if n > 100 {
+			n = 100
 		}
 		topLimit = n
 	}
