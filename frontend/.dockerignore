@@ -1,0 +1,24 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+
+# Dependencies — installed fresh inside the image
+node_modules/
+.pnpm-store/
+
+# Build artifacts — produced inside the image
+.output/
+.nuxt/
+
+# Local env files — never ship secrets into the image
+.env
+.env.*
+!.env.example
+
+# Dev tooling
+.git/
+.github/
+charts/
+*.md
+
+# Test / coverage
+coverage/

@@ -1,0 +1,102 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+replicaCount: 2
+
+image:
+  repository: ghcr.io/linuxfoundation/lfx-crowdfunding-frontend
+  pullPolicy: Always
+  tag: "" # required — set per environment via ArgoCD values
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false # Nuxt/Nitro writes tmp files at runtime
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+ingress:
+  enabled: false
+  className: traefik
+  annotations: {}
+  hosts: []
+  tls: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 20
+  periodSeconds: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── Non-secret environment variables ─────────────────────────────────────────
+config:
+  NUXT_APP_ENV: "production"
+  NUXT_APP_URL: "" # set per environment, e.g. https://funding.platform.linuxfoundation.org
+  NUXT_AUTH0_COOKIE_DOMAIN: "" # set per environment, e.g. platform.linuxfoundation.org
+  NUXT_PUBLIC_AUTH0_CLIENT_ID: ""
+  NUXT_PUBLIC_AUTH0_DOMAIN: "" # set per environment, e.g. https://linuxfoundation.auth0.com
+  NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID: ""
+  NODE_ENV: "production"
+  NITRO_HOST: "0.0.0.0"
+  NITRO_PORT: "3000"
+
+# ── Secret environment variables ─────────────────────────────────────────────
+# Expected keys in the Secret (populated by ESO from AWS Secrets Manager):
+#   NUXT_AUTH0_CLIENT_SECRET, NUXT_JWT_SECRET, NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+#   NUXT_GITHUB_OAUTH_CLIENT_SECRET
+secretName: lfx-crowdfunding-frontend-secrets
+
+# createPlaceholderSecret — same semantics as backend chart.
+# false = ESO/operator creates the secret. true = chart creates empty placeholder.
+createPlaceholderSecret: false

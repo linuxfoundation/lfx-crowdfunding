@@ -1,20 +1,19 @@
 # Copyright The Linux Foundation and each contributor to LFX.
 # SPDX-License-Identifier: MIT
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "lfx-v2-initiatives-service.fullname" . }}
+  name: {{ include "lfx-crowdfunding-frontend.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
+    {{- include "lfx-crowdfunding-frontend.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "lfx-v2-initiatives-service.selectorLabels" . | nindent 6 }}
+      {{- include "lfx-crowdfunding-frontend.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -22,13 +21,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "lfx-v2-initiatives-service.selectorLabels" . | nindent 8 }}
+        {{- include "lfx-crowdfunding-frontend.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "lfx-v2-initiatives-service.serviceAccountName" . }}
+      serviceAccountName: {{ include "lfx-crowdfunding-frontend.serviceAccountName" . }}
       automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -40,15 +39,11 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
-          {{- with .Values.env }}
-          env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           envFrom:
             - configMapRef:
-                name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
+                name: {{ include "lfx-crowdfunding-frontend.fullname" . }}-config
             - secretRef:
                 name: {{ .Values.secretName }}
           livenessProbe:

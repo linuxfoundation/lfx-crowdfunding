@@ -1,0 +1,19 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+apiVersion: v2
+name: lfx-crowdfunding-frontend
+description: LFX Crowdfunding Nuxt 4 Frontend BFF
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - lfx
+  - crowdfunding
+  - frontend
+home: https://github.com/linuxfoundation/lfx-crowdfunding
+sources:
+  - https://github.com/linuxfoundation/lfx-crowdfunding
+maintainers:
+  - name: LFX Engineering
+    email: lfx-engineering@linuxfoundation.org
