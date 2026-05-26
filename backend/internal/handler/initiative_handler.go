@@ -22,7 +22,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
 
-var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 const (
 	maxTransactionPageSize     = 100
@@ -263,6 +263,14 @@ func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Reque
 	}
 
 	id := chi.URLParam(r, "id")
+	if !uuidPattern.MatchString(id) {
+		resolved, resolveErr := h.svc.ResolveSlug(r.Context(), id)
+		if resolveErr != nil {
+			Error(w, resolveErr)
+			return
+		}
+		id = resolved
+	}
 	updated, err := h.svc.ProcessApproval(r.Context(), id, action)
 	if err != nil {
 		Error(w, err)
