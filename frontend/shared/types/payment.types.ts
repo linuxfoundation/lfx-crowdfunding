@@ -24,5 +24,4 @@ export interface DonationResult {
   id: string;
   status: string;
   clientSecret?: string;
-  stripePaymentIntentId?: string;
 }
