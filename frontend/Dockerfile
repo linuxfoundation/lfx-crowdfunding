@@ -26,7 +26,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup -u 65532
 WORKDIR /app
 
 # Nuxt 4 output: .output/server (Node server) + .output/public (static assets)
-COPY --from=builder --chown=appuser:appgroup /build/.output ./
+COPY --from=builder --chown=appuser:appgroup /build/.output/ ./
 
 USER appuser
 
