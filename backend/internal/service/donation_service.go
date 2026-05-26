@@ -78,12 +78,17 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 		}
 	}
 
+	_, span := donationSvcTracer.Start(ctx, "projectDonationSummaries")
+	defer span.End()
+
 	users, err := repo.GetUsersByIDs(ctx, userIDs)
 	if err != nil {
+		span.RecordError(err)
 		users = map[string]models.User{}
 	}
 	orgs, err := repo.GetOrganizationsByIDs(ctx, orgIDs)
 	if err != nil {
+		span.RecordError(err)
 		orgs = map[string]models.Organization{}
 	}
 
@@ -97,13 +102,13 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 			CreatedOn:   d.CreatedOn,
 		}
 		if d.OrganizationID != "" {
-			s.DonorType = "organization"
+			s.DonorType = donorTypeOrganization
 			if org, ok := orgs[d.OrganizationID]; ok {
 				s.DonorName = org.Name
 				s.DonorAvatar = org.AvatarURL
 			}
 		} else {
-			s.DonorType = "individual"
+			s.DonorType = donorTypeIndividual
 			if user, ok := users[d.UserID]; ok {
 				s.DonorName = user.Name
 				s.DonorAvatar = user.AvatarURL
