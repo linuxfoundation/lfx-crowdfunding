@@ -19,6 +19,7 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
+	S3       S3Config
 	Stripe   StripeConfig
 	Ledger   LedgerConfig
 	Mandrill MandrillConfig
@@ -65,6 +66,17 @@ type StripeConfig struct {
 	// pre-production environments where real Stripe deliveries are active but
 	// DB persistence has not yet landed. Set STRIPE_WEBHOOK_ACK_UNIMPLEMENTED=true.
 	AckUnimplementedWebhooks bool
+}
+
+// S3Config holds settings for S3 logo uploads.
+type S3Config struct {
+	// BucketName is the S3 bucket used for logo uploads.
+	BucketName string
+	// Region is the AWS region hosting the bucket.
+	// When empty the SDK resolves it from the environment (AWS_REGION).
+	Region string
+	// PresignExpiry is how long a presigned PUT URL is valid.
+	PresignExpiry time.Duration
 }
 
 // LedgerConfig holds the upstream Ledger service settings.
@@ -193,6 +205,16 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	s3BucketName := getEnv("S3_UPLOAD_BUCKET", "")
+	if s3BucketName == "" {
+		return nil, fmt.Errorf("S3_UPLOAD_BUCKET is required")
+	}
+	s3Region := getEnv("S3_REGION", "")
+	s3PresignExpiry, err := getDurationEnv("S3_PRESIGN_EXPIRY", 3*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Port:            port,
@@ -224,6 +246,11 @@ func LoadConfig() (*Config, error) {
 			BaseURL: ledgerBaseURL,
 			APIKey:  ledgerAPIKey,
 			Timeout: ledgerTimeout,
+		},
+		S3: S3Config{
+			BucketName:    s3BucketName,
+			Region:        s3Region,
+			PresignExpiry: s3PresignExpiry,
 		},
 		OTel: OTelConfig{
 			ServiceName:    getEnv("OTEL_SERVICE_NAME", "lfx-v2-initiatives-service"),
