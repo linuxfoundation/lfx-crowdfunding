@@ -12,6 +12,10 @@ const PROTECTED: ProtectedRoute[] = [
     match: (p) => /^\/api\/initiatives\/[^/]+\/donations$/.test(p),
     methods: ['POST'],
   },
+  {
+    match: (p) => /^\/api\/initiatives\/[^/]+\/process-approval\/[^/]+$/.test(p),
+    methods: ['POST'],
+  },
   { match: (p) => p === '/api/fundraise', methods: ['POST'] },
 ];
 

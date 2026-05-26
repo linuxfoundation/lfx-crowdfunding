@@ -108,6 +108,7 @@ func (r *InitiativeRepository) GetBySlug(ctx context.Context, slug string) (*mod
 
 // GetIDBySlug returns the UUID of the initiative with the given slug.
 // Cheaper than GetBySlug — no goals query, no Ledger enrichment.
+// Only matches published initiatives; use ResolveSlug for admin flows.
 func (r *InitiativeRepository) GetIDBySlug(ctx context.Context, slug string) (string, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.GetIDBySlug")
 	defer span.End()
@@ -121,6 +122,25 @@ func (r *InitiativeRepository) GetIDBySlug(ctx context.Context, slug string) (st
 		}
 		span.RecordError(err)
 		return "", fmt.Errorf("get id by slug: %w", err)
+	}
+	return id, nil
+}
+
+// ResolveSlug returns the UUID of the initiative with the given slug, regardless of status.
+// Used by admin flows (e.g. approval) where the initiative is not yet published.
+func (r *InitiativeRepository) ResolveSlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.ResolveSlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.initiative_slug", slug))
+
+	var id string
+	err := r.pool.QueryRow(ctx, `SELECT id FROM initiatives WHERE slug = $1`, slug).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrInitiativeNotFound
+		}
+		span.RecordError(err)
+		return "", fmt.Errorf("resolve slug: %w", err)
 	}
 	return id, nil
 }
