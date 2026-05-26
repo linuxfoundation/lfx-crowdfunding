@@ -45,6 +45,12 @@ func (m *mockInitiativeRepo) GetIDBySlug(_ context.Context, _ string) (string, e
 	}
 	return "", nil
 }
+func (m *mockInitiativeRepo) ResolveSlug(_ context.Context, _ string) (string, error) {
+	if m.initiative != nil {
+		return m.initiative.ID, nil
+	}
+	return "", nil
+}
 func (m *mockInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }
@@ -343,6 +349,9 @@ func (m *mockRepoForEnrich) GetBySlug(_ context.Context, _ string) (*models.Init
 	return nil, nil
 }
 func (m *mockRepoForEnrich) GetIDBySlug(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+func (m *mockRepoForEnrich) ResolveSlug(_ context.Context, _ string) (string, error) {
 	return "", nil
 }
 func (m *mockRepoForEnrich) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
