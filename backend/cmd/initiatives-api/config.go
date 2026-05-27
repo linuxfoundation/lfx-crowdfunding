@@ -267,7 +267,7 @@ func LoadConfig() (*Config, error) {
 			APIKey:            getEnv("MANDRILL_API_KEY", ""),
 			FromEmail:         getEnv("MANDRILL_FROM_EMAIL", "noreply@lfx.linuxfoundation.org"),
 			FromName:          getEnv("MANDRILL_FROM_NAME", "LFX Crowdfunding"),
-			FrontendBase:      getEnv("MANDRILL_FRONTEND_BASE", ""),
+			FrontendBase:      getEnv("MANDRILL_FRONTEND_BASE", "https://crowdfunding.linuxfoundation.org"),
 			NotificationEmail: getEnv("MANDRILL_NOTIFICATION_EMAIL", ""),
 			Timeout:           10 * time.Second,
 		},
