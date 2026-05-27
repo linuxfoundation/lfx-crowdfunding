@@ -215,9 +215,9 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	mandrillFrontendBase := getEnv("MANDRILL_FRONTEND_BASE", "")
-	if mandrillFrontendBase == "" {
-		return nil, fmt.Errorf("MANDRILL_FRONTEND_BASE is required")
+	frontendBaseURL := getEnv("FRONTEND_BASE_URL", "")
+	if frontendBaseURL == "" {
+		return nil, fmt.Errorf("FRONTEND_BASE_URL is required")
 	}
 
 	return &Config{
@@ -272,7 +272,7 @@ func LoadConfig() (*Config, error) {
 			APIKey:            getEnv("MANDRILL_API_KEY", ""),
 			FromEmail:         getEnv("MANDRILL_FROM_EMAIL", "noreply@lfx.linuxfoundation.org"),
 			FromName:          getEnv("MANDRILL_FROM_NAME", "LFX Crowdfunding"),
-			FrontendBase:      mandrillFrontendBase,
+			FrontendBase:      frontendBaseURL,
 			NotificationEmail: getEnv("MANDRILL_NOTIFICATION_EMAIL", ""),
 			Timeout:           10 * time.Second,
 		},
