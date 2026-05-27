@@ -2,6 +2,7 @@
   "name": "lfx-crowdfunding",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.1.2",
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
@@ -75,12 +76,6 @@
     "plugins": {
       "tailwindcss": {},
       "autoprefixer": {}
-    }
-  },
-  "pnpm": {
-    "overrides": {
-      "devalue": "^5.8.1",
-      "ws": "^8.20.1"
     }
   },
   "lint-staged": {

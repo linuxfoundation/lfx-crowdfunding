@@ -7,13 +7,13 @@ import type { TransactionList } from '#shared/types/transaction.types';
 
 export default defineEventHandler(async (event): Promise<TransactionList> => {
   const id = getRouterParam(event, 'id');
-  const { type, size, from } = getQuery(event);
+  const { type, limit, offset } = getQuery(event);
 
   const { apiBaseUrl } = useRuntimeConfig();
   const params = new URLSearchParams();
   if (type) params.set('type', String(type));
-  if (size) params.set('size', String(size));
-  if (from) params.set('from', String(from));
+  if (limit) params.set('limit', String(limit));
+  if (offset) params.set('offset', String(offset));
 
   const res = await $fetch<BackendTransactionList>(
     `${apiBaseUrl}/v1/initiatives/${id}/transactions?${params}`,
@@ -22,7 +22,7 @@ export default defineEventHandler(async (event): Promise<TransactionList> => {
   return {
     data: (res.data ?? []).map(mapToTransaction),
     totalCount: res.total_count,
-    from: res.from,
-    size: res.size,
+    limit: res.limit,
+    offset: res.offset,
   };
 });

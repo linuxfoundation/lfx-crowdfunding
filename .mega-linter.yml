@@ -54,9 +54,15 @@ GO_REVIVE_DIRECTORY: backend
 # (commonly unreachable from CI) do not fail the build.
 MARKDOWN_MARKDOWN_LINK_CHECK_CONFIG_FILE: .mlc_config.json
 
+# Pass .trivyignore explicitly so MegaLinter's trivy invocation suppresses
+# known false positives: KSV014 (readOnlyRootFilesystem: false is required for
+# the Nuxt/Nitro frontend) and AVD-KSV-01010 (NITRO_PORT in a ConfigMap is not
+# a secret — trivy's heuristic false-positives on the "PORT" substring).
+REPOSITORY_TRIVY_ARGUMENTS: --ignorefile .trivyignore
+
 # Exclude .claude/ skill files — these are tool configuration, not application
 # code, and contain markdown with intentional bare fences (example snippets).
 #
 # Exclude Helm templates from YAML/prettier linting — Go template syntax
 # ({{ }}) is not valid YAML and cannot be parsed by any YAML linter.
-FILTER_REGEX_EXCLUDE: (\.claude/|backend/charts/.*/templates/)
+FILTER_REGEX_EXCLUDE: (\.claude/|backend/charts/.*/templates/|frontend/charts/.*/templates/)

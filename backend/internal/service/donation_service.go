@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -36,8 +37,10 @@ func NewDonationService(
 	return &DonationService{repo: repo, initiativeRepo: initiativeRepo, userRepo: userRepo, stripe: stripe}
 }
 
-// ListByInitiative returns paginated donations for an initiative.
-func (s *DonationService) ListByInitiative(ctx context.Context, initiativeID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+// ListByInitiative returns a paginated public summary of donations for an
+// initiative. Each entry is enriched with donor name and avatar from the CF DB;
+// Stripe IDs and user_id are never included in the summary.
+func (s *DonationService) ListByInitiative(ctx context.Context, initiativeID string, filter models.DonationFilter) ([]models.DonationSummary, *models.PaginationMeta, error) {
 	ctx, span := donationSvcTracer.Start(ctx, "DonationService.ListByInitiative")
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.id", initiativeID))
@@ -47,7 +50,76 @@ func (s *DonationService) ListByInitiative(ctx context.Context, initiativeID str
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list donations: %w", err)
 	}
-	return donations, meta, nil
+
+	summaries := projectDonationSummaries(ctx, s.initiativeRepo, donations)
+	return summaries, meta, nil
+}
+
+// projectDonationSummaries converts raw donation rows into public-facing
+// DonationSummary values, enriching each with donor name and avatar from the
+// CF DB. No Stripe IDs or user_id values are included in the output.
+func projectDonationSummaries(ctx context.Context, repo domain.InitiativeRepository, donations []models.Donation) []models.DonationSummary {
+	if len(donations) == 0 {
+		return []models.DonationSummary{}
+	}
+
+	// Collect unique IDs for batch lookup.
+	userIDs := make([]string, 0, len(donations))
+	orgIDs := make([]string, 0, len(donations))
+	seenUsers := map[string]bool{}
+	seenOrgs := map[string]bool{}
+	for _, d := range donations {
+		if d.UserID != "" && !seenUsers[d.UserID] {
+			userIDs = append(userIDs, d.UserID)
+			seenUsers[d.UserID] = true
+		}
+		if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
+			orgIDs = append(orgIDs, d.OrganizationID)
+			seenOrgs[d.OrganizationID] = true
+		}
+	}
+
+	ctx, span := donationSvcTracer.Start(ctx, "projectDonationSummaries")
+	defer span.End()
+
+	users, err := repo.GetUsersByIDs(ctx, userIDs)
+	if err != nil {
+		span.RecordError(err)
+		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
+		users = map[string]models.User{}
+	}
+	orgs, err := repo.GetOrganizationsByIDs(ctx, orgIDs)
+	if err != nil {
+		span.RecordError(err)
+		slog.WarnContext(ctx, "failed to look up donor organizations", "error", err)
+		orgs = map[string]models.Organization{}
+	}
+
+	summaries := make([]models.DonationSummary, 0, len(donations))
+	for _, d := range donations {
+		s := models.DonationSummary{
+			ID:          d.ID,
+			AmountCents: d.CurrentAmountCents,
+			Status:      d.Status,
+			Category:    d.Category,
+			CreatedOn:   d.CreatedOn,
+		}
+		if d.OrganizationID != "" {
+			s.DonorType = donorTypeOrganization
+			if org, ok := orgs[d.OrganizationID]; ok {
+				s.DonorName = org.Name
+				s.DonorAvatarURL = org.AvatarURL
+			}
+		} else {
+			s.DonorType = donorTypeIndividual
+			if user, ok := users[d.UserID]; ok {
+				s.DonorName = user.Name
+				s.DonorAvatarURL = user.AvatarURL
+			}
+		}
+		summaries = append(summaries, s)
+	}
+	return summaries
 }
 
 // ListByUser returns paginated donations for the authenticated user.
@@ -78,7 +150,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	)
 
 	if input.AmountCents <= 0 {
-		return nil, fmt.Errorf("%w: amount_in_cents must be positive", domain.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: amount_cents must be positive", domain.ErrInvalidInput)
 	}
 	if input.StripePaymentMethodID == "" {
 		return nil, fmt.Errorf("%w: stripe_payment_method_id is required", domain.ErrInvalidInput)

@@ -1,0 +1,11 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+
+# KSV014 / readOnlyRootFilesystem: The frontend (Nuxt/Nitro) writes temporary
+# files to the container filesystem at runtime. The container runs as non-root
+# with all capabilities dropped and seccomp RuntimeDefault applied.
+KSV014
+
+# AVD-KSV-01010 / sensitive ConfigMap keys: NITRO_PORT is a TCP port number,
+# not a secret. Trivy's heuristic false-positives on the "PORT" substring.
+AVD-KSV-01010

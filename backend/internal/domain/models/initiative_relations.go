@@ -8,7 +8,7 @@ package models
 // initiative_id, created_on, and updated_on which are assigned by the database.
 type GoalInput struct {
 	Name          string `json:"name"`
-	AmountInCents int64  `json:"amount_in_cents"`
+	AmountInCents int64  `json:"amount_cents"`
 	Allocation    string `json:"allocation,omitempty"`
 	RepoLink      string `json:"repo_link,omitempty"`
 	Description   string `json:"description,omitempty"`
@@ -76,7 +76,7 @@ type OSTIFDetailInput struct {
 	MonetizationStrategy    string `json:"monetization_strategy,omitempty"`
 	CurrentSecurityStrategy string `json:"current_security_strategy,omitempty"`
 	LicenseType             string `json:"license_type,omitempty"`
-	TotalBudgetInCents      int64  `json:"total_budget_in_cents"`
+	TotalBudgetInCents      int64  `json:"total_budget_cents"`
 	TermsConditions         bool   `json:"terms_conditions"`
 }
 
@@ -156,7 +156,7 @@ type OSTIFDetail struct {
 	MonetizationStrategy    string `json:"monetization_strategy,omitempty"`
 	CurrentSecurityStrategy string `json:"current_security_strategy,omitempty"`
 	LicenseType             string `json:"license_type,omitempty"`
-	TotalBudgetInCents      int64  `json:"total_budget_in_cents"`
+	TotalBudgetInCents      int64  `json:"total_budget_cents"`
 	TermsConditions         bool   `json:"terms_conditions"`
 }
 

@@ -1,0 +1,3 @@
+# Helm chart templates use Go template syntax ({{ }}) that prettier cannot
+# parse as plain YAML — exclude to prevent delimiter corruption.
+charts/**/templates/
