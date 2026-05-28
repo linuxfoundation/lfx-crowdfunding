@@ -42,8 +42,7 @@ func InitOTel(ctx context.Context, cfg OTelConfig) (func(), error) {
 	var tp *sdktrace.TracerProvider
 	if cfg.Endpoint != "" {
 		exp, err := otlptracehttp.New(ctx,
-			otlptracehttp.WithEndpoint(cfg.Endpoint),
-			otlptracehttp.WithInsecure(),
+			otlptracehttp.WithEndpointURL(cfg.Endpoint),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("otel exporter: %w", err)
