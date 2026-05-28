@@ -84,15 +84,15 @@ import useScroll from '~/utils/scroll';
 import { formatShortDate } from '~/utils/date';
 import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/types/initiative-detail.types';
 
-const props = defineProps<{ initiativeId: string }>();
+const props = defineProps<{ initiativeSlug: string }>();
 
-const { data, isLoading, error } = useInitiative(computed(() => props.initiativeId));
+const { data, isLoading, error } = useInitiative(computed(() => props.initiativeSlug));
 const { data: txnData, isLoading: transactionsLoading } = useInitiativeTransactions(
-  computed(() => props.initiativeId),
+  computed(() => props.initiativeSlug),
   'donations',
 );
 const { data: expenseData, isLoading: expensesLoading } = useInitiativeTransactions(
-  computed(() => props.initiativeId),
+  computed(() => props.initiativeSlug),
   'expenses',
   10,
 );

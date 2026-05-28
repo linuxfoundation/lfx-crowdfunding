@@ -136,6 +136,42 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// OptionalMiddleware is like Middleware but never rejects the request.
+// If a valid Bearer token is present the Principal is stored in the context;
+// if the token is absent or invalid the request continues with no principal.
+func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.cfg.DisabledMockLocalPrincipal != "" {
+			ctx := ContextWithPrincipal(r.Context(), &models.Principal{
+				UserID:        a.cfg.DisabledMockLocalPrincipal,
+				Username:      a.cfg.DisabledMockLocalPrincipal,
+				Email:         a.cfg.DisabledMockLocalPrincipal + "@local.dev",
+				EmailVerified: true,
+			})
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		token, err := a.extractAndValidate(r)
+		if err == nil {
+			if claims, ok := token.Claims.(*JWTClaims); ok && claims.Subject != "" {
+				principal := &models.Principal{
+					UserID:        claims.Subject,
+					Username:      claims.Username,
+					Email:         claims.Email,
+					EmailVerified: claims.EmailVerified,
+					Name:          claims.Name,
+					GivenName:     claims.GivenName,
+					FamilyName:    claims.FamilyName,
+					Picture:       claims.Picture,
+				}
+				r = r.WithContext(ContextWithPrincipal(r.Context(), principal))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*jwt.Token, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
