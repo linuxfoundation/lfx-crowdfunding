@@ -6,7 +6,7 @@ import { mapToTransaction } from '../../../services/transactions.services';
 import type { TransactionList } from '#shared/types/transaction.types';
 
 export default defineEventHandler(async (event): Promise<TransactionList> => {
-  const id = getRouterParam(event, 'id');
+  const id = getRouterParam(event, 'initiativeId');
   const { type, limit, offset } = getQuery(event);
 
   const { apiBaseUrl } = useRuntimeConfig();

@@ -7,7 +7,7 @@ import type { DonationResultWire } from '../../../types/payment.types';
 import type { DonationRequest, DonationResult } from '#shared/types/payment.types';
 
 export default defineEventHandler(async (event): Promise<DonationResult> => {
-  const id = event.context.params!.id;
+  const id = event.context.params!.initiativeId;
   const idempotencyKey = getHeader(event, 'idempotency-key');
   if (!idempotencyKey) {
     throw createError({ statusCode: 400, statusMessage: 'Idempotency-Key header required' });
