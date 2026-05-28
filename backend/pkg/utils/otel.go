@@ -20,7 +20,8 @@ import (
 type OTelConfig struct {
 	ServiceName    string
 	ServiceVersion string
-	// Endpoint is the OTLP HTTP endpoint (e.g. "http://localhost:4318").
+	// Endpoint is the full OTLP HTTP endpoint URL (e.g. "http://localhost:4318").
+	// Must include the scheme — passed to WithEndpointURL which handles http/https.
 	// If empty, a no-op tracer is used.
 	Endpoint string
 }
