@@ -62,7 +62,11 @@ SPDX-License-Identifier: MIT
         <div
           v-else
           class="border border-dashed border-neutral-300 rounded-xl px-5 py-6 flex items-center justify-center gap-5 cursor-pointer hover:bg-neutral-50 transition-colors"
+          :class="{ 'bg-neutral-50': isDragging }"
           @click="fileInput?.click()"
+          @dragover.prevent="isDragging = true"
+          @dragleave.prevent="isDragging = false"
+          @drop.prevent="onDrop"
         >
           <lfx-icon
             name="image"
@@ -103,10 +107,21 @@ const emit = defineEmits<{
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
+const isDragging = ref(false);
+
+const handleFile = (file: File) => {
+  emit('update:modelValue', file.name);
+};
 
 const onFileChange = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
-  if (file) emit('update:modelValue', file.name);
+  if (file) handleFile(file);
+};
+
+const onDrop = (event: DragEvent) => {
+  isDragging.value = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (file) handleFile(file);
 };
 
 const removeLogo = () => {
