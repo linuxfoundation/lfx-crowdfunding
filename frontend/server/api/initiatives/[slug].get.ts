@@ -6,18 +6,19 @@ import { mapToInitiativeDetail } from '../../services/initiatives.services';
 import { useBackendFetch } from '../../utils/backend-fetch';
 
 export default defineEventHandler(async (event) => {
-  const id = getRouterParam(event, 'id');
+  const slug = getRouterParam(event, 'slug');
 
-  if (!id) {
-    throw createError({ statusCode: 400, message: 'Missing initiative id' });
+  if (!slug) {
+    throw createError({ statusCode: 400, message: 'Missing initiative slug' });
   }
 
-  const initiative = await useBackendFetch<BackendInitiative>(event, `/v1/initiatives/${id}`).catch(
-    (err) => {
-      if (err?.status === 404) throw createError({ statusCode: 404, message: 'Not found' });
-      throw err;
-    },
-  );
+  const initiative = await useBackendFetch<BackendInitiative>(
+    event,
+    `/v1/initiatives/${slug}`,
+  ).catch((err) => {
+    if (err?.status === 404) throw createError({ statusCode: 404, message: 'Not found' });
+    throw err;
+  });
 
   return mapToInitiativeDetail(initiative);
 });
