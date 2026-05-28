@@ -6,10 +6,10 @@ import type { MaybeRef } from 'vue';
 import { toValue } from 'vue';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
 
-export function useInitiative(id: MaybeRef<string>) {
+export function useInitiative(slug: MaybeRef<string>) {
   return useQuery<InitiativeDetail>({
-    queryKey: ['initiative', id] as const,
-    queryFn: () => $fetch<InitiativeDetail>(`/api/initiatives/${toValue(id)}`),
-    enabled: computed(() => !!toValue(id)),
+    queryKey: ['initiative', slug] as const,
+    queryFn: () => $fetch<InitiativeDetail>(`/api/initiatives/${toValue(slug)}`),
+    enabled: computed(() => !!toValue(slug)),
   });
 }

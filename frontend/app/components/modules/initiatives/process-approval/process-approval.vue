@@ -4,13 +4,8 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <div class="flex items-center justify-center min-h-[60vh] px-4">
-    <!-- Auth loading -->
-    <template v-if="!isAuthReady">
-      <lfx-spinner :size="32" />
-    </template>
-
     <!-- Initiative loading -->
-    <template v-else-if="initiativePending">
+    <template v-if="initiativePending">
       <lfx-spinner :size="32" />
     </template>
 
@@ -148,7 +143,6 @@ import LfxButton from '~/components/uikit/button/button.vue';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
-import { useAuth, isAuthReady } from '~/composables/useAuth';
 import type { ApprovalAction, ApprovalResult } from '~/types/approval.types';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
 
@@ -159,18 +153,6 @@ const props = defineProps<{
 
 const isValidAction = computed(() => props.action === 'approve' || props.action === 'decline');
 const action = computed(() => props.action as ApprovalAction);
-
-const { isAuthenticated, login } = useAuth();
-
-watch(
-  isAuthReady,
-  (ready) => {
-    if (ready && !isAuthenticated.value) {
-      login();
-    }
-  },
-  { immediate: true },
-);
 
 const {
   data: initiative,
