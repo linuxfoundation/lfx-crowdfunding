@@ -12,6 +12,8 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import InitiativeProcessApproval from '~/components/modules/initiatives/process-approval/process-approval.vue';
 
+definePageMeta({ middleware: 'auth' });
+
 const route = useRoute();
 const slug = route.params.slug as string;
 const action = route.params.action as string;

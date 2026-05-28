@@ -7,17 +7,17 @@ import { computed, toValue } from 'vue';
 import type { TransactionList } from '#shared/types/transaction.types';
 
 export function useInitiativeTransactions(
-  id: MaybeRef<string>,
+  slug: MaybeRef<string>,
   type: 'donations' | 'expenses' = 'donations',
   limit = 5,
   offset = 0,
 ) {
   return useQuery<TransactionList>({
-    queryKey: ['initiative-transactions', id, type, limit, offset] as const,
+    queryKey: ['initiative-transactions', slug, type, limit, offset] as const,
     queryFn: () =>
-      $fetch<TransactionList>(`/api/initiatives/${toValue(id)}/transactions`, {
+      $fetch<TransactionList>(`/api/initiatives/${toValue(slug)}/transactions`, {
         params: { type, limit, offset },
       }),
-    enabled: computed(() => !!toValue(id)),
+    enabled: computed(() => !!toValue(slug)),
   });
 }

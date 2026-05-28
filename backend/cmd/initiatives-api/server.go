@@ -142,8 +142,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	r.Get("/v1/statistics/monthly", statisticsH.GetPlatformMonthly)
 	r.Get("/v1/statistics/recent-donations", statisticsH.GetRecentDonations)
 	r.Get("/v1/initiatives", initiativeH.List)
-	r.Get("/v1/initiatives/{id}", initiativeH.GetByID)
 	r.Get("/v1/initiatives/{id}/transactions", initiativeH.GetTransactions)
+
+	// Initiative detail — public for published initiatives; approvers may also
+	// view non-published initiatives if a valid token is supplied.
+	r.With(jwtAuth.OptionalMiddleware).Get("/v1/initiatives/{id}", initiativeH.GetByID)
 
 	// Protected API
 	r.Route("/v1", func(r chi.Router) {

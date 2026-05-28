@@ -10,6 +10,7 @@ export default defineEventHandler(async (event): Promise<InitiativesResponse> =>
 
   const { apiBaseUrl } = useRuntimeConfig();
   const params = new URLSearchParams();
+  params.set('status', 'published');
   if (search) params.set('search', String(search));
   if (type && type !== 'all') params.set('type', String(type));
   if (sort) params.set('sort_by', String(sort));
