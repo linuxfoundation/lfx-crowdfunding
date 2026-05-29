@@ -12,23 +12,55 @@ SPDX-License-Identifier: MIT
           Initiative logo <span class="text-negative-500">*</span>
         </label>
 
-        <!-- Has logo state -->
+        <!-- Uploading state -->
         <div
-          v-if="modelValue"
+          v-if="uploading"
           class="border border-dashed border-neutral-300 rounded-xl px-5 py-6 flex items-center gap-5"
         >
           <div
-            class="size-12 rounded-full bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0"
+            class="size-12 rounded-full bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0 overflow-hidden relative"
           >
+            <img
+              v-if="previewSrc"
+              :src="previewSrc"
+              alt="Logo preview"
+              class="size-full object-cover opacity-50"
+            />
             <lfx-icon
+              v-else
               name="image"
               type="light"
               :size="20"
               class="text-neutral-400"
             />
+            <div class="absolute inset-0 flex items-center justify-center">
+              <lfx-icon
+                name="spinner"
+                type="solid"
+                :size="16"
+                class="text-neutral-500 animate-spin"
+              />
+            </div>
+          </div>
+          <span class="text-sm text-neutral-500">Uploading…</span>
+        </div>
+
+        <!-- Has logo state -->
+        <div
+          v-else-if="modelValue"
+          class="border border-dashed border-neutral-300 rounded-xl px-5 py-6 flex items-center gap-5"
+        >
+          <div
+            class="size-12 rounded-full bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0 overflow-hidden"
+          >
+            <img
+              :src="modelValue"
+              alt="Initiative logo"
+              class="size-full object-contain"
+            />
           </div>
           <div class="flex-1 flex items-center justify-between min-w-0">
-            <span class="text-sm text-neutral-900 truncate">{{ modelValue }}</span>
+            <span class="text-sm text-neutral-900 truncate">{{ displayName }}</span>
             <div class="flex items-center gap-4 shrink-0">
               <button
                 type="button"
@@ -78,14 +110,21 @@ SPDX-License-Identifier: MIT
             <p class="text-sm text-neutral-900 leading-5">
               <span class="text-accent-500">Click to upload</span> or drag and drop
             </p>
-            <p class="text-xs text-neutral-400 leading-4">JPG or PNG ・ Max 2MB ・ 600x600px</p>
+            <p class="text-xs text-neutral-400 leading-4">JPG, PNG, GIF or WebP ・ Max 2MB ・ 600x600px</p>
           </div>
         </div>
+
+        <p
+          v-if="uploadError"
+          class="text-xs text-negative-500"
+        >
+          {{ uploadError }}
+        </p>
 
         <input
           ref="fileInput"
           type="file"
-          accept="image/png,image/jpeg,image/svg+xml"
+          accept="image/png,image/jpeg,image/gif,image/webp"
           class="hidden"
           @change="onFileChange"
         />
@@ -95,7 +134,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 
 defineProps<{
@@ -108,9 +147,24 @@ const emit = defineEmits<{
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const isDragging = ref(false);
+const previewSrc = ref<string | null>(null);
+const localFileName = ref('');
 
-const handleFile = (file: File) => {
-  emit('update:modelValue', file.name);
+const { uploading, error: uploadError, uploadLogo } = useLogoUpload();
+
+const displayName = computed(() => localFileName.value || 'Logo');
+
+const handleFile = async (file: File) => {
+  previewSrc.value = URL.createObjectURL(file);
+  localFileName.value = file.name;
+
+  const url = await uploadLogo(file);
+  if (url) {
+    emit('update:modelValue', url);
+  } else {
+    previewSrc.value = null;
+    localFileName.value = '';
+  }
 };
 
 const onFileChange = (event: Event) => {
@@ -126,6 +180,8 @@ const onDrop = (event: DragEvent) => {
 
 const removeLogo = () => {
   emit('update:modelValue', '');
+  previewSrc.value = null;
+  localFileName.value = '';
   if (fileInput.value) fileInput.value.value = '';
 };
 </script>

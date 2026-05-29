@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -97,7 +96,6 @@ func (c *s3PresignClient) PresignLogoUpload(ctx context.Context, contentType str
 		Bucket:      aws.String(c.cfg.BucketName),
 		Key:         aws.String(key),
 		ContentType: aws.String(contentType),
-		ACL:         types.ObjectCannedACLPublicRead,
 	}, func(opts *s3.PresignOptions) {
 		opts.Expires = c.cfg.PresignExpiry
 	})
