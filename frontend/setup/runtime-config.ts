@@ -38,7 +38,7 @@ export default {
     appUrl,
     auth0Domain,
     auth0ClientId: process.env.NUXT_PUBLIC_AUTH0_CLIENT_ID || '',
-    auth0RedirectUri: `${appUrl}/auth/callback`,
+    auth0RedirectUri: process.env.NUXT_PUBLIC_AUTH0_REDIRECT_URI || `${appUrl}/auth/callback`,
     auth0Audience: process.env.NUXT_PUBLIC_AUTH0_AUDIENCE || '',
     stripePublishableKey: '', // populated from NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     githubOauthClientId: process.env.NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID || '',
