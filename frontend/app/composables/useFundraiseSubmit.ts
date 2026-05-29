@@ -72,6 +72,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         websiteUrl: projectForm?.details.websiteUrl || undefined,
         cocUrl: projectForm?.details.codeOfConductUrl || undefined,
         repositoryUrl: repoUrl,
+        logoUrl: projectForm?.details.logoUrl || undefined,
         beneficiaries: projectForm?.details.beneficiaries?.length
           ? projectForm.details.beneficiaries
           : undefined,
@@ -86,6 +87,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         description: securityAuditForm?.elevatorPitch ?? '',
         websiteUrl: securityAuditForm?.websiteUrl || undefined,
         repositoryUrl: securityAuditForm?.repositoryUrl || undefined,
+        logoUrl: securityAuditForm?.logoUrl || undefined,
         fundingGoalCents: parseDollarsToCents(securityAuditForm?.fundingGoal),
         primaryContact: securityAuditForm?.primaryContact,
         secondaryContact: securityAuditForm?.secondaryContact,
@@ -104,6 +106,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         endDate: eventForm?.endDate || undefined,
         city: eventForm?.city || undefined,
         country: eventForm?.country || undefined,
+        logoUrl: eventForm?.logoUrl || undefined,
         beneficiaries: eventForm?.beneficiaries?.length ? eventForm.beneficiaries : undefined,
         sponsorshipGoalCents: parseDollarsToCents(eventForm?.sponsorshipGoal),
       };
@@ -115,6 +118,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         name: generalFundForm?.name ?? '',
         description: generalFundForm?.elevatorPitch ?? '',
         websiteUrl: generalFundForm?.websiteUrl || undefined,
+        logoUrl: generalFundForm?.logoUrl || undefined,
         beneficiaries: generalFundForm?.beneficiaries?.length
           ? generalFundForm.beneficiaries
           : undefined,

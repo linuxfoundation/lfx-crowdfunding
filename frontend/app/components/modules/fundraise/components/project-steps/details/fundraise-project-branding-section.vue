@@ -4,8 +4,8 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <fundraise-branding-section
-    :model-value="modelValue.logoFileName"
-    @update:model-value="emit('update:modelValue', { ...modelValue, logoFileName: $event })"
+    :model-value="modelValue.logoUrl"
+    @update:model-value="emit('update:modelValue', { ...modelValue, logoUrl: $event })"
   />
 </template>
 
