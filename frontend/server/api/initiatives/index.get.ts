@@ -6,14 +6,15 @@ import { mapToInitiativeBase } from '../../services/initiatives.services';
 import type { InitiativesResponse } from '#shared/types/initiative.types';
 
 export default defineEventHandler(async (event): Promise<InitiativesResponse> => {
-  const { search, type, sort, page, pageSize } = getQuery(event);
+  const { search, type, sort_by, sort_dir, page, pageSize } = getQuery(event);
 
   const { apiBaseUrl } = useRuntimeConfig();
   const params = new URLSearchParams();
   params.set('status', 'published');
   if (search) params.set('search', String(search));
   if (type && type !== 'all') params.set('type', String(type));
-  if (sort) params.set('sort_by', String(sort));
+  if (sort_by) params.set('sort_by', String(sort_by));
+  if (sort_dir) params.set('sort_dir', String(sort_dir));
 
   const pageSizeNum = typeof pageSize === 'string' ? Math.max(1, parseInt(pageSize, 10) || 12) : 12;
   const pageNum = typeof page === 'string' ? Math.max(1, parseInt(page, 10) || 1) : 1;

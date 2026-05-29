@@ -21,13 +21,15 @@ function fetchInitiativesQueryFn(
 export function useInitiatives(params?: {
   search?: MaybeRef<string>;
   type?: MaybeRef<string>;
-  sort?: MaybeRef<string>;
+  sortBy?: MaybeRef<string>;
+  sortDir?: MaybeRef<string>;
   pageSize?: MaybeRef<number>;
 }) {
   const resolvedParams = computed(() => ({
     search: toValue(params?.search ?? ''),
     type: toValue(params?.type ?? ''),
-    sort: toValue(params?.sort ?? ''),
+    sortBy: toValue(params?.sortBy ?? ''),
+    sortDir: toValue(params?.sortDir ?? ''),
     pageSize: toValue(params?.pageSize ?? 0),
   }));
 
@@ -37,17 +39,19 @@ export function useInitiatives(params?: {
         'initiatives',
         resolvedParams.value.search,
         resolvedParams.value.type,
-        resolvedParams.value.sort,
+        resolvedParams.value.sortBy,
+        resolvedParams.value.sortDir,
         resolvedParams.value.pageSize,
       ] as const,
   );
 
   const queryFn = fetchInitiativesQueryFn(() => {
-    const { search, type, sort, pageSize } = resolvedParams.value;
+    const { search, type, sortBy, sortDir, pageSize } = resolvedParams.value;
     const p: Record<string, string> = {};
     if (search) p.search = search;
     if (type) p.type = type;
-    if (sort) p.sort = sort;
+    if (sortBy) p.sort_by = sortBy;
+    if (sortDir) p.sort_dir = sortDir;
     if (pageSize) p.pageSize = String(pageSize);
     return p;
   });
