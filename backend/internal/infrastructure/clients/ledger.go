@@ -114,7 +114,7 @@ func (c *ledgerHTTPClient) GetBalance(ctx context.Context, initiativeID string) 
 	span.SetAttributes(attribute.String("ledger.initiative_id", initiativeID))
 
 	endpoint := fmt.Sprintf("%s/balance/%s", c.baseURL, initiativeID)
-	headers := map[string]string{"Authorization": c.apiKey}
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
 
 	var resp ledgerBalanceResponse
 	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
@@ -210,7 +210,7 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 	}
 
 	endpoint := fmt.Sprintf("%s/transactions?%s", c.baseURL, q.Encode())
-	headers := map[string]string{"Authorization": c.apiKey}
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
 
 	var resp ledgerTransactionsResponse
 	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
@@ -369,7 +369,7 @@ func (c *ledgerHTTPClient) GetPlatformBalance(ctx context.Context, topLimit int)
 		topLimit = 10
 	}
 	endpoint := fmt.Sprintf("%s/balance/platform?top_limit=%d", c.baseURL, topLimit)
-	headers := map[string]string{"Authorization": c.apiKey}
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
 
 	var resp ledgerPlatformBalanceResponse
 	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
@@ -404,7 +404,7 @@ func (c *ledgerHTTPClient) GetPlatformMonthly(ctx context.Context, months int) (
 	span.SetAttributes(attribute.Int("ledger.months", months))
 
 	endpoint := fmt.Sprintf("%s/balance/platform/monthly?months=%d", c.baseURL, months)
-	headers := map[string]string{"Authorization": c.apiKey}
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
 
 	var resp ledgerPlatformMonthlyResponse
 	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
@@ -434,7 +434,7 @@ func (c *ledgerHTTPClient) GetPlatformRecentDonations(ctx context.Context) ([]Le
 	defer span.End()
 
 	endpoint := fmt.Sprintf("%s/transactions/platform/recent", c.baseURL)
-	headers := map[string]string{"Authorization": c.apiKey}
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
 
 	var resp ledgerPlatformRecentResponse
 	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
@@ -470,7 +470,7 @@ func (c *ledgerHTTPClient) GetAllBalances(ctx context.Context) ([]models.LedgerR
 	defer span.End()
 
 	endpoint := fmt.Sprintf("%s/balance", c.baseURL)
-	headers := map[string]string{"Authorization": c.apiKey}
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
 
 	var resp models.LedgerAllBalances
 	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {

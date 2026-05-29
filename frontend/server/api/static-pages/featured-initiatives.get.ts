@@ -4,13 +4,12 @@
 import type { BackendResponse } from '../../types/initiatives.types';
 import type { FeaturedInitiativesResponse } from '#shared/types/static-pages.types';
 
-// TODO: stop-gap — returns the 6 most recently created initiatives. Replace once the backend
 // supports a proper "featured" concept (e.g. a curated list or a featured flag on initiatives).
 export default defineEventHandler(async (): Promise<FeaturedInitiativesResponse> => {
   const { apiBaseUrl } = useRuntimeConfig();
 
   const res = await $fetch<BackendResponse>(
-    `${apiBaseUrl}/v1/initiatives?status=published&limit=6&offset=0`,
+    `${apiBaseUrl}/v1/initiatives?status=published&limit=6&offset=0&sort_by=total_raised&sort_dir=desc`,
   );
 
   return {
