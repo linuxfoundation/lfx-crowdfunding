@@ -205,7 +205,17 @@ No changes to auth middleware, session types, or existing token exchange logic.
 - Registered as an alternative to the existing user JWT middleware on protected routes
 - Stripe webhook (`POST /v1/stripe/webhook`) is already outside the JWT middleware — no changes needed
 
-> **Note for engineers — username vs. sub in CF handlers:** CF handlers currently use `principal.UserID` (the Auth0 sub) as the user identifier for DB lookups and Stripe customer keys. Once `X-Username` carries the LFID username, the M2M middleware sets `Principal.Username` — handlers on the me-routes must use `principal.Username` instead. The `Principal` struct already has both fields (`UserID` = sub, `Username` = LFID username from `https://sso.linuxfoundation.org/claims/username`). DB schema and Stripe metadata that currently store the Auth0 sub will need to be updated as part of OQ-23 (sub → username migration).
+> **Note for engineers — username is the canonical user identifier in new CF:**
+>
+> Per OQ-23, new CF uses **LFID username everywhere** for user identity — both the CF frontend (user JWT path) and SS → CF (M2M path). The change is **not** limited to me-routes or the M2M middleware: every handler that today reads `principal.UserID` for user identity must switch to `principal.Username`. This includes me-routes (`donation_handler.go`, `subscription_handler.go`, `payment_handler.go`) **and** non-me protected routes that perform ownership checks (`initiative_handler.go`, `upload_handler.go`, `subscription_handler.go:Cancel`). Service and repository layers update their parameter names and query columns to match.
+>
+> **LFF stays on Auth0 sub** — it's the retiring Lambda and is untouched. The username migration happens at the DynamoDB → Postgres boundary: existing Auth0 subs are bulk-resolved to LFID usernames via Auth0 Management API during the one-time migration script. Postgres stores both `users.user_id` (the sub, populated only for migrated rows) and `users.username` (LFID username, the join key). For users created after migration, `user_id` is NULL.
+>
+> Stripe customer metadata is updated in the same migration pass. The `users.stripe_customer_id` mapping is keyed by username going forward.
+>
+> The `Principal` struct already has both fields populated by the user JWT middleware (`UserID` = sub from the `sub` claim, `Username` = LFID username from `https://sso.linuxfoundation.org/claims/username`). The M2M middleware will set only `Principal.Username` (from `X-Username`); `Principal.UserID` will be empty on the M2M path — handlers must not depend on it.
+>
+> Full breakdown of schema, migration, and code changes is tracked in the Jira ticket created under LFXV2-1690.
 
 ---
 
