@@ -199,6 +199,8 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		orderCol = "COALESCE(ls.supporters, 0)"
 	case "total_raised":
 		orderCol = "COALESCE(ls.total_raised_cents, 0)"
+	case "name":
+		orderCol = "LOWER(i.name)"
 	}
 	orderDir := "DESC"
 	if filter.SortDir == "asc" {

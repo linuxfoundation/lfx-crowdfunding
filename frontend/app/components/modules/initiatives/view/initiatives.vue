@@ -26,7 +26,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import InitiativesHeader from '../components/initiatives-header.vue';
 import InitiativesGrid from '../components/initiatives-grid.vue';
 import { useInitiatives } from '~/composables/initiatives/useInitiatives';
@@ -36,12 +36,19 @@ const { scrollTop } = useScroll();
 
 const searchTerm = ref('');
 const activeType = ref('all');
-const sortBy = ref('recent');
+const sortBy = ref('created_on');
+const sortDir = ref('desc');
+
+// name sorts ascending; all other fields default to descending
+watch(sortBy, (val) => {
+  sortDir.value = val === 'name' ? 'asc' : 'desc';
+});
 
 const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, error } = useInitiatives({
   search: searchTerm,
   type: activeType,
-  sort: sortBy,
+  sortBy,
+  sortDir,
   pageSize: 12,
 });
 
