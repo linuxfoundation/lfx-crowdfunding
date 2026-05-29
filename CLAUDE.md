@@ -90,3 +90,6 @@ Nuxt 4 BFF — server-side auth with HTTP-only session cookies (OAuth2 PKCE, Aut
 - **Frontend UIKit:** When building any UI element, **always load the `uikit` skill first** to check whether an existing component covers the need before writing any HTML or creating a new component
 - **TypeScript:** Strict mode enforced; no `any` without justification
 - **CI:** MegaLinter runs on every PR; license header check enforced on every commit
+- **Frontend types:** Never define `type` or `interface` inline in `.vue` files, server API routes, or middleware. Place all types in a dedicated `*.types.ts` file:
+  - App-level types (components, composables): `frontend/app/types/<domain>.types.ts` — import via `~/types/<domain>.types`
+  - Server-side types (wire shapes, middleware interfaces): `frontend/server/types/<domain>.types.ts` — import via relative path

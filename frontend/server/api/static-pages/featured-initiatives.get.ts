@@ -1,10 +1,26 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { MOCK_FEATURED_INITIATIVES } from '#server/mock-data/featured-initiatives';
+import type { BackendResponse } from '../../types/initiatives.types';
 import type { FeaturedInitiativesResponse } from '#shared/types/static-pages.types';
 
-// TODO: replace with a proxy call to the Go backend API
-export default defineEventHandler((): FeaturedInitiativesResponse => {
-  return MOCK_FEATURED_INITIATIVES;
+// supports a proper "featured" concept (e.g. a curated list or a featured flag on initiatives).
+export default defineEventHandler(async (): Promise<FeaturedInitiativesResponse> => {
+  const { apiBaseUrl } = useRuntimeConfig();
+
+  const res = await $fetch<BackendResponse>(
+    `${apiBaseUrl}/v1/initiatives?status=published&limit=6&offset=0&sort_by=total_raised&sort_dir=desc`,
+  );
+
+  return {
+    data: (res.data ?? []).map((i) => ({
+      id: i.id,
+      slug: i.slug,
+      name: i.name,
+      logoUrl: i.logo_url,
+      raisedCents: i.financials?.total_raised_cents ?? 0,
+      goalCents: i.financials?.goals_total_cents ?? 0,
+      supporterCount: i.financials?.supporters ?? 0,
+    })),
+  };
 });

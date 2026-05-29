@@ -1,15 +1,8 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+import type { GitHubApiRepo } from '../../types/github.types';
 import type { GitHubRepo } from '~/types/fundraise.types';
-
-interface GitHubApiRepo {
-  id: number;
-  name: string;
-  full_name: string;
-  description: string | null;
-  stargazers_count: number;
-}
 
 export default defineEventHandler(async (event) => {
   const token = getCookie(event, 'github_oauth_token');

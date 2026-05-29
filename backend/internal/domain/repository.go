@@ -14,12 +14,15 @@ import (
 type InitiativeRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Initiative, error)
 	GetBySlug(ctx context.Context, slug string) (*models.Initiative, error)
-	// GetIDBySlug returns only the UUID for a given slug.
-	// Used by the transactions handler to resolve a slug without triggering Ledger enrichment.
+	// GetIDBySlug returns the UUID for a published initiative with the given slug.
+	// Used by the transactions handler to resolve a public slug without triggering Ledger enrichment.
 	GetIDBySlug(ctx context.Context, slug string) (string, error)
+	// ResolveSlug returns the UUID for an initiative with the given slug, regardless of status.
+	// Used by admin flows (e.g. approval processing) where the initiative may not yet be published.
+	ResolveSlug(ctx context.Context, slug string) (string, error)
 	List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error)
-	Create(ctx context.Context, initiative *models.Initiative) (*models.Initiative, error)
-	Update(ctx context.Context, initiative *models.Initiative) (*models.Initiative, error)
+	Create(ctx context.Context, initiative *models.Initiative, input models.InitiativeCreateInput) (*models.Initiative, error)
+	Update(ctx context.Context, initiative *models.Initiative, input models.InitiativeUpdateInput) (*models.Initiative, error)
 	Delete(ctx context.Context, id string) error
 
 	// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.

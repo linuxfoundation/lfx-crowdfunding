@@ -28,6 +28,6 @@ type Transaction struct {
 type TransactionList struct {
 	Data       []Transaction `json:"data"`
 	TotalCount int           `json:"total_count"`
-	Page       int           `json:"page"`
-	Size       int           `json:"size"`
+	Limit      int           `json:"limit"`
+	Offset     int           `json:"offset"`
 }

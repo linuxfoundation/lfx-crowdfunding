@@ -62,9 +62,26 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		Timeout:   cfg.Stripe.Timeout,
 		ReturnURL: cfg.Stripe.ReturnURL,
 	})
+	s3Client, err := clients.NewS3PresignClient(ctx, clients.S3Config{
+		BucketName:    cfg.S3.BucketName,
+		Region:        cfg.S3.Region,
+		PresignExpiry: cfg.S3.PresignExpiry,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("s3 client: %w", err)
+	}
+
+	// Mandrill email client
+	mandrillClient := clients.NewMandrillClient(clients.MandrillConfig{
+		APIKey:    cfg.Mandrill.APIKey,
+		FromEmail: cfg.Mandrill.FromEmail,
+		FromName:  cfg.Mandrill.FromName,
+		Timeout:   cfg.Mandrill.Timeout,
+	})
+	emailSvc := clients.NewEmailService(mandrillClient, cfg.Mandrill.FrontendBase, cfg.Mandrill.NotificationEmail)
 
 	// Services
-	initiativeSvc := service.NewInitiativeService(initiativeRepo, ledgerClient, stripeClient, logger)
+	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, logger)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
@@ -96,12 +113,13 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	}
 
 	// Handlers
-	initiativeH := handler.NewInitiativeHandler(initiativeSvc)
+	initiativeH := handler.NewInitiativeHandler(initiativeSvc, cfg.Approval.AllowedApprovers, logger)
 	donationH := handler.NewDonationHandler(donationSvc)
 	subscriptionH := handler.NewSubscriptionHandler(subscriptionSvc)
 	paymentH := handler.NewPaymentHandler(paymentSvc)
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, donationRepo, subscriptionRepo, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
+	uploadH := handler.NewUploadHandler(s3Client)
 
 	// Router
 	r := chi.NewRouter()
@@ -131,8 +149,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	r.Get("/v1/statistics/monthly", statisticsH.GetPlatformMonthly)
 	r.Get("/v1/statistics/recent-donations", statisticsH.GetRecentDonations)
 	r.Get("/v1/initiatives", initiativeH.List)
-	r.Get("/v1/initiatives/{id}", initiativeH.GetByID)
 	r.Get("/v1/initiatives/{id}/transactions", initiativeH.GetTransactions)
+
+	// Initiative detail — public for published initiatives; approvers may also
+	// view non-published initiatives if a valid token is supplied.
+	r.With(jwtAuth.OptionalMiddleware).Get("/v1/initiatives/{id}", initiativeH.GetByID)
 
 	// Protected API
 	r.Route("/v1", func(r chi.Router) {
@@ -142,6 +163,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Post("/", initiativeH.Create)
 			r.Patch("/{id}", initiativeH.Update)
 			r.Delete("/{id}", initiativeH.Delete)
+			r.Post("/{id}/process-approval/{action}", initiativeH.ProcessApproval)
 			r.Get("/{id}/donations", donationH.List)
 			r.Post("/{id}/donations", donationH.Create)
 			r.Get("/{id}/subscriptions", subscriptionH.List)
@@ -157,6 +179,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
 		r.Get("/me/payment-account", paymentH.GetPaymentAccount)
 		r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
+
+		// Logo uploads
+		r.Post("/presigned-url", uploadH.CreatePresignedURL)
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

@@ -8,9 +8,10 @@ import (
 	"crypto/md5" //nolint:gosec // MD5 used for non-cryptographic ETag generation only
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -20,7 +21,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
 
-var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 const (
 	maxTransactionPageSize     = 100
@@ -29,19 +30,25 @@ const (
 
 // InitiativeHandler holds Chi handlers for the /v1/initiatives resource.
 type InitiativeHandler struct {
-	svc *service.InitiativeService
+	svc              *service.InitiativeService
+	allowedApprovers []string
+	logger           *slog.Logger
 }
 
 // NewInitiativeHandler creates an InitiativeHandler.
-func NewInitiativeHandler(svc *service.InitiativeService) *InitiativeHandler {
-	return &InitiativeHandler{svc: svc}
+// allowedApprovers is the list of usernames permitted to approve or decline
+// initiatives (sourced from the ALLOWED_APPROVERS env var).
+func NewInitiativeHandler(svc *service.InitiativeService, allowedApprovers []string, logger *slog.Logger) *InitiativeHandler {
+	return &InitiativeHandler{svc: svc, allowedApprovers: allowedApprovers, logger: logger}
 }
 
 // List handles GET /v1/initiatives
 func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
 	q := r.URL.Query()
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
 
 	filter := models.InitiativeFilter{
 		OwnerID:        q.Get("owner_id"),
@@ -69,7 +76,8 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
-// Only published initiatives are returned; others produce a 404.
+// Only published initiatives are returned to anonymous callers; approvers may
+// retrieve initiatives in any status (e.g. "submitted") for review purposes.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var (
@@ -86,8 +94,12 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !initiative.Status.EqualFold(models.StatusPublished) {
-		Error(w, domain.ErrInitiativeNotFound)
-		return
+		// Non-published initiatives are visible to approvers only.
+		principal := auth.PrincipalFromContext(r.Context())
+		if !h.isApprover(principal) {
+			Error(w, domain.ErrInitiativeNotFound)
+			return
+		}
 	}
 
 	body, err := json.Marshal(initiative)
@@ -153,7 +165,7 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetTransactions handles GET /v1/initiatives/{id}/transactions
-// Accepts ?type=donations|expenses&size=N&page=N (1-based page, defaults to 1).
+// Accepts ?type=donations|expenses&limit=N&offset=N.
 // Resolves the initiative by slug or UUID, verifies it is published, then calls Ledger.
 func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	value := chi.URLParam(r, "id")
@@ -168,16 +180,17 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 		ledgerTxnType = "reimbursement"
 	}
 
-	size, _ := strconv.Atoi(q.Get("size"))
-	if size <= 0 {
-		size = defaultTransactionPageSize
-	} else if size > maxTransactionPageSize {
-		size = maxTransactionPageSize
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
 	}
-
-	page, _ := strconv.Atoi(q.Get("page"))
-	if page <= 0 {
-		page = 1
+	if limit <= 0 {
+		limit = defaultTransactionPageSize
+	} else if limit > maxTransactionPageSize {
+		limit = maxTransactionPageSize
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
 	// Resolve identifier to a UUID, verifying the initiative exists and is published.
@@ -198,7 +211,7 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 		initiativeID = id
 	}
 
-	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, size, page)
+	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, limit, offset)
 	if err != nil {
 		Error(w, err)
 		return
@@ -221,6 +234,52 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write(body)
 }
 
+// ProcessApproval handles POST /v1/initiatives/{id}/process-approval/{action} — requires JWT.
+// The caller's Username must appear in the AllowedApprovers list configured via
+// ALLOWED_APPROVERS. {action} must be "approve" or "decline".
+func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	// Validate action first to avoid reflecting unvalidated input in error messages.
+	rawAction := chi.URLParam(r, "action")
+	action, err := models.ParseApprovalAction(rawAction)
+	if err != nil {
+		Error(w, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err))
+		return
+	}
+
+	// Authorise: caller must be in the allowed approvers list.
+	if !h.isApprover(principal) {
+		h.logger.WarnContext(r.Context(), "initiative approval rejected: caller not in allowed list",
+			"username", principal.Username,
+			"userID", principal.UserID,
+			"action", action,
+			"initiative_id", chi.URLParam(r, "id"))
+		Error(w, domain.ErrForbidden)
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if !uuidPattern.MatchString(id) {
+		resolved, resolveErr := h.svc.ResolveSlug(r.Context(), id)
+		if resolveErr != nil {
+			Error(w, resolveErr)
+			return
+		}
+		id = resolved
+	}
+	updated, err := h.svc.ProcessApproval(r.Context(), id, action)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, updated)
+}
+
 // Delete handles DELETE /v1/initiatives/{id} — requires JWT.
 func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
@@ -235,6 +294,27 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// isApprover reports whether the principal is in the allowed approvers list.
+// It matches against both the raw Username claim and the localpart of UserID
+// (the portion after the last "|", e.g. "elim" from "auth0|elim") to handle
+// IdPs that populate UserID but leave Username empty.
+func (h *InitiativeHandler) isApprover(principal *models.Principal) bool {
+	if principal == nil {
+		return false
+	}
+	// Derive a bare username from UserID by stripping the IdP prefix (e.g. "auth0|").
+	bareID := principal.UserID
+	if idx := strings.LastIndex(bareID, "|"); idx >= 0 {
+		bareID = bareID[idx+1:]
+	}
+	for _, a := range h.allowedApprovers {
+		if strings.EqualFold(a, principal.Username) || strings.EqualFold(a, bareID) {
+			return true
+		}
+	}
+	return false
 }
 
 // etagOf returns a quoted ETag for the given response body using MD5.

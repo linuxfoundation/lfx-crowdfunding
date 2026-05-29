@@ -63,6 +63,7 @@ import FundraiseStepDetails from './fundraise-step-details.vue';
 import FundraiseHeader from './main/fundraise-header.vue';
 import FundraiseFooter from './main/fundraise-footer.vue';
 import FundraiseSuccess from './main/fundraise-success.vue';
+import { useFundraiseSubmit } from '~/composables/useFundraiseSubmit';
 import type { InitiativeType } from '~/types/fundraise.types';
 import LfxModal from '~/components/uikit/modal/modal.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
@@ -83,12 +84,12 @@ const isOpen = computed({
 });
 
 const step = ref(0);
-const submitting = ref(false);
 const submitted = ref(false);
 
 const selectedType = ref<InitiativeType | null>(null);
 
 const detailsStepRef = ref<InstanceType<typeof FundraiseStepDetails> | null>(null);
+const { submitting, submitFundraise } = useFundraiseSubmit();
 
 const totalSteps = computed(() => 2);
 const isLastStep = computed(() => step.value === totalSteps.value - 1);
@@ -152,45 +153,17 @@ const handleContinue = async () => {
     return;
   }
 
-  submitting.value = true;
   try {
-    const projectForm = detailsStepRef.value?.projectForm;
-    const auditForm = detailsStepRef.value?.securityAuditForm;
-    const generalFundForm = detailsStepRef.value?.generalFundForm;
-    const eventForm = detailsStepRef.value?.eventForm;
-    const name =
-      selectedType.value === 'security_audit'
-        ? (auditForm?.auditName ?? '')
-        : selectedType.value === 'general_fund'
-          ? (generalFundForm?.name ?? '')
-          : selectedType.value === 'event'
-            ? (eventForm?.name ?? '')
-            : (projectForm?.details.projectName ?? '');
-    const description =
-      selectedType.value === 'security_audit'
-        ? (auditForm?.elevatorPitch ?? '')
-        : selectedType.value === 'general_fund'
-          ? (generalFundForm?.elevatorPitch ?? '')
-          : selectedType.value === 'event'
-            ? (eventForm?.elevatorPitch ?? '')
-            : (projectForm?.details.elevatorPitch ?? '');
-    await $fetch('/api/fundraise', {
-      method: 'POST',
-      body: {
-        initiativeType: selectedType.value,
-        details: {
-          name,
-          description,
-          githubUrl: projectForm?.selectedRepo ? `https://github.com/${projectForm.selectedRepo}` : undefined,
-        },
-      },
+    await submitFundraise(selectedType.value!, {
+      projectForm: detailsStepRef.value?.projectForm,
+      securityAuditForm: detailsStepRef.value?.securityAuditForm,
+      generalFundForm: detailsStepRef.value?.generalFundForm,
+      eventForm: detailsStepRef.value?.eventForm,
     });
     submitted.value = true;
     emit('submitted');
   } catch {
-    // API errors surface via $fetch
-  } finally {
-    submitting.value = false;
+    // Error display is handled by useFundraiseSubmit
   }
 };
 </script>

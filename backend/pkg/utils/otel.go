@@ -20,7 +20,8 @@ import (
 type OTelConfig struct {
 	ServiceName    string
 	ServiceVersion string
-	// Endpoint is the OTLP HTTP endpoint (e.g. "http://localhost:4318").
+	// Endpoint is the full OTLP HTTP endpoint URL (e.g. "http://localhost:4318").
+	// Must include the scheme — passed to WithEndpointURL which handles http/https.
 	// If empty, a no-op tracer is used.
 	Endpoint string
 }
@@ -42,8 +43,7 @@ func InitOTel(ctx context.Context, cfg OTelConfig) (func(), error) {
 	var tp *sdktrace.TracerProvider
 	if cfg.Endpoint != "" {
 		exp, err := otlptracehttp.New(ctx,
-			otlptracehttp.WithEndpoint(cfg.Endpoint),
-			otlptracehttp.WithInsecure(),
+			otlptracehttp.WithEndpointURL(cfg.Endpoint),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("otel exporter: %w", err)

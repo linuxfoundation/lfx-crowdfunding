@@ -17,7 +17,7 @@ type InitiativeFilter struct {
 	InitiativeType string
 	Status         InitiativeStatus
 	Search         string
-	SortBy         string // "supporters" | "total_raised" | "created_on" (default)
+	SortBy         string // "supporters" | "total_raised" | "name" | "created_on" (default)
 	SortDir        string // "asc" | "desc" (default)
 	Limit          int
 	Offset         int

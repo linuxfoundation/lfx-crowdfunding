@@ -2,27 +2,35 @@
 // SPDX-License-Identifier: MIT
 
 import type { BackendTransactionList } from '../../../types/transactions.types';
+import type { BackendInitiative } from '../../../types/initiatives.types';
 import { mapToTransaction } from '../../../services/transactions.services';
 import type { TransactionList } from '#shared/types/transaction.types';
 
 export default defineEventHandler(async (event): Promise<TransactionList> => {
-  const id = getRouterParam(event, 'id');
-  const { type, size, from } = getQuery(event);
+  const slug = getRouterParam(event, 'slug');
+  const { type, limit, offset } = getQuery(event);
 
   const { apiBaseUrl } = useRuntimeConfig();
+
+  const initiative = await $fetch<BackendInitiative>(`${apiBaseUrl}/v1/initiatives/${slug}`).catch(
+    () => {
+      throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
+    },
+  );
+
   const params = new URLSearchParams();
   if (type) params.set('type', String(type));
-  if (size) params.set('size', String(size));
-  if (from) params.set('from', String(from));
+  if (limit) params.set('limit', String(limit));
+  if (offset) params.set('offset', String(offset));
 
   const res = await $fetch<BackendTransactionList>(
-    `${apiBaseUrl}/v1/initiatives/${id}/transactions?${params}`,
+    `${apiBaseUrl}/v1/initiatives/${initiative.id}/transactions?${params}`,
   );
 
   return {
     data: (res.data ?? []).map(mapToTransaction),
     totalCount: res.total_count,
-    from: res.from,
-    size: res.size,
+    limit: res.limit,
+    offset: res.offset,
   };
 });

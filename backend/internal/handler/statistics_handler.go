@@ -6,8 +6,11 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
 
@@ -33,7 +36,19 @@ func (h *StatisticsHandler) GetPlatform(w http.ResponseWriter, r *http.Request) 
 
 // GetPlatformDetails handles GET /v1/statistics/platform
 func (h *StatisticsHandler) GetPlatformDetails(w http.ResponseWriter, r *http.Request) {
-	details, err := h.svc.GetPlatformDetails(r.Context())
+	topLimit := 10
+	if v := r.URL.Query().Get("top_limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			Error(w, fmt.Errorf("%w: top_limit must be a positive integer", domain.ErrInvalidInput))
+			return
+		}
+		if n > 100 {
+			n = 100
+		}
+		topLimit = n
+	}
+	details, err := h.svc.GetPlatformDetails(r.Context(), topLimit)
 	if err != nil {
 		Error(w, err)
 		return

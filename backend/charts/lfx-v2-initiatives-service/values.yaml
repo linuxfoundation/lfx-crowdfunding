@@ -4,9 +4,9 @@
 replicaCount: 2
 
 image:
-  repository: ghcr.io/linuxfoundation/lfx-v2-initiatives-service
+  repository: ghcr.io/linuxfoundation/lfx-crowdfunding-backend
   pullPolicy: Always
-  tag: "" # defaults to .Chart.AppVersion
+  tag: "" # required — set per environment via ArgoCD values
 
 imagePullSecrets: []
 
@@ -93,6 +93,15 @@ config:
   #   https://crowdfunding.linuxfoundation.org/payment/complete
   # Leaving this empty will cause helm install/upgrade to fail.
   STRIPE_RETURN_URL: ""
+  # Comma-separated LF SSO usernames allowed to approve or decline initiatives.
+  # Example: "alice,bob,carol"
+  ALLOWED_APPROVERS: ""
+
+# ── Additional environment variables ─────────────────────────────────────────
+# Rendered as a Kubernetes env: list on the Deployment and CronJob.
+# Supports the full env entry schema (value:, valueFrom:, etc.).
+# Override in ArgoCD values to inject secretKeyRef entries (e.g. DB components).
+env: []
 
 # ── Secret environment variables ─────────────────────────────────────────────
 # These are sourced from a Kubernetes Secret via envFrom.secretRef.
@@ -100,7 +109,8 @@ config:
 # syncing from AWS Secrets Manager).
 #
 # Expected keys in the Secret:
-#   DATABASE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LEDGER_API_KEY
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, LEDGER_API_KEY
+#   username, password, host, port, dbname — RDS components (referenced via env: above)
 secretName: lfx-v2-initiatives-service-secrets
 
 # createPlaceholderSecret — opt-in, defaults to false.
@@ -117,3 +127,26 @@ secretName: lfx-v2-initiatives-service-secrets
 # creationPolicy: Merge — otherwise ESO will refuse to take ownership of a
 # Secret it did not create and the sync will fail silently.
 createPlaceholderSecret: false
+
+# ── CronJob: ledger-stats-sync ────────────────────────────────────────────────
+# Runs hourly to sync financial data from the ledger service into initiative_ledger_stats.
+cronJob:
+  enabled: true
+  schedule: "0 * * * *"    # every hour on the hour
+  image:
+    # Defaults to same repository and tag as the main API image.
+    # Override only if building a separate image for the CronJob.
+    repository: ""
+    tag: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  # Retain last 3 successful and 1 failed job for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  # Forbid concurrent runs (previous job must complete before next fires)
+  concurrencyPolicy: Forbid

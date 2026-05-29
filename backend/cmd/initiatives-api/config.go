@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
@@ -18,10 +19,13 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
+	S3       S3Config
 	Stripe   StripeConfig
 	Ledger   LedgerConfig
+	Mandrill MandrillConfig
 	OTel     OTelConfig
 	Local    LocalConfig
+	Approval ApprovalConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -68,6 +72,17 @@ type StripeConfig struct {
 	AckUnimplementedWebhooks bool
 }
 
+// S3Config holds settings for S3 logo uploads.
+type S3Config struct {
+	// BucketName is the S3 bucket used for logo uploads.
+	BucketName string
+	// Region is the AWS region hosting the bucket.
+	// When empty the SDK resolves it from the environment (AWS_REGION).
+	Region string
+	// PresignExpiry is how long a presigned PUT URL is valid.
+	PresignExpiry time.Duration
+}
+
 // LedgerConfig holds the upstream Ledger service settings.
 type LedgerConfig struct {
 	BaseURL string
@@ -87,6 +102,23 @@ type LocalConfig struct {
 	// DisabledMockLocalPrincipal, when non-empty, bypasses JWT validation and
 	// injects the value as the mock principal sub. NEVER set in production.
 	DisabledMockLocalPrincipal string
+}
+
+// ApprovalConfig holds initiative approval settings.
+type ApprovalConfig struct {
+	// AllowedApprovers is the list of usernames permitted to approve or decline
+	// initiatives. Sourced from the ALLOWED_APPROVERS env var (comma-separated).
+	AllowedApprovers []string
+}
+
+// MandrillConfig holds Mandrill transactional email settings.
+type MandrillConfig struct {
+	APIKey            string
+	FromEmail         string
+	FromName          string
+	FrontendBase      string // base URL for initiative deep-links in emails
+	NotificationEmail string // inbox that receives new-submission alerts
+	Timeout           time.Duration
 }
 
 // LoadConfig reads all configuration from environment variables.
@@ -177,6 +209,21 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	s3BucketName := getEnv("S3_UPLOAD_BUCKET", "")
+	if s3BucketName == "" {
+		return nil, fmt.Errorf("S3_UPLOAD_BUCKET is required")
+	}
+	s3Region := getEnv("S3_REGION", "")
+	s3PresignExpiry, err := getDurationEnv("S3_PRESIGN_EXPIRY", 3*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+
+	frontendBaseURL := getEnv("FRONTEND_BASE_URL", "")
+	if frontendBaseURL == "" {
+		return nil, fmt.Errorf("FRONTEND_BASE_URL is required")
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Port:            port,
@@ -210,6 +257,11 @@ func LoadConfig() (*Config, error) {
 			APIKey:  ledgerAPIKey,
 			Timeout: ledgerTimeout,
 		},
+		S3: S3Config{
+			BucketName:    s3BucketName,
+			Region:        s3Region,
+			PresignExpiry: s3PresignExpiry,
+		},
 		OTel: OTelConfig{
 			ServiceName:    getEnv("OTEL_SERVICE_NAME", "lfx-v2-initiatives-service"),
 			ServiceVersion: getEnv("OTEL_SERVICE_VERSION", "dev"),
@@ -218,7 +270,33 @@ func LoadConfig() (*Config, error) {
 		Local: LocalConfig{
 			DisabledMockLocalPrincipal: getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", ""),
 		},
+		Approval: ApprovalConfig{
+			AllowedApprovers: parseCommaList(getEnv("ALLOWED_APPROVERS", "")),
+		},
+		Mandrill: MandrillConfig{
+			APIKey:            getEnv("MANDRILL_API_KEY", ""),
+			FromEmail:         getEnv("MANDRILL_FROM_EMAIL", "noreply@lfx.linuxfoundation.org"),
+			FromName:          getEnv("MANDRILL_FROM_NAME", "LFX Crowdfunding"),
+			FrontendBase:      frontendBaseURL,
+			NotificationEmail: getEnv("MANDRILL_NOTIFICATION_EMAIL", ""),
+			Timeout:           10 * time.Second,
+		},
 	}, nil
+}
+
+// parseCommaList splits a comma-separated string into trimmed, non-empty tokens.
+func parseCommaList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {

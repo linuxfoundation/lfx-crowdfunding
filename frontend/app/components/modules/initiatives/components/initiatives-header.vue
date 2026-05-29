@@ -93,7 +93,7 @@ SPDX-License-Identifier: MIT
           />
         </template>
         <lfx-dropdown-item
-          value="recent"
+          value="created_on"
           label="Most recent"
         />
         <lfx-dropdown-item
@@ -101,7 +101,7 @@ SPDX-License-Identifier: MIT
           label="Name (A–Z)"
         />
         <lfx-dropdown-item
-          value="funded"
+          value="total_raised"
           label="Most funded"
         />
       </lfx-dropdown-select>

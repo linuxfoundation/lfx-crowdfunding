@@ -44,7 +44,7 @@ export interface ProjectDetailsData {
   websiteUrl: string;
   ciiProjectId: string;
   codeOfConductUrl: string;
-  logoFileName: string;
+  logoUrl: string;
   beneficiaries: Beneficiary[];
   annualFundingGoal: string;
   fundDistribution: FundDistributionItem[];
@@ -84,7 +84,7 @@ export interface SecurityAuditFormData {
   topics: string[];
   repositoryUrl: string;
   websiteUrl: string;
-  logoFileName: string;
+  logoUrl: string;
   ciiProjectId: string;
   licenseType: string;
   currentSecurityStrategy: string;
@@ -111,7 +111,7 @@ export interface EventFormData {
   endDate: string;
   city: string;
   country: string;
-  logoFileName: string;
+  logoUrl: string;
   beneficiaries: Beneficiary[];
   sponsorshipGoal: string;
   budgetDistribution: FundDistributionItem[];
@@ -123,7 +123,7 @@ export interface GeneralFundFormData {
   elevatorPitch: string;
   topics: string[];
   websiteUrl: string;
-  logoFileName: string;
+  logoUrl: string;
   beneficiaries: Beneficiary[];
   annualFundingGoal: string;
   compliance: ComplianceData;
