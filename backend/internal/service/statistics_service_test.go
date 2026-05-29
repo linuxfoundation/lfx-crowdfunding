@@ -73,10 +73,10 @@ func (r *testStatisticsRepo) GetInitiativeNamesByIDs(_ context.Context, ids []st
 }
 
 type testLedgerClient struct {
-	platformBalance  *clients.LedgerPlatformBalance
-	platformMonthly  *clients.LedgerPlatformMonthly
-	recentDonations  []clients.LedgerRecentDonation
-	err              error
+	platformBalance *clients.LedgerPlatformBalance
+	platformMonthly *clients.LedgerPlatformMonthly
+	recentDonations []clients.LedgerRecentDonation
+	err             error
 }
 
 func (c *testLedgerClient) GetBalance(_ context.Context, _ string) (*clients.LedgerBalance, error) {

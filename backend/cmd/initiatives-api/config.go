@@ -51,6 +51,10 @@ type JWTConfig struct {
 	Audience  string
 	Issuer    string
 	ClockSkew time.Duration
+	// AuthorizedClients, when non-empty, enforces that every token's client ID
+	// (azp/client_id/@clients) is in this whitespace-separated list. Also gates
+	// the X-Username / X-User-ID header impersonation feature.
+	AuthorizedClients string
 }
 
 // StripeConfig holds Stripe API settings.
@@ -235,10 +239,11 @@ func LoadConfig() (*Config, error) {
 			ConnMaxLifetime: connMaxLifetime,
 		},
 		JWT: JWTConfig{
-			JWKSURL:   jwksURL,
-			Audience:  jwtAudience,
-			Issuer:    jwtIssuer,
-			ClockSkew: auth.DefaultClockSkew,
+			JWKSURL:           jwksURL,
+			Audience:          jwtAudience,
+			Issuer:            jwtIssuer,
+			ClockSkew:         auth.DefaultClockSkew,
+			AuthorizedClients: getEnv("AUTHORIZED_CLIENTS", ""),
 		},
 		Stripe: StripeConfig{
 			SecretKey:                stripeKey,

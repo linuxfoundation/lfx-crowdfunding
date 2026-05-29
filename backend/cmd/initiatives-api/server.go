@@ -93,8 +93,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		Audience:                   cfg.JWT.Audience,
 		Issuer:                     cfg.JWT.Issuer,
 		ClockSkew:                  cfg.JWT.ClockSkew,
+		AuthorizedClients:          cfg.JWT.AuthorizedClients,
 		DisabledMockLocalPrincipal: cfg.Local.DisabledMockLocalPrincipal,
-	})
+	}, logger)
 	if err != nil {
 		return nil, fmt.Errorf("jwt authenticator: %w", err)
 	}
@@ -103,6 +104,12 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		logger.Warn("!!! JWT AUTHENTICATION IS DISABLED — ALL REQUESTS ARE    !!!")
 		logger.Warn("!!! TREATED AS AUTHENTICATED. NEVER USE IN PRODUCTION.   !!!")
 		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	}
+	if cfg.JWT.AuthorizedClients != "" {
+		logger.Warn("X-Username / X-User-ID header impersonation is ACTIVE",
+			"authorized_clients", cfg.JWT.AuthorizedClients)
+		logger.Warn("Ensure this service is not directly reachable from the internet — " +
+			"the ingress MUST strip the X-Username and X-User-ID headers before forwarding requests")
 	}
 
 	// Handlers
