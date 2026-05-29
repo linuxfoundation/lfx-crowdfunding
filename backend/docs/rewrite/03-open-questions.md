@@ -11,7 +11,7 @@ Questions that must be answered before or during implementation. Update status a
 
 ### OQ-23: Auth0 sub → LFID username migration
 
-**Status:** Decisions locked — implementation tracked in Jira (LFXV2-TBD)
+**Status:** Decisions locked — implementation tracked in Jira ([LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025))
 **Owner:** Michal
 **Source:** Architecture call with Eric Searcy, May 28 2026
 
@@ -56,7 +56,7 @@ The `users` table gains a `username` column (NOT NULL going forward; NOT NULL af
 
 **Blocking:** DynamoDB → Postgres data migration script; M2M middleware implementation in CF backend; handler refactor across all me-routes and protected routes.
 
-**Tracking:** Jira ticket created under LFXV2 (see ticket for full implementation breakdown).
+**Tracking:** [LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025) (child of Epic [LFXV2-1690](https://linuxfoundation.atlassian.net/browse/LFXV2-1690)) — see ticket for full implementation breakdown.
 
 ---
 
