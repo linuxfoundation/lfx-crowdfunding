@@ -23,6 +23,7 @@ export interface ProjectFundraisePayload {
   websiteUrl?: string;
   cocUrl?: string;
   repositoryUrl?: string;
+  logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];
   annualFundingGoalCents?: number;
 }
@@ -33,6 +34,7 @@ export interface SecurityAuditFundraisePayload {
   description: string;
   websiteUrl?: string;
   repositoryUrl?: string;
+  logoUrl?: string;
   fundingGoalCents?: number;
   primaryContact?: FundraiseContactInput;
   secondaryContact?: FundraiseContactInput;
@@ -50,6 +52,7 @@ export interface EventFundraisePayload {
   city?: string;
   country?: string;
   isOnline?: boolean;
+  logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];
   sponsorshipGoalCents?: number;
 }
@@ -59,6 +62,7 @@ export interface GeneralFundFundraisePayload {
   name: string;
   description: string;
   websiteUrl?: string;
+  logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];
   annualFundingGoalCents?: number;
 }

@@ -48,6 +48,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
       return {
         ...base,
         coc_url: payload.cocUrl || undefined,
+        logo_url: payload.logoUrl || undefined,
         custom_websites: payload.repositoryUrl
           ? [{ name: 'Repository', url: payload.repositoryUrl }]
           : undefined,
@@ -69,6 +70,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     case 'security_audit': {
       return {
         ...base,
+        logo_url: payload.logoUrl || undefined,
         custom_websites: payload.repositoryUrl
           ? [{ name: 'Repository', url: payload.repositoryUrl }]
           : undefined,
@@ -88,6 +90,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     case 'event': {
       return {
         ...base,
+        logo_url: payload.logoUrl || undefined,
         eventbrite_url: payload.registrationUrl || undefined,
         event_start_date: payload.startDate ? new Date(payload.startDate).toISOString() : undefined,
         event_end_date: payload.endDate ? new Date(payload.endDate).toISOString() : undefined,
@@ -112,6 +115,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     case 'general_fund': {
       return {
         ...base,
+        logo_url: payload.logoUrl || undefined,
         beneficiaries: payload.beneficiaries?.length
           ? payload.beneficiaries.map((b) => ({ name: b.name, email: b.email }))
           : undefined,

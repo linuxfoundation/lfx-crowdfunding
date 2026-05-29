@@ -252,17 +252,11 @@ func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Authorise: caller's username must be in the approvers list.
-	allowed := false
-	for _, a := range h.allowedApprovers {
-		if strings.EqualFold(a, principal.Username) {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
+	// Authorise: caller must be in the allowed approvers list.
+	if !h.isApprover(principal) {
 		h.logger.WarnContext(r.Context(), "initiative approval rejected: caller not in allowed list",
 			"username", principal.Username,
+			"userID", principal.UserID,
 			"action", action,
 			"initiative_id", chi.URLParam(r, "id"))
 		Error(w, domain.ErrForbidden)

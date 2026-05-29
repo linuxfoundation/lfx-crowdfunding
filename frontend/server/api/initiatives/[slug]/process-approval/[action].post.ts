@@ -19,15 +19,14 @@ export default defineEventHandler(async (event): Promise<ApprovalResult> => {
     });
   }
 
-  const { apiBaseUrl } = useRuntimeConfig();
-
-  const initiative = await $fetch<BackendInitiative>(`${apiBaseUrl}/v1/initiatives/${slug}`).catch(
-    (err) => {
-      if (err?.status === 404)
-        throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
-      throw createError({ statusCode: 502, statusMessage: 'Failed to resolve initiative' });
-    },
-  );
+  const initiative = await useBackendFetch<BackendInitiative>(
+    event,
+    `/v1/initiatives/${slug}`,
+  ).catch((err) => {
+    if (err?.status === 404)
+      throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
+    throw createError({ statusCode: 502, statusMessage: 'Failed to resolve initiative' });
+  });
 
   const updated = await useBackendFetch<BackendInitiative>(
     event,
