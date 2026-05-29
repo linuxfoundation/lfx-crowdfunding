@@ -9,6 +9,8 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -40,9 +42,11 @@ func newTestAuthenticator(cfg JWTAuthConfig) *JWTAuthenticator {
 		jwt.WithExpirationRequired(),
 	)
 	return &JWTAuthenticator{
-		cfg:    cfg,
-		keyfn:  func(_ *jwt.Token) (any, error) { return secret, nil },
-		parser: parser,
+		cfg:               cfg,
+		keyfn:             func(_ *jwt.Token) (any, error) { return secret, nil },
+		parser:            parser,
+		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		authorizedClients: buildClientSet(cfg.AuthorizedClients),
 	}
 }
 
@@ -52,6 +56,14 @@ func defaultCfg() JWTAuthConfig {
 		Issuer:    testIssuer,
 		ClockSkew: 5 * time.Second,
 	}
+}
+
+// trustedM2MCfg returns a config with X-Username impersonation enabled for the
+// "m2m-client" client (matching the subject used by m2mTokenWithoutUsername).
+func trustedM2MCfg() JWTAuthConfig {
+	cfg := defaultCfg()
+	cfg.AuthorizedClients = "m2m-client"
+	return cfg
 }
 
 func sign(claims jwt.Claims) string {
@@ -75,6 +87,34 @@ func userToken() string {
 		EmailVerified: true,
 		GivenName:     "Test",
 		FamilyName:    "User",
+	})
+}
+
+func m2mTokenWithoutUsername() string {
+	return sign(&JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "m2m-client@clients",
+			Issuer:    testIssuer,
+			Audience:  jwt.ClaimStrings{testAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+		AuthorizedParty: "m2m-client",
+		GrantType:       "client_credentials",
+		Email:           "",
+		EmailVerified:   false,
+	})
+}
+
+func m2mTokenForClient(clientID string) string {
+	return sign(&JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   clientID + "@clients",
+			Issuer:    testIssuer,
+			Audience:  jwt.ClaimStrings{testAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+		AuthorizedParty: clientID,
+		GrantType:       "client_credentials",
 	})
 }
 
@@ -127,11 +167,12 @@ func TestMiddleware_RejectsHS256(t *testing.T) {
 		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}),
 	)
 	a := &JWTAuthenticator{
-		cfg:    defaultCfg(),
-		keyfn:  func(_ *jwt.Token) (any, error) { return []byte(testSecret), nil },
-		parser: parser,
+		cfg:               defaultCfg(),
+		keyfn:             func(_ *jwt.Token) (any, error) { return []byte(testSecret), nil },
+		parser:            parser,
+		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		authorizedClients: buildClientSet(""),
 	}
-
 	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -156,9 +197,11 @@ func TestMiddleware_AcceptsRS256(t *testing.T) {
 		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}),
 	)
 	a := &JWTAuthenticator{
-		cfg:    defaultCfg(),
-		keyfn:  func(_ *jwt.Token) (any, error) { return &key.PublicKey, nil },
-		parser: parser,
+		cfg:               defaultCfg(),
+		keyfn:             func(_ *jwt.Token) (any, error) { return &key.PublicKey, nil },
+		parser:            parser,
+		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		authorizedClients: buildClientSet(""),
 	}
 	tok, err := jwt.NewWithClaims(jwt.SigningMethodRS256, &JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -342,7 +385,7 @@ func TestMiddleware_EnrichedClaimsPropagated(t *testing.T) {
 func TestMiddleware_EmptySubjectRejected(t *testing.T) {
 	a := newTestAuthenticator(defaultCfg())
 
-	// Token is valid but has no sub claim.
+	// Token is valid but has no sub claim and no X-Username fallback.
 	tok := sign(&JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    testIssuer,
@@ -360,6 +403,262 @@ func TestMiddleware_EmptySubjectRejected(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for empty subject, got %d", w.Code)
 	}
+}
+
+// TestMiddleware_XUsernameIgnoredWhenFeatureDisabled verifies that an empty
+// AUTHORIZED_CLIENTS (the default) disables X-Username impersonation
+// entirely. A token with no sub and no M2M markers must be rejected even if
+// the header is present.
+func TestMiddleware_XUsernameIgnoredWhenFeatureDisabled(t *testing.T) {
+	a := newTestAuthenticator(defaultCfg()) // AuthorizedClients is empty
+
+	tok := sign(&JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    testIssuer,
+			Audience:  jwt.ClaimStrings{testAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := makeRequest(tok)
+	r.Header.Set("X-Username", "acting-user")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 (feature disabled), got %d", w.Code)
+	}
+}
+
+func TestMiddleware_UsesXUsernameHeaderWhenClaimMissing(t *testing.T) {
+	a := newTestAuthenticator(trustedM2MCfg())
+
+	var got *models.Principal
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = PrincipalFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := makeRequest(m2mTokenWithoutUsername())
+	r.Header.Set("X-Username", "acting-user")
+	r.Header.Set("X-User-ID", "auth0|abc123")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if got == nil {
+		t.Fatal("principal not set in context")
+	}
+	if got.Username != "acting-user" {
+		t.Errorf("Username = %q, want %q", got.Username, "acting-user")
+	}
+	if got.UserID != "auth0|abc123" {
+		t.Errorf("UserID = %q, want %q", got.UserID, "auth0|abc123")
+	}
+}
+
+func TestMiddleware_UsesCaseInsensitiveXUsernameHeaderWhenClaimMissing(t *testing.T) {
+	a := newTestAuthenticator(trustedM2MCfg())
+
+	cases := []struct {
+		name       string
+		headerName string
+		value      string
+	}{
+		{name: "lowercase", headerName: "x-username", value: "lowercase-user"},
+		{name: "uppercase", headerName: "X-USERNAME", value: "uppercase-user"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got *models.Principal
+			h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = PrincipalFromContext(r.Context())
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			r := makeRequest(m2mTokenWithoutUsername())
+			r.Header.Set(tc.headerName, tc.value)
+			r.Header.Set("X-User-ID", "auth0|caseuser")
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d", w.Code)
+			}
+			if got == nil {
+				t.Fatal("principal not set in context")
+			}
+			if got.Username != tc.value {
+				t.Errorf("Username = %q, want %q", got.Username, tc.value)
+			}
+		})
+	}
+}
+
+// Even when the feature is enabled, the JWT claim must win over the header.
+// We use defaultCfg here (no AuthorizedClients) because userToken has no azp
+// and the username-priority logic is independent of client gating.
+func TestMiddleware_DoesNotOverrideClaimUsernameWithXUsernameHeader(t *testing.T) {
+	a := newTestAuthenticator(defaultCfg())
+
+	var gotUsername string
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := PrincipalFromContext(r.Context())
+		if p != nil {
+			gotUsername = p.Username
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := makeRequest(userToken())
+	r.Header.Set("X-Username", "spoofed-user")
+	r.Header.Set("X-User-ID", "auth0|spoofed")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if gotUsername != "testuser" {
+		t.Errorf("Username = %q, want %q", gotUsername, "testuser")
+	}
+}
+
+// TestMiddleware_RejectsImpersonationWithoutUserIDHeader verifies that
+// supplying X-Username without the companion X-User-ID header is rejected.
+// The acting user's real Auth0 subject must always accompany the username.
+func TestMiddleware_RejectsImpersonationWithoutUserIDHeader(t *testing.T) {
+	a := newTestAuthenticator(trustedM2MCfg())
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := makeRequest(m2mTokenWithoutUsername())
+	r.Header.Set("X-Username", "acting-user")
+	// X-User-ID intentionally absent
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 when X-User-ID is absent, got %d", w.Code)
+	}
+}
+
+func TestMiddleware_RejectsM2MTokenFromUnexpectedClient(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.AuthorizedClients = "lfx-self-serve-client"
+	a := newTestAuthenticator(cfg)
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(m2mTokenForClient("some-other-client")))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestMiddleware_AcceptsM2MTokenFromExpectedClient(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.AuthorizedClients = "lfx-self-serve-client"
+	a := newTestAuthenticator(cfg)
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(m2mTokenForClient("lfx-self-serve-client")))
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestMiddleware_AcceptsM2MTokenFromAnyExpectedClientInWhitespaceSeparatedList(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.AuthorizedClients = "lfx-self-serve-client another-client\tthird-client\n"
+	a := newTestAuthenticator(cfg)
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cases := []string{"lfx-self-serve-client", "another-client", "third-client"}
+	for _, clientID := range cases {
+		t.Run(clientID, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, makeRequest(m2mTokenForClient(clientID)))
+			if w.Code != http.StatusOK {
+				t.Errorf("expected 200, got %d", w.Code)
+			}
+		})
+	}
+}
+
+func TestMiddleware_RejectsM2MTokenWhenNotInExpectedClientList(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.AuthorizedClients = "lfx-self-serve-client another-client"
+	a := newTestAuthenticator(cfg)
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(m2mTokenForClient("unlisted-client")))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+// TestMiddleware_AuthorizedClientsAppliesToUserTokens verifies that when
+// AuthorizedClients is configured the client ID check applies to user tokens
+// too, not only M2M tokens.
+func TestMiddleware_AuthorizedClientsAppliesToUserTokens(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.AuthorizedClients = "lfx-self-serve-client"
+	a := newTestAuthenticator(cfg)
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Run("user token with matching azp passes", func(t *testing.T) {
+		tok := sign(&JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   "auth0|testuser",
+				Issuer:    testIssuer,
+				Audience:  jwt.ClaimStrings{testAudience},
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			},
+			Username:        "testuser",
+			AuthorizedParty: "lfx-self-serve-client",
+		})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, makeRequest(tok))
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", w.Code)
+		}
+	})
+
+	t.Run("user token without azp is rejected", func(t *testing.T) {
+		// userToken() has no azp — no client ID can be extracted.
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, makeRequest(userToken()))
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", w.Code)
+		}
+	})
 }
 
 // ── middleware: malformed Authorization header ────────────────────────────────
@@ -398,7 +697,7 @@ func TestNewJWTAuthenticator_MutualExclusion(t *testing.T) {
 	_, err := NewJWTAuthenticator(context.Background(), JWTAuthConfig{
 		DisabledMockLocalPrincipal: "user",
 		JWKSURL:                    "https://example.com/.well-known/jwks.json",
-	})
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err == nil {
 		t.Error("expected error when both bypass and JWKS_URL are set")
 	}
@@ -437,7 +736,7 @@ func TestNewJWTAuthenticator_EnforcesValidMethods(t *testing.T) {
 		Audience:  testAudience,
 		Issuer:    testIssuer,
 		ClockSkew: 0,
-	})
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewJWTAuthenticator: %v", err)
 	}
