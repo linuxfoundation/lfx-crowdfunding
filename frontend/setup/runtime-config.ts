@@ -30,7 +30,6 @@ export default {
   auth0ClientSecret: process.env.NUXT_AUTH0_CLIENT_SECRET || '',
   auth0CookieDomain,
   githubOauthClientSecret: process.env.NUXT_GITHUB_OAUTH_CLIENT_SECRET || '',
-  backendBaseUrl: process.env.NUXT_API_BASE_URL ?? 'http://localhost:8080',
 
   public: {
     apiBase: '/api',
