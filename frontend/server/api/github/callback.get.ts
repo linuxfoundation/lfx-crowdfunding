@@ -6,8 +6,7 @@ import { getSafeRedirectUrl } from '../../utils/redirect';
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
-  const isLocal =
-    process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
+  const isLocal = !process.env.NUXT_APP_ENV;
 
   const redirectTo = getSafeRedirectUrl(getCookie(event, 'github_redirect_to'), '/fundraise');
 
