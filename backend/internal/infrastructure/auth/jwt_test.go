@@ -815,11 +815,12 @@ func TestNewJWTAuthenticator_AcceptsJWKSWithX5T(t *testing.T) {
 	}
 	thumbprint := sha1.Sum(certDER) //nolint:gosec // x5t is defined as the SHA-1 thumbprint
 
-	// Auth0 encodes x5t as base64(uppercase-hex(sha1(cert))), whereas the jwkset
-	// library computes base64url(raw sha1 bytes). The two never match, so jwkset
-	// rejects the key set unless ValidationSkipAll is set. Emit x5t exactly the
-	// way Auth0 does so this test reproduces the real-world failure.
-	auth0X5T := base64.RawStdEncoding.EncodeToString(
+	// Auth0 encodes x5t as base64url(uppercase-hex(sha1(cert))), whereas the
+	// jwkset library computes base64url(raw sha1 bytes). The two never match, so
+	// jwkset rejects the key set unless ValidationSkipAll is set. Emit x5t exactly
+	// the way Auth0 does so this test reproduces the real-world failure. (x5t is
+	// defined as base64url in RFC 7517, so use RawURLEncoding for the outer step.)
+	auth0X5T := base64.RawURLEncoding.EncodeToString(
 		[]byte(strings.ToUpper(hex.EncodeToString(thumbprint[:]))),
 	)
 
