@@ -85,7 +85,14 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 		return &JWTAuthenticator{cfg: cfg, logger: logger, authorizedClients: buildClientSet(cfg.AuthorizedClients)}, nil
 	}
 
-	jwksProvider, err := keyfunc.NewDefaultCtx(ctx, []string{cfg.JWKSURL})
+	// Auth0 JWKS responses include x5t (SHA-1 thumbprint) fields that do not
+	// round-trip through the jwkset validator cleanly, causing spurious
+	// "X5T in marshal does not match X5T in marshalled" errors on every
+	// refresh. ValidationSkipAll bypasses that structural check while still
+	// enforcing cryptographic signature validation at token parse time.
+	jwksProvider, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{cfg.JWKSURL}, keyfunc.Override{
+		ValidationSkipAll: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("fetch JWKS: %w", err)
 	}
