@@ -7,13 +7,18 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1" //nolint:gosec // SHA-1 is required by RFC 7517 for the x5t thumbprint
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -776,4 +781,98 @@ func TestNewJWTAuthenticator_EnforcesValidMethods(t *testing.T) {
 			t.Errorf("expected 200 for RS256 token via constructor, got %d", w.Code)
 		}
 	})
+}
+
+// TestNewJWTAuthenticator_AcceptsJWKSWithX5T is a regression test for the Auth0
+// JWKS x5t handling. Auth0's JWKS responses include x5c (certificate chain) and
+// x5t (SHA-1 thumbprint) fields. The jwkset validator recomputes the thumbprint
+// and rejects the set with "X5T in marshal does not match X5T in marshalled" on
+// every refresh unless the constructor passes ValidationSkipAll. When that
+// happens no signing keys load and every token is rejected as
+// "invalid or missing token" (401). This test stands up an Auth0-style JWKS
+// endpoint with x5c/x5t and asserts a token signed with that key is accepted —
+// reproducing the failure a refactor previously introduced by dropping the
+// override.
+func TestNewJWTAuthenticator_AcceptsJWKSWithX5T(t *testing.T) {
+	const kid = "test-key-x5t"
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+
+	// Build a self-signed certificate so the JWKS can carry x5c/x5t, mirroring
+	// the shape of a real Auth0 JWKS entry.
+	certDER, err := x509.CreateCertificate(
+		rand.Reader,
+		&x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test"}},
+		&x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test"}},
+		&key.PublicKey,
+		key,
+	)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+	thumbprint := sha1.Sum(certDER) //nolint:gosec // x5t is defined as the SHA-1 thumbprint
+
+	// Auth0 encodes x5t as base64(uppercase-hex(sha1(cert))), whereas the jwkset
+	// library computes base64url(raw sha1 bytes). The two never match, so jwkset
+	// rejects the key set unless ValidationSkipAll is set. Emit x5t exactly the
+	// way Auth0 does so this test reproduces the real-world failure.
+	auth0X5T := base64.RawStdEncoding.EncodeToString(
+		[]byte(strings.ToUpper(hex.EncodeToString(thumbprint[:]))),
+	)
+
+	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": []map[string]any{{
+				"kty": "RSA", "use": "sig", "kid": kid, "alg": "RS256",
+				"n": n, "e": e,
+				"x5c": []string{base64.StdEncoding.EncodeToString(certDER)},
+				"x5t": auth0X5T,
+			}},
+		})
+	}))
+	defer jwksServer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a, err := NewJWTAuthenticator(ctx, JWTAuthConfig{
+		JWKSURL:   jwksServer.URL,
+		Audience:  testAudience,
+		Issuer:    testIssuer,
+		ClockSkew: 0,
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewJWTAuthenticator: %v", err)
+	}
+
+	handler := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "auth0|x5tuser",
+			Issuer:    testIssuer,
+			Audience:  jwt.ClaimStrings{testAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+		Email: "x5t@example.com",
+	})
+	tok.Header["kid"] = kid
+	signed, err := tok.SignedString(key)
+	if err != nil {
+		t.Fatalf("sign RS256 token: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, makeRequest(signed))
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for token validated against JWKS with x5t/x5c, got %d", w.Code)
+	}
 }
