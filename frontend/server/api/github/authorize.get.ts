@@ -11,8 +11,7 @@ export default defineEventHandler(async (event) => {
 
   const state = randomBytes(16).toString('hex');
 
-  const isLocal =
-    process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
+  const isLocal = !process.env.NUXT_APP_ENV;
 
   const cookieOptions = {
     httpOnly: true,
