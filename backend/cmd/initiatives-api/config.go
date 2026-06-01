@@ -99,6 +99,9 @@ type OTelConfig struct {
 
 // LocalConfig holds development-only settings.
 type LocalConfig struct {
+	// AllowMockLocalPrincipalBypass must be true to enable
+	// DisabledMockLocalPrincipal. Keep false outside local development.
+	AllowMockLocalPrincipalBypass bool
 	// DisabledMockLocalPrincipal, when non-empty, bypasses JWT validation and
 	// injects the value as the mock principal sub. NEVER set in production.
 	DisabledMockLocalPrincipal string
@@ -127,8 +130,15 @@ func LoadConfig() (*Config, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
-	jwksURL := getEnv("JWKS_URL", "")
-	mockPrincipal := getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", "")
+	jwksURL := strings.TrimSpace(getEnv("JWKS_URL", ""))
+	mockPrincipal := strings.TrimSpace(getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", ""))
+	allowMockBypass, err := getBoolEnv("ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS", false)
+	if err != nil {
+		return nil, err
+	}
+	if mockPrincipal != "" && !allowMockBypass {
+		return nil, fmt.Errorf("DISABLED_MOCK_LOCAL_PRINCIPAL requires ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true")
+	}
 	if jwksURL == "" && mockPrincipal == "" {
 		return nil, fmt.Errorf("JWKS_URL is required (or set DISABLED_MOCK_LOCAL_PRINCIPAL for local dev)")
 	}
@@ -268,7 +278,8 @@ func LoadConfig() (*Config, error) {
 			Endpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 		},
 		Local: LocalConfig{
-			DisabledMockLocalPrincipal: getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", ""),
+			AllowMockLocalPrincipalBypass: allowMockBypass,
+			DisabledMockLocalPrincipal:    mockPrincipal,
 		},
 		Approval: ApprovalConfig{
 			AllowedApprovers: parseCommaList(getEnv("ALLOWED_APPROVERS", "")),

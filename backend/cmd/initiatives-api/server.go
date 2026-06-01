@@ -93,6 +93,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		Audience:                   cfg.JWT.Audience,
 		Issuer:                     cfg.JWT.Issuer,
 		ClockSkew:                  cfg.JWT.ClockSkew,
+		AllowMockPrincipalBypass:   cfg.Local.AllowMockLocalPrincipalBypass,
 		AuthorizedClients:          cfg.JWT.AuthorizedClients,
 		DisabledMockLocalPrincipal: cfg.Local.DisabledMockLocalPrincipal,
 	}, logger)
