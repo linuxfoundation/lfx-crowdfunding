@@ -176,7 +176,7 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 	jwksProvider := jwks.NewCachingProvider(issuerURL, 5*time.Minute, jwks.WithCustomJWKSURI(jwksURL))
 	keyFunc := func(reqCtx context.Context) (interface{}, error) {
 		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("%w: %v", errAuthenticatorContextClosed, err)
+			return nil, fmt.Errorf("%w: %w", errAuthenticatorContextClosed, err)
 		}
 		ctxForKey, cancel := withValidatorRequestContext(ctx, reqCtx, 15*time.Second)
 		defer cancel()
@@ -256,7 +256,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 			}
 		}
 		if principalUserID == "" {
-			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "category", "missing_subject", "path", r.URL.Path)
+			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "category", authCategoryMissingSubject, "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid token claims")
 			return
 		}
@@ -370,7 +370,7 @@ func getClientID(claims *JWTClaims) string {
 func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, error) {
 	if a.baseCtx != nil {
 		if err := a.baseCtx.Err(); err != nil {
-			return nil, fmt.Errorf("%w: %v", errAuthenticatorContextClosed, err)
+			return nil, fmt.Errorf("%w: %w", errAuthenticatorContextClosed, err)
 		}
 	}
 
