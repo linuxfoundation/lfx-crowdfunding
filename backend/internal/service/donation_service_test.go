@@ -29,6 +29,9 @@ func (r *summaryInitiativeRepo) GetBySlug(_ context.Context, _ string) (*models.
 func (r *summaryInitiativeRepo) GetIDBySlug(_ context.Context, _ string) (string, error) {
 	return "", nil
 }
+func (r *summaryInitiativeRepo) ResolveSlug(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
 func (r *summaryInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }

@@ -18,7 +18,6 @@ import (
 
 	"github.com/auth0/go-jwt-middleware/v2/jwks"
 	"github.com/auth0/go-jwt-middleware/v2/validator"
-	josejwt "gopkg.in/go-jose/go-jose.v2/jwt"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
@@ -65,6 +64,23 @@ type JWTClaims struct {
 
 const xUsernameHeader = "X-Username"
 const xUserIDHeader = "X-User-ID"
+
+const (
+	authCategoryUnknown                    = "unknown"
+	authCategoryMissingAuthorizationHeader = "missing_authorization_header"
+	authCategoryMalformedAuthorization     = "malformed_authorization_header"
+	authCategoryMissingBearerToken         = "missing_bearer_token"
+	authCategoryMissingSubject             = "missing_subject"
+	authCategoryContextClosed              = "authenticator_context_closed"
+	authCategoryValidatorNotConfigured     = "validator_not_configured"
+	authCategoryInvalidTokenFormat         = "invalid_token_format"
+	authCategoryTokenExpired               = "token_expired"
+	authCategoryInvalidAudience            = "invalid_audience"
+	authCategoryInvalidIssuer              = "invalid_issuer"
+	authCategoryInvalidSignature           = "invalid_signature"
+	authCategoryTokenValidationFailed      = "token_validation_failed"
+	authCategoryUnauthorizedClient         = "unauthorized_client"
+)
 
 var (
 	errMissingAuthorizationHeader = errors.New("missing Authorization header")
@@ -223,7 +239,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		}
 
 		if !a.isAuthorizedClient(claims) {
-			a.logger.WarnContext(r.Context(), "auth: client not in authorized list", "category", "unauthorized_client", "path", r.URL.Path)
+			a.logger.WarnContext(r.Context(), "auth: client not in authorized list", "category", authCategoryUnauthorizedClient, "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid token claims")
 			return
 		}
@@ -275,9 +291,9 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		token, err := a.extractAndValidate(r)
+		claims, err := a.extractAndValidate(r)
 		if err == nil {
-			if claims, ok := token.Claims.(*JWTClaims); ok && claims.Subject != "" {
+			if claims != nil && claims.Subject != "" {
 				principal := &models.Principal{
 					UserID:        claims.Subject,
 					Username:      claims.Username,
@@ -425,47 +441,44 @@ func withValidatorRequestContext(baseCtx context.Context, requestCtx context.Con
 
 func authFailureCategory(err error) string {
 	if err == nil {
-		return "unknown"
+		return authCategoryUnknown
 	}
 	if errors.Is(err, errMissingAuthorizationHeader) {
-		return "missing_authorization_header"
+		return authCategoryMissingAuthorizationHeader
 	}
 	if errors.Is(err, errInvalidAuthorizationHeader) {
-		return "malformed_authorization_header"
+		return authCategoryMalformedAuthorization
 	}
 	if errors.Is(err, errMissingBearerToken) {
-		return "missing_bearer_token"
+		return authCategoryMissingBearerToken
 	}
 	if errors.Is(err, errMissingSubjectClaim) {
-		return "missing_subject"
+		return authCategoryMissingSubject
 	}
 	if errors.Is(err, errAuthenticatorContextClosed) {
-		return "authenticator_context_closed"
+		return authCategoryContextClosed
 	}
 	if errors.Is(err, errValidatorNotConfigured) {
-		return "validator_not_configured"
+		return authCategoryValidatorNotConfigured
 	}
 	if errors.Is(err, validator.ErrExcessiveTokenDots) {
-		return "invalid_token_format"
-	}
-	if errors.Is(err, josejwt.ErrExpired) {
-		return "token_expired"
-	}
-	if errors.Is(err, josejwt.ErrInvalidAudience) {
-		return "invalid_audience"
-	}
-	if errors.Is(err, josejwt.ErrInvalidIssuer) {
-		return "invalid_issuer"
+		return authCategoryInvalidTokenFormat
 	}
 
 	errStr := strings.ToLower(err.Error())
 	switch {
+	case strings.Contains(errStr, "token is expired"):
+		return authCategoryTokenExpired
+	case strings.Contains(errStr, "invalid audience"):
+		return authCategoryInvalidAudience
+	case strings.Contains(errStr, "invalid issuer"):
+		return authCategoryInvalidIssuer
 	case strings.Contains(errStr, "invalid token format") || strings.Contains(errStr, "excessive dots"):
-		return "invalid_token_format"
+		return authCategoryInvalidTokenFormat
 	case strings.Contains(errStr, "signature") || strings.Contains(errStr, "verification"):
-		return "invalid_signature"
+		return authCategoryInvalidSignature
 	default:
-		return "token_validation_failed"
+		return authCategoryTokenValidationFailed
 	}
 }
 

@@ -18,6 +18,8 @@ func setRequiredEnv(t *testing.T) {
 	t.Setenv("LEDGER_BASE_URL", "https://ledger.example")
 	t.Setenv("LEDGER_API_KEY", "ledger-key")
 	t.Setenv("STRIPE_RETURN_URL", "https://frontend.example/payment/complete")
+	t.Setenv("FRONTEND_BASE_URL", "https://frontend.example")
+	t.Setenv("S3_UPLOAD_BUCKET", "crowdfunding-uploads-test")
 	t.Setenv("JWKS_URL", "https://issuer.example/.well-known/jwks.json")
 	t.Setenv("DISABLED_MOCK_LOCAL_PRINCIPAL", "")
 	t.Setenv("ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS", "false")
