@@ -31,6 +31,6 @@ export default {
     },
   ],
   script: [
-    { src: 'https://kit.fontawesome.com/d65f54d9ea.js', crossorigin: 'anonymous', async: true },
+    { src: 'https://kit.fontawesome.com/0c49a28643.js', crossorigin: 'anonymous', async: true },
   ],
 };
