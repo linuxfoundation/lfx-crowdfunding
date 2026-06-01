@@ -16,9 +16,9 @@ Every request passes through the following checks in order:
 
 1. **Bearer token extraction** — `Authorization: Bearer <token>` is required.
 2. **Signature + standard claims** — validated against the Auth0 JWKS endpoint
-   (background-rotated via `keyfunc.NewDefaultCtx`). Checks: signature,
-   algorithm (RS256/RS384/RS512/ES256/ES384/ES512 only — no symmetric algos),
-   audience, issuer, expiry (required), and clock skew leeway.
+   (cached via Auth0 `jwks.NewCachingProvider` + custom JWKS URI). Checks:
+   signature, algorithm (RS256), audience, issuer, expiry, and clock skew
+   leeway.
 3. **Client allowlist** (`isAuthorizedClient`) — when `AUTHORIZED_CLIENTS` is
    non-empty, the token's client ID (`azp` → `client_id` → `@clients` subject
    suffix for M2M) must appear in the list. Applies equally to user tokens
@@ -59,7 +59,8 @@ regardless of their content.
 | `JWT_AUDIENCE` | — | API identifier registered in Auth0 |
 | `JWT_ISSUER` | — | Auth0 domain (with trailing `/`) |
 | `AUTHORIZED_CLIENTS` | `""` (disabled) | Whitespace-separated list of allowed client IDs |
-| `DISABLED_MOCK_LOCAL_PRINCIPAL` | `""` | Local dev bypass — mutually exclusive with `JWKS_URL` |
+| `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | `false` | Must be `true` to allow local JWT bypass |
+| `DISABLED_MOCK_LOCAL_PRINCIPAL` | `""` | Local dev bypass principal; requires `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true` and is mutually exclusive with `JWKS_URL` |
 
 When `AUTHORIZED_CLIENTS` is empty:
 - All valid tokens are accepted regardless of client ID.
@@ -71,8 +72,8 @@ When `AUTHORIZED_CLIENTS` is empty:
 
 | Decision | Rationale |
 |----------|-----------|
-| Asymmetric algorithms only | Prevents `alg:none` and HS256 key-confusion attacks |
-| `WithExpirationRequired()` explicit | golang-jwt does not enforce expiry by default |
+| RS256-only validation | Rejects symmetric algorithm confusion and unexpected signing methods |
+| Explicit mock bypass gate (`ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS`) | Fail-closed startup behavior for shared environments |
 | Client set as `map[string]struct{}` | O(1) lookup, parsed once at construction — not on every request |
 | `X-User-ID` required alongside `X-Username` | Eliminates the need to fabricate an Auth0 subject from a username string |
 | `@clients` fallback guarded by `isM2MToken` | Prevents nonsensical client ID extraction from user token subjects |
@@ -88,5 +89,5 @@ When `AUTHORIZED_CLIENTS` is empty:
 | `internal/infrastructure/auth/jwt.go` | Core implementation |
 | `internal/infrastructure/auth/jwt_test.go` | Full test coverage |
 | `cmd/initiatives-api/server.go` | Wiring, startup warnings |
-| `cmd/initiatives-api/config.go` | `AuthorizedClients` config field |
-| `.env.example` | Documentation of new env vars |
+| `cmd/initiatives-api/config.go` | `AuthorizedClients` + local bypass allow-gate config |
+| `.env.example` | Environment variable documentation |

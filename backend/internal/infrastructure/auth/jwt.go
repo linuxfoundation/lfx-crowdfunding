@@ -10,12 +10,16 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
-	"github.com/MicahParks/keyfunc/v3"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/auth0/go-jwt-middleware/v2/jwks"
+	"github.com/auth0/go-jwt-middleware/v2/validator"
+	josejwt "gopkg.in/go-jose/go-jose.v2/jwt"
+
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
@@ -33,6 +37,9 @@ type JWTAuthConfig struct {
 	Audience  string
 	Issuer    string
 	ClockSkew time.Duration
+	// AllowMockPrincipalBypass must be true to permit DisabledMockLocalPrincipal.
+	// Keep false in all shared/non-local environments.
+	AllowMockPrincipalBypass bool
 	// AuthorizedClients, when non-empty, enforces that every token's client ID
 	// (azp, client_id, or @clients subject suffix) is in this whitespace-separated
 	// list. Applies to all token types — M2M and user alike.
@@ -43,7 +50,7 @@ type JWTAuthConfig struct {
 
 // JWTClaims extends standard JWT claims with LFX-specific fields.
 type JWTClaims struct {
-	jwt.RegisteredClaims
+	Subject         string `json:"sub"`
 	Username        string `json:"https://sso.linuxfoundation.org/claims/username"`
 	AuthorizedParty string `json:"azp"`
 	ClientID        string `json:"client_id"`
@@ -59,50 +66,133 @@ type JWTClaims struct {
 const xUsernameHeader = "X-Username"
 const xUserIDHeader = "X-User-ID"
 
+var (
+	errMissingAuthorizationHeader = errors.New("missing Authorization header")
+	errInvalidAuthorizationHeader = errors.New("invalid Authorization header format")
+	errMissingBearerToken         = errors.New("missing bearer token")
+	errMissingSubjectClaim        = errors.New("missing subject claim")
+	errAuthenticatorContextClosed = errors.New("JWT authenticator context closed")
+	errValidatorNotConfigured     = errors.New("JWT validator is not set up")
+)
+
 // JWTAuthenticator validates JWTs using a JWKS endpoint.
 type JWTAuthenticator struct {
 	cfg               JWTAuthConfig
-	keyfn             jwt.Keyfunc
-	parser            *jwt.Parser
+	baseCtx           context.Context
+	validator         *validator.Validator
 	logger            *slog.Logger
 	authorizedClients map[string]struct{}
 }
 
 // NewJWTAuthenticator creates a JWTAuthenticator backed by the given JWKS URL.
-// ctx controls the lifecycle of the background JWKS refresh goroutine.
+// ctx gates the authenticator lifecycle; once canceled, token validation fails fast.
 // Set DisabledMockLocalPrincipal (without JWKSURL) to skip JWKS for local dev.
 func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Logger) (*JWTAuthenticator, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if cfg.DisabledMockLocalPrincipal != "" {
-		if cfg.JWKSURL != "" {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Normalize constructor inputs before wiring the provider/parser.
+	jwksURLStr := strings.TrimSpace(cfg.JWKSURL)
+	audience := strings.TrimSpace(cfg.Audience)
+	issuer := strings.TrimSpace(cfg.Issuer)
+	mockPrincipal := strings.TrimSpace(cfg.DisabledMockLocalPrincipal)
+	clockSkew := cfg.ClockSkew
+	if clockSkew == 0 {
+		clockSkew = DefaultClockSkew
+	}
+	cfg.JWKSURL = jwksURLStr
+	cfg.Audience = audience
+	cfg.Issuer = issuer
+	cfg.DisabledMockLocalPrincipal = mockPrincipal
+	cfg.ClockSkew = clockSkew
+
+	if mockPrincipal != "" {
+		if !cfg.AllowMockPrincipalBypass {
+			return nil, errors.New("DISABLED_MOCK_LOCAL_PRINCIPAL requires ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true")
+		}
+		if jwksURLStr != "" {
 			return nil, fmt.Errorf(
 				"DISABLED_MOCK_LOCAL_PRINCIPAL and JWKS_URL are mutually exclusive: " +
 					"remove DISABLED_MOCK_LOCAL_PRINCIPAL before deploying to an environment with a real JWKS endpoint",
 			)
 		}
-		return &JWTAuthenticator{cfg: cfg, logger: logger, authorizedClients: buildClientSet(cfg.AuthorizedClients)}, nil
+		return &JWTAuthenticator{
+			cfg:               cfg,
+			baseCtx:           ctx,
+			logger:            logger,
+			authorizedClients: buildClientSet(cfg.AuthorizedClients),
+		}, nil
 	}
 
-	jwksProvider, err := keyfunc.NewDefaultCtx(ctx, []string{cfg.JWKSURL})
-	if err != nil {
-		return nil, fmt.Errorf("fetch JWKS: %w", err)
+	if audience == "" {
+		return nil, errors.New("JWT_AUDIENCE is required")
 	}
-	parser := jwt.NewParser(
-		jwt.WithAudience(cfg.Audience),
-		jwt.WithIssuer(cfg.Issuer),
-		jwt.WithLeeway(cfg.ClockSkew),
-		jwt.WithExpirationRequired(),
-		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}),
+	if issuer == "" {
+		return nil, errors.New("JWT_ISSUER is required")
+	}
+	if jwksURLStr == "" {
+		return nil, errors.New("JWKS_URL is required")
+	}
+
+	issuerURL, err := url.Parse(issuer)
+	if err != nil {
+		return nil, fmt.Errorf("parse issuer URL: %w", err)
+	}
+	if !issuerURL.IsAbs() || issuerURL.Host == "" {
+		return nil, errors.New("JWT_ISSUER must be an absolute URL")
+	}
+	if err := validateSecureURL(issuerURL, "JWT_ISSUER"); err != nil {
+		return nil, err
+	}
+	jwksURL, err := url.Parse(jwksURLStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse JWKS URL: %w", err)
+	}
+	if !jwksURL.IsAbs() || jwksURL.Host == "" {
+		return nil, errors.New("JWKS_URL must be an absolute URL")
+	}
+	if err := validateSecureURL(jwksURL, "JWKS_URL"); err != nil {
+		return nil, err
+	}
+	jwksProvider := jwks.NewCachingProvider(issuerURL, 5*time.Minute, jwks.WithCustomJWKSURI(jwksURL))
+	keyFunc := func(reqCtx context.Context) (interface{}, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("%w: %v", errAuthenticatorContextClosed, err)
+		}
+		ctxForKey, cancel := withValidatorRequestContext(ctx, reqCtx, 15*time.Second)
+		defer cancel()
+		return jwksProvider.KeyFunc(ctxForKey)
+	}
+	jwtValidator, err := validator.New(
+		keyFunc,
+		validator.RS256,
+		issuer,
+		[]string{audience},
+		validator.WithCustomClaims(func() validator.CustomClaims { return &JWTClaims{} }),
+		validator.WithAllowedClockSkew(clockSkew),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("build JWT validator: %w", err)
+	}
+
 	return &JWTAuthenticator{
 		cfg:               cfg,
-		keyfn:             jwksProvider.Keyfunc,
-		parser:            parser,
+		baseCtx:           ctx,
+		validator:         jwtValidator,
 		logger:            logger,
 		authorizedClients: buildClientSet(cfg.AuthorizedClients),
 	}, nil
+}
+
+// Validate satisfies validator.CustomClaims.
+func (c *JWTClaims) Validate(_ context.Context) error {
+	if c.EmailVerified && strings.TrimSpace(c.Email) == "" {
+		return errors.New("email_verified requires email")
+	}
+	return nil
 }
 
 // IsBypassActive reports whether JWT validation is bypassed (local dev only).
@@ -125,22 +215,15 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		token, err := a.extractAndValidate(r)
+		claims, err := a.extractAndValidate(r)
 		if err != nil {
-			a.logger.WarnContext(r.Context(), "auth: token validation failed", "error", err, "path", r.URL.Path)
+			a.logger.WarnContext(r.Context(), "auth: token validation failed", "category", authFailureCategory(err), "error", err, "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid or missing token")
 			return
 		}
 
-		claims, ok := token.Claims.(*JWTClaims)
-		if !ok {
-			a.logger.WarnContext(r.Context(), "auth: unexpected claims type", "path", r.URL.Path)
-			jsonError(w, http.StatusUnauthorized, "invalid token claims")
-			return
-		}
-
 		if !a.isAuthorizedClient(claims) {
-			a.logger.WarnContext(r.Context(), "auth: client not in authorized list", "path", r.URL.Path)
+			a.logger.WarnContext(r.Context(), "auth: client not in authorized list", "category", "unauthorized_client", "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid token claims")
 			return
 		}
@@ -157,7 +240,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 			}
 		}
 		if principalUserID == "" {
-			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "path", r.URL.Path)
+			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "category", "missing_subject", "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid token claims")
 			return
 		}
@@ -268,23 +351,141 @@ func getClientID(claims *JWTClaims) string {
 	return ""
 }
 
-func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*jwt.Token, error) {
+func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, error) {
+	if a.baseCtx != nil {
+		if err := a.baseCtx.Err(); err != nil {
+			return nil, fmt.Errorf("%w: %v", errAuthenticatorContextClosed, err)
+		}
+	}
+
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return nil, errors.New("missing Authorization header")
+		return nil, errMissingAuthorizationHeader
 	}
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-		return nil, errors.New("invalid Authorization header format")
+		return nil, errInvalidAuthorizationHeader
 	}
 	raw := parts[1]
-
-	claims := &JWTClaims{}
-	token, err := a.parser.ParseWithClaims(raw, claims, a.keyfn)
-	if err != nil {
-		return nil, fmt.Errorf("parse token: %w", err)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errMissingBearerToken
 	}
-	return token, nil
+
+	if a.validator != nil {
+		validated, err := a.validator.ValidateToken(r.Context(), raw)
+		if err != nil {
+			return nil, fmt.Errorf("validate token: %w", err)
+		}
+		validatedClaims, ok := validated.(*validator.ValidatedClaims)
+		if !ok {
+			return nil, errors.New("unexpected validated claims type")
+		}
+		claims, ok := validatedClaims.CustomClaims.(*JWTClaims)
+		if !ok {
+			return nil, errors.New("unexpected custom claims type")
+		}
+		claims.Subject = validatedClaims.RegisteredClaims.Subject
+		if strings.TrimSpace(claims.Subject) == "" {
+			return nil, errMissingSubjectClaim
+		}
+		return claims, nil
+	}
+
+	return nil, errValidatorNotConfigured
+}
+
+func withValidatorRequestContext(baseCtx context.Context, requestCtx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if requestCtx == nil {
+		requestCtx = context.Background()
+	}
+
+	ctx := requestCtx
+	cancelBase := func() {}
+	if baseCtx != nil {
+		ctx, cancelBase = context.WithCancel(ctx)
+		if err := baseCtx.Err(); err != nil {
+			cancelBase()
+		} else {
+			stop := context.AfterFunc(baseCtx, cancelBase)
+			wrappedCancelBase := cancelBase
+			cancelBase = func() {
+				stop()
+				wrappedCancelBase()
+			}
+		}
+	}
+
+	ctx, cancelTimeout := context.WithTimeout(ctx, timeout)
+	return ctx, func() {
+		cancelBase()
+		cancelTimeout()
+	}
+}
+
+func authFailureCategory(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	if errors.Is(err, errMissingAuthorizationHeader) {
+		return "missing_authorization_header"
+	}
+	if errors.Is(err, errInvalidAuthorizationHeader) {
+		return "malformed_authorization_header"
+	}
+	if errors.Is(err, errMissingBearerToken) {
+		return "missing_bearer_token"
+	}
+	if errors.Is(err, errMissingSubjectClaim) {
+		return "missing_subject"
+	}
+	if errors.Is(err, errAuthenticatorContextClosed) {
+		return "authenticator_context_closed"
+	}
+	if errors.Is(err, errValidatorNotConfigured) {
+		return "validator_not_configured"
+	}
+	if errors.Is(err, validator.ErrExcessiveTokenDots) {
+		return "invalid_token_format"
+	}
+	if errors.Is(err, josejwt.ErrExpired) {
+		return "token_expired"
+	}
+	if errors.Is(err, josejwt.ErrInvalidAudience) {
+		return "invalid_audience"
+	}
+	if errors.Is(err, josejwt.ErrInvalidIssuer) {
+		return "invalid_issuer"
+	}
+
+	errStr := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errStr, "invalid token format") || strings.Contains(errStr, "excessive dots"):
+		return "invalid_token_format"
+	case strings.Contains(errStr, "signature") || strings.Contains(errStr, "verification"):
+		return "invalid_signature"
+	default:
+		return "token_validation_failed"
+	}
+}
+
+func validateSecureURL(u *url.URL, envName string) error {
+	if strings.EqualFold(u.Scheme, "https") {
+		return nil
+	}
+	if strings.EqualFold(u.Scheme, "http") && isLoopbackHost(u.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("%s must use https (http is only allowed for loopback hosts)", envName)
+}
+
+func isLoopbackHost(host string) bool {
+	h := strings.TrimSpace(strings.ToLower(host))
+	if h == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
 }
 
 // ContextWithPrincipal stores the principal in the context.
