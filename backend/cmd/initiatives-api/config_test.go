@@ -57,3 +57,17 @@ func TestLoadConfig_BypassPrincipalAllowedWithExplicitFlag(t *testing.T) {
 		t.Fatalf("DisabledMockLocalPrincipal = %q, want %q", cfg.Local.DisabledMockLocalPrincipal, "local-dev-user")
 	}
 }
+
+func TestLoadConfig_WhitespaceBypassPrincipalIsIgnored(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("DISABLED_MOCK_LOCAL_PRINCIPAL", "   \t  ")
+	t.Setenv("ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS", "false")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.Local.DisabledMockLocalPrincipal != "" {
+		t.Fatalf("DisabledMockLocalPrincipal = %q, want empty string", cfg.Local.DisabledMockLocalPrincipal)
+	}
+}

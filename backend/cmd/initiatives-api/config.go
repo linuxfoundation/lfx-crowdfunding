@@ -130,8 +130,8 @@ func LoadConfig() (*Config, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
-	jwksURL := getEnv("JWKS_URL", "")
-	mockPrincipal := getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", "")
+	jwksURL := strings.TrimSpace(getEnv("JWKS_URL", ""))
+	mockPrincipal := strings.TrimSpace(getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", ""))
 	allowMockBypass, err := getBoolEnv("ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS", false)
 	if err != nil {
 		return nil, err
@@ -279,7 +279,7 @@ func LoadConfig() (*Config, error) {
 		},
 		Local: LocalConfig{
 			AllowMockLocalPrincipalBypass: allowMockBypass,
-			DisabledMockLocalPrincipal:    getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", ""),
+			DisabledMockLocalPrincipal:    mockPrincipal,
 		},
 		Approval: ApprovalConfig{
 			AllowedApprovers: parseCommaList(getEnv("ALLOWED_APPROVERS", "")),

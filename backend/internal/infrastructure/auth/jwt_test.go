@@ -25,7 +25,6 @@ import (
 
 	"github.com/auth0/go-jwt-middleware/v2/validator"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
-	josejwt "gopkg.in/go-jose/go-jose.v2/jwt"
 )
 
 // ── test constants ────────────────────────────────────────────────────────────
@@ -896,9 +895,9 @@ func TestAuthFailureCategory(t *testing.T) {
 		{name: "missing bearer", err: errMissingBearerToken, want: "missing_bearer_token"},
 		{name: "missing subject", err: errMissingSubjectClaim, want: "missing_subject"},
 		{name: "context closed wrapped", err: fmt.Errorf("%w: %v", errAuthenticatorContextClosed, context.Canceled), want: "authenticator_context_closed"},
-		{name: "expired wrapped sentinel", err: fmt.Errorf("expected claims not validated: %w", josejwt.ErrExpired), want: "token_expired"},
-		{name: "audience wrapped sentinel", err: fmt.Errorf("expected claims not validated: %w", josejwt.ErrInvalidAudience), want: "invalid_audience"},
-		{name: "issuer wrapped sentinel", err: fmt.Errorf("expected claims not validated: %w", josejwt.ErrInvalidIssuer), want: "invalid_issuer"},
+		{name: "expired string", err: errors.New("token is expired"), want: "token_expired"},
+		{name: "audience string", err: errors.New("invalid audience"), want: "invalid_audience"},
+		{name: "issuer string", err: errors.New("invalid issuer"), want: "invalid_issuer"},
 		{name: "invalid token format sentinel", err: fmt.Errorf("invalid token format: %w", validator.ErrExcessiveTokenDots), want: "invalid_token_format"},
 		{name: "signature", err: errors.New("signature verification failed"), want: "invalid_signature"},
 		{name: "validator", err: errValidatorNotConfigured, want: "validator_not_configured"},
