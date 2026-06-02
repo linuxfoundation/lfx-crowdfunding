@@ -476,6 +476,11 @@ func (c *stripeClientImpl) CancelSubscription(ctx context.Context, subscriptionI
 
 // ConstructWebhookEvent validates a Stripe webhook signature and returns the event.
 // Always validate the Stripe-Signature header — never process unverified events.
+// IgnoreAPIVersionMismatch is set because the Stripe Dashboard webhook endpoint is
+// pinned to a newer API version than the stripe-go SDK expects; the mismatch is
+// cosmetic and does not affect deserialization of the fields we use.
 func (c *stripeClientImpl) ConstructWebhookEvent(payload []byte, sigHeader, secret string) (stripe.Event, error) {
-	return webhook.ConstructEvent(payload, sigHeader, secret)
+	return webhook.ConstructEventWithOptions(payload, sigHeader, secret, webhook.ConstructEventOptions{
+		IgnoreAPIVersionMismatch: true,
+	})
 }
