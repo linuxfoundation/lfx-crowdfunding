@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
-	stripe "github.com/stripe/stripe-go/v82"
-	"github.com/stripe/stripe-go/v82/client"
-	"github.com/stripe/stripe-go/v82/webhook"
+	stripe "github.com/stripe/stripe-go/v85"
+	"github.com/stripe/stripe-go/v85/client"
+	"github.com/stripe/stripe-go/v85/webhook"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
