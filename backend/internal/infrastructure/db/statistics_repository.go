@@ -152,6 +152,7 @@ func (r *StatisticsRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 	span.SetAttributes(attribute.Int("db.id_count", len(userIDs)))
 
 	result := make(map[string]models.User, len(userIDs))
+	userIDs = filterValidUUIDs(userIDs)
 	if len(userIDs) == 0 {
 		return result, nil
 	}

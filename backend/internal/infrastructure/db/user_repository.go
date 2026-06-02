@@ -83,7 +83,7 @@ func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.Us
 		INSERT INTO users (username, legacy_user_id, email, given_name, family_name, name, avatar_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (username) DO UPDATE SET
-			legacy_user_id = EXCLUDED.legacy_user_id,
+			legacy_user_id = COALESCE(EXCLUDED.legacy_user_id, users.legacy_user_id),
 			email          = EXCLUDED.email,
 			given_name     = EXCLUDED.given_name,
 			family_name    = EXCLUDED.family_name,

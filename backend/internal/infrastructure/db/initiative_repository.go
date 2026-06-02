@@ -1270,6 +1270,7 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 	defer span.End()
 
 	result := make(map[string]models.User, len(userIDs))
+	userIDs = filterValidUUIDs(userIDs)
 	if len(userIDs) == 0 {
 		return result, nil
 	}

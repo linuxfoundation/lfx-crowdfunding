@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
-
 	"time"
 
 	stripe "github.com/stripe/stripe-go/v85"
