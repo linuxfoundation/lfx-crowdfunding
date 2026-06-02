@@ -14,7 +14,7 @@ export const useBackendFetch = async <T = unknown>(
   } = {},
 ): Promise<T> => {
   const config = useRuntimeConfig();
-  const baseURL = config.backendBaseUrl as string;
+  const baseURL = config.apiBaseUrl as string;
   const token = getCookie(event, 'auth_oidc_token') ?? '';
 
   try {

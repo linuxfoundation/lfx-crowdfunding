@@ -25,7 +25,7 @@ type InitiativeRepository interface {
 	Update(ctx context.Context, initiative *models.Initiative, input models.InitiativeUpdateInput) (*models.Initiative, error)
 	Delete(ctx context.Context, id string) error
 
-	// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
+	// GetUsersByIDs returns a map of user UUID → User for the given UUIDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
 
@@ -63,15 +63,20 @@ type OrganizationRepository interface {
 
 // UserRepository defines persistence operations for users.
 type UserRepository interface {
-	GetByUserID(ctx context.Context, userID string) (*models.User, error)
+	// GetByUsername retrieves a user by their LF SSO username.
+	GetByUsername(ctx context.Context, username string) (*models.User, error)
+	// GetByID retrieves a user by their UUID primary key.
+	GetByID(ctx context.Context, id string) (*models.User, error)
 	Upsert(ctx context.Context, user *models.User) (*models.User, error)
 	// UpdateStripeInfo persists the Stripe Customer ID and default PaymentMethod
 	// after the user completes the setup-intent / attach-payment-method flow.
+	// userUUID is the users.id UUID primary key.
 	// An empty string for either field leaves the existing DB value unchanged.
-	UpdateStripeInfo(ctx context.Context, userID, customerID, paymentMethodID string) error
+	UpdateStripeInfo(ctx context.Context, userUUID, customerID, paymentMethodID string) error
 	// ClearStripePaymentMethod sets stripe_default_payment_method to NULL.
+	// userUUID is the users.id UUID primary key.
 	// Called when the user removes their saved card.
-	ClearStripePaymentMethod(ctx context.Context, userID string) error
+	ClearStripePaymentMethod(ctx context.Context, userUUID string) error
 }
 
 // StatisticsRepository defines persistence operations for platform-wide statistics.
@@ -82,7 +87,7 @@ type StatisticsRepository interface {
 	// Missing IDs are absent from the map. Used to enrich Ledger sponsor/donor data.
 	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
 
-	// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
+	// GetUsersByIDs returns a map of user UUID → User for the given UUIDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger sponsor/donor data.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
 
@@ -108,7 +113,7 @@ type LedgerStatsRepository interface {
 	// IDs in the slice.  Missing IDs are simply absent from the map.
 	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
 
-	// GetUsersByIDs returns a map of user_id (Auth0 subject) → User for all
+	// GetUsersByIDs returns a map of user UUID → User for all
 	// IDs in the slice.  Missing IDs are simply absent from the map.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
 }

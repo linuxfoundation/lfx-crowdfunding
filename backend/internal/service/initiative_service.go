@@ -7,6 +7,7 @@ package service
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
@@ -218,7 +219,7 @@ func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFi
 }
 
 // Create creates a new initiative owned by the given principal.
-func (s *InitiativeService) Create(ctx context.Context, ownerID string, input models.InitiativeCreateInput) (*models.Initiative, error) {
+func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, input models.InitiativeCreateInput) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.Create")
 	defer span.End()
 
@@ -268,6 +269,17 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 	initiativeID := uuid.New().String()
 	span.SetAttributes(attribute.String("initiative.id", initiativeID))
 
+	// Resolve owner before creating any external resources so we fail fast
+	// with a clean error when the user does not exist.
+	owner, err := s.userRepo.GetByUsername(ctx, ownerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrForbidden
+		}
+		span.RecordError(err)
+		return nil, fmt.Errorf("get owner: %w", err)
+	}
+
 	// Create the Stripe Product first. If Stripe is unavailable, the whole
 	// creation fails cleanly and no DB row is created.
 	productID, err := s.stripe.CreateProduct(ctx, initiativeID, input.Name)
@@ -279,7 +291,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 	initiative := &models.Initiative{
 		ID:              initiativeID,
 		InitiativeType:  input.InitiativeType,
-		OwnerID:         ownerID,
+		OwnerID:         owner.ID,
 		Name:            input.Name,
 		Slug:            input.Slug,
 		Description:     input.Description,
@@ -315,28 +327,23 @@ func (s *InitiativeService) Create(ctx context.Context, ownerID string, input mo
 	}
 
 	// Notify reviewers that a new initiative has been submitted. Non-fatal.
-	owner, ownerErr := s.userRepo.GetByUserID(ctx, ownerID)
-	if ownerErr != nil {
-		s.logger.WarnContext(ctx, "initiative create: could not fetch owner for review notification",
-			"initiative_id", created.ID, "owner_id", ownerID, "error", ownerErr)
-	} else if owner != nil {
-		displayName := owner.Name
-		if displayName == "" {
-			displayName = owner.Email
-		}
-		initiativeURL := s.emailService.InitiativeURL(created.Slug)
-		approveURL := s.emailService.InitiativeURL(created.Slug) + "/process-approval/approve"
-		declineURL := s.emailService.InitiativeURL(created.Slug) + "/process-approval/decline"
-		if emailErr := s.emailService.SendProjectForReviewEmail(ctx, displayName, owner.Email, created.Name, initiativeURL, approveURL, declineURL); emailErr != nil {
-			s.logger.WarnContext(ctx, "initiative create: failed to send for-review notification",
-				"initiative_id", created.ID, "error", emailErr)
-		}
+	// owner is already resolved above — use it directly.
+	displayName := owner.Name
+	if displayName == "" {
+		displayName = owner.Email
+	}
+	initiativeURL := s.emailService.InitiativeURL(created.Slug)
+	approveURL := s.emailService.InitiativeURL(created.Slug) + "/process-approval/approve"
+	declineURL := s.emailService.InitiativeURL(created.Slug) + "/process-approval/decline"
+	if emailErr := s.emailService.SendProjectForReviewEmail(ctx, displayName, owner.Email, created.Name, initiativeURL, approveURL, declineURL); emailErr != nil {
+		s.logger.WarnContext(ctx, "initiative create: failed to send for-review notification",
+			"initiative_id", created.ID, "error", emailErr)
 	}
 	return created, nil
 }
 
 // Update applies changes to an existing initiative, enforcing owner authorisation.
-func (s *InitiativeService) Update(ctx context.Context, id, callerID string, input models.InitiativeUpdateInput) (*models.Initiative, error) {
+func (s *InitiativeService) Update(ctx context.Context, id, callerUsername string, input models.InitiativeUpdateInput) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.Update")
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.id", id))
@@ -346,7 +353,17 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerID string, inp
 		span.RecordError(err)
 		return nil, err
 	}
-	if existing.OwnerID != callerID {
+
+	caller, err := s.userRepo.GetByUsername(ctx, callerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			// Unknown caller cannot own any initiative.
+			return nil, domain.ErrForbidden
+		}
+		span.RecordError(err)
+		return nil, err
+	}
+	if existing.OwnerID != caller.ID {
 		return nil, domain.ErrForbidden
 	}
 
@@ -488,7 +505,7 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	}
 
 	// Notify the initiative owner by email. Errors are non-fatal — log at WARN and continue.
-	owner, ownerErr := s.userRepo.GetByUserID(ctx, processed.OwnerID)
+	owner, ownerErr := s.userRepo.GetByID(ctx, processed.OwnerID)
 	if ownerErr != nil {
 		s.logger.WarnContext(ctx, "initiative approval: could not fetch owner for email notification",
 			"initiative_id", initiativeID, "owner_id", processed.OwnerID, "error", ownerErr)
@@ -610,7 +627,7 @@ func generatedAvatarURL(id, name string) string {
 }
 
 // Delete removes an initiative, enforcing owner authorisation.
-func (s *InitiativeService) Delete(ctx context.Context, id, callerID string) error {
+func (s *InitiativeService) Delete(ctx context.Context, id, callerUsername string) error {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.Delete")
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.id", id))
@@ -620,7 +637,17 @@ func (s *InitiativeService) Delete(ctx context.Context, id, callerID string) err
 		span.RecordError(err)
 		return err
 	}
-	if existing.OwnerID != callerID {
+
+	caller, err := s.userRepo.GetByUsername(ctx, callerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			// Unknown caller cannot own any initiative.
+			return domain.ErrForbidden
+		}
+		span.RecordError(err)
+		return err
+	}
+	if existing.OwnerID != caller.ID {
 		return domain.ErrForbidden
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {

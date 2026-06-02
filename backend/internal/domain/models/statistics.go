@@ -15,10 +15,10 @@ type PlatformStatistics struct {
 // PlatformDetails is returned by GET /v1/statistics/platform.
 // Aggregates category totals, donor split, and top sponsors from Ledger.
 type PlatformDetails struct {
-	TotalRaisedCents   int64          `json:"total_raised_cents"`
-	TotalSupporters    int64          `json:"total_supporters"`
-	OrganizationsCents int64          `json:"organizations_cents"`
-	IndividualsCents   int64          `json:"individuals_cents"`
+	TotalRaisedCents   int64           `json:"total_raised_cents"`
+	TotalSupporters    int64           `json:"total_supporters"`
+	OrganizationsCents int64           `json:"organizations_cents"`
+	IndividualsCents   int64           `json:"individuals_cents"`
 	Categories         []CategoryTotal `json:"categories"`
 	TopOrganizations   []SponsorEntry  `json:"top_organizations"`
 	TopIndividuals     []SponsorEntry  `json:"top_individuals"`

@@ -6,15 +6,18 @@ import { getSafeRedirectUrl } from '../../utils/redirect';
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
-  const isLocal =
-    process.env.NUXT_APP_ENV !== 'staging' && process.env.NUXT_APP_ENV !== 'production';
+  const isLocal = !process.env.NUXT_APP_ENV;
 
   const redirectTo = getSafeRedirectUrl(getCookie(event, 'github_redirect_to'), '/fundraise');
 
   deleteCookie(event, 'github_redirect_to');
 
   if (query.error) {
-    await sendRedirect(event, `${redirectTo}?github_error=${query.error}`);
+    const sep = redirectTo.includes('?') ? '&' : '?';
+    const errorVal = encodeURIComponent(
+      Array.isArray(query.error) ? query.error[0]! : String(query.error),
+    );
+    await sendRedirect(event, `${redirectTo}${sep}github_error=${errorVal}`);
     return;
   }
 
@@ -54,5 +57,6 @@ export default defineEventHandler(async (event) => {
     maxAge: 60 * 60 * 8, // 8 hours
   });
 
-  await sendRedirect(event, `${redirectTo}?github_connected=true`);
+  const sep = redirectTo.includes('?') ? '&' : '?';
+  await sendRedirect(event, `${redirectTo}${sep}github_connected=true`);
 });

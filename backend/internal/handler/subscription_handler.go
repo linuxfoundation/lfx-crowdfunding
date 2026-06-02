@@ -56,7 +56,7 @@ func (h *SubscriptionHandler) List(w http.ResponseWriter, r *http.Request) {
 // and Subscription creation so that retries are idempotent end-to-end.
 func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
@@ -75,7 +75,7 @@ func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	input.IdempotencyKey = idempotencyKey
 
-	created, err := h.svc.Create(r.Context(), initiativeID, principal.UserID, principal.Email, input)
+	created, err := h.svc.Create(r.Context(), initiativeID, principal.Username, principal.Email, input)
 	if err != nil {
 		Error(w, err)
 		return
@@ -87,7 +87,7 @@ func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Returns the authenticated user's own subscriptions, paginated.
 func (h *SubscriptionHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
@@ -98,7 +98,7 @@ func (h *SubscriptionHandler) ListForUser(w http.ResponseWriter, r *http.Request
 	}
 	q := r.URL.Query()
 
-	subs, meta, err := h.svc.ListByUser(r.Context(), principal.UserID, models.SubscriptionFilter{
+	subs, meta, err := h.svc.ListByUser(r.Context(), principal.Username, models.SubscriptionFilter{
 		Status: q.Get("status"),
 		Limit:  limit,
 		Offset: offset,
@@ -119,13 +119,13 @@ func (h *SubscriptionHandler) ListForUser(w http.ResponseWriter, r *http.Request
 // Cancel handles DELETE /v1/subscriptions/{id} — requires JWT.
 func (h *SubscriptionHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
 
 	id := chi.URLParam(r, "id")
-	if err := h.svc.Cancel(r.Context(), id, principal.UserID); err != nil {
+	if err := h.svc.Cancel(r.Context(), id, principal.Username); err != nil {
 		Error(w, err)
 		return
 	}

@@ -1263,18 +1263,19 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	return i, nil
 }
 
-// GetUsersByIDs returns a map of Auth0 user_id → User for all IDs provided.
+// GetUsersByIDs returns a map of user UUID → User for all IDs provided.
 // Missing IDs are absent from the map.
 func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetUsersByIDs")
 	defer span.End()
 
 	result := make(map[string]models.User, len(userIDs))
+	userIDs = filterValidUUIDs(userIDs)
 	if len(userIDs) == 0 {
 		return result, nil
 	}
 
-	const q = `SELECT id, user_id, name, avatar_url FROM users WHERE user_id = ANY($1)`
+	const q = `SELECT id, name, avatar_url FROM users WHERE id = ANY($1::uuid[])`
 	rows, err := r.pool.Query(ctx, q, userIDs)
 	if err != nil {
 		span.RecordError(err)
@@ -1285,7 +1286,7 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 	for rows.Next() {
 		var u models.User
 		var name, avatarURL *string
-		if err := rows.Scan(&u.ID, &u.UserID, &name, &avatarURL); err != nil {
+		if err := rows.Scan(&u.ID, &name, &avatarURL); err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
@@ -1295,7 +1296,7 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 		if avatarURL != nil {
 			u.AvatarURL = *avatarURL
 		}
-		result[u.UserID] = u
+		result[u.ID] = u
 	}
 	if err := rows.Err(); err != nil {
 		span.RecordError(err)

@@ -25,7 +25,7 @@ const route = useRoute();
 const router = useRouter();
 
 const isInitiativeDetailPage = computed(() => /^\/initiatives\/[^/]+$/.test(route.path));
-const initiativeId = computed(() => (isInitiativeDetailPage.value ? (route.params.id as string) : ''));
+const initiativeId = computed(() => (isInitiativeDetailPage.value ? (route.params.slug as string) : ''));
 
 const { data: initiative } = useInitiative(initiativeId);
 const { openDonateDrawer } = useDonateDrawerStore();

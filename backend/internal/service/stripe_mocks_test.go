@@ -6,7 +6,7 @@ package service
 import (
 	"context"
 
-	stripe "github.com/stripe/stripe-go/v82"
+	stripe "github.com/stripe/stripe-go/v85"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
@@ -112,17 +112,24 @@ func (c *configStripeClient) GetOrCreatePrice(ctx context.Context, productID str
 // testUserRepo is a configurable UserRepository. Methods with nil fields
 // return zero values (no error) so only the fields under test need to be set.
 type testUserRepo struct {
-	onGetByUserID              func(context.Context, string) (*models.User, error)
+	onGetByUsername            func(context.Context, string) (*models.User, error)
+	onGetByID                  func(context.Context, string) (*models.User, error)
 	onUpsert                   func(context.Context, *models.User) (*models.User, error)
 	onUpdateStripeInfo         func(context.Context, string, string, string) error
 	onClearStripePaymentMethod func(context.Context, string) error
 }
 
-func (r *testUserRepo) GetByUserID(ctx context.Context, userID string) (*models.User, error) {
-	if r.onGetByUserID != nil {
-		return r.onGetByUserID(ctx, userID)
+func (r *testUserRepo) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+	if r.onGetByUsername != nil {
+		return r.onGetByUsername(ctx, username)
 	}
-	return &models.User{UserID: userID}, nil
+	return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: username}, nil
+}
+func (r *testUserRepo) GetByID(ctx context.Context, id string) (*models.User, error) {
+	if r.onGetByID != nil {
+		return r.onGetByID(ctx, id)
+	}
+	return &models.User{ID: id}, nil
 }
 func (r *testUserRepo) Upsert(ctx context.Context, user *models.User) (*models.User, error) {
 	if r.onUpsert != nil {

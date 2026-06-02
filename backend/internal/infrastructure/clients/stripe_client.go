@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
-	stripe "github.com/stripe/stripe-go/v82"
-	"github.com/stripe/stripe-go/v82/client"
-	"github.com/stripe/stripe-go/v82/webhook"
+	stripe "github.com/stripe/stripe-go/v85"
+	"github.com/stripe/stripe-go/v85/client"
+	"github.com/stripe/stripe-go/v85/webhook"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -161,7 +161,7 @@ func (c *stripeClientImpl) GetProduct(ctx context.Context, productID string) (*m
 
 // ── Customer ─────────────────────────────────────────────────────────────────
 
-// CreateCustomer creates a new Stripe Customer tagged with the Auth0 user_id.
+// CreateCustomer creates a new Stripe Customer tagged with the service user UUID.
 func (c *stripeClientImpl) CreateCustomer(ctx context.Context, userID, email string) (string, error) {
 	_, span := stripeTracer.Start(ctx, "stripe.CreateCustomer")
 	defer span.End()

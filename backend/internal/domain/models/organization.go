@@ -18,17 +18,19 @@ type Organization struct {
 }
 
 // User maps to the crowdfunding.users table.
-// user_id is the Auth0 subject — the FK target used throughout the schema.
+// users.id (UUID) is the FK target throughout the schema.
+// username is the LF SSO username used as the application-level identity input.
 type User struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"user_id"` // Auth0 subject, e.g. auth0|abc123
-	Email      string    `json:"email,omitempty"`
-	GivenName  string    `json:"given_name,omitempty"`
-	FamilyName string    `json:"family_name,omitempty"`
-	Name       string    `json:"name,omitempty"`
-	AvatarURL  string    `json:"avatar_url,omitempty"`
-	CreatedOn  time.Time `json:"created_on"`
-	UpdatedOn  time.Time `json:"updated_on"`
+	ID           string    `json:"id"`
+	Username     string    `json:"username"`                 // LF SSO username, e.g. zpiatt
+	LegacyUserID string    `json:"legacy_user_id,omitempty"` // Auth0 subject, e.g. auth0|abc123
+	Email        string    `json:"email,omitempty"`
+	GivenName    string    `json:"given_name,omitempty"`
+	FamilyName   string    `json:"family_name,omitempty"`
+	Name         string    `json:"name,omitempty"`
+	AvatarURL    string    `json:"avatar_url,omitempty"`
+	CreatedOn    time.Time `json:"created_on"`
+	UpdatedOn    time.Time `json:"updated_on"`
 
 	// Stripe fields — internal, never serialised.
 	StripeCustomerID           string `json:"-"` // cus_xxx

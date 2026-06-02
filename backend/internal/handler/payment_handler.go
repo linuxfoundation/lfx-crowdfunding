@@ -30,12 +30,12 @@ func NewPaymentHandler(svc *service.PaymentService) *PaymentHandler {
 // to collect and 3DS-authenticate a card before attaching it.
 func (h *PaymentHandler) CreateSetupIntent(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
 
-	result, err := h.svc.CreateSetupIntent(r.Context(), principal.UserID, principal.Email)
+	result, err := h.svc.CreateSetupIntent(r.Context(), principal.Username, principal.Email)
 	if err != nil {
 		Error(w, err)
 		return
@@ -49,7 +49,7 @@ func (h *PaymentHandler) CreateSetupIntent(w http.ResponseWriter, r *http.Reques
 // here to attach it to the Stripe customer and persist it as the default.
 func (h *PaymentHandler) AttachPaymentMethod(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
@@ -62,7 +62,7 @@ func (h *PaymentHandler) AttachPaymentMethod(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	card, err := h.svc.AttachPaymentMethod(r.Context(), principal.UserID, principal.Email, body.PaymentMethodID)
+	card, err := h.svc.AttachPaymentMethod(r.Context(), principal.Username, principal.Email, body.PaymentMethodID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -75,12 +75,12 @@ func (h *PaymentHandler) AttachPaymentMethod(w http.ResponseWriter, r *http.Requ
 // Returns the last4, brand, and expiry of the user's saved card.
 func (h *PaymentHandler) GetPaymentAccount(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
 
-	card, err := h.svc.GetPaymentAccount(r.Context(), principal.UserID)
+	card, err := h.svc.GetPaymentAccount(r.Context(), principal.Username)
 	if err != nil {
 		Error(w, err)
 		return
@@ -93,12 +93,12 @@ func (h *PaymentHandler) GetPaymentAccount(w http.ResponseWriter, r *http.Reques
 // Detaches the user's saved card from Stripe and clears the reference in the DB.
 func (h *PaymentHandler) DeletePaymentMethod(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
 
-	if err := h.svc.DeletePaymentMethod(r.Context(), principal.UserID); err != nil {
+	if err := h.svc.DeletePaymentMethod(r.Context(), principal.Username); err != nil {
 		Error(w, err)
 		return
 	}

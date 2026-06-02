@@ -101,10 +101,10 @@ type ledgerSubTotalRaw struct {
 }
 
 type ledgerBalanceResponse struct {
-	TotalRaisedCents    int64                          `json:"totalCredit"`
-	TotalDisbursedCents int64                          `json:"totalDebit"`
-	AvailableCents      int64                          `json:"availableBalance"`
-	SubTotals           map[string]*ledgerSubTotalRaw  `json:"subTotals"`
+	TotalRaisedCents    int64                         `json:"totalCredit"`
+	TotalDisbursedCents int64                         `json:"totalDebit"`
+	AvailableCents      int64                         `json:"availableBalance"`
+	SubTotals           map[string]*ledgerSubTotalRaw `json:"subTotals"`
 }
 
 // GetBalance fetches the current balance for an initiative from the Ledger service.
@@ -154,10 +154,10 @@ type ledgerTransactionRaw struct {
 	OrganizationID string `json:"organizationID"`
 	AccountEmail   string `json:"accountEmail"`
 	SubmitterName  string `json:"submitterName"`
-	TxnType        string `json:"txnType"`      // "credit" | "debit"
+	TxnType        string `json:"txnType"` // "credit" | "debit"
 	TxnCategory    string `json:"txnCategory"`
-	Amount         int64  `json:"amount"`       // cents
-	TxnDate        int64  `json:"txnDate"`      // unix seconds
+	Amount         int64  `json:"amount"`  // cents
+	TxnDate        int64  `json:"txnDate"` // unix seconds
 }
 
 type ledgerTransactionsResponse struct {

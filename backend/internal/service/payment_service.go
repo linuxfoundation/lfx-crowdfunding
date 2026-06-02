@@ -29,43 +29,44 @@ func NewPaymentService(userRepo domain.UserRepository, stripe clients.StripeClie
 	return &PaymentService{userRepo: userRepo, stripe: stripe}
 }
 
-// ensureCustomer returns the user's existing Stripe customer ID or creates one.
+// ensureCustomer returns the user's UUID and existing Stripe customer ID, or creates one.
 // When the user row does not exist yet (ErrUserNotFound), a minimal record is
 // upserted first so that UpdateStripeInfo (UPDATE-only) can persist the new
 // customer ID without leaving an orphaned Stripe customer.
-func (s *PaymentService) ensureCustomer(ctx context.Context, userID, email string) (string, error) {
-	user, err := s.userRepo.GetByUserID(ctx, userID)
+func (s *PaymentService) ensureCustomer(ctx context.Context, username, email string) (userUUID string, customerID string, err error) {
+	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		if !errors.Is(err, domain.ErrUserNotFound) {
-			return "", fmt.Errorf("get user: %w", err)
+			return "", "", err
 		}
 		// First-time user: upsert a minimal users row so UpdateStripeInfo can
 		// persist the new customer ID.
-		if _, upsertErr := s.userRepo.Upsert(ctx, &models.User{UserID: userID, Email: email}); upsertErr != nil {
-			return "", fmt.Errorf("ensure user record: %w", upsertErr)
+		user, err = s.userRepo.Upsert(ctx, &models.User{Username: username, Email: email})
+		if err != nil {
+			return "", "", fmt.Errorf("ensure user record: %w", err)
 		}
 	} else if user.StripeCustomerID != "" {
-		return user.StripeCustomerID, nil
+		return user.ID, user.StripeCustomerID, nil
 	}
-	customerID, err := s.stripe.CreateCustomer(ctx, userID, email)
+	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.ID, email)
 	if err != nil {
-		return "", fmt.Errorf("create stripe customer: %w", err)
+		return "", "", fmt.Errorf("create stripe customer: %w", err)
 	}
-	if err := s.userRepo.UpdateStripeInfo(ctx, userID, customerID, ""); err != nil {
-		return "", fmt.Errorf("persist stripe customer: %w", err)
+	if err := s.userRepo.UpdateStripeInfo(ctx, user.ID, newCustomerID, ""); err != nil {
+		return "", "", fmt.Errorf("persist stripe customer: %w", err)
 	}
-	return customerID, nil
+	return user.ID, newCustomerID, nil
 }
 
 // CreateSetupIntent creates a Stripe SetupIntent for the authenticated user.
 // The returned client_secret is passed to the frontend Stripe.js Payment Element
 // to collect and 3DS-challenge the card before it is attached to the customer.
-func (s *PaymentService) CreateSetupIntent(ctx context.Context, userID, email string) (*models.SetupIntentResult, error) {
+func (s *PaymentService) CreateSetupIntent(ctx context.Context, username, email string) (*models.SetupIntentResult, error) {
 	ctx, span := paymentSvcTracer.Start(ctx, "PaymentService.CreateSetupIntent")
 	defer span.End()
-	span.SetAttributes(attribute.String("user.id", userID))
+	span.SetAttributes(attribute.String("user.username", username))
 
-	customerID, err := s.ensureCustomer(ctx, userID, email)
+	_, customerID, err := s.ensureCustomer(ctx, username, email)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -82,16 +83,16 @@ func (s *PaymentService) CreateSetupIntent(ctx context.Context, userID, email st
 // AttachPaymentMethod attaches pm_xxx to the user's Stripe customer after the
 // frontend has confirmed the SetupIntent. The card is set as the customer's
 // default invoice payment method and persisted to the users table.
-func (s *PaymentService) AttachPaymentMethod(ctx context.Context, userID, email, paymentMethodID string) (*models.CardDetails, error) {
+func (s *PaymentService) AttachPaymentMethod(ctx context.Context, username, email, paymentMethodID string) (*models.CardDetails, error) {
 	ctx, span := paymentSvcTracer.Start(ctx, "PaymentService.AttachPaymentMethod")
 	defer span.End()
-	span.SetAttributes(attribute.String("user.id", userID))
+	span.SetAttributes(attribute.String("user.username", username))
 
 	if paymentMethodID == "" {
 		return nil, fmt.Errorf("%w: payment_method_id is required", domain.ErrInvalidInput)
 	}
 
-	customerID, err := s.ensureCustomer(ctx, userID, email)
+	userUUID, customerID, err := s.ensureCustomer(ctx, username, email)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -106,7 +107,7 @@ func (s *PaymentService) AttachPaymentMethod(ctx context.Context, userID, email,
 	// Note: if Stripe's attach succeeded but this DB write fails, the card exists
 	// in Stripe but is not recorded locally. This is a known distributed-transaction
 	// limitation; a subsequent AttachPaymentMethod call or admin re-sync will recover.
-	if err := s.userRepo.UpdateStripeInfo(ctx, userID, customerID, paymentMethodID); err != nil {
+	if err := s.userRepo.UpdateStripeInfo(ctx, userUUID, customerID, paymentMethodID); err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("persist payment method: %w", err)
 	}
@@ -115,13 +116,17 @@ func (s *PaymentService) AttachPaymentMethod(ctx context.Context, userID, email,
 
 // GetPaymentAccount returns the saved card details for the authenticated user.
 // Returns ErrPaymentMethodNotFound (HTTP 404) when no card is on file.
-func (s *PaymentService) GetPaymentAccount(ctx context.Context, userID string) (*models.CardDetails, error) {
+func (s *PaymentService) GetPaymentAccount(ctx context.Context, username string) (*models.CardDetails, error) {
 	ctx, span := paymentSvcTracer.Start(ctx, "PaymentService.GetPaymentAccount")
 	defer span.End()
-	span.SetAttributes(attribute.String("user.id", userID))
+	span.SetAttributes(attribute.String("user.username", username))
 
-	user, err := s.userRepo.GetByUserID(ctx, userID)
+	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			// User has no DB record — they have no payment method on file.
+			return nil, fmt.Errorf("%w: no payment method on file", domain.ErrPaymentMethodNotFound)
+		}
 		span.RecordError(err)
 		return nil, err
 	}
@@ -140,13 +145,17 @@ func (s *PaymentService) GetPaymentAccount(ctx context.Context, userID string) (
 // DeletePaymentMethod detaches the user's saved card from Stripe and clears
 // the reference in the database.
 // Returns ErrPaymentMethodNotFound (HTTP 404) when no card is on file.
-func (s *PaymentService) DeletePaymentMethod(ctx context.Context, userID string) error {
+func (s *PaymentService) DeletePaymentMethod(ctx context.Context, username string) error {
 	ctx, span := paymentSvcTracer.Start(ctx, "PaymentService.DeletePaymentMethod")
 	defer span.End()
-	span.SetAttributes(attribute.String("user.id", userID))
+	span.SetAttributes(attribute.String("user.username", username))
 
-	user, err := s.userRepo.GetByUserID(ctx, userID)
+	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			// User has no DB record — they have no payment method on file.
+			return fmt.Errorf("%w: no payment method on file", domain.ErrPaymentMethodNotFound)
+		}
 		span.RecordError(err)
 		return err
 	}
@@ -159,7 +168,7 @@ func (s *PaymentService) DeletePaymentMethod(ctx context.Context, userID string)
 		return fmt.Errorf("detach payment method: %w", err)
 	}
 
-	if err := s.userRepo.ClearStripePaymentMethod(ctx, userID); err != nil {
+	if err := s.userRepo.ClearStripePaymentMethod(ctx, user.ID); err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("clear payment method: %w", err)
 	}
