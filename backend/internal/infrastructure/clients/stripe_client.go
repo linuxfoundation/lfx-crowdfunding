@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
-	stripe "github.com/stripe/stripe-go/v82"
-	"github.com/stripe/stripe-go/v82/client"
-	"github.com/stripe/stripe-go/v82/webhook"
+	stripe "github.com/stripe/stripe-go/v85"
+	"github.com/stripe/stripe-go/v85/client"
+	"github.com/stripe/stripe-go/v85/webhook"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -476,14 +476,6 @@ func (c *stripeClientImpl) CancelSubscription(ctx context.Context, subscriptionI
 
 // ConstructWebhookEvent validates a Stripe webhook signature and returns the event.
 // Always validate the Stripe-Signature header — never process unverified events.
-//
-// IgnoreAPIVersionMismatch: the Stripe Dashboard only offers 2018-02-28 and
-// 2026-05-27.dahlia for webhook endpoints — basil (stripe-go v82's built-in
-// version) is not selectable. All dahlia changes relative to basil are
-// non-breaking additions; the fields we read (PaymentIntent, Invoice.Parent,
-// Subscription) are identical in both versions.
 func (c *stripeClientImpl) ConstructWebhookEvent(payload []byte, sigHeader, secret string) (stripe.Event, error) {
-	return webhook.ConstructEventWithOptions(payload, sigHeader, secret, webhook.ConstructEventOptions{
-		IgnoreAPIVersionMismatch: true,
-	})
+	return webhook.ConstructEvent(payload, sigHeader, secret)
 }
