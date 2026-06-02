@@ -2,16 +2,7 @@
 -- SPDX-License-Identifier: MIT
 -- ============================================
 -- Migration: Normalised Initiatives Schema
--- Version: 2.1.0
--- Created: 2026-05-07
--- Updated: 2026-06-01
--- Description: Fully normalised schema.
---   initiatives merges lff-prod-projects + lff-prod-entities.
---   v2.1: users.id (UUID) is now the FK target for all related tables.
---         users.username stores the LF SSO username (was users.user_id).
---         users.legacy_user_id retains the DynamoDB user_id for traceability.
---         Stripe columns (previously 002_stripe_3ds.up.sql) merged in.
---
+-- Created: 2026-05-12
 -- Excluded (no DynamoDB write path / computed at read-time):
 --   balance        — computed from ledger at read time
 --   funding_status — computed from ledger + subscription summaries
