@@ -6,6 +6,7 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -73,8 +74,15 @@ func (s *emailService) SendProjectDeclinedEmail(ctx context.Context, toEmail, to
 	})
 }
 
+// ErrNoNotificationRecipients is returned when MANDRILL_NOTIFICATION_EMAIL is empty or unset,
+// so callers can log a warning rather than silently dropping the review alert.
+var ErrNoNotificationRecipients = errors.New("email: no notification recipients configured")
+
 // SendProjectForReviewEmail notifies all reviewer inboxes that a new initiative has been submitted.
 func (s *emailService) SendProjectForReviewEmail(ctx context.Context, ownerName, ownerEmail, initiativeName, initiativeURL, approveURL, declineURL string) error {
+	if len(s.notificationEmails) == 0 {
+		return ErrNoNotificationRecipients
+	}
 	params := map[string]string{
 		"SUBMISSION_NAME": initiativeName,
 		"SUBMITTER_NAME":  ownerName,

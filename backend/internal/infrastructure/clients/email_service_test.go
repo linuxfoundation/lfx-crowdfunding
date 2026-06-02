@@ -44,8 +44,9 @@ func TestSendProjectForReviewEmail_NoRecipients(t *testing.T) {
 	m := &mockMandrill{}
 	svc := newSvc(m, nil)
 
-	if err := svc.SendProjectForReviewEmail(context.Background(), "owner", "owner@example.com", "My Project", "http://url", "http://approve", "http://decline"); err != nil {
-		t.Fatalf("expected nil, got %v", err)
+	err := svc.SendProjectForReviewEmail(context.Background(), "owner", "owner@example.com", "My Project", "http://url", "http://approve", "http://decline")
+	if !errors.Is(err, ErrNoNotificationRecipients) {
+		t.Fatalf("expected ErrNoNotificationRecipients, got %v", err)
 	}
 	if len(m.calls) != 0 {
 		t.Fatalf("expected 0 SendTemplate calls, got %d", len(m.calls))
