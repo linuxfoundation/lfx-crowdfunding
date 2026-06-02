@@ -13,7 +13,8 @@ export default defineEventHandler(async (event) => {
   deleteCookie(event, 'github_redirect_to');
 
   if (query.error) {
-    await sendRedirect(event, `${redirectTo}?github_error=${query.error}`);
+    const sep = redirectTo.includes('?') ? '&' : '?';
+    await sendRedirect(event, `${redirectTo}${sep}github_error=${query.error}`);
     return;
   }
 
@@ -53,5 +54,6 @@ export default defineEventHandler(async (event) => {
     maxAge: 60 * 60 * 8, // 8 hours
   });
 
-  await sendRedirect(event, `${redirectTo}?github_connected=true`);
+  const sep = redirectTo.includes('?') ? '&' : '?';
+  await sendRedirect(event, `${redirectTo}${sep}github_connected=true`);
 });
