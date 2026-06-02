@@ -13,7 +13,7 @@ import (
 
 type mockMandrill struct {
 	calls []mandrillCall
-	errs  []error // returned in order; last element is repeated after exhausted
+	errs  []error // returned in order; nil after exhausted (empty slice always returns nil)
 }
 
 type mandrillCall struct {
