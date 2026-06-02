@@ -9,6 +9,8 @@ SPDX-License-Identifier: MIT
       <div
         v-for="tier in SPONSORSHIP_TIERS"
         :key="tier.id"
+        role="button"
+        tabindex="0"
         class="flex flex-col gap-3 p-4 text-left transition-colors cursor-pointer border-neutral-200 border-solid first:rounded-t-xl last:rounded-b-xl sm:first:rounded-t-none sm:last:rounded-b-none sm:first:rounded-l-xl sm:last:rounded-r-xl border-b last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"
         :class="
           props.selectedTierId === tier.id
@@ -16,6 +18,8 @@ SPDX-License-Identifier: MIT
             : 'border-neutral-200 bg-white hover:border-neutral-300'
         "
         @click="emit('select', tier)"
+        @keydown.enter="emit('select', tier)"
+        @keydown.space.prevent="emit('select', tier)"
       >
         <div class="flex items-center justify-between">
           <span

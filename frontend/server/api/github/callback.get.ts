@@ -14,7 +14,10 @@ export default defineEventHandler(async (event) => {
 
   if (query.error) {
     const sep = redirectTo.includes('?') ? '&' : '?';
-    await sendRedirect(event, `${redirectTo}${sep}github_error=${query.error}`);
+    const errorVal = encodeURIComponent(
+      Array.isArray(query.error) ? query.error[0]! : String(query.error),
+    );
+    await sendRedirect(event, `${redirectTo}${sep}github_error=${errorVal}`);
     return;
   }
 
