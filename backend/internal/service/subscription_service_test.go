@@ -300,7 +300,7 @@ func TestSubscriptionService_Cancel_Success(t *testing.T) {
 		onGetByID: func(_ context.Context, _ string) (*models.Subscription, error) {
 			return &models.Subscription{
 				ID:                   subID,
-				UserID:               "u1",
+				UserID:               "00000000-0000-0000-0000-000000000001",
 				StripeSubscriptionID: stripeSubID,
 				Status:               "active",
 			}, nil

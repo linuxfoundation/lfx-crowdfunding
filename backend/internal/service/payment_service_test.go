@@ -272,9 +272,12 @@ func TestPaymentService_DeletePaymentMethod_Success(t *testing.T) {
 	svc := NewPaymentService(
 		&testUserRepo{
 			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-				return &models.User{Username: "u1", StripeDefaultPaymentMethod: "pm_saved"}, nil
+				return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeDefaultPaymentMethod: "pm_saved"}, nil
 			},
-			onClearStripePaymentMethod: func(_ context.Context, _ string) error {
+			onClearStripePaymentMethod: func(_ context.Context, userID string) error {
+				if userID != "00000000-0000-0000-0000-000000000001" {
+					t.Errorf("ClearStripePaymentMethod userID = %q, want 00000000-0000-0000-0000-000000000001", userID)
+				}
 				clearCalled = true
 				return nil
 			},
@@ -307,7 +310,7 @@ func TestPaymentService_DeletePaymentMethod_StripeError(t *testing.T) {
 	svc := NewPaymentService(
 		&testUserRepo{
 			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-				return &models.User{Username: "u1", StripeDefaultPaymentMethod: "pm_saved"}, nil
+				return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeDefaultPaymentMethod: "pm_saved"}, nil
 			},
 		},
 		&configStripeClient{

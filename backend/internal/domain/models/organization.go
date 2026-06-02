@@ -18,7 +18,8 @@ type Organization struct {
 }
 
 // User maps to the crowdfunding.users table.
-// username is the LF SSO username — the FK target used throughout the schema.
+// users.id (UUID) is the FK target throughout the schema.
+// username is the LF SSO username used as the application-level identity input.
 type User struct {
 	ID           string    `json:"id"`
 	Username     string    `json:"username"`                 // LF SSO username, e.g. zpiatt

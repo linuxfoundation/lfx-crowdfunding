@@ -72,7 +72,8 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 }
 
 // Upsert inserts or updates a user row identified by username (LF SSO username).
-// Used by the auth flow to synchronise profile data on every login.
+// Used by payment/donation/subscription services to ensure a minimal users row
+// exists before persisting Stripe customer info via UpdateStripeInfo.
 func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.User, error) {
 	ctx, span := userTracer.Start(ctx, "db.users.Upsert")
 	defer span.End()
