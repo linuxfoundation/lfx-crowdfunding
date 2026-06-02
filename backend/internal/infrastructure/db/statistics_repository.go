@@ -144,7 +144,7 @@ func (r *StatisticsRepository) GetInitiativeNamesByIDs(ctx context.Context, ids 
 	return result, nil
 }
 
-// GetUsersByIDs returns a map of Auth0 user_id → User for the given IDs.
+// GetUsersByIDs returns a map of user UUID → User for the given IDs.
 // Missing IDs are absent from the map.
 func (r *StatisticsRepository) GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error) {
 	ctx, span := statisticsTracer.Start(ctx, "db.statistics.GetUsersByIDs")
@@ -152,14 +152,15 @@ func (r *StatisticsRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 	span.SetAttributes(attribute.Int("db.id_count", len(userIDs)))
 
 	result := make(map[string]models.User, len(userIDs))
+	userIDs = filterValidUUIDs(userIDs)
 	if len(userIDs) == 0 {
 		return result, nil
 	}
 
 	const q = `
-		SELECT id, user_id, name, avatar_url, created_on, updated_on
+		SELECT id, name, avatar_url, created_on, updated_on
 		FROM users
-		WHERE user_id = ANY($1)`
+		WHERE id = ANY($1::uuid[])`
 
 	rows, err := r.pool.Query(ctx, q, userIDs)
 	if err != nil {
@@ -176,7 +177,7 @@ func (r *StatisticsRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 			createdOn *time.Time
 			updatedOn *time.Time
 		)
-		if err := rows.Scan(&u.ID, &u.UserID, &name, &avatarURL, &createdOn, &updatedOn); err != nil {
+		if err := rows.Scan(&u.ID, &name, &avatarURL, &createdOn, &updatedOn); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		if name != nil {
@@ -191,7 +192,7 @@ func (r *StatisticsRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 		if updatedOn != nil {
 			u.UpdatedOn = *updatedOn
 		}
-		result[u.UserID] = u
+		result[u.ID] = u
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate users: %w", err)

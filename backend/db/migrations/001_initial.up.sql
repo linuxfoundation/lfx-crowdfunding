@@ -2,11 +2,7 @@
 -- SPDX-License-Identifier: MIT
 -- ============================================
 -- Migration: Normalised Initiatives Schema
--- Version: 2.0.0
--- Created: 2026-05-07
--- Description: Fully normalised schema.
---   initiatives merges lff-prod-projects + lff-prod-entities.
---
+-- Created: 2026-05-12
 -- Excluded (no DynamoDB write path / computed at read-time):
 --   balance        — computed from ledger at read time
 --   funding_status — computed from ledger + subscription summaries
@@ -30,30 +26,38 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ============================================
 -- TABLE: users
+--
+-- users.id        — surrogate UUID PK; FK target for all related tables
+-- users.username  — LF SSO username; application-level identifier
+-- users.legacy_user_id — formerly user_id; DynamoDB user_id value (migration only,
+--                        nullable for users created post-migration)
 -- ============================================
 CREATE TABLE IF NOT EXISTS users (
-  id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     VARCHAR(255) NOT NULL UNIQUE,  -- Auth0 subject (e.g. auth0|abc123)
-  email       TEXT,
-  given_name  TEXT,
-  family_name TEXT,
-  name        TEXT,
-  avatar_url  TEXT,
-  created_on  TIMESTAMPTZ DEFAULT NOW(),
-  updated_on  TIMESTAMPTZ DEFAULT NOW()
+  id                            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  username                      TEXT         NOT NULL UNIQUE, -- LF SSO username
+  legacy_user_id                VARCHAR(255) UNIQUE,          -- DynamoDB user_id; NULL for post-migration users
+  email                         TEXT,
+  given_name                    TEXT,
+  family_name                   TEXT,
+  name                          TEXT,
+  avatar_url                    TEXT,
+  stripe_customer_id            TEXT,        -- cus_xxx; persisted on first payment
+  stripe_default_payment_method TEXT,        -- pm_xxx; attached after SetupIntent
+  created_on                    TIMESTAMPTZ  DEFAULT NOW(),
+  updated_on                    TIMESTAMPTZ  DEFAULT NOW()
 );
 
 -- ============================================
 -- TABLE: organizations
 -- ============================================
 CREATE TABLE IF NOT EXISTS organizations (
-  id              UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id        VARCHAR(255) NOT NULL REFERENCES users(user_id),
-  name            TEXT         NOT NULL,
-  avatar_url      TEXT,
-  status          VARCHAR(50),
-  created_on      TIMESTAMPTZ  DEFAULT NOW(),
-  updated_on      TIMESTAMPTZ  DEFAULT NOW()
+  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id   UUID        NOT NULL REFERENCES users(id),
+  name       TEXT        NOT NULL,
+  avatar_url TEXT,
+  status     VARCHAR(50),
+  created_on TIMESTAMPTZ DEFAULT NOW(),
+  updated_on TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================
@@ -68,7 +72,7 @@ CREATE TABLE IF NOT EXISTS initiatives (
   source_dynamo_table  VARCHAR(50),            -- 'projects' | 'entities' — drop post-cutover
 
   -- ownership
-  owner_id             VARCHAR(255) NOT NULL REFERENCES users(user_id),
+  owner_id             UUID         NOT NULL REFERENCES users(id),
 
   -- core display fields
   name                 TEXT         NOT NULL,
@@ -353,19 +357,20 @@ CREATE TABLE IF NOT EXISTS initiative_entity_details (
 -- initiative_id references the surrogate UUID PK on initiatives(id)
 -- ============================================
 CREATE TABLE IF NOT EXISTS donations (
-  id                      UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id                 VARCHAR(255) NOT NULL REFERENCES users(user_id),
-  initiative_id           UUID         REFERENCES initiatives(id) ON DELETE SET NULL,
-  organization_id         UUID         REFERENCES organizations(id) ON DELETE SET NULL,
-  cached_details          JSONB,
-  category                TEXT,
-  current_amount_in_cents BIGINT       NOT NULL CHECK (current_amount_in_cents >= 0),
-  po_number               TEXT,
-  payment_method          VARCHAR(50),
-  status                  VARCHAR(50),
-  stripe_charge_id        VARCHAR(255),
-  created_on              TIMESTAMPTZ  DEFAULT NOW(),
-  updated_on              TIMESTAMPTZ  DEFAULT NOW()
+  id                       UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                  UUID         NOT NULL REFERENCES users(id),
+  initiative_id            UUID         REFERENCES initiatives(id) ON DELETE SET NULL,
+  organization_id          UUID         REFERENCES organizations(id) ON DELETE SET NULL,
+  cached_details           JSONB,
+  category                 TEXT,
+  current_amount_in_cents  BIGINT       NOT NULL CHECK (current_amount_in_cents >= 0),
+  po_number                TEXT,
+  payment_method           VARCHAR(50),
+  status                   VARCHAR(50)  DEFAULT 'pending',
+  stripe_charge_id         VARCHAR(255),
+  stripe_payment_intent_id TEXT,        -- Stripe PaymentIntent ID for 3DS flows
+  created_on               TIMESTAMPTZ  DEFAULT NOW(),
+  updated_on               TIMESTAMPTZ  DEFAULT NOW()
 );
 
 -- ============================================
@@ -375,16 +380,17 @@ CREATE TABLE IF NOT EXISTS donations (
 -- ============================================
 CREATE TABLE IF NOT EXISTS subscriptions (
   id                          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id                     VARCHAR(255) NOT NULL REFERENCES users(user_id),
+  user_id                     UUID         NOT NULL REFERENCES users(id),
   initiative_id               UUID         REFERENCES initiatives(id) ON DELETE SET NULL,
   organization_id             UUID         REFERENCES organizations(id) ON DELETE SET NULL,
   cached_details              JSONB,
   category                    TEXT,
   current_amount_in_cents     BIGINT       NOT NULL CHECK (current_amount_in_cents >= 0),
   frequency                   VARCHAR(50),
-  status                      VARCHAR(50),
+  status                      VARCHAR(50)  DEFAULT 'incomplete',
   stripe_subscription_id      VARCHAR(255),
   stripe_subscription_item_id VARCHAR(255),
+  stripe_price_id             TEXT,        -- Stripe Price ID for 3DS recurring flows
   created_on                  TIMESTAMPTZ  DEFAULT NOW(),
   updated_on                  TIMESTAMPTZ  DEFAULT NOW()
 );
@@ -458,11 +464,13 @@ CREATE TRIGGER set_updated_on BEFORE UPDATE ON subscriptions                    
 -- INDEXES
 -- ============================================
 
+-- users
+CREATE INDEX IF NOT EXISTS idx_users_stripe_customer                ON users(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+
 -- organizations
 CREATE INDEX IF NOT EXISTS idx_organizations_owner_id               ON organizations(owner_id);
 
 -- initiatives (core)
-
 CREATE INDEX IF NOT EXISTS idx_initiatives_owner_id                 ON initiatives(owner_id);
 CREATE INDEX IF NOT EXISTS idx_initiatives_slug                     ON initiatives(slug);
 CREATE INDEX IF NOT EXISTS idx_initiatives_status                   ON initiatives(status);
@@ -489,11 +497,14 @@ CREATE INDEX IF NOT EXISTS idx_donations_user_id                    ON donations
 CREATE INDEX IF NOT EXISTS idx_donations_initiative_id              ON donations(initiative_id);
 CREATE INDEX IF NOT EXISTS idx_donations_status                     ON donations(status);
 CREATE INDEX IF NOT EXISTS idx_donations_org_id                     ON donations(organization_id);
+CREATE INDEX IF NOT EXISTS idx_donations_payment_intent             ON donations(stripe_payment_intent_id) WHERE stripe_payment_intent_id IS NOT NULL;
 
 -- subscriptions
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id                ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_initiative_id          ON subscriptions(initiative_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_org_id                 ON subscriptions(organization_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status                 ON subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_sub_id          ON subscriptions(stripe_subscription_id) WHERE stripe_subscription_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_price_id        ON subscriptions(stripe_price_id) WHERE stripe_price_id IS NOT NULL;
 
 COMMIT;

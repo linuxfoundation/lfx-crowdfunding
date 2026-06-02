@@ -63,7 +63,6 @@ type JWTClaims struct {
 }
 
 const xUsernameHeader = "X-Username"
-const xUserIDHeader = "X-User-ID"
 
 const (
 	authCategoryUnknown                    = "unknown"
@@ -248,12 +247,6 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		principalUsername := strings.TrimSpace(claims.Username)
 		if principalUsername == "" && a.isTrustedM2MForHeaderImpersonation(claims) {
 			principalUsername = strings.TrimSpace(r.Header.Get(xUsernameHeader))
-			if principalUsername != "" {
-				// The acting user's Auth0 subject must accompany X-Username via the
-				// companion X-User-ID header. Both are stripped by the ingress for
-				// untrusted callers, so only this trusted M2M client can set them.
-				principalUserID = strings.TrimSpace(r.Header.Get(xUserIDHeader))
-			}
 		}
 		if principalUserID == "" {
 			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "category", authCategoryMissingSubject, "path", r.URL.Path)

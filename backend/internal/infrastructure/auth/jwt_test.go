@@ -498,7 +498,7 @@ func TestMiddleware_UsesXUsernameHeaderWhenClaimMissing(t *testing.T) {
 
 	r := makeRequest(m2mTokenWithoutUsername())
 	r.Header.Set("X-Username", "acting-user")
-	r.Header.Set("X-User-ID", "auth0|abc123")
+	// X-User-ID header is no longer supported; UserID stays as the M2M token's subject.
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 
@@ -511,8 +511,9 @@ func TestMiddleware_UsesXUsernameHeaderWhenClaimMissing(t *testing.T) {
 	if got.Username != "acting-user" {
 		t.Errorf("Username = %q, want %q", got.Username, "acting-user")
 	}
-	if got.UserID != "auth0|abc123" {
-		t.Errorf("UserID = %q, want %q", got.UserID, "auth0|abc123")
+	// UserID is the M2M client's own subject (X-User-ID header is no longer read).
+	if got.UserID != "m2m-client@clients" {
+		t.Errorf("UserID = %q, want %q", got.UserID, "m2m-client@clients")
 	}
 }
 
@@ -584,10 +585,10 @@ func TestMiddleware_DoesNotOverrideClaimUsernameWithXUsernameHeader(t *testing.T
 	}
 }
 
-// TestMiddleware_RejectsImpersonationWithoutUserIDHeader verifies that
-// supplying X-Username without the companion X-User-ID header is rejected.
-// The acting user's real Auth0 subject must always accompany the username.
-func TestMiddleware_RejectsImpersonationWithoutUserIDHeader(t *testing.T) {
+// TestMiddleware_AcceptsImpersonationWithoutUserIDHeader verifies that
+// supplying X-Username without X-User-ID is accepted. principalUserID
+// stays as the M2M token's own claims.Subject in this case.
+func TestMiddleware_AcceptsImpersonationWithoutUserIDHeader(t *testing.T) {
 	a := newTestAuthenticator(trustedM2MCfg())
 
 	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -596,12 +597,12 @@ func TestMiddleware_RejectsImpersonationWithoutUserIDHeader(t *testing.T) {
 
 	r := makeRequest(m2mTokenWithoutUsername())
 	r.Header.Set("X-Username", "acting-user")
-	// X-User-ID intentionally absent
+	// X-User-ID intentionally absent — this is now allowed
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 when X-User-ID is absent, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 when X-User-ID is absent, got %d", w.Code)
 	}
 }
 
@@ -911,5 +912,70 @@ func TestAuthFailureCategory(t *testing.T) {
 				t.Fatalf("authFailureCategory() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// ── M2M impersonation: middleware → handler guard integration ────────────────
+
+// TestM2MImpersonation_PassesHandlerUsernameGuard verifies the full chain:
+// a valid M2M token + X-Username header produces a principal that passes the
+// handler-level "principal != nil && principal.Username != """ guard that all
+// write handlers apply before delegating to a service.
+func TestM2MImpersonation_PassesHandlerUsernameGuard(t *testing.T) {
+	a := newTestAuthenticator(trustedM2MCfg())
+
+	var capturedUsername string
+	handlerReached := false
+
+	// Inline handler that replicates the guard every write handler applies.
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := PrincipalFromContext(r.Context())
+		if p == nil || p.Username == "" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		handlerReached = true
+		capturedUsername = p.Username
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := makeRequest(m2mTokenWithoutUsername())
+	r.Header.Set("X-Username", "acting-user")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("M2M impersonation should pass the handler guard, got %d", w.Code)
+	}
+	if !handlerReached {
+		t.Fatal("handler body was not reached")
+	}
+	if capturedUsername != "acting-user" {
+		t.Errorf("Username = %q, want %q", capturedUsername, "acting-user")
+	}
+}
+
+// TestM2MImpersonation_MissingXUsernameFailsHandlerGuard verifies that an M2M
+// token without an X-Username header produces an empty Username, which is
+// correctly rejected by the handler-level guard.
+func TestM2MImpersonation_MissingXUsernameFailsHandlerGuard(t *testing.T) {
+	a := newTestAuthenticator(trustedM2MCfg())
+
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := PrincipalFromContext(r.Context())
+		if p == nil || p.Username == "" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := makeRequest(m2mTokenWithoutUsername())
+	// X-Username header intentionally absent — handler must reject.
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 when X-Username absent, got %d", w.Code)
 	}
 }

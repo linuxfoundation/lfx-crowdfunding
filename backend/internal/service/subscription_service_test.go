@@ -82,8 +82,8 @@ func TestSubscriptionService_Create_NewCustomerActive(t *testing.T) {
 	var savedSubID, savedPriceID string
 
 	userRepo := &testUserRepo{
-		onGetByUserID: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{UserID: "u1", StripeCustomerID: ""}, nil
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeCustomerID: ""}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -162,8 +162,8 @@ func TestSubscriptionService_Create_ExistingCustomer3DS(t *testing.T) {
 	customerCreated := false
 
 	userRepo := &testUserRepo{
-		onGetByUserID: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{UserID: "u1", StripeCustomerID: existingCus}, nil
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeCustomerID: existingCus}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -239,7 +239,7 @@ func TestSubscriptionService_Create_UserRepoTransientError(t *testing.T) {
 	dbErr := errors.New("connection reset")
 
 	userRepo := &testUserRepo{
-		onGetByUserID: func(_ context.Context, _ string) (*models.User, error) {
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
 			return nil, dbErr
 		},
 	}
@@ -300,7 +300,7 @@ func TestSubscriptionService_Cancel_Success(t *testing.T) {
 		onGetByID: func(_ context.Context, _ string) (*models.Subscription, error) {
 			return &models.Subscription{
 				ID:                   subID,
-				UserID:               "u1",
+				UserID:               "00000000-0000-0000-0000-000000000001",
 				StripeSubscriptionID: stripeSubID,
 				Status:               "active",
 			}, nil

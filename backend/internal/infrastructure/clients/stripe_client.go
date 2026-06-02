@@ -161,7 +161,7 @@ func (c *stripeClientImpl) GetProduct(ctx context.Context, productID string) (*m
 
 // ── Customer ─────────────────────────────────────────────────────────────────
 
-// CreateCustomer creates a new Stripe Customer tagged with the Auth0 user_id.
+// CreateCustomer creates a new Stripe Customer tagged with the service user UUID.
 func (c *stripeClientImpl) CreateCustomer(ctx context.Context, userID, email string) (string, error) {
 	_, span := stripeTracer.Start(ctx, "stripe.CreateCustomer")
 	defer span.End()

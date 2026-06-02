@@ -10,6 +10,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -50,4 +51,17 @@ func NewPool(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 	return pool, nil
+}
+
+// filterValidUUIDs returns only the elements of ids that are valid UUID strings.
+// Non-UUID values (e.g. legacy Auth0 subs like "auth0|...") are silently dropped
+// so callers can safely pass the result to a query using ANY($1::uuid[]).
+func filterValidUUIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, err := uuid.Parse(id); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out
 }

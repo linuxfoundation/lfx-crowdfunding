@@ -123,12 +123,22 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 }
 
 // ListByUser returns paginated donations for the authenticated user.
-func (s *DonationService) ListByUser(ctx context.Context, userID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+func (s *DonationService) ListByUser(ctx context.Context, username string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
 	ctx, span := donationSvcTracer.Start(ctx, "DonationService.ListByUser")
 	defer span.End()
-	span.SetAttributes(attribute.String("user.id", userID))
+	span.SetAttributes(attribute.String("user.username", username))
 
-	donations, meta, err := s.repo.ListByUser(ctx, userID, filter)
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			// User has no DB record yet — they have never donated. Return empty list.
+			return []models.Donation{}, &models.PaginationMeta{Limit: filter.Limit, Offset: filter.Offset}, nil
+		}
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("resolve user: %w", err)
+	}
+
+	donations, meta, err := s.repo.ListByUser(ctx, user.ID, filter)
 	if err != nil {
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list donations by user: %w", err)
@@ -141,12 +151,12 @@ func (s *DonationService) ListByUser(ctx context.Context, userID string, filter 
 // has Status == "requires_action" and ClientSecret set — the frontend must
 // call stripe.confirmCardPayment(ClientSecret) to complete the 3DS flow.
 // The webhook (payment_intent.succeeded / .payment_failed) advances the status.
-func (s *DonationService) Create(ctx context.Context, initiativeID, userID, userEmail string, input models.DonationCreateInput) (*models.Donation, error) {
+func (s *DonationService) Create(ctx context.Context, initiativeID, username, userEmail string, input models.DonationCreateInput) (*models.Donation, error) {
 	ctx, span := donationSvcTracer.Start(ctx, "DonationService.Create")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("initiative.id", initiativeID),
-		attribute.String("user.id", userID),
+		attribute.String("user.username", username),
 	)
 
 	if input.AmountCents <= 0 {
@@ -173,29 +183,28 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	// Only treat ErrUserNotFound as "no existing customer"; any other error
 	// (e.g. transient DB outage) must be returned to avoid creating orphaned
 	// Stripe customers when the DB read fails.
-	customerID := ""
-	user, err := s.userRepo.GetByUserID(ctx, userID)
+	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		if !errors.Is(err, domain.ErrUserNotFound) {
 			span.RecordError(err)
-			return nil, fmt.Errorf("get user: %w", err)
+			return nil, err
 		}
 		// First-time user: upsert a minimal users row so UpdateStripeInfo can
 		// persist the new customer ID (UpdateStripeInfo is UPDATE-only).
-		if _, upsertErr := s.userRepo.Upsert(ctx, &models.User{UserID: userID, Email: userEmail}); upsertErr != nil {
-			span.RecordError(upsertErr)
-			return nil, fmt.Errorf("ensure user record: %w", upsertErr)
+		user, err = s.userRepo.Upsert(ctx, &models.User{Username: username, Email: userEmail})
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("ensure user record: %w", err)
 		}
-	} else {
-		customerID = user.StripeCustomerID
 	}
+	customerID := user.StripeCustomerID
 	if customerID == "" {
-		customerID, err = s.stripe.CreateCustomer(ctx, userID, userEmail)
+		customerID, err = s.stripe.CreateCustomer(ctx, user.ID, userEmail)
 		if err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("create stripe customer: %w", err)
 		}
-		if persistErr := s.userRepo.UpdateStripeInfo(ctx, userID, customerID, ""); persistErr != nil {
+		if persistErr := s.userRepo.UpdateStripeInfo(ctx, user.ID, customerID, ""); persistErr != nil {
 			span.RecordError(persistErr)
 			return nil, fmt.Errorf("persist stripe customer: %w", persistErr)
 		}
@@ -207,7 +216,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	// returns the cached response instead of creating a duplicate charge.
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
 		InitiativeID:    initiativeID,
-		UserID:          userID,
+		UserID:          user.ID,
 		CustomerID:      customerID,
 		AmountCents:     input.AmountCents,
 		PaymentMethodID: input.StripePaymentMethodID,
@@ -219,7 +228,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, userID, user
 	}
 
 	donation := &models.Donation{
-		UserID:                userID,
+		UserID:                user.ID,
 		InitiativeID:          initiativeID,
 		OrganizationID:        input.OrganizationID,
 		Category:              input.Category,

@@ -140,8 +140,23 @@ type mockUserRepository struct {
 	err  error
 }
 
-func (m *mockUserRepository) GetByUserID(_ context.Context, _ string) (*models.User, error) {
-	return m.user, m.err
+func (m *mockUserRepository) GetByUsername(_ context.Context, username string) (*models.User, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.user != nil {
+		return m.user, nil
+	}
+	return &models.User{ID: username, Username: username}, nil
+}
+func (m *mockUserRepository) GetByID(_ context.Context, id string) (*models.User, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.user != nil {
+		return m.user, nil
+	}
+	return &models.User{ID: id}, nil
 }
 func (m *mockUserRepository) Upsert(_ context.Context, u *models.User) (*models.User, error) {
 	return u, nil
@@ -371,7 +386,7 @@ func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error { return n
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 	repo := &mockRepoForEnrich{
 		users: map[string]models.User{
-			"user-1": {UserID: "user-1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
+			"user-1": {ID: "user-1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
 		},
 		orgs: map[string]models.Organization{
 			"org-1": {ID: "org-1", Name: "Acme Corp", AvatarURL: "https://example.com/acme.png"},
@@ -395,7 +410,7 @@ func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 func TestEnrichTransactionsFromDB_UserFallback(t *testing.T) {
 	repo := &mockRepoForEnrich{
 		users: map[string]models.User{
-			"user-1": {UserID: "user-1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
+			"user-1": {ID: "user-1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
 		},
 		orgs: map[string]models.Organization{},
 	}
@@ -716,7 +731,7 @@ func newCreateSvcWithEmail(repo domain.InitiativeRepository, userRepo *mockUserR
 func TestCreate_SendsForReviewEmail(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	userRepo := &mockUserRepository{
-		user: &models.User{UserID: "owner-1", Email: "owner@example.com", Name: "Alice"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
 	emailSvc := &mockEmailService{}
 
@@ -748,7 +763,7 @@ func TestCreate_SendsForReviewEmail(t *testing.T) {
 	}
 }
 
-func TestCreate_ForReviewEmail_UserLookupErrorIsNonFatal(t *testing.T) {
+func TestCreate_ForReviewEmail_UserLookupErrorFails(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	userRepo := &mockUserRepository{err: errors.New("user not found")}
 	emailSvc := &mockEmailService{}
@@ -758,8 +773,9 @@ func TestCreate_ForReviewEmail_UserLookupErrorIsNonFatal(t *testing.T) {
 		context.Background(), "owner-1",
 		models.InitiativeCreateInput{Name: "My Project", Slug: "my-project", InitiativeType: "project"},
 	)
-	if err != nil {
-		t.Fatalf("user lookup failure must not propagate, got %v", err)
+	// Owner lookup failure is now fatal — unknown owners cannot create initiatives.
+	if err == nil {
+		t.Fatal("expected error when owner lookup fails, got nil")
 	}
 	if emailSvc.forReviewCalled {
 		t.Error("expected no email when owner lookup fails")
@@ -769,7 +785,7 @@ func TestCreate_ForReviewEmail_UserLookupErrorIsNonFatal(t *testing.T) {
 func TestCreate_ForReviewEmail_EmailErrorIsNonFatal(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	userRepo := &mockUserRepository{
-		user: &models.User{UserID: "owner-1", Email: "owner@example.com", Name: "Alice"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
 	emailSvc := &mockEmailService{err: errors.New("mandrill down")}
 
@@ -786,7 +802,7 @@ func TestCreate_ForReviewEmail_EmailErrorIsNonFatal(t *testing.T) {
 func TestCreate_ForReviewEmail_FallsBackToEmailWhenNameEmpty(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	userRepo := &mockUserRepository{
-		user: &models.User{UserID: "owner-1", Email: "owner@example.com", Name: ""},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: ""},
 	}
 	emailSvc := &mockEmailService{}
 
@@ -889,13 +905,13 @@ func TestProcessApproval_SendsApprovedEmail(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
 	}
 	userRepo := &mockUserRepository{
-		user: &models.User{UserID: "auth0|owner-1", Email: "owner@example.com", Name: "Alice"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
 	emailSvc := &mockEmailService{}
 
@@ -923,13 +939,13 @@ func TestProcessApproval_SendsDeclinedEmail(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
 	}
 	userRepo := &mockUserRepository{
-		user: &models.User{UserID: "auth0|owner-1", Email: "owner@example.com", Name: "Bob"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Bob"},
 	}
 	emailSvc := &mockEmailService{}
 
@@ -957,13 +973,13 @@ func TestProcessApproval_EmailErrorIsNonFatal(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
 	}
 	userRepo := &mockUserRepository{
-		user: &models.User{UserID: "auth0|owner-1", Email: "owner@example.com", Name: "Alice"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
 	emailSvc := &mockEmailService{err: errors.New("mandrill down")}
 
@@ -980,7 +996,7 @@ func TestProcessApproval_UserLookupErrorIsNonFatal(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
@@ -1005,13 +1021,13 @@ func TestProcessApproval_FallsBackToEmailWhenNameEmpty(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
 	}
 	userRepo := &mockUserRepository{
-		user: &models.User{UserID: "auth0|owner-1", Email: "owner@example.com", Name: ""},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: ""},
 	}
 	emailSvc := &mockEmailService{}
 

@@ -110,7 +110,7 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 			"org-1": {ID: "org-1", Name: "Acme Corp", AvatarURL: "https://example.com/acme.png"},
 		},
 		users: map[string]models.User{
-			"user-1": {UserID: "user-1", Name: "Alice Smith", AvatarURL: "https://example.com/alice.png"},
+			"user-1": {ID: "user-1", Name: "Alice Smith", AvatarURL: "https://example.com/alice.png"},
 		},
 	}
 	ledger := &testLedgerClient{
@@ -312,7 +312,7 @@ func TestGetRecentDonations_EnrichesProjectName(t *testing.T) {
 func TestGetRecentDonations_IndividualDonor(t *testing.T) {
 	repo := &testStatisticsRepo{
 		orgs:  map[string]models.Organization{},
-		users: map[string]models.User{"user-1": {UserID: "user-1", Name: "Bob"}},
+		users: map[string]models.User{"user-1": {ID: "user-1", Name: "Bob"}},
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
