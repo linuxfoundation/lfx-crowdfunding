@@ -31,50 +31,70 @@ func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 }
 
 const userColumns = `
-	id, user_id, email, given_name, family_name, name, avatar_url,
+	id, username, legacy_user_id, email, given_name, family_name, name, avatar_url,
 	stripe_customer_id, stripe_default_payment_method,
 	created_on, updated_on`
 
-// GetByUserID retrieves a user by their Auth0 subject (user_id column).
-func (r *UserRepository) GetByUserID(ctx context.Context, userID string) (*models.User, error) {
-	ctx, span := userTracer.Start(ctx, "db.users.GetByUserID")
+// GetByUsername retrieves a user by their LF SSO username.
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+	ctx, span := userTracer.Start(ctx, "db.users.GetByUsername")
 	defer span.End()
-	span.SetAttributes(attribute.String("db.user_id", userID))
+	span.SetAttributes(attribute.String("db.username", username))
 
-	q := "SELECT " + userColumns + " FROM users WHERE user_id = $1"
-	u, err := scanUser(r.pool.QueryRow(ctx, q, userID))
+	q := "SELECT " + userColumns + " FROM users WHERE username = $1"
+	u, err := scanUser(r.pool.QueryRow(ctx, q, username))
 	if err != nil {
 		if !errors.Is(err, domain.ErrUserNotFound) {
 			span.RecordError(err)
-			err = fmt.Errorf("get user: %w", err)
+			err = fmt.Errorf("get user by username: %w", err)
 		}
 		return nil, err
 	}
 	return u, nil
 }
 
-// Upsert inserts or updates a user row identified by user_id (Auth0 subject).
+// GetByID retrieves a user by their UUID primary key.
+func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, error) {
+	ctx, span := userTracer.Start(ctx, "db.users.GetByID")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.user.id", id))
+
+	q := "SELECT " + userColumns + " FROM users WHERE id = $1"
+	u, err := scanUser(r.pool.QueryRow(ctx, q, id))
+	if err != nil {
+		if !errors.Is(err, domain.ErrUserNotFound) {
+			span.RecordError(err)
+			err = fmt.Errorf("get user by id: %w", err)
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
+// Upsert inserts or updates a user row identified by username (LF SSO username).
 // Used by the auth flow to synchronise profile data on every login.
 func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.User, error) {
 	ctx, span := userTracer.Start(ctx, "db.users.Upsert")
 	defer span.End()
-	span.SetAttributes(attribute.String("db.user_id", u.UserID))
+	span.SetAttributes(attribute.String("db.username", u.Username))
 
 	const q = `
-		INSERT INTO users (user_id, email, given_name, family_name, name, avatar_url)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (user_id) DO UPDATE SET
-			email       = EXCLUDED.email,
-			given_name  = EXCLUDED.given_name,
-			family_name = EXCLUDED.family_name,
-			name        = EXCLUDED.name,
-			avatar_url  = EXCLUDED.avatar_url,
-			updated_on  = NOW()
+		INSERT INTO users (username, legacy_user_id, email, given_name, family_name, name, avatar_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (username) DO UPDATE SET
+			legacy_user_id = EXCLUDED.legacy_user_id,
+			email          = EXCLUDED.email,
+			given_name     = EXCLUDED.given_name,
+			family_name    = EXCLUDED.family_name,
+			name           = EXCLUDED.name,
+			avatar_url     = EXCLUDED.avatar_url,
+			updated_on     = NOW()
 		RETURNING ` + userColumns
 
 	result, err := scanUser(r.pool.QueryRow(ctx, q,
-		u.UserID, nullableString(u.Email), nullableString(u.GivenName),
-		nullableString(u.FamilyName), nullableString(u.Name), nullableString(u.AvatarURL),
+		u.Username, nullableString(u.LegacyUserID), nullableString(u.Email),
+		nullableString(u.GivenName), nullableString(u.FamilyName),
+		nullableString(u.Name), nullableString(u.AvatarURL),
 	))
 	if err != nil {
 		span.RecordError(err)
@@ -85,21 +105,22 @@ func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.Us
 
 // UpdateStripeInfo persists the Stripe Customer ID and default PaymentMethod
 // for a user. Called after CreateCustomer and AttachPaymentMethod flows.
+// userUUID is the users.id UUID primary key.
 // An empty paymentMethodID leaves the existing stripe_default_payment_method
 // unchanged (NULLIF ensures we never overwrite a real pm_xxx with an empty string).
-func (r *UserRepository) UpdateStripeInfo(ctx context.Context, userID, customerID, paymentMethodID string) error {
+func (r *UserRepository) UpdateStripeInfo(ctx context.Context, userUUID, customerID, paymentMethodID string) error {
 	ctx, span := userTracer.Start(ctx, "db.users.UpdateStripeInfo")
 	defer span.End()
-	span.SetAttributes(attribute.String("db.user_id", userID))
+	span.SetAttributes(attribute.String("db.user.id", userUUID))
 
 	const q = `
 		UPDATE users SET
 			stripe_customer_id            = COALESCE(NULLIF($2, ''), stripe_customer_id),
 			stripe_default_payment_method = COALESCE(NULLIF($3, ''), stripe_default_payment_method),
 			updated_on = NOW()
-		WHERE user_id = $1`
+		WHERE id = $1`
 
-	tag, err := r.pool.Exec(ctx, q, userID, customerID, paymentMethodID)
+	tag, err := r.pool.Exec(ctx, q, userUUID, customerID, paymentMethodID)
 	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("update stripe info: %w", err)
@@ -111,18 +132,19 @@ func (r *UserRepository) UpdateStripeInfo(ctx context.Context, userID, customerI
 }
 
 // ClearStripePaymentMethod sets stripe_default_payment_method to NULL.
+// userUUID is the users.id UUID primary key.
 // Called when the user explicitly removes their saved card.
-func (r *UserRepository) ClearStripePaymentMethod(ctx context.Context, userID string) error {
+func (r *UserRepository) ClearStripePaymentMethod(ctx context.Context, userUUID string) error {
 	ctx, span := userTracer.Start(ctx, "db.users.ClearStripePaymentMethod")
 	defer span.End()
-	span.SetAttributes(attribute.String("db.user_id", userID))
+	span.SetAttributes(attribute.String("db.user.id", userUUID))
 
 	const q = `
 		UPDATE users
 		SET stripe_default_payment_method = NULL, updated_on = NOW()
-		WHERE user_id = $1`
+		WHERE id = $1`
 
-	tag, err := r.pool.Exec(ctx, q, userID)
+	tag, err := r.pool.Exec(ctx, q, userUUID)
 	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("clear stripe payment method: %w", err)
@@ -136,12 +158,13 @@ func (r *UserRepository) ClearStripePaymentMethod(ctx context.Context, userID st
 func scanUser(row scanner) (*models.User, error) {
 	u := &models.User{}
 	var (
+		legacyUserID                                  *string
 		email, givenName, familyName, name, avatarURL *string
 		stripeCustomerID, stripeDefaultPaymentMethod  *string
 		createdOn, updatedOn                          *time.Time
 	)
 	err := row.Scan(
-		&u.ID, &u.UserID, &email, &givenName, &familyName, &name, &avatarURL,
+		&u.ID, &u.Username, &legacyUserID, &email, &givenName, &familyName, &name, &avatarURL,
 		&stripeCustomerID, &stripeDefaultPaymentMethod,
 		&createdOn, &updatedOn,
 	)
@@ -151,6 +174,7 @@ func scanUser(row scanner) (*models.User, error) {
 		}
 		return nil, err
 	}
+	u.LegacyUserID = derefString(legacyUserID)
 	u.Email = derefString(email)
 	u.GivenName = derefString(givenName)
 	u.FamilyName = derefString(familyName)

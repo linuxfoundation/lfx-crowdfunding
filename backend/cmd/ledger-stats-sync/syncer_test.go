@@ -275,7 +275,7 @@ func TestEnrichSponsors(t *testing.T) {
 		"org-1": {ID: "org-1", Name: "Linux Foundation", AvatarURL: "http://lf.org/logo.png"},
 	}
 	userMap := map[string]models.User{
-		"auth0|u1": {UserID: "auth0|u1", Name: "Jane Doe", AvatarURL: "http://avatar.io/jane.png"},
+		"auth0|u1": {ID: "auth0|u1", Name: "Jane Doe", AvatarURL: "http://avatar.io/jane.png"},
 	}
 
 	tests := []struct {
@@ -414,7 +414,7 @@ func TestSyncer_Run_upsertsWithEnrichedSponsors(t *testing.T) {
 			"org-1": {ID: "org-1", Name: "CNCF", AvatarURL: "http://cncf.io/logo.png"},
 		},
 		userMap: map[string]models.User{
-			"auth0|user1": {UserID: "auth0|user1", Name: "Alice", AvatarURL: "http://img.io/alice.png"},
+			"auth0|user1": {ID: "auth0|user1", Name: "Alice", AvatarURL: "http://img.io/alice.png"},
 		},
 	}
 	ledger := &mockLedgerSource{

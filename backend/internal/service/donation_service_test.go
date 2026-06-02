@@ -75,7 +75,7 @@ func TestProjectDonationSummaries_IndividualDonor(t *testing.T) {
 				t.Errorf("unexpected userIDs: %v", ids)
 			}
 			return map[string]models.User{
-				"u1": {UserID: "u1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
+				"u1": {ID: "u1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
 			}, nil
 		},
 	}
@@ -141,7 +141,7 @@ func TestProjectDonationSummaries_DeduplicatesUserIDs(t *testing.T) {
 			if len(ids) != 1 {
 				t.Errorf("expected 1 unique userID, got %d: %v", len(ids), ids)
 			}
-			return map[string]models.User{"u1": {UserID: "u1", Name: "Bob"}}, nil
+			return map[string]models.User{"u1": {ID: "u1", Name: "Bob"}}, nil
 		},
 	}
 
@@ -316,8 +316,8 @@ func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 
 	donRepo := &testDonationRepo{}
 	userRepo := &testUserRepo{
-		onGetByUserID: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{UserID: "u1", StripeCustomerID: ""}, nil
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{Username: "u1", StripeCustomerID: ""}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -371,8 +371,8 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 	customerCreated := false
 
 	userRepo := &testUserRepo{
-		onGetByUserID: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{UserID: "u1", StripeCustomerID: existingCustomerID}, nil
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{Username: "u1", StripeCustomerID: existingCustomerID}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -441,7 +441,7 @@ func TestDonationService_Create_UserRepoTransientError(t *testing.T) {
 	dbErr := errors.New("connection reset")
 
 	userRepo := &testUserRepo{
-		onGetByUserID: func(_ context.Context, _ string) (*models.User, error) {
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
 			return nil, dbErr
 		},
 	}

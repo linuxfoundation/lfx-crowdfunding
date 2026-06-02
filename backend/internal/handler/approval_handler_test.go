@@ -129,7 +129,10 @@ func (c *apprStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64
 // apprUserRepository is a no-op UserRepository stub.
 type apprUserRepository struct{}
 
-func (r *apprUserRepository) GetByUserID(_ context.Context, _ string) (*models.User, error) {
+func (r *apprUserRepository) GetByUsername(_ context.Context, _ string) (*models.User, error) {
+	return nil, errors.New("user not found")
+}
+func (r *apprUserRepository) GetByID(_ context.Context, _ string) (*models.User, error) {
 	return nil, errors.New("user not found")
 }
 func (r *apprUserRepository) Upsert(_ context.Context, u *models.User) (*models.User, error) {

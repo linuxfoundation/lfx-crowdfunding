@@ -51,12 +51,22 @@ func (s *SubscriptionService) ListByInitiative(ctx context.Context, initiativeID
 }
 
 // ListByUser returns paginated subscriptions owned by the authenticated user.
-func (s *SubscriptionService) ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+func (s *SubscriptionService) ListByUser(ctx context.Context, username string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.ListByUser")
 	defer span.End()
-	span.SetAttributes(attribute.String("user.id", userID))
+	span.SetAttributes(attribute.String("user.username", username))
 
-	subs, meta, err := s.repo.ListByUser(ctx, userID, filter)
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			// User has no DB record yet — they have never subscribed. Return empty list.
+			return []models.Subscription{}, &models.PaginationMeta{Limit: filter.Limit, Offset: filter.Offset}, nil
+		}
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("resolve user: %w", err)
+	}
+
+	subs, meta, err := s.repo.ListByUser(ctx, user.ID, filter)
 	if err != nil {
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list subscriptions: %w", err)
@@ -69,12 +79,12 @@ func (s *SubscriptionService) ListByUser(ctx context.Context, userID string, fil
 // has Status == "incomplete" and ClientSecret set — the frontend must call
 // stripe.confirmPayment(ClientSecret) to complete 3DS and activate the subscription.
 // The webhook (invoice.payment_succeeded) advances the status to "active".
-func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, userEmail string, input models.SubscriptionCreateInput) (*models.Subscription, error) {
+func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username, userEmail string, input models.SubscriptionCreateInput) (*models.Subscription, error) {
 	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.Create")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("initiative.id", initiativeID),
-		attribute.String("user.id", userID),
+		attribute.String("user.username", username),
 	)
 
 	if input.AmountCents <= 0 {
@@ -118,29 +128,28 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	// Only treat ErrUserNotFound as "no existing customer"; any other error
 	// (e.g. transient DB outage) must be returned to avoid creating orphaned
 	// Stripe customers when the DB read fails.
-	customerID := ""
-	user, err := s.userRepo.GetByUserID(ctx, userID)
+	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		if !errors.Is(err, domain.ErrUserNotFound) {
 			span.RecordError(err)
-			return nil, fmt.Errorf("get user: %w", err)
+			return nil, err
 		}
 		// First-time user: upsert a minimal users row so UpdateStripeInfo can
 		// persist the new customer ID (UpdateStripeInfo is UPDATE-only).
-		if _, upsertErr := s.userRepo.Upsert(ctx, &models.User{UserID: userID, Email: userEmail}); upsertErr != nil {
-			span.RecordError(upsertErr)
-			return nil, fmt.Errorf("ensure user record: %w", upsertErr)
+		user, err = s.userRepo.Upsert(ctx, &models.User{Username: username, Email: userEmail})
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("ensure user record: %w", err)
 		}
-	} else {
-		customerID = user.StripeCustomerID
 	}
+	customerID := user.StripeCustomerID
 	if customerID == "" {
-		customerID, err = s.stripe.CreateCustomer(ctx, userID, userEmail)
+		customerID, err = s.stripe.CreateCustomer(ctx, username, userEmail)
 		if err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("create stripe customer: %w", err)
 		}
-		if persistErr := s.userRepo.UpdateStripeInfo(ctx, userID, customerID, ""); persistErr != nil {
+		if persistErr := s.userRepo.UpdateStripeInfo(ctx, user.ID, customerID, ""); persistErr != nil {
 			span.RecordError(persistErr)
 			return nil, fmt.Errorf("persist stripe customer: %w", persistErr)
 		}
@@ -156,7 +165,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 
 	result, err := s.stripe.CreateSubscription(ctx, models.StripeSubscriptionRequest{
 		InitiativeID:     initiativeID,
-		UserID:           userID,
+		UserID:           user.ID,
 		StripeCustomerID: customerID,
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
@@ -168,7 +177,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 	}
 
 	sub := &models.Subscription{
-		UserID:                   userID,
+		UserID:                   user.ID,
 		InitiativeID:             initiativeID,
 		OrganizationID:           input.OrganizationID,
 		Category:                 input.Category,
@@ -192,7 +201,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, userID, 
 }
 
 // Cancel cancels a Stripe subscription and marks it cancelled in the database.
-func (s *SubscriptionService) Cancel(ctx context.Context, id, callerID string) error {
+func (s *SubscriptionService) Cancel(ctx context.Context, id, callerUsername string) error {
 	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.Cancel")
 	defer span.End()
 	span.SetAttributes(attribute.String("subscription.id", id))
@@ -200,9 +209,19 @@ func (s *SubscriptionService) Cancel(ctx context.Context, id, callerID string) e
 	sub, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return fmt.Errorf("get subscription: %w", err)
 	}
-	if sub.UserID != callerID {
+
+	caller, err := s.userRepo.GetByUsername(ctx, callerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			// Unknown caller cannot own any subscription.
+			return domain.ErrForbidden
+		}
+		span.RecordError(err)
+		return fmt.Errorf("resolve caller: %w", err)
+	}
+	if sub.UserID != caller.ID {
 		return domain.ErrForbidden
 	}
 

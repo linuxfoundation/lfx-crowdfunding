@@ -183,6 +183,20 @@ def _normalize_status(status: str | None) -> str | None:
     return status
 
 
+def _strip_provider_prefix(uid: str) -> str:
+    """Derive username from a DynamoDB user_id by stripping the auth0| or github| prefix.
+
+    Examples:
+        'auth0|abc123'  → 'abc123'
+        'github|456789' → '456789'
+        'lewis'         → 'lewis'  (returned as-is)
+    """
+    for prefix in ("auth0|", "github|"):
+        if uid.startswith(prefix):
+            return uid[len(prefix):]
+    return uid
+
+
 def _redact_dsn(dsn: str) -> str:
     """Redact password from PostgreSQL DSN for safe logging."""
     import re
@@ -250,11 +264,19 @@ def _trunc(value: str | None, max_len: int, label: str = "") -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def migrate_users(cur, users: list, placeholder_ids: set) -> set:
+def migrate_users(cur, users: list, placeholder_ids: set) -> tuple:
     """
     Upsert users from lff-prod-users.
-    Insert placeholder rows for any user_id referenced elsewhere but absent here.
-    Returns the complete set of known user_ids after migration.
+    Insert placeholder rows for any legacy_user_id referenced elsewhere but absent here.
+
+    Each user row is inserted with:
+      - id             : deterministic UUID derived from the DynamoDB user_id via _uuid5
+      - legacy_user_id : the DynamoDB user_id value (Auth0 sub as stored in DynamoDB)
+      - username       : legacy_user_id with any leading auth0| or github| prefix removed
+
+    Returns:
+      known            : set of known DynamoDB user_ids (legacy_user_id values)
+      user_id_to_uuid  : dict mapping DynamoDB user_id → postgres users.id UUID string
     """
     log.info(
         "Migrating users (%d records + %d placeholders) …",
@@ -263,26 +285,33 @@ def migrate_users(cur, users: list, placeholder_ids: set) -> set:
     )
 
     sql = """
-        INSERT INTO users (user_id, email, given_name, family_name, name, avatar_url)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET
-            email       = EXCLUDED.email,
-            given_name  = EXCLUDED.given_name,
-            family_name = EXCLUDED.family_name,
-            name        = EXCLUDED.name,
-            avatar_url  = EXCLUDED.avatar_url
+        INSERT INTO users (id, legacy_user_id, username, email, given_name, family_name, name, avatar_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (id) DO UPDATE SET
+            legacy_user_id = EXCLUDED.legacy_user_id,
+            username       = EXCLUDED.username,
+            email          = EXCLUDED.email,
+            given_name     = EXCLUDED.given_name,
+            family_name    = EXCLUDED.family_name,
+            name           = EXCLUDED.name,
+            avatar_url     = EXCLUDED.avatar_url
     """
     rows: list = []
     known: set = set()
+    user_id_to_uuid: dict = {}
 
     for u in users:
         uid = u.get("id")
         if not uid:
             continue
+        pg_uuid = _uuid5("user", uid)
         known.add(uid)
+        user_id_to_uuid[uid] = pg_uuid
         rows.append(
             (
+                pg_uuid,
                 uid,
+                _strip_provider_prefix(uid),
                 u.get("email"),
                 u.get("givenName"),
                 u.get("familyName"),
@@ -293,12 +322,14 @@ def migrate_users(cur, users: list, placeholder_ids: set) -> set:
 
     for uid in placeholder_ids:
         if uid and uid not in known:
+            pg_uuid = _uuid5("user", uid)
             known.add(uid)
-            rows.append((uid, None, None, None, None, None))
+            user_id_to_uuid[uid] = pg_uuid
+            rows.append((pg_uuid, uid, _strip_provider_prefix(uid), None, None, None, None, None))
 
     psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
     log.info("  → %d user rows upserted", len(rows))
-    return known
+    return known, user_id_to_uuid
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +337,7 @@ def migrate_users(cur, users: list, placeholder_ids: set) -> set:
 # ---------------------------------------------------------------------------
 
 
-def migrate_organizations(cur, orgs: list, known_users: set) -> set:
+def migrate_organizations(cur, orgs: list, known_users: set, user_id_to_uuid: dict) -> set:
     """
     Upsert organizations from lff-prod-organizations.
     Returns the set of postgres organization UUIDs inserted (for FK resolution).
@@ -336,9 +367,10 @@ def migrate_organizations(cur, orgs: list, known_users: set) -> set:
             continue
 
         pg_id = _as_uuid(o.get("organizationId")) or str(uuid.uuid4())
+        pg_owner_uuid = user_id_to_uuid[owner_id]
         known_org_ids.add(pg_id)
         rows.append(
-            (pg_id, owner_id, o.get("name"), o.get("avatarUrl"), o.get("status"))
+            (pg_id, pg_owner_uuid, o.get("name"), o.get("avatarUrl"), o.get("status"))
         )
 
     psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
@@ -368,7 +400,7 @@ _PROJECT_GOAL_CATEGORIES = [
 # ---------------------------------------------------------------------------
 
 
-def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -> set:
+def migrate_initiatives(cur, entities: list, projects: list, known_users: set, user_id_to_uuid: dict) -> set:
     """
     Merge lff-prod-entities and lff-prod-projects into the initiatives table
     and all normalised child tables.
@@ -443,7 +475,7 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
                 pg_id,  # id
                 "project",  # initiative_type
                 "projects",  # source_dynamo_table
-                owner_id,  # owner_id
+                user_id_to_uuid[owner_id],  # owner_id (UUID → users.id)
                 p.get("name"),  # name
                 p.get("slug"),  # slug
                 _normalize_status(p.get("status")),  # status
@@ -677,7 +709,7 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set) -
                 pg_id,  # id
                 entity_type,  # initiative_type
                 "entities",  # source_dynamo_table
-                owner_id,  # owner_id
+                user_id_to_uuid[owner_id],  # owner_id (UUID → users.id)
                 e.get("name"),  # name
                 e.get("slug") or None,  # slug
                 _normalize_status(e.get("status")),  # status
@@ -1154,6 +1186,7 @@ def migrate_donations(
     proj_donations: list,
     entity_donations: list,
     known_users: set,
+    user_id_to_uuid: dict,
     known_initiative_ids: set,
     known_org_ids: set,
 ):
@@ -1165,6 +1198,7 @@ def migrate_donations(
     are skipped.
     donations.organization_id maps from the DynamoDB `orgId` attribute and is a
     HARD FK → resolved only when the UUID is in known_org_ids, else NULL.
+    donations.user_id is a UUID FK → users.id resolved via user_id_to_uuid.
     """
     log.info(
         "Migrating donations (%d project + %d entity = %d total) …",
@@ -1215,7 +1249,7 @@ def migrate_donations(
         rows.append(
             (
                 pg_id,
-                user_id,
+                user_id_to_uuid[user_id],
                 initiative_id,
                 org_id,
                 _to_jsonb(d.get("cachedDetails")),
@@ -1247,7 +1281,7 @@ def migrate_donations(
         rows.append(
             (
                 pg_id,
-                user_id,
+                user_id_to_uuid[user_id],
                 initiative_id,
                 org_id,
                 _to_jsonb(d.get("cachedDetails")),
@@ -1281,6 +1315,7 @@ def migrate_subscriptions(
     proj_subs: list,
     entity_subs: list,
     known_users: set,
+    user_id_to_uuid: dict,
     known_initiative_ids: set,
     known_org_ids: set,
 ):
@@ -1292,6 +1327,7 @@ def migrate_subscriptions(
     are skipped.
     subscriptions.organization_id maps from the DynamoDB `orgId` attribute and
     is a HARD FK → resolved only when the UUID is in known_org_ids, else NULL.
+    subscriptions.user_id is a UUID FK → users.id resolved via user_id_to_uuid.
     """
     log.info(
         "Migrating subscriptions (%d project + %d entity = %d total) …",
@@ -1345,7 +1381,7 @@ def migrate_subscriptions(
         rows.append(
             (
                 pg_id,
-                user_id,
+                user_id_to_uuid[user_id],
                 initiative_id,
                 org_id,
                 _to_jsonb(s.get("cachedDetails")),
@@ -1379,7 +1415,7 @@ def migrate_subscriptions(
         rows.append(
             (
                 pg_id,
-                user_id,
+                user_id_to_uuid[user_id],
                 initiative_id,
                 org_id,
                 _to_jsonb(s.get("cachedDetails")),
@@ -1461,16 +1497,16 @@ def main():
         with conn.cursor() as cur:
 
             # 1. user — no FK dependencies
-            known_users = migrate_users(cur, users, extra_user_ids)
+            known_users, user_id_to_uuid = migrate_users(cur, users, extra_user_ids)
             conn.commit()
 
             # 2. organization — FK → user
-            known_org_ids = migrate_organizations(cur, orgs, known_users)
+            known_org_ids = migrate_organizations(cur, orgs, known_users, user_id_to_uuid)
             conn.commit()
 
             # 3. initiatives — FK → user  (merged entities + projects)
             known_initiative_ids = migrate_initiatives(
-                cur, entities, projects, known_users
+                cur, entities, projects, known_users, user_id_to_uuid
             )
             conn.commit()
 
@@ -1480,6 +1516,7 @@ def main():
                 proj_donations,
                 entity_donations,
                 known_users,
+                user_id_to_uuid,
                 known_initiative_ids,
                 known_org_ids,
             )
@@ -1491,6 +1528,7 @@ def main():
                 proj_subs,
                 entity_subs,
                 known_users,
+                user_id_to_uuid,
                 known_initiative_ids,
                 known_org_ids,
             )

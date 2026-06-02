@@ -122,7 +122,7 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // Create handles POST /v1/initiatives — requires JWT.
 func (h *InitiativeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
@@ -133,7 +133,7 @@ func (h *InitiativeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.svc.Create(r.Context(), principal.UserID, input)
+	created, err := h.svc.Create(r.Context(), principal.Username, input)
 	if err != nil {
 		Error(w, err)
 		return
@@ -144,7 +144,7 @@ func (h *InitiativeHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update handles PATCH /v1/initiatives/{id} — requires JWT.
 func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
@@ -156,7 +156,7 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.svc.Update(r.Context(), id, principal.UserID, input)
+	updated, err := h.svc.Update(r.Context(), id, principal.Username, input)
 	if err != nil {
 		Error(w, err)
 		return
@@ -239,7 +239,7 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 // ALLOWED_APPROVERS. {action} must be "approve" or "decline".
 func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
@@ -283,13 +283,13 @@ func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Reque
 // Delete handles DELETE /v1/initiatives/{id} — requires JWT.
 func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
 
 	id := chi.URLParam(r, "id")
-	if err := h.svc.Delete(r.Context(), id, principal.UserID); err != nil {
+	if err := h.svc.Delete(r.Context(), id, principal.Username); err != nil {
 		Error(w, err)
 		return
 	}
@@ -297,20 +297,14 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // isApprover reports whether the principal is in the allowed approvers list.
-// It matches against both the raw Username claim and the localpart of UserID
-// (the portion after the last "|", e.g. "elim" from "auth0|elim") to handle
-// IdPs that populate UserID but leave Username empty.
+// Identity is matched solely against Principal.Username — the LF SSO username
+// claim or the X-Username header value for M2M callers.
 func (h *InitiativeHandler) isApprover(principal *models.Principal) bool {
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		return false
 	}
-	// Derive a bare username from UserID by stripping the IdP prefix (e.g. "auth0|").
-	bareID := principal.UserID
-	if idx := strings.LastIndex(bareID, "|"); idx >= 0 {
-		bareID = bareID[idx+1:]
-	}
 	for _, a := range h.allowedApprovers {
-		if strings.EqualFold(a, principal.Username) || strings.EqualFold(a, bareID) {
+		if strings.EqualFold(a, principal.Username) {
 			return true
 		}
 	}

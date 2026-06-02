@@ -41,7 +41,7 @@ type SubscriptionFilter struct {
 
 // Principal holds the authenticated user's identity extracted from the JWT.
 type Principal struct {
-	UserID        string // Auth0 subject (e.g. "auth0|elim") — matches users.user_id
+	UserID        string // Auth0 subject (e.g. "auth0|elim") — no longer the DB FK
 	Username      string // LF SSO username from custom claim
 	Email         string
 	EmailVerified bool

@@ -54,7 +54,7 @@ func (h *DonationHandler) List(w http.ResponseWriter, r *http.Request) {
 // Returns the authenticated user's own donations across all initiatives, paginated.
 func (h *DonationHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
@@ -65,7 +65,7 @@ func (h *DonationHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 
-	donations, meta, err := h.svc.ListByUser(r.Context(), principal.UserID, models.DonationFilter{
+	donations, meta, err := h.svc.ListByUser(r.Context(), principal.Username, models.DonationFilter{
 		Status: q.Get("status"),
 		Limit:  limit,
 		Offset: offset,
@@ -90,7 +90,7 @@ func (h *DonationHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 // creating duplicate charges.
 func (h *DonationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
+	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
@@ -109,7 +109,7 @@ func (h *DonationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	input.IdempotencyKey = idempotencyKey
 
-	created, err := h.svc.Create(r.Context(), initiativeID, principal.UserID, principal.Email, input)
+	created, err := h.svc.Create(r.Context(), initiativeID, principal.Username, principal.Email, input)
 	if err != nil {
 		Error(w, err)
 		return
