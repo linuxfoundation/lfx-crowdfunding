@@ -8,7 +8,7 @@
 -- Description: Fully normalised schema.
 --   initiatives merges lff-prod-projects + lff-prod-entities.
 --   v2.1: users.id (UUID) is now the FK target for all related tables.
---         users.username stores the Auth0 username claim (was users.user_id).
+--         users.username stores the LF SSO username (was users.user_id).
 --         users.legacy_user_id retains the DynamoDB user_id for traceability.
 --         Stripe columns (previously 002_stripe_3ds.up.sql) merged in.
 --
@@ -37,13 +37,13 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- TABLE: users
 --
 -- users.id        — surrogate UUID PK; FK target for all related tables
--- users.username  — Auth0 username claim; application-level identifier
+-- users.username  — LF SSO username; application-level identifier
 -- users.legacy_user_id — formerly user_id; DynamoDB user_id value (migration only,
 --                        nullable for users created post-migration)
 -- ============================================
 CREATE TABLE IF NOT EXISTS users (
   id                            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  username                      TEXT         NOT NULL UNIQUE, -- Auth0 username claim
+  username                      TEXT         NOT NULL UNIQUE, -- LF SSO username
   legacy_user_id                VARCHAR(255) UNIQUE,          -- DynamoDB user_id; NULL for post-migration users
   email                         TEXT,
   given_name                    TEXT,
@@ -474,8 +474,6 @@ CREATE TRIGGER set_updated_on BEFORE UPDATE ON subscriptions                    
 -- ============================================
 
 -- users
-CREATE INDEX IF NOT EXISTS idx_users_username                       ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_legacy_user_id                 ON users(legacy_user_id) WHERE legacy_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_stripe_customer                ON users(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
 
 -- organizations

@@ -199,7 +199,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username, us
 	}
 	customerID := user.StripeCustomerID
 	if customerID == "" {
-		customerID, err = s.stripe.CreateCustomer(ctx, username, userEmail)
+		customerID, err = s.stripe.CreateCustomer(ctx, user.ID, userEmail)
 		if err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("create stripe customer: %w", err)

@@ -273,6 +273,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	// with a clean error when the user does not exist.
 	owner, err := s.userRepo.GetByUsername(ctx, ownerUsername)
 	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrForbidden
+		}
 		span.RecordError(err)
 		return nil, fmt.Errorf("get owner: %w", err)
 	}

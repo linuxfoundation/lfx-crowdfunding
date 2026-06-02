@@ -25,9 +25,12 @@ func TestPaymentService_CreateSetupIntent_NewCustomer(t *testing.T) {
 	svc := NewPaymentService(
 		&testUserRepo{
 			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-				return &models.User{Username: "u1", StripeCustomerID: ""}, nil
+				return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeCustomerID: ""}, nil
 			},
-			onUpdateStripeInfo: func(_ context.Context, _, customerID, _ string) error {
+			onUpdateStripeInfo: func(_ context.Context, userUUID, customerID, _ string) error {
+				if userUUID != "00000000-0000-0000-0000-000000000001" {
+					t.Errorf("UpdateStripeInfo userUUID = %q, want 00000000-0000-0000-0000-000000000001", userUUID)
+				}
 				savedCustomerID = customerID
 				return nil
 			},

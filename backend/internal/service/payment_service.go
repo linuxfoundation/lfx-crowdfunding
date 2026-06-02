@@ -48,7 +48,7 @@ func (s *PaymentService) ensureCustomer(ctx context.Context, username, email str
 	} else if user.StripeCustomerID != "" {
 		return user.ID, user.StripeCustomerID, nil
 	}
-	newCustomerID, err := s.stripe.CreateCustomer(ctx, username, email)
+	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.ID, email)
 	if err != nil {
 		return "", "", fmt.Errorf("create stripe customer: %w", err)
 	}

@@ -731,7 +731,7 @@ func newCreateSvcWithEmail(repo domain.InitiativeRepository, userRepo *mockUserR
 func TestCreate_SendsForReviewEmail(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	userRepo := &mockUserRepository{
-		user: &models.User{Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
 	emailSvc := &mockEmailService{}
 
@@ -785,7 +785,7 @@ func TestCreate_ForReviewEmail_UserLookupErrorFails(t *testing.T) {
 func TestCreate_ForReviewEmail_EmailErrorIsNonFatal(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	userRepo := &mockUserRepository{
-		user: &models.User{Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
 	emailSvc := &mockEmailService{err: errors.New("mandrill down")}
 
@@ -802,7 +802,7 @@ func TestCreate_ForReviewEmail_EmailErrorIsNonFatal(t *testing.T) {
 func TestCreate_ForReviewEmail_FallsBackToEmailWhenNameEmpty(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	userRepo := &mockUserRepository{
-		user: &models.User{Username: "owner-1", Email: "owner@example.com", Name: ""},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: ""},
 	}
 	emailSvc := &mockEmailService{}
 
@@ -905,13 +905,13 @@ func TestProcessApproval_SendsApprovedEmail(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
 	}
 	userRepo := &mockUserRepository{
-		user: &models.User{Username: "auth0|owner-1", Email: "owner@example.com", Name: "Alice"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
 	emailSvc := &mockEmailService{}
 
@@ -939,13 +939,13 @@ func TestProcessApproval_SendsDeclinedEmail(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
 	}
 	userRepo := &mockUserRepository{
-		user: &models.User{Username: "auth0|owner-1", Email: "owner@example.com", Name: "Bob"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Bob"},
 	}
 	emailSvc := &mockEmailService{}
 
@@ -973,13 +973,13 @@ func TestProcessApproval_EmailErrorIsNonFatal(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
 	}
 	userRepo := &mockUserRepository{
-		user: &models.User{Username: "auth0|owner-1", Email: "owner@example.com", Name: "Alice"},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
 	emailSvc := &mockEmailService{err: errors.New("mandrill down")}
 
@@ -996,7 +996,7 @@ func TestProcessApproval_UserLookupErrorIsNonFatal(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
@@ -1021,13 +1021,13 @@ func TestProcessApproval_FallsBackToEmailWhenNameEmpty(t *testing.T) {
 		initiative: &models.Initiative{
 			ID:      "init-1",
 			Status:  models.StatusSubmitted,
-			OwnerID: "auth0|owner-1",
+			OwnerID: "00000000-0000-0000-0000-000000000001",
 			Name:    "My Project",
 			Slug:    "my-project",
 		},
 	}
 	userRepo := &mockUserRepository{
-		user: &models.User{Username: "auth0|owner-1", Email: "owner@example.com", Name: ""},
+		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: ""},
 	}
 	emailSvc := &mockEmailService{}
 

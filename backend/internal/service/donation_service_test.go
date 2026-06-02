@@ -317,7 +317,7 @@ func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 	donRepo := &testDonationRepo{}
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{Username: "u1", StripeCustomerID: ""}, nil
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeCustomerID: ""}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -372,7 +372,7 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{Username: "u1", StripeCustomerID: existingCustomerID}, nil
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeCustomerID: existingCustomerID}, nil
 		},
 	}
 	stripe := &configStripeClient{
