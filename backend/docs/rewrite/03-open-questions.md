@@ -37,7 +37,9 @@ The following columns currently store Auth0 sub and must switch to LFID username
 
 - `donations.user_id` → join by `username` going forward
 - `subscriptions.user_id` → join by `username` going forward
-- `stripe_payment_accounts.user_id` → join by `username` going forward
+- `users.stripe_customer_id` — Stripe customer mapping is keyed by username going forward (no `stripe_payment_accounts` table exists; Stripe customer data lives on `users`)
+- `organizations.owner_id` — ownership column references `users(user_id)` today; must switch to username-based lookup
+- `initiatives.owner_id` — same as above
 - Any other per-user table created during the rewrite
 
 The `users` table gains a `username` column (NOT NULL going forward; NOT NULL after backfill for migrated rows) and keeps `user_id` (nullable for new users).
@@ -45,8 +47,8 @@ The `users` table gains a `username` column (NOT NULL going forward; NOT NULL af
 #### What this affects in CF backend code
 
 - M2M middleware: reads `X-Username` → `Principal.Username` (already documented in `08-self-serve-auth.md`).
-- User JWT middleware: already extracts `Username` from the JWT custom claim (`jwt.go:127`) — no change needed.
-- All handlers on protected routes: switch from `principal.UserID` → `principal.Username` for user identity. Affected handlers: `donation_handler.go`, `subscription_handler.go`, `payment_handler.go`, `initiative_handler.go`, `upload_handler.go`.
+- User JWT middleware: already extracts `Username` from the JWT custom claim (`jwt.go`) — no change needed.
+- All handlers on protected routes: switch from `principal.UserID` → `principal.Username` for user identity. Affected handlers: `donation_handler.go`, `subscription_handler.go`, `payment_handler.go`, `initiative_handler.go`. Note: `upload_handler.go` only verifies that a principal is present — it performs no per-user ownership check via `UserID` and does not need to change.
 - Services and repositories: parameter names and query columns change from `userID`/`user_id` to `username`.
 
 #### Open sub-items
