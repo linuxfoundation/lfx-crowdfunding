@@ -539,7 +539,6 @@ func TestMiddleware_UsesCaseInsensitiveXUsernameHeaderWhenClaimMissing(t *testin
 
 			r := makeRequest(m2mTokenWithoutUsername())
 			r.Header.Set(tc.headerName, tc.value)
-			r.Header.Set("X-User-ID", "auth0|caseuser")
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, r)
 
@@ -573,7 +572,6 @@ func TestMiddleware_DoesNotOverrideClaimUsernameWithXUsernameHeader(t *testing.T
 
 	r := makeRequest(userToken())
 	r.Header.Set("X-Username", "spoofed-user")
-	r.Header.Set("X-User-ID", "auth0|spoofed")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 
@@ -977,5 +975,146 @@ func TestM2MImpersonation_MissingXUsernameFailsHandlerGuard(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 when X-Username absent, got %d", w.Code)
+	}
+}
+
+// ── MultiAudienceMiddleware ───────────────────────────────────────────────────
+
+const testM2MAudience = "test-m2m-audience"
+
+// newTestM2MAuthenticator builds a second authenticator that accepts tokens
+// with testM2MAudience, simulating a dedicated M2M audience validator.
+func newTestM2MAuthenticator() *JWTAuthenticator {
+	cfg := JWTAuthConfig{
+		Audience:          testM2MAudience,
+		Issuer:            testIssuer,
+		ClockSkew:         5 * time.Second,
+		AuthorizedClients: "m2m-client",
+	}
+	return &JWTAuthenticator{
+		cfg:               cfg,
+		validator:         newJWTTestValidatorWithKey(cfg, &testRSAKey.PublicKey),
+		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		authorizedClients: buildClientSet(cfg.AuthorizedClients),
+	}
+}
+
+func m2mTokenWithM2MAudience() string {
+	return sign(map[string]any{
+		"sub": "m2m-client@clients",
+		"iss": testIssuer,
+		"aud": testM2MAudience,
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"azp": "m2m-client",
+		"gty": "client_credentials",
+	})
+}
+
+// TestMultiAudienceMiddleware_PrimaryWins verifies that a valid user token (main
+// audience) is accepted by MultiAudienceMiddleware even when a fallback is configured.
+func TestMultiAudienceMiddleware_PrimaryWins(t *testing.T) {
+	primary := newTestAuthenticator(defaultCfg())
+	fallback := newTestM2MAuthenticator()
+	mw := MultiAudienceMiddleware(primary, fallback)
+
+	var gotUserID string
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := PrincipalFromContext(r.Context()); p != nil {
+			gotUserID = p.UserID
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(userToken()))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if gotUserID != "auth0|testuser" {
+		t.Errorf("UserID = %q, want %q", gotUserID, "auth0|testuser")
+	}
+}
+
+// TestMultiAudienceMiddleware_FallbackWins verifies that an M2M token minted with the
+// dedicated M2M audience is accepted when the primary (user audience) rejects it.
+func TestMultiAudienceMiddleware_FallbackWins(t *testing.T) {
+	primary := newTestAuthenticator(defaultCfg())
+	fallback := newTestM2MAuthenticator()
+	mw := MultiAudienceMiddleware(primary, fallback)
+
+	var gotUserID string
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := PrincipalFromContext(r.Context()); p != nil {
+			gotUserID = p.UserID
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := makeRequest(m2mTokenWithM2MAudience())
+	r.Header.Set("X-Username", "acting-user")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if gotUserID != "m2m-client@clients" {
+		t.Errorf("UserID = %q, want %q", gotUserID, "m2m-client@clients")
+	}
+}
+
+// TestMultiAudienceMiddleware_BothFail verifies that MultiAudienceMiddleware returns 401
+// when the token is invalid for both authenticators.
+func TestMultiAudienceMiddleware_BothFail(t *testing.T) {
+	primary := newTestAuthenticator(defaultCfg())
+	fallback := newTestM2MAuthenticator()
+	mw := MultiAudienceMiddleware(primary, fallback)
+
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Token signed for a completely different audience — neither accepts it.
+	badToken := sign(map[string]any{
+		"sub": "auth0|user",
+		"iss": testIssuer,
+		"aud": "totally-wrong-audience",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(badToken))
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+// TestMultiAudienceMiddleware_BypassModeUsedWhenActive verifies that MultiAudienceMiddleware
+// uses the primary bypass path (local dev only) when it is active.
+func TestMultiAudienceMiddleware_BypassModeUsedWhenActive(t *testing.T) {
+	primaryCfg := defaultCfg()
+	primaryCfg.DisabledMockLocalPrincipal = "local-dev-user"
+	primary := &JWTAuthenticator{cfg: primaryCfg, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	fallback := newTestM2MAuthenticator()
+	mw := MultiAudienceMiddleware(primary, fallback)
+
+	var gotUserID string
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := PrincipalFromContext(r.Context()); p != nil {
+			gotUserID = p.UserID
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest("")) // no token needed in bypass mode
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if gotUserID != "local-dev-user" {
+		t.Errorf("UserID = %q, want %q", gotUserID, "local-dev-user")
 	}
 }

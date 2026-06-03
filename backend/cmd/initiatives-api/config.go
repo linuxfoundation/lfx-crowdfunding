@@ -47,13 +47,18 @@ type DatabaseConfig struct {
 
 // JWTConfig holds Auth0 / JWKS settings.
 type JWTConfig struct {
-	JWKSURL   string
-	Audience  string
-	Issuer    string
-	ClockSkew time.Duration
+	JWKSURL  string
+	Audience string
+	// M2MAudience, when non-empty, enables a second JWT authenticator that
+	// accepts tokens minted with this audience exclusively. Used to allow M2M
+	// callers (e.g. LfxSelfServe) to reach /me endpoints with a dedicated
+	// audience separate from the user-facing audience. Set JWT_M2M_AUDIENCE.
+	M2MAudience string
+	Issuer      string
+	ClockSkew   time.Duration
 	// AuthorizedClients, when non-empty, enforces that every token's client ID
 	// (azp/client_id/@clients) is in this whitespace-separated list. Also gates
-	// the X-Username / X-User-ID header impersonation feature.
+	// the X-Username header impersonation feature.
 	AuthorizedClients string
 }
 
@@ -116,12 +121,12 @@ type ApprovalConfig struct {
 
 // MandrillConfig holds Mandrill transactional email settings.
 type MandrillConfig struct {
-	APIKey            string
-	FromEmail         string
-	FromName          string
-	FrontendBase      string // base URL for initiative deep-links in emails
+	APIKey             string
+	FromEmail          string
+	FromName           string
+	FrontendBase       string   // base URL for initiative deep-links in emails
 	NotificationEmails []string // inboxes that receive new-submission alerts
-	Timeout           time.Duration
+	Timeout            time.Duration
 }
 
 // LoadConfig reads all configuration from environment variables.
@@ -251,6 +256,7 @@ func LoadConfig() (*Config, error) {
 		JWT: JWTConfig{
 			JWKSURL:           jwksURL,
 			Audience:          jwtAudience,
+			M2MAudience:       getEnv("JWT_M2M_AUDIENCE", ""),
 			Issuer:            jwtIssuer,
 			ClockSkew:         auth.DefaultClockSkew,
 			AuthorizedClients: getEnv("AUTHORIZED_CLIENTS", ""),
@@ -285,12 +291,12 @@ func LoadConfig() (*Config, error) {
 			AllowedApprovers: parseCommaList(getEnv("ALLOWED_APPROVERS", "")),
 		},
 		Mandrill: MandrillConfig{
-			APIKey:            getEnv("MANDRILL_API_KEY", ""),
-			FromEmail:         getEnv("MANDRILL_FROM_EMAIL", "noreply@lfx.linuxfoundation.org"),
-			FromName:          getEnv("MANDRILL_FROM_NAME", "LFX Crowdfunding"),
-			FrontendBase:      frontendBaseURL,
+			APIKey:             getEnv("MANDRILL_API_KEY", ""),
+			FromEmail:          getEnv("MANDRILL_FROM_EMAIL", "noreply@lfx.linuxfoundation.org"),
+			FromName:           getEnv("MANDRILL_FROM_NAME", "LFX Crowdfunding"),
+			FrontendBase:       frontendBaseURL,
 			NotificationEmails: parseCommaList(getEnv("MANDRILL_NOTIFICATION_EMAIL", "")),
-			Timeout:           10 * time.Second,
+			Timeout:            10 * time.Second,
 		},
 	}, nil
 }

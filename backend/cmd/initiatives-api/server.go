@@ -87,7 +87,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 
-	// JWT authenticator
+	// JWT authenticator — validates user tokens (main audience).
 	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
 		JWKSURL:                    cfg.JWT.JWKSURL,
 		Audience:                   cfg.JWT.Audience,
@@ -100,6 +100,23 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	if err != nil {
 		return nil, fmt.Errorf("jwt authenticator: %w", err)
 	}
+
+	// Optional second authenticator for a dedicated M2M audience (e.g. LfxSelfServe).
+	// Only created when JWT_M2M_AUDIENCE is set and bypass mode is inactive.
+	var m2mAuth *auth.JWTAuthenticator
+	if cfg.JWT.M2MAudience != "" && !jwtAuth.IsBypassActive() {
+		m2mAuth, err = auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
+			JWKSURL:           cfg.JWT.JWKSURL,
+			Audience:          cfg.JWT.M2MAudience,
+			Issuer:            cfg.JWT.Issuer,
+			ClockSkew:         cfg.JWT.ClockSkew,
+			AuthorizedClients: cfg.JWT.AuthorizedClients,
+		}, logger)
+		if err != nil {
+			return nil, fmt.Errorf("m2m jwt authenticator: %w", err)
+		}
+		logger.Info("M2M JWT authenticator enabled", "m2m_audience", cfg.JWT.M2MAudience)
+	}
 	if jwtAuth.IsBypassActive() {
 		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 		logger.Warn("!!! JWT AUTHENTICATION IS DISABLED — ALL REQUESTS ARE    !!!")
@@ -107,10 +124,10 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	}
 	if cfg.JWT.AuthorizedClients != "" {
-		logger.Warn("X-Username / X-User-ID header impersonation is ACTIVE",
+		logger.Warn("X-Username header impersonation is ACTIVE",
 			"authorized_clients", cfg.JWT.AuthorizedClients)
 		logger.Warn("Ensure this service is not directly reachable from the internet — " +
-			"the ingress MUST strip the X-Username and X-User-ID headers before forwarding requests")
+			"the ingress MUST strip the X-Username header before forwarding requests")
 	}
 
 	// Handlers
@@ -156,7 +173,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// view non-published initiatives if a valid token is supplied.
 	r.With(jwtAuth.OptionalMiddleware).Get("/v1/initiatives/{id}", initiativeH.GetByID)
 
-	// Protected API
+	// Protected API — user tokens (main audience) only.
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(jwtAuth.Middleware)
 
@@ -172,17 +189,29 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		})
 
 		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
-		r.Get("/me/donations", donationH.ListForUser)
-		r.Get("/me/subscriptions", subscriptionH.ListForUser)
-
-		// Payment account (saved card for 3DS flows).
-		r.Post("/me/setup-intent", paymentH.CreateSetupIntent)
-		r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
-		r.Get("/me/payment-account", paymentH.GetPaymentAccount)
-		r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
 
 		// Logo uploads
 		r.Post("/presigned-url", uploadH.CreatePresignedURL)
+	})
+
+	// /me routes — accept user tokens (main audience) OR M2M tokens (M2M
+	// audience, when JWT_M2M_AUDIENCE is configured). This allows trusted
+	// services such as LfxSelfServe to call /me endpoints on behalf of a user
+	// by passing X-Username alongside a client_credentials token.
+	r.Route("/v1/me", func(r chi.Router) {
+		if m2mAuth != nil {
+			r.Use(auth.MultiAudienceMiddleware(jwtAuth, m2mAuth))
+		} else {
+			r.Use(jwtAuth.Middleware)
+		}
+		r.Get("/donations", donationH.ListForUser)
+		r.Get("/subscriptions", subscriptionH.ListForUser)
+
+		// Payment account (saved card for 3DS flows).
+		r.Post("/setup-intent", paymentH.CreateSetupIntent)
+		r.Post("/payment-method", paymentH.AttachPaymentMethod)
+		r.Get("/payment-account", paymentH.GetPaymentAccount)
+		r.Delete("/payment-method", paymentH.DeletePaymentMethod)
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

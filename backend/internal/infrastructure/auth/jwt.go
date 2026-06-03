@@ -88,6 +88,7 @@ var (
 	errMissingSubjectClaim        = errors.New("missing subject claim")
 	errAuthenticatorContextClosed = errors.New("JWT authenticator context closed")
 	errValidatorNotConfigured     = errors.New("JWT validator is not set up")
+	errUnauthorizedClient         = errors.New("client not in authorized list")
 )
 
 // JWTAuthenticator validates JWTs using a JWKS endpoint.
@@ -215,6 +216,34 @@ func (a *JWTAuthenticator) IsBypassActive() bool {
 	return a.cfg.DisabledMockLocalPrincipal != ""
 }
 
+// tryBuildPrincipal validates the token in r and builds a Principal from the
+// claims. Returns an error (including errUnauthorizedClient) if validation or
+// authorization fails. No logging is performed — callers are responsible.
+func (a *JWTAuthenticator) tryBuildPrincipal(r *http.Request) (*models.Principal, error) {
+	claims, err := a.extractAndValidate(r)
+	if err != nil {
+		return nil, err
+	}
+	if !a.isAuthorizedClient(claims) {
+		return nil, errUnauthorizedClient
+	}
+	// claims.Subject is guaranteed non-empty by extractAndValidate.
+	principalUsername := strings.TrimSpace(claims.Username)
+	if principalUsername == "" && a.isTrustedM2MForHeaderImpersonation(claims) {
+		principalUsername = strings.TrimSpace(r.Header.Get(xUsernameHeader))
+	}
+	return &models.Principal{
+		UserID:        claims.Subject,
+		Username:      principalUsername,
+		Email:         claims.Email,
+		EmailVerified: claims.EmailVerified,
+		Name:          claims.Name,
+		GivenName:     claims.GivenName,
+		FamilyName:    claims.FamilyName,
+		Picture:       claims.Picture,
+	}, nil
+}
+
 // Middleware returns an http.Handler middleware that validates the Bearer token
 // and stores the Principal in the request context. Returns 401 on failure.
 func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
@@ -230,42 +259,49 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		claims, err := a.extractAndValidate(r)
+		principal, err := a.tryBuildPrincipal(r)
 		if err != nil {
-			a.logger.WarnContext(r.Context(), "auth: token validation failed", "category", authFailureCategory(err), "error", err, "path", r.URL.Path)
-			jsonError(w, http.StatusUnauthorized, "invalid or missing token")
+			if errors.Is(err, errUnauthorizedClient) {
+				a.logger.WarnContext(r.Context(), "auth: client not in authorized list", "category", authCategoryUnauthorizedClient, "path", r.URL.Path)
+				jsonError(w, http.StatusUnauthorized, "invalid token claims")
+			} else {
+				a.logger.WarnContext(r.Context(), "auth: token validation failed", "category", authFailureCategory(err), "error", err, "path", r.URL.Path)
+				jsonError(w, http.StatusUnauthorized, "invalid or missing token")
+			}
 			return
-		}
-
-		if !a.isAuthorizedClient(claims) {
-			a.logger.WarnContext(r.Context(), "auth: client not in authorized list", "category", authCategoryUnauthorizedClient, "path", r.URL.Path)
-			jsonError(w, http.StatusUnauthorized, "invalid token claims")
-			return
-		}
-
-		principalUserID := strings.TrimSpace(claims.Subject)
-		principalUsername := strings.TrimSpace(claims.Username)
-		if principalUsername == "" && a.isTrustedM2MForHeaderImpersonation(claims) {
-			principalUsername = strings.TrimSpace(r.Header.Get(xUsernameHeader))
-		}
-		if principalUserID == "" {
-			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "category", authCategoryMissingSubject, "path", r.URL.Path)
-			jsonError(w, http.StatusUnauthorized, "invalid token claims")
-			return
-		}
-
-		principal := &models.Principal{
-			UserID:        principalUserID,
-			Username:      principalUsername,
-			Email:         claims.Email,
-			EmailVerified: claims.EmailVerified,
-			Name:          claims.Name,
-			GivenName:     claims.GivenName,
-			FamilyName:    claims.FamilyName,
-			Picture:       claims.Picture,
 		}
 		next.ServeHTTP(w, r.WithContext(ContextWithPrincipal(r.Context(), principal)))
 	})
+}
+
+// MultiAudienceMiddleware returns middleware that accepts a valid token from either
+// authenticator. The primary is tried first (user audience); if it fails for
+// any reason the fallback is tried (e.g. a dedicated M2M audience). If both
+// fail, the fallback's Middleware handles logging and the 401 response.
+//
+// Typical use: protect /me routes so they accept both a user's browser token
+// and an M2M token minted by a trusted service on behalf of a user.
+func MultiAudienceMiddleware(primary, fallback *JWTAuthenticator) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		// Pre-wrap once at construction time, not per request.
+		bypassHandler := primary.Middleware(next)
+		fallbackHandler := fallback.Middleware(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// If bypass is active (local dev only), primary always wins.
+			if primary.IsBypassActive() {
+				bypassHandler.ServeHTTP(w, r)
+				return
+			}
+			// Try the primary authenticator silently.
+			if principal, err := primary.tryBuildPrincipal(r); err == nil {
+				next.ServeHTTP(w, r.WithContext(ContextWithPrincipal(r.Context(), principal)))
+				return
+			}
+			// Primary failed — delegate to the fallback's full middleware
+			// (which owns logging and the 401 response if it also fails).
+			fallbackHandler.ServeHTTP(w, r)
+		})
+	}
 }
 
 // OptionalMiddleware is like Middleware but never rejects the request.
@@ -284,21 +320,8 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		claims, err := a.extractAndValidate(r)
-		if err == nil {
-			if claims != nil && claims.Subject != "" {
-				principal := &models.Principal{
-					UserID:        claims.Subject,
-					Username:      claims.Username,
-					Email:         claims.Email,
-					EmailVerified: claims.EmailVerified,
-					Name:          claims.Name,
-					GivenName:     claims.GivenName,
-					FamilyName:    claims.FamilyName,
-					Picture:       claims.Picture,
-				}
-				r = r.WithContext(ContextWithPrincipal(r.Context(), principal))
-			}
+		if principal, err := a.tryBuildPrincipal(r); err == nil {
+			r = r.WithContext(ContextWithPrincipal(r.Context(), principal))
 		}
 		next.ServeHTTP(w, r)
 	})
