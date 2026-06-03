@@ -6,32 +6,35 @@
 """
 DynamoDB → PostgreSQL Migration Script
 =======================================
-Migrates all lff-prod-* DynamoDB tables into the PostgreSQL schema defined
+Migrates all lff-<stage>-* DynamoDB tables into the PostgreSQL schema defined
 in db/migrations/001_initial.up.sql (v2 — fully normalised initiatives schema).
+
+The stage (dev | staging | prod) selects the DynamoDB table prefix and
+defaults to prod.
 
 Source → Target mapping
 -----------------------
-  lff-prod-users                                 → users
-  lff-prod-organizations                         → organizations
-  lff-prod-projects  +  lff-prod-entities        → initiatives  (merged)
-                                                 → initiative_goals
-                                                 → initiative_beneficiaries
-                                                 → initiative_custom_websites
-                                                 → initiative_contributors
-                                                 → initiative_mentors
-                                                 → initiative_program_info_terms
-                                                 → initiative_program_info_skills
-                                                 → initiative_program_info_config
-                                                 → initiative_program_info_custom_term
-                                                 → initiative_sponsorship_tiers
-                                                 → initiative_ostif_detail
-                                                 → initiative_contacts
-                                                 → initiative_github_stats
-                                                 (initiative_ledger_stats populated by CronJob)
-                                                 → initiative_entity_details
-  lff-prod-donations + lff-prod-entity-donations → donations     (merged)
-  lff-prod-subscriptions
-    + lff-prod-entity-subscriptions              → subscriptions (merged)
+  lff-<stage>-users                                 → users
+  lff-<stage>-organizations                         → organizations
+  lff-<stage>-projects  +  lff-<stage>-entities     → initiatives  (merged)
+                                                    → initiative_goals
+                                                    → initiative_beneficiaries
+                                                    → initiative_custom_websites
+                                                    → initiative_contributors
+                                                    → initiative_mentors
+                                                    → initiative_program_info_terms
+                                                    → initiative_program_info_skills
+                                                    → initiative_program_info_config
+                                                    → initiative_program_info_custom_term
+                                                    → initiative_sponsorship_tiers
+                                                    → initiative_ostif_detail
+                                                    → initiative_contacts
+                                                    → initiative_github_stats
+                                                    (initiative_ledger_stats populated by CronJob)
+                                                    → initiative_entity_details
+  lff-<stage>-donations + lff-<stage>-entity-donations → donations     (merged)
+  lff-<stage>-subscriptions
+    + lff-<stage>-entity-subscriptions              → subscriptions (merged)
 
 Key notes
 ---------
@@ -57,13 +60,19 @@ Usage
 
   export PG_DSN="host=localhost port=5432 dbname=lff user=postgres password=..."
 
-  python3 db/scripts/migrate_dynamo_to_postgres.py
+  # Stage selects the DynamoDB table prefix (lff-<stage>-*).
+  # Accepts: dev | staging | prod  (default: prod)
+  # Override via --stage flag or DYNAMO_STAGE env var:
+  python3 db/scripts/migrate_dynamo_to_postgres.py --stage dev
+  python3 db/scripts/migrate_dynamo_to_postgres.py --stage staging
+  DYNAMO_STAGE=staging python3 db/scripts/migrate_dynamo_to_postgres.py
 
 Dependencies
 ------------
   pip install boto3 psycopg2-binary
 """
 
+import argparse
 import json
 import logging
 import os
@@ -94,6 +103,21 @@ PG_DSN = os.environ.get(
     "PG_DSN",
     "host=localhost port=5432 dbname=lff user=postgres password=postgres",
 )
+
+_VALID_STAGES = {"dev", "staging", "prod"}
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Migrate DynamoDB lff-<stage>-* tables to PostgreSQL."
+    )
+    parser.add_argument(
+        "--stage",
+        default=os.environ.get("DYNAMO_STAGE", "prod"),
+        choices=sorted(_VALID_STAGES),
+        help="DynamoDB table stage prefix: dev | staging | prod  (default: prod, or $DYNAMO_STAGE)",
+    )
+    return parser.parse_args()
 
 # Stable UUID namespace — must not change between runs to keep IDs deterministic
 _UUID_NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
@@ -1446,8 +1470,16 @@ def migrate_subscriptions(
 
 
 def main():
+    args = _parse_args()
+    stage = args.stage
+
+    def t(suffix: str) -> str:
+        """Build a fully-qualified DynamoDB table name for the chosen stage."""
+        return f"lff-{stage}-{suffix}"
+
     log.info("=" * 60)
     log.info("DynamoDB → PostgreSQL migration starting")
+    log.info("Stage  : %s  (tables: lff-%s-*)", stage, stage)
     log.info("Region : %s", REGION)
     log.info("PG DSN : %s", _redact_dsn(PG_DSN))
     log.info("=" * 60)
@@ -1455,14 +1487,14 @@ def main():
     dynamo = boto3.client("dynamodb", region_name=REGION)
 
     # ── 1. Scan all DynamoDB tables ──────────────────────────────────────────
-    users = scan_table(dynamo, "lff-prod-users")
-    orgs = scan_table(dynamo, "lff-prod-organizations")
-    entities = scan_table(dynamo, "lff-prod-entities")
-    projects = scan_table(dynamo, "lff-prod-projects")
-    proj_donations = scan_table(dynamo, "lff-prod-donations")
-    entity_donations = scan_table(dynamo, "lff-prod-entity-donations")
-    proj_subs = scan_table(dynamo, "lff-prod-subscriptions")
-    entity_subs = scan_table(dynamo, "lff-prod-entity-subscriptions")
+    users = scan_table(dynamo, t("users"))
+    orgs = scan_table(dynamo, t("organizations"))
+    entities = scan_table(dynamo, t("entities"))
+    projects = scan_table(dynamo, t("projects"))
+    proj_donations = scan_table(dynamo, t("donations"))
+    entity_donations = scan_table(dynamo, t("entity-donations"))
+    proj_subs = scan_table(dynamo, t("subscriptions"))
+    entity_subs = scan_table(dynamo, t("entity-subscriptions"))
 
     # ── 2. Collect all user IDs referenced in other tables ──────────────────
     # Insert placeholder user rows for any referenced ID absent from lff-prod-users

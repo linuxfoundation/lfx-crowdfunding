@@ -179,8 +179,10 @@ func (r *LedgerStatsRepository) GetOrganizationsByIDs(ctx context.Context, ids [
 	return result, nil
 }
 
-// GetUsersByIDs returns a map of user UUID → User for all IDs
-// provided.  IDs not present in the database are simply absent from the map.
+// GetUsersByIDs returns a map of legacy_user_id → User for all IDs provided.
+// The Ledger service identifies users by their Auth0 subject (legacy_user_id),
+// so we look up by that column rather than the internal UUID primary key.
+// IDs not present in the database are simply absent from the map.
 // An empty input slice returns an empty map without querying the database.
 func (r *LedgerStatsRepository) GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error) {
 	ctx, span := ledgerStatsTracer.Start(ctx, "db.ledger_stats.GetUsersByIDs")
@@ -193,9 +195,9 @@ func (r *LedgerStatsRepository) GetUsersByIDs(ctx context.Context, userIDs []str
 	}
 
 	const q = `
-		SELECT id, name, avatar_url, created_on, updated_on
+		SELECT id, legacy_user_id, name, avatar_url, created_on, updated_on
 		FROM users
-		WHERE id = ANY($1::uuid[])`
+		WHERE legacy_user_id = ANY($1)`
 
 	rows, err := r.pool.Query(ctx, q, userIDs)
 	if err != nil {
@@ -206,14 +208,18 @@ func (r *LedgerStatsRepository) GetUsersByIDs(ctx context.Context, userIDs []str
 
 	for rows.Next() {
 		var (
-			u         models.User
-			name      *string
-			avatarURL *string
-			createdOn *time.Time
-			updatedOn *time.Time
+			u            models.User
+			legacyUserID *string
+			name         *string
+			avatarURL    *string
+			createdOn    *time.Time
+			updatedOn    *time.Time
 		)
-		if err := rows.Scan(&u.ID, &name, &avatarURL, &createdOn, &updatedOn); err != nil {
+		if err := rows.Scan(&u.ID, &legacyUserID, &name, &avatarURL, &createdOn, &updatedOn); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		if legacyUserID != nil {
+			u.LegacyUserID = *legacyUserID
 		}
 		if name != nil {
 			u.Name = *name
@@ -227,7 +233,7 @@ func (r *LedgerStatsRepository) GetUsersByIDs(ctx context.Context, userIDs []str
 		if updatedOn != nil {
 			u.UpdatedOn = *updatedOn
 		}
-		result[u.ID] = u
+		result[u.LegacyUserID] = u
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate users: %w", err)
