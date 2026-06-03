@@ -120,7 +120,7 @@ type MandrillConfig struct {
 	FromEmail         string
 	FromName          string
 	FrontendBase      string // base URL for initiative deep-links in emails
-	NotificationEmail string // inbox that receives new-submission alerts
+	NotificationEmails []string // inboxes that receive new-submission alerts
 	Timeout           time.Duration
 }
 
@@ -289,7 +289,7 @@ func LoadConfig() (*Config, error) {
 			FromEmail:         getEnv("MANDRILL_FROM_EMAIL", "noreply@lfx.linuxfoundation.org"),
 			FromName:          getEnv("MANDRILL_FROM_NAME", "LFX Crowdfunding"),
 			FrontendBase:      frontendBaseURL,
-			NotificationEmail: getEnv("MANDRILL_NOTIFICATION_EMAIL", ""),
+			NotificationEmails: parseCommaList(getEnv("MANDRILL_NOTIFICATION_EMAIL", "")),
 			Timeout:           10 * time.Second,
 		},
 	}, nil

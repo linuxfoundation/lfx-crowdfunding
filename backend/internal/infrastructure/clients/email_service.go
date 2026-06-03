@@ -6,6 +6,7 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,17 +14,17 @@ import (
 )
 
 type emailService struct {
-	mandrill          MandrillClient
-	frontendBase      string // e.g. "https://crowdfunding.lfx.linuxfoundation.org"
-	notificationEmail string // reviewer inbox for new-submission alerts
+	mandrill           MandrillClient
+	frontendBase       string   // e.g. "https://crowdfunding.lfx.linuxfoundation.org"
+	notificationEmails []string // reviewer inboxes for new-submission alerts
 }
 
 // NewEmailService returns a domain.EmailService backed by Mandrill.
-func NewEmailService(mandrill MandrillClient, frontendBase, notificationEmail string) domain.EmailService {
+func NewEmailService(mandrill MandrillClient, frontendBase string, notificationEmails []string) domain.EmailService {
 	return &emailService{
-		mandrill:          mandrill,
-		frontendBase:      strings.TrimRight(frontendBase, "/"),
-		notificationEmail: notificationEmail,
+		mandrill:           mandrill,
+		frontendBase:       strings.TrimRight(frontendBase, "/"),
+		notificationEmails: notificationEmails,
 	}
 }
 
@@ -73,19 +74,32 @@ func (s *emailService) SendProjectDeclinedEmail(ctx context.Context, toEmail, to
 	})
 }
 
-// SendProjectForReviewEmail notifies the reviewer inbox that a new initiative has been submitted.
+// ErrNoNotificationRecipients is returned when MANDRILL_NOTIFICATION_EMAIL is empty or unset,
+// so callers can log a warning rather than silently dropping the review alert.
+var ErrNoNotificationRecipients = errors.New("email: no notification recipients configured")
+
+// SendProjectForReviewEmail notifies all reviewer inboxes that a new initiative has been submitted.
 func (s *emailService) SendProjectForReviewEmail(ctx context.Context, ownerName, ownerEmail, initiativeName, initiativeURL, approveURL, declineURL string) error {
-	return s.sendEmail(ctx, emailRequest{
-		Recipient:     s.notificationEmail,
-		RecipientName: "LFX Crowdfunding Reviewers",
-		TemplateName:  MandrillTemplateSubmittedForReview,
-		TemplateParameters: map[string]string{
-			"SUBMISSION_NAME": initiativeName,
-			"SUBMITTER_NAME":  ownerName,
-			"SUBMITTER_EMAIL": ownerEmail,
-			"VIEW_URL":        initiativeURL,
-			"APPROVE_URL":     approveURL,
-			"DECLINE_URL":     declineURL,
-		},
-	})
+	if len(s.notificationEmails) == 0 {
+		return ErrNoNotificationRecipients
+	}
+	params := map[string]string{
+		"SUBMISSION_NAME": initiativeName,
+		"SUBMITTER_NAME":  ownerName,
+		"SUBMITTER_EMAIL": ownerEmail,
+		"VIEW_URL":        initiativeURL,
+		"APPROVE_URL":     approveURL,
+		"DECLINE_URL":     declineURL,
+	}
+	for _, recipient := range s.notificationEmails {
+		if err := s.sendEmail(ctx, emailRequest{
+			Recipient:          recipient,
+			RecipientName:      "LFX Crowdfunding Reviewers",
+			TemplateName:       MandrillTemplateSubmittedForReview,
+			TemplateParameters: params,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
