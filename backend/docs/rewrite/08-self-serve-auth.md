@@ -66,9 +66,11 @@ SS server start / first CF call
   └─ Auth0 token endpoint (client_credentials grant)
        client_id     = PCC_AUTH0_CLIENT_ID
        client_secret = PCC_AUTH0_CLIENT_SECRET
-       audience      = https://crowdfunding.{env}.platform.linuxfoundation.org/
+       audience      = https://crowdfunding.{env}.lfx.dev/m2m/   (dev/staging)
+                     = https://crowdfunding.linuxfoundation.org/m2m/  (prod)
                         (new M2M-only audience — separate from the user-token
-                         audience https://funding.{env}.platform.linuxfoundation.org/api/)
+                         audience https://crowdfunding.{env}.lfx.dev/api/  (dev/staging)
+                                               https://crowdfunding.linuxfoundation.org/api/  (prod))
        → M2M access token (cached, ~24hr lifetime)
 
 User navigates to a CF feature in SS
@@ -96,7 +98,7 @@ CF M2M middleware
 │  User browser ──► Nuxt BFF server                               │
 │                       │                                          │
 │                       ├─ Auth0 client_credentials grant         │
-│                       │   audience: crowdfunding.{env}.platform │
+│                       │   audience: crowdfunding.{env}.lfx.dev  │
 │                       │   → M2M access token (cached ~24hr)     │
 │                       │                                          │
 │                       ├─ Resolve acting user (impersonation?)   │
@@ -154,11 +156,11 @@ When impersonation is active, `getEffectiveUsername()` returns the impersonated 
 Pure addition, ~40 lines. Follows `grants_sanctions_screening.tf` exactly. No existing resources touched.
 
 ```hcl
-resource "auth0_resource_server" "lfx_crowdfunding" {
+resource "auth0_resource_server" "lfx_crowdfunding_m2m" {
   identifier = {
-    "dev"     = "https://crowdfunding.dev.platform.linuxfoundation.org/"
-    "staging" = "https://crowdfunding.staging.platform.linuxfoundation.org/"
-    "prod"    = "https://crowdfunding.platform.linuxfoundation.org/"
+    "dev"     = "https://crowdfunding.dev.lfx.dev/m2m/"
+    "staging" = "https://crowdfunding.staging.lfx.dev/m2m/"
+    "prod"    = "https://crowdfunding.linuxfoundation.org/m2m/"
   }[terraform.workspace]
   signing_alg    = "RS256"
   token_lifetime = { "dev" = 86400, "staging" = 86400, "prod" = 86400 }[terraform.workspace]
@@ -168,20 +170,20 @@ resource "auth0_resource_server" "lfx_crowdfunding" {
   }
 }
 
-resource "auth0_resource_server_scopes" "lfx_crowdfunding" {
-  resource_server_identifier = auth0_resource_server.lfx_crowdfunding.identifier
+resource "auth0_resource_server_scopes" "lfx_crowdfunding_m2m" {
+  resource_server_identifier = auth0_resource_server.lfx_crowdfunding_m2m.identifier
   scopes { name = "access:api" description = "Access Crowdfunding API" }
 }
 
 resource "auth0_client_grant" "lfxone_crowdfunding" {
   client_id  = auth0_client.lfx_one.id
-  audience   = auth0_resource_server.lfx_crowdfunding.identifier
+  audience   = auth0_resource_server.lfx_crowdfunding_m2m.identifier
   scopes     = ["access:api"]
   depends_on = [auth0_resource_server_scopes.lfx_crowdfunding]
 }
 ```
 
-> **Note:** `deny_all` applies only to this new M2M audience. The existing user-token flow uses a separate audience (`https://funding.{env}.platform.linuxfoundation.org/api/`) validated via `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` (see `backend/cmd/initiatives-api/config.go`; per-environment values in `lfx-v2-argocd`). It is unaffected.
+> **Note:** `deny_all` applies only to this new M2M audience. The existing user-token flow uses a separate audience (`https://crowdfunding.{env}.lfx.dev/api/` for dev/staging, `https://crowdfunding.linuxfoundation.org/api/` for prod) validated via `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` (see `backend/cmd/initiatives-api/config.go`; per-environment values in `lfx-v2-argocd`). It is unaffected.
 
 ### `lfx-v2-argocd`
 
