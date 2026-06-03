@@ -3,11 +3,6 @@
 
 # Self Serve → Crowdfunding API Authentication
 
-**Status:** Approved — implemented (DEV)
-**Author:** Michal Lehotsky
-**Related:** `auth0-terraform` #321, `lfx-v2-argocd` #882/#893, `lfx-secrets-management` #262
-**Reviewed by:** Eric Searcy, Robert Detjens (May–June 2026)
-
 ---
 
 ## 1. Problem
