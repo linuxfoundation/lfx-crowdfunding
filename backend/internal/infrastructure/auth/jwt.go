@@ -274,10 +274,14 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// MultiAudienceMiddleware returns middleware that accepts a valid token from either
-// authenticator. The primary is tried first (user audience); if it fails for
-// any reason the fallback is tried (e.g. a dedicated M2M audience). If both
-// fail, the fallback's Middleware handles logging and the 401 response.
+// MultiAudienceMiddleware returns middleware that accepts a valid token from
+// either authenticator. The primary is tried first (user audience). If it
+// succeeds the request continues immediately. If the primary fails because the
+// client is not in its authorized-clients list, the request is rejected with
+// 401 — the token clearly matched the primary audience so falling back would
+// produce misleading error shapes. For all other primary failures (wrong
+// audience, missing/expired token) the fallback authenticator is tried; if
+// that also fails the fallback's Middleware handles logging and the 401.
 //
 // Typical use: protect /me routes so they accept both a user's browser token
 // and an M2M token minted by a trusted service on behalf of a user.
@@ -296,8 +300,17 @@ func MultiAudienceMiddleware(primary, fallback *JWTAuthenticator) func(http.Hand
 			if principal, err := primary.tryBuildPrincipal(r); err == nil {
 				next.ServeHTTP(w, r.WithContext(ContextWithPrincipal(r.Context(), principal)))
 				return
+			} else if errors.Is(err, errUnauthorizedClient) {
+				// Token was valid for the primary audience but the client is not
+				// in the authorized-clients list. Do not fall back — the token
+				// already matched the primary audience, and falling through would
+				// produce misleading logs and a different 401 error shape.
+				primary.logger.WarnContext(r.Context(), "auth: client not in authorized list", "category", authCategoryUnauthorizedClient, "path", r.URL.Path)
+				jsonError(w, http.StatusUnauthorized, "invalid token claims")
+				return
 			}
-			// Primary failed — delegate to the fallback's full middleware
+			// Primary failed for a non-authorization reason (e.g. wrong audience,
+			// missing/expired token) — delegate to the fallback's full middleware
 			// (which owns logging and the 401 response if it also fails).
 			fallbackHandler.ServeHTTP(w, r)
 		})

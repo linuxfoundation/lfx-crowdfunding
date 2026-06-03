@@ -1043,10 +1043,11 @@ func TestMultiAudienceMiddleware_FallbackWins(t *testing.T) {
 	fallback := newTestM2MAuthenticator()
 	mw := MultiAudienceMiddleware(primary, fallback)
 
-	var gotUserID string
+	var gotUserID, gotUsername string
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p := PrincipalFromContext(r.Context()); p != nil {
 			gotUserID = p.UserID
+			gotUsername = p.Username
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -1061,6 +1062,9 @@ func TestMultiAudienceMiddleware_FallbackWins(t *testing.T) {
 	}
 	if gotUserID != "m2m-client@clients" {
 		t.Errorf("UserID = %q, want %q", gotUserID, "m2m-client@clients")
+	}
+	if gotUsername != "acting-user" {
+		t.Errorf("Username = %q, want %q (X-Username impersonation not propagated)", gotUsername, "acting-user")
 	}
 }
 
@@ -1088,6 +1092,44 @@ func TestMultiAudienceMiddleware_BothFail(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+// TestMultiAudienceMiddleware_UnauthorizedClientDoesNotFallback verifies that when
+// a token is valid for the primary audience but the client is not in the
+// primary's authorized-clients list, MultiAudienceMiddleware rejects immediately
+// with 401 and does NOT fall back to the M2M authenticator.
+func TestMultiAudienceMiddleware_UnauthorizedClientDoesNotFallback(t *testing.T) {
+	primaryCfg := defaultCfg()
+	primaryCfg.AuthorizedClients = "allowed-client"
+	primary := newTestAuthenticator(primaryCfg)
+	fallback := newTestM2MAuthenticator()
+	mw := MultiAudienceMiddleware(primary, fallback)
+
+	fallbackReached := false
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fallbackReached = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Token is valid for the primary audience but azp is not in AuthorizedClients.
+	disallowedToken := sign(map[string]any{
+		"sub": "auth0|testuser",
+		"iss": testIssuer,
+		"aud": testAudience,
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"azp": "unlisted-client",
+		"https://sso.linuxfoundation.org/claims/username": "testuser",
+	})
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(disallowedToken))
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+	if fallbackReached {
+		t.Error("fallback handler was reached; expected short-circuit on unauthorized client")
 	}
 }
 
