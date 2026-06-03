@@ -45,7 +45,10 @@ SS authenticates to CF using **M2M client credentials** — the same pattern SS 
 SS populates `X-Username` using the **LFID username** of the acting user — resolved via the existing `getEffectiveUsername()` helper (or equivalent), which returns the impersonated user's username when impersonation is active and the logged-in user's username otherwise.
 
 ```typescript
-const token = await generateM2MToken(CROWDFUNDING_API_AUDIENCE); // cached ~24hr
+// CrowdfundingService mints its own client_credentials token using
+// PCC_AUTH0_CLIENT_ID/SECRET (the lfx_one client), modelled on cdp.service.ts —
+// not the shared generateM2MToken util, which is bound to a different client.
+const token = await this.getM2MToken(CROWDFUNDING_API_AUDIENCE); // cached ~24hr
 
 await fetch(`${CROWDFUNDING_API_BASE_URL}/v1/me/donations`, {
   headers: {
@@ -64,8 +67,8 @@ await fetch(`${CROWDFUNDING_API_BASE_URL}/v1/me/donations`, {
 ```
 SS server start / first CF call
   └─ Auth0 token endpoint (client_credentials grant)
-       client_id     = M2M_AUTH_CLIENT_ID
-       client_secret = M2M_AUTH_CLIENT_SECRET
+       client_id     = PCC_AUTH0_CLIENT_ID      (the lfx_one client)
+       client_secret = PCC_AUTH0_CLIENT_SECRET
        audience      = https://crowdfunding.{env}.lfx.dev/m2m/   (dev/staging)
                      = https://crowdfunding.linuxfoundation.org/m2m/  (prod)
                         (new M2M-only audience — separate from the user-token
@@ -196,7 +199,7 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 ### `lfx-self-serve`
 
 New `crowdfunding.service.ts` modelled on `cdp.service.ts`:
-- M2M token via `client_credentials` using `M2M_AUTH_CLIENT_ID/SECRET` (via `generateM2MToken`)
+- M2M token via `client_credentials` using `PCC_AUTH0_CLIENT_ID/SECRET` (the `lfx_one` client), the same client SS uses for CDP — minted by the service directly (as `cdp.service.ts` does), not via the shared `generateM2MToken` util, which is bound to a different client
 - Proxy routes under `/api/crowdfunding/*` with M2M Bearer + `X-Username`
 - `getEffectiveUsername()` for identity resolution — resolves LFID username of the acting user (impersonated user's username when impersonation is active, logged-in user's username otherwise). The username is available via the `https://sso.linuxfoundation.org/claims/username` namespaced claim in the Auth0 JWT; if SS does not already have a helper that returns this for the effective user, one is needed.
 
