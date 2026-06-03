@@ -544,9 +544,9 @@ When an initiative is created (`POST /v1/initiatives`):
 3. A **"Submitted for Review" email** is sent to the reviewer inbox (`MANDRILL_NOTIFICATION_EMAIL`) containing:
    - The submitter's name and email
    - The initiative name
-   - A **View** link: `https://crowdfunding.lfx.linuxfoundation.org/initiatives/{slug}`
-   - An **Approve** link: `https://crowdfunding.lfx.linuxfoundation.org/initiatives/{slug}/process-approval/approve`
-   - A **Decline** link: `https://crowdfunding.lfx.linuxfoundation.org/initiatives/{slug}/process-approval/decline`
+   - A **View** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}`
+   - An **Approve** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}/process-approval/approve`
+   - A **Decline** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}/process-approval/decline`
 
 > Email failure is **non-fatal** — the API still returns `201` even if Mandrill is unreachable or not configured.
 
@@ -601,7 +601,7 @@ This is the complete sequence from submission to a live initiative:
 When a reviewer clicks a link in the email they are directed to a URL like:
 
 ```
-https://crowdfunding.lfx.linuxfoundation.org/initiatives/{slug}/process-approval/approve
+https://crowdfunding.linuxfoundation.org/initiatives/{slug}/process-approval/approve
 ```
 
 Your frontend needs to handle this route. Here is exactly what the page must do:
@@ -857,13 +857,13 @@ Content-Type: application/json
 ```
 
 At this point the reviewer inbox receives an email with:
-- **View** → `https://crowdfunding.lfx.linuxfoundation.org/initiatives/my-awesome-project`
-- **Approve** → `https://crowdfunding.lfx.linuxfoundation.org/initiatives/my-awesome-project/process-approval/approve`
-- **Decline** → `https://crowdfunding.lfx.linuxfoundation.org/initiatives/my-awesome-project/process-approval/decline`
+- **View** → `https://crowdfunding.linuxfoundation.org/initiatives/my-awesome-project`
+- **Approve** → `https://crowdfunding.linuxfoundation.org/initiatives/my-awesome-project/process-approval/approve`
+- **Decline** → `https://crowdfunding.linuxfoundation.org/initiatives/my-awesome-project/process-approval/decline`
 
 ### Step 2 — Reviewer clicks "Approve"
 
-Browser opens: `https://crowdfunding.lfx.linuxfoundation.org/initiatives/my-awesome-project/process-approval/approve`
+Browser opens: `https://crowdfunding.linuxfoundation.org/initiatives/my-awesome-project/process-approval/approve`
 
 1. Frontend loads the page → checks reviewer is logged in (redirect to Auth0 login if not).
 2. Frontend fetches `/v1/initiatives/my-awesome-project` → gets `id = "b4a1e2c3-..."`.

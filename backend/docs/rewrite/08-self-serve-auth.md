@@ -45,7 +45,7 @@ SS authenticates to CF using **M2M client credentials** — the same pattern SS 
 SS populates `X-Username` using the **LFID username** of the acting user — resolved via the existing `getEffectiveUsername()` helper (or equivalent), which returns the impersonated user's username when impersonation is active and the logged-in user's username otherwise.
 
 ```typescript
-const token = await this.getM2MToken(CROWDFUNDING_API_AUDIENCE); // cached ~24hr
+const token = await generateM2MToken(CROWDFUNDING_API_AUDIENCE); // cached ~24hr
 
 await fetch(`${CROWDFUNDING_API_BASE_URL}/v1/me/donations`, {
   headers: {
@@ -64,11 +64,13 @@ await fetch(`${CROWDFUNDING_API_BASE_URL}/v1/me/donations`, {
 ```
 SS server start / first CF call
   └─ Auth0 token endpoint (client_credentials grant)
-       client_id     = PCC_AUTH0_CLIENT_ID
-       client_secret = PCC_AUTH0_CLIENT_SECRET
-       audience      = https://crowdfunding.{env}.platform.linuxfoundation.org/
+       client_id     = M2M_AUTH_CLIENT_ID
+       client_secret = M2M_AUTH_CLIENT_SECRET
+       audience      = https://crowdfunding.{env}.lfx.dev/m2m/   (dev/staging)
+                     = https://crowdfunding.linuxfoundation.org/m2m/  (prod)
                         (new M2M-only audience — separate from the user-token
-                         audience https://funding.{env}.platform.linuxfoundation.org/api/)
+                         audience https://crowdfunding.{env}.lfx.dev/api/  (dev/staging)
+                                               https://crowdfunding.linuxfoundation.org/api/  (prod))
        → M2M access token (cached, ~24hr lifetime)
 
 User navigates to a CF feature in SS
@@ -96,7 +98,8 @@ CF M2M middleware
 │  User browser ──► Nuxt BFF server                               │
 │                       │                                          │
 │                       ├─ Auth0 client_credentials grant         │
-│                       │   audience: crowdfunding.{env}.platform │
+│                       │   audience: https://crowdfunding.{env}.lfx.dev/m2m/ (dev/staging)  │
+│                       │             https://crowdfunding.linuxfoundation.org/m2m/ (prod)  │
 │                       │   → M2M access token (cached ~24hr)     │
 │                       │                                          │
 │                       ├─ Resolve acting user (impersonation?)   │
@@ -154,11 +157,11 @@ When impersonation is active, `getEffectiveUsername()` returns the impersonated 
 Pure addition, ~40 lines. Follows `grants_sanctions_screening.tf` exactly. No existing resources touched.
 
 ```hcl
-resource "auth0_resource_server" "lfx_crowdfunding" {
+resource "auth0_resource_server" "lfx_crowdfunding_m2m" {
   identifier = {
-    "dev"     = "https://crowdfunding.dev.platform.linuxfoundation.org/"
-    "staging" = "https://crowdfunding.staging.platform.linuxfoundation.org/"
-    "prod"    = "https://crowdfunding.platform.linuxfoundation.org/"
+    "dev"     = "https://crowdfunding.dev.lfx.dev/m2m/"
+    "staging" = "https://crowdfunding.staging.lfx.dev/m2m/"
+    "prod"    = "https://crowdfunding.linuxfoundation.org/m2m/"
   }[terraform.workspace]
   signing_alg    = "RS256"
   token_lifetime = { "dev" = 86400, "staging" = 86400, "prod" = 86400 }[terraform.workspace]
@@ -168,20 +171,20 @@ resource "auth0_resource_server" "lfx_crowdfunding" {
   }
 }
 
-resource "auth0_resource_server_scopes" "lfx_crowdfunding" {
-  resource_server_identifier = auth0_resource_server.lfx_crowdfunding.identifier
+resource "auth0_resource_server_scopes" "lfx_crowdfunding_m2m" {
+  resource_server_identifier = auth0_resource_server.lfx_crowdfunding_m2m.identifier
   scopes { name = "access:api" description = "Access Crowdfunding API" }
 }
 
 resource "auth0_client_grant" "lfxone_crowdfunding" {
   client_id  = auth0_client.lfx_one.id
-  audience   = auth0_resource_server.lfx_crowdfunding.identifier
+  audience   = auth0_resource_server.lfx_crowdfunding_m2m.identifier
   scopes     = ["access:api"]
-  depends_on = [auth0_resource_server_scopes.lfx_crowdfunding]
+  depends_on = [auth0_resource_server_scopes.lfx_crowdfunding_m2m]
 }
 ```
 
-> **Note:** `deny_all` applies only to this new M2M audience. The existing user-token flow uses a separate audience (`https://funding.{env}.platform.linuxfoundation.org/api/`) validated via `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` (see `backend/cmd/initiatives-api/config.go`; per-environment values in `lfx-v2-argocd`). It is unaffected.
+> **Note:** `deny_all` applies only to this new M2M audience. The existing user-token flow uses a separate audience (`https://crowdfunding.{env}.lfx.dev/api/` for dev/staging, `https://crowdfunding.linuxfoundation.org/api/` for prod) validated via `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` (see `backend/cmd/initiatives-api/config.go`; per-environment values in `lfx-v2-argocd`). It is unaffected.
 
 ### `lfx-v2-argocd`
 
@@ -193,7 +196,7 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 ### `lfx-self-serve`
 
 New `crowdfunding.service.ts` modelled on `cdp.service.ts`:
-- M2M token via `client_credentials` using existing `PCC_AUTH0_CLIENT_ID/SECRET`
+- M2M token via `client_credentials` using `M2M_AUTH_CLIENT_ID/SECRET` (via `generateM2MToken`)
 - Proxy routes under `/api/crowdfunding/*` with M2M Bearer + `X-Username`
 - `getEffectiveUsername()` for identity resolution — resolves LFID username of the acting user (impersonated user's username when impersonation is active, logged-in user's username otherwise). The username is available via the `https://sso.linuxfoundation.org/claims/username` namespaced claim in the Auth0 JWT; if SS does not already have a helper that returns this for the effective user, one is needed.
 
@@ -205,7 +208,17 @@ No changes to auth middleware, session types, or existing token exchange logic.
 - Registered as an alternative to the existing user JWT middleware on protected routes
 - Stripe webhook (`POST /v1/stripe/webhook`) is already outside the JWT middleware — no changes needed
 
-> **Note for engineers — username vs. sub in CF handlers:** CF handlers currently use `principal.UserID` (the Auth0 sub) as the user identifier for DB lookups and Stripe customer keys. Once `X-Username` carries the LFID username, the M2M middleware sets `Principal.Username` — handlers on the me-routes must use `principal.Username` instead. The `Principal` struct already has both fields (`UserID` = sub, `Username` = LFID username from `https://sso.linuxfoundation.org/claims/username`). DB schema and Stripe metadata that currently store the Auth0 sub will need to be updated as part of OQ-23 (sub → username migration).
+> **Note for engineers — username is the canonical user identifier in new CF:**
+>
+> Per OQ-23, new CF uses **LFID username everywhere** for user identity — both the CF frontend (user JWT path) and SS → CF (M2M path). The change is **not** limited to me-routes or the M2M middleware: every handler that today reads `principal.UserID` for user identity must switch to `principal.Username`. This includes me-routes (`donation_handler.go`, `subscription_handler.go`, `payment_handler.go`) **and** non-me protected routes that perform ownership checks (`initiative_handler.go`, `subscription_handler.go:Cancel`). Note: `upload_handler.go` only checks that a principal is present — it performs no per-user ownership lookup via `UserID` and does not need to change. Service and repository layers update their parameter names and query columns to match.
+>
+> **LFF stays on Auth0 sub** — it's the retiring Lambda and is untouched. The username migration happens at the DynamoDB → Postgres boundary: existing Auth0 subs are bulk-resolved to LFID usernames via Auth0 Management API during the one-time migration script. Postgres stores both `users.user_id` (the sub, populated only for migrated rows) and `users.username` (LFID username, the join key). For users created after migration, `user_id` is NULL.
+>
+> Stripe customer metadata is updated in the same migration pass. The `users.stripe_customer_id` mapping is keyed by username going forward.
+>
+> The `Principal` struct already has both fields populated by the user JWT middleware (`UserID` = sub from the `sub` claim, `Username` = LFID username from `https://sso.linuxfoundation.org/claims/username`). On the M2M path, `Principal.UserID` is set to the M2M client's subject (the Auth0 client credential identifier, not a user identity) and must not be used as the acting user. Only `Principal.Username` (from `X-Username`) carries the acting user's identity on the M2M path — handlers must use `Username` exclusively.
+>
+> Full breakdown of schema, migration, and code changes is tracked in the Jira ticket created under LFXV2-1690.
 
 ---
 
