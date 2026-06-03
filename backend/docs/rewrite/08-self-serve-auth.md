@@ -45,7 +45,7 @@ SS authenticates to CF using **M2M client credentials** — the same pattern SS 
 SS populates `X-Username` using the **LFID username** of the acting user — resolved via the existing `getEffectiveUsername()` helper (or equivalent), which returns the impersonated user's username when impersonation is active and the logged-in user's username otherwise.
 
 ```typescript
-const token = await this.getM2MToken(CROWDFUNDING_API_AUDIENCE); // cached ~24hr
+const token = await generateM2MToken(CROWDFUNDING_API_AUDIENCE); // cached ~24hr
 
 await fetch(`${CROWDFUNDING_API_BASE_URL}/v1/me/donations`, {
   headers: {
@@ -98,7 +98,8 @@ CF M2M middleware
 │  User browser ──► Nuxt BFF server                               │
 │                       │                                          │
 │                       ├─ Auth0 client_credentials grant         │
-│                       │   audience: https://crowdfunding.{env}.lfx.dev/m2m/  │
+│                       │   audience: https://crowdfunding.{env}.lfx.dev/m2m/ (dev/staging)  │
+│                       │             https://crowdfunding.linuxfoundation.org/m2m/ (prod)  │
 │                       │   → M2M access token (cached ~24hr)     │
 │                       │                                          │
 │                       ├─ Resolve acting user (impersonation?)   │
