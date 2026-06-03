@@ -309,6 +309,8 @@ func (c *stripeClientImpl) CreatePaymentIntent(ctx context.Context, req models.P
 			Metadata: map[string]string{
 				"initiative_id": req.InitiativeID,
 				"user_id":       req.UserID,
+				"category":      req.Category,
+				"orgID":         req.OrgID,
 			},
 		},
 	}
@@ -429,6 +431,8 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 		Metadata: map[string]string{
 			"initiative_id": req.InitiativeID,
 			"user_id":       req.UserID,
+			"category":      req.Category,
+			"orgID":         req.OrgID,
 		},
 	}
 
