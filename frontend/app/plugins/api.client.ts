@@ -78,6 +78,9 @@ export default defineNuxtPlugin(() => {
 
           // Refresh failed (revoked / expired refresh token) — redirect to login.
           await login(route.fullPath);
+          // Navigation is in flight; suspend the caller so the 401 isn't surfaced
+          // (e.g. as an error toast) before the browser leaves the page.
+          return new Promise<never>(() => {});
         }
 
         throw err;
