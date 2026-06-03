@@ -3,10 +3,10 @@
 
 # Self Serve → Crowdfunding API Authentication
 
-**Status:** Proposed — pending architect review
+**Status:** Approved — implemented (DEV)
 **Author:** Michal Lehotsky
-**Related:** `auth0-terraform`, `lfx-self-serve`, `lfx-v2-argocd`
-**Context:** Follows architecture discussions with Eric Searcy and David Deal (May 2026). Eric confirmed M2M + audience pattern and explicit identity injection for impersonation. Eric also confirmed CF endpoints are **me-style** (user-scoped), and that the platform is migrating from Auth0 `sub` to LFID usernames — `X-Username` must carry the username, not the sub.
+**Related:** `auth0-terraform` #321, `lfx-v2-argocd` #882/#893, `lfx-secrets-management` #262
+**Context:** Follows architecture discussions with Eric Searcy and David Deal (May 2026). Reviewed by Robert Detjens and Eric Searcy. Collapsed to a single Auth0 resource server per reviewer feedback — matches the platform gateway pattern (`lfx_v2_api`, `lfx_api_gateway`). Platform is migrating from Auth0 `sub` to LFID usernames — `X-Username` carries the username, not the sub.
 
 ---
 
@@ -37,7 +37,9 @@ This design is consistent with how Eric described it on the call: for a me-style
 
 ## 3. Approach: M2M + Explicit Identity Header
 
-SS authenticates to CF using **M2M client credentials** — the same pattern SS already uses for CDP. SS obtains a CF-scoped Auth0 access token via `client_credentials`, passes it as the Bearer token, and sends the acting user's LFID username in an **`X-Username` header**. CF trusts this header only from verified M2M callers.
+SS authenticates to CF using **M2M client credentials** — the same pattern SS already uses for CDP. SS obtains an Auth0 access token via `client_credentials` for the CF API audience (`/api/`), passes it as the Bearer token, and sends the acting user's LFID username in an **`X-Username` header**. CF trusts this header only from verified M2M callers.
+
+CF uses a **single resource server** (`lfx_crowdfunding_api`, `/api/`) for both user tokens (CF frontend) and M2M tokens (SS) — matching the platform gateway pattern. CF's middleware distinguishes callers by `gty`/`azp` claims and gates M2M callers via the `AUTHORIZED_CLIENTS` allowlist.
 
 > **Why `X-Username` and not `X-User-ID`?**  
 > The LFX v2 platform is migrating away from Auth0 `sub` identifiers (`auth0|...`) to LFID usernames across all services (see OQ-23). Eric explicitly recommended adopting usernames during this migration. `X-Username` makes the contract explicit — the value is a human-readable LFID username, not an opaque Auth0 identifier.
@@ -69,11 +71,8 @@ SS server start / first CF call
   └─ Auth0 token endpoint (client_credentials grant)
        client_id     = PCC_AUTH0_CLIENT_ID      (the lfx_one client)
        client_secret = PCC_AUTH0_CLIENT_SECRET
-       audience      = https://crowdfunding.{env}.lfx.dev/m2m/   (dev/staging)
-                     = https://crowdfunding.linuxfoundation.org/m2m/  (prod)
-                        (new M2M-only audience — separate from the user-token
-                         audience https://crowdfunding.{env}.lfx.dev/api/  (dev/staging)
-                                               https://crowdfunding.linuxfoundation.org/api/  (prod))
+       audience      = https://crowdfunding.{env}.lfx.dev/api/   (dev/staging)
+                     = https://crowdfunding.linuxfoundation.org/api/  (prod)
        → M2M access token (cached, ~24hr lifetime)
 
 User navigates to a CF feature in SS
@@ -85,11 +84,13 @@ User navigates to a CF feature in SS
        Authorization: Bearer {M2M token}
        X-Username:    {LFID username of acting user}
 
-CF M2M middleware
-  1. Validates Bearer token: signature, issuer, CF M2M audience, expiry
-  2. Checks azp claim matches SS client ID (rejects unknown callers)
-  3. Reads X-Username → Principal.Username
-  4. Handler proceeds with correct user identity
+CF JWT middleware (handles user + M2M tokens)
+  1. Validates Bearer token: signature, issuer, JWT_AUDIENCE (/api/), expiry
+  2. Detects M2M via gty=client_credentials (or sub ending @clients)
+  3. For M2M: checks azp ∈ AUTHORIZED_CLIENTS (rejects unknown callers)
+  4. Reads X-Username → Principal.Username (M2M only; user tokens use the
+     username claim from https://sso.linuxfoundation.org/claims/username)
+  5. Handler proceeds with correct user identity
 ```
 
 ### Architecture Diagram
@@ -101,8 +102,8 @@ CF M2M middleware
 │  User browser ──► Nuxt BFF server                               │
 │                       │                                          │
 │                       ├─ Auth0 client_credentials grant         │
-│                       │   audience: https://crowdfunding.{env}.lfx.dev/m2m/ (dev/staging)  │
-│                       │             https://crowdfunding.linuxfoundation.org/m2m/ (prod)  │
+│                       │   audience: https://crowdfunding.{env}.lfx.dev/api/ (dev/staging)  │
+│                       │             https://crowdfunding.linuxfoundation.org/api/ (prod)  │
 │                       │   → M2M access token (cached ~24hr)     │
 │                       │                                          │
 │                       ├─ Resolve acting user (impersonation?)   │
@@ -119,10 +120,10 @@ CF M2M middleware
 ┌─────────────────────────────────────────────────────────────────┐
 │                  CF Go API (Kubernetes)                          │
 │                                                                  │
-│  M2M middleware                                                  │
-│    1. Validate Bearer token (sig, issuer, M2M audience, expiry) │
-│    2. Check azp == SS client ID                                  │
-│    3. Read X-Username → Principal.Username                       │
+│  JWT middleware (user + M2M)                                     │
+│    1. Validate Bearer token (sig, issuer, /api/ audience, expiry)│
+│    2. Detect M2M (gty); check azp ∈ AUTHORIZED_CLIENTS          │
+│    3. Read X-Username → Principal.Username (M2M only)           │
 │                                                                  │
 │  Me-style handler                                                │
 │    GET /v1/me/donations        → donations for this username     │
@@ -157,44 +158,23 @@ When impersonation is active, `getEffectiveUsername()` returns the impersonated 
 
 ### `auth0-terraform` — new file `grants_crowdfunding.tf`
 
-Pure addition, ~40 lines. Follows `grants_sanctions_screening.tf` exactly. No existing resources touched.
+A single client grant on the existing `lfx_crowdfunding_api` (`/api/`) resource server. No new resource server needed.
 
 ```hcl
-resource "auth0_resource_server" "lfx_crowdfunding_m2m" {
-  identifier = {
-    "dev"     = "https://crowdfunding.dev.lfx.dev/m2m/"
-    "staging" = "https://crowdfunding.staging.lfx.dev/m2m/"
-    "prod"    = "https://crowdfunding.linuxfoundation.org/m2m/"
-  }[terraform.workspace]
-  signing_alg    = "RS256"
-  token_lifetime = { "dev" = 86400, "staging" = 86400, "prod" = 86400 }[terraform.workspace]
-  subject_type_authorization {
-    user   { policy = "deny_all" }           # M2M-only audience
-    client { policy = "require_client_grant" }
-  }
-}
-
-resource "auth0_resource_server_scopes" "lfx_crowdfunding_m2m" {
-  resource_server_identifier = auth0_resource_server.lfx_crowdfunding_m2m.identifier
-  scopes { name = "access:api" description = "Access Crowdfunding API" }
-}
-
 resource "auth0_client_grant" "lfxone_crowdfunding" {
   client_id  = auth0_client.lfx_one.id
-  audience   = auth0_resource_server.lfx_crowdfunding_m2m.identifier
+  audience   = auth0_resource_server.lfx_crowdfunding_api.identifier
   scopes     = ["access:api"]
-  depends_on = [auth0_resource_server_scopes.lfx_crowdfunding_m2m]
+  depends_on = [auth0_resource_server_scopes.lfx_crowdfunding_api]
 }
 ```
-
-> **Note:** `deny_all` applies only to this new M2M audience. The existing user-token flow uses a separate audience (`https://crowdfunding.{env}.lfx.dev/api/` for dev/staging, `https://crowdfunding.linuxfoundation.org/api/` for prod) validated via `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` (see `backend/cmd/initiatives-api/config.go`; per-environment values in `lfx-v2-argocd`). It is unaffected.
 
 ### `lfx-v2-argocd`
 
 | File | Change |
 |---|---|
-| `values/{dev,staging,prod}/lfx-crowdfunding-backend.yaml` | Add `M2M_JWT_AUDIENCE` only; `JWT_AUDIENCE`, `JWT_ISSUER`, and `JWKS_URL` unchanged — M2M middleware reuses the same issuer and JWKS endpoint (same Auth0 tenant) |
-| `values/{dev,staging,prod}/lfx-self-serve.yaml` | Add `CROWDFUNDING_API_BASE_URL` and `CROWDFUNDING_API_AUDIENCE` |
+| `values/{dev,staging,prod}/lfx-crowdfunding-backend.yaml` | Add `AUTHORIZED_CLIENTS` (lfx_one client ID via ExternalSecret); `JWT_AUDIENCE`, `JWT_ISSUER`, `JWKS_URL` unchanged |
+| `values/{dev,staging,prod}/lfx-self-serve.yaml` | Add `CROWDFUNDING_API_BASE_URL` and `CROWDFUNDING_API_AUDIENCE` (`/api/`) |
 
 ### `lfx-self-serve`
 
@@ -207,9 +187,8 @@ No changes to auth middleware, session types, or existing token exchange logic.
 
 ### `lfx-crowdfunding` backend
 
-- New `M2MMiddleware`: validates CF-scoped Bearer token against `M2M_JWT_AUDIENCE` (new env var), reusing existing `JWKS_URL` and `JWT_ISSUER`; checks `azp` claim matches SS client ID; reads `X-Username` header → `Principal.Username`
-- Registered as an alternative to the existing user JWT middleware on protected routes
-- Stripe webhook (`POST /v1/stripe/webhook`) is already outside the JWT middleware — no changes needed
+- The existing `JWTAuthenticator.Middleware` handles both user and M2M tokens against the single `JWT_AUDIENCE` (`/api/`): validates the Bearer token, detects M2M via `gty`/`azp`, gates M2M callers against `AUTHORIZED_CLIENTS`, and reads `X-Username` → `Principal.Username` for trusted M2M callers only
+- Stripe webhook (`POST /v1/stripe/webhook`) is outside the JWT middleware — no changes needed
 
 > **Note for engineers — username is the canonical user identifier in new CF:**
 >
@@ -227,18 +206,17 @@ No changes to auth middleware, session types, or existing token exchange logic.
 
 ## 7. What This Does Not Need
 
-- New Auth0 resource server beyond the dedicated CF one
+- New Auth0 resource server (reuses the existing `lfx_crowdfunding_api`)
 - Changes to Heimdall routing or `lfx-platform.yaml`
 - New token exchange logic in SS auth middleware
 - New session fields
-- Changes to the existing user JWT middleware in CF
 - Snowflake integration for CF data
 
 ---
 
 ## 8. Long-term: Heimdall Alignment
 
-Every other LFX v2 service sits behind Heimdall. Adding Heimdall to CF would normalise both user and M2M tokens through the platform gateway, making `X-User-ID` unnecessary — impersonation identity would flow through the Heimdall-issued JWT directly.
+Every other LFX v2 service sits behind Heimdall. Adding Heimdall to CF would normalise both user and M2M tokens through the platform gateway, making `X-Username` unnecessary — impersonation identity would flow through the Heimdall-issued JWT directly.
 
 This is the correct long-term architecture but is not in scope now. The M2M approach proposed here does not block it — migrating CF to Heimdall later is a contained ArgoCD + Helm chart change with no SS BFF changes required.
 
@@ -248,9 +226,10 @@ This is the correct long-term architecture but is not in scope now. The M2M appr
 
 | Item | Status | Detail |
 |---|---|---|
-| M2M + audience mechanism | ✅ Confirmed by Eric | Same pattern as sanctions screening |
-| Me-style endpoint design | ✅ Confirmed by Eric | Eric confirmed: passing an explicit identity header makes sense for me-style endpoints |
-| `X-Username` header name and trust model | ✅ Confirmed | Renamed from `X-User-ID` to carry LFID username per Eric's recommendation; trusted only from verified M2M callers |
+| M2M + explicit identity header | ✅ Confirmed by Eric | M2M client credentials + `X-Username` for me-style endpoints |
+| Single resource server (`/api/`) | ✅ Resolved — reviewed by Robert Detjens, Eric Searcy | Matches platform gateway pattern; callers distinguished by `gty`/`azp` + `AUTHORIZED_CLIENTS` |
+| Me-style endpoint design | ✅ Confirmed by Eric | Passing an explicit identity header makes sense for me-style endpoints |
+| `X-Username` header name and trust model | ✅ Confirmed | Carries LFID username per Eric's recommendation; trusted only from verified M2M callers |
 | sub → username migration impact on CF | 🔲 Needs implementation | DB and Stripe customer keys currently store Auth0 sub; must be updated — tracked as OQ-23 |
 | Impersonation write access | 🔲 Product decision | Read-only gating is product-side for launch; future option is `read`/`write` scope split |
 | Impersonation bug in SS (Appendix) | 🔲 Pending Jordan | Michal notified Jordan to confirm whether this is a real bug or by-design |
