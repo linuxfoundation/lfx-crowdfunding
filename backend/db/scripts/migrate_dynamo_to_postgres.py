@@ -119,6 +119,7 @@ def _parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
 # Stable UUID namespace — must not change between runs to keep IDs deterministic
 _UUID_NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 
