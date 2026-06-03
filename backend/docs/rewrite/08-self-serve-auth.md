@@ -98,7 +98,7 @@ CF M2M middleware
 │  User browser ──► Nuxt BFF server                               │
 │                       │                                          │
 │                       ├─ Auth0 client_credentials grant         │
-│                       │   audience: crowdfunding.{env}.lfx.dev  │
+│                       │   audience: https://crowdfunding.{env}.lfx.dev/m2m/  │
 │                       │   → M2M access token (cached ~24hr)     │
 │                       │                                          │
 │                       ├─ Resolve acting user (impersonation?)   │
@@ -179,7 +179,7 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
   client_id  = auth0_client.lfx_one.id
   audience   = auth0_resource_server.lfx_crowdfunding_m2m.identifier
   scopes     = ["access:api"]
-  depends_on = [auth0_resource_server_scopes.lfx_crowdfunding]
+  depends_on = [auth0_resource_server_scopes.lfx_crowdfunding_m2m]
 }
 ```
 
