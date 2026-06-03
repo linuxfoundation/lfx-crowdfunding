@@ -373,12 +373,12 @@ Nothing in the initial release runs on Lambda or Serverless Framework.
 | Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
 | ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
 
-URLs (unchanged — DNS cutover at go-live):
-- Dev: `https://funding.dev.platform.linuxfoundation.org/`
-- Prod: `https://crowdfunding.lfx.linuxfoundation.org/`
+URLs:
+- Dev: `https://crowdfunding.dev.lfx.dev/`
+- Staging: `https://crowdfunding.staging.lfx.dev/`
+- Prod: `https://crowdfunding.linuxfoundation.org/`
 
-Cutover: switch Ingress/DNS from old Lambda API Gateway to new K8s Ingress.
-Rollback: revert Ingress. Old Lambda stack stays live until explicitly decommissioned.
+The rewrite uses new hostnames. The old Lambda stack (`funding.dev.platform.linuxfoundation.org` / `crowdfunding.lfx.linuxfoundation.org`) can be decommissioned separately once traffic is fully cut over.
 
 ---
 

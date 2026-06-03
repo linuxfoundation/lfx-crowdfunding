@@ -332,7 +332,7 @@ CORS rule that allows `PUT` from the frontend origin:
   {
     "AllowedHeaders": ["Content-Type", "x-amz-acl"],
     "AllowedMethods": ["PUT"],
-    "AllowedOrigins": ["https://crowdfunding.lfx.linuxfoundation.org"],
+    "AllowedOrigins": ["https://crowdfunding.linuxfoundation.org"],
     "ExposeHeaders": []
   }
 ]

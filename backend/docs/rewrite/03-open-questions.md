@@ -11,33 +11,54 @@ Questions that must be answered before or during implementation. Update status a
 
 ### OQ-23: Auth0 sub → LFID username migration
 
-**Status:** Open — action required before launch
+**Status:** Decisions locked — implementation tracked in Jira ([LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025))
 **Owner:** Michal
 **Source:** Architecture call with Eric Searcy, May 28 2026
 
-**Context:** The LFX v2 platform is migrating from Auth0 `sub` identifiers (e.g. `auth0|elim`) to LFID usernames across all services. Eric announced this is happening in approximately two weeks (from the call date). The motivation: Auth0 `sub` is an internal Auth0 identifier, not a stable LFID identity. Applications should never expose it externally or use it as a join key — the trailing part after `auth0|` looks like a username but is not guaranteed to be one.
+**Context:** The LFX v2 platform is migrating from Auth0 `sub` identifiers (e.g. `auth0|elim`) to LFID usernames across all services. The motivation: Auth0 `sub` is an internal Auth0 identifier, not a stable LFID identity. Applications should never expose it externally or use it as a join key — the trailing part after `auth0|` looks like a username but is not guaranteed to be one (it can also be a SHA-based sub).
 
-**Impact on CF:**
+**Scope decision: new CF uses LFID username everywhere; LFF stays on Auth0 sub.** LFF is the retiring Lambda — we do not touch it. The new CF backend uses LFID username as the user identifier from day one. The conversion happens at the data migration boundary; there is no in-place rewrite of LFF.
 
-1. **Old DynamoDB data uses Auth0 subs.** The existing CF data stores user identifiers as Auth0 pipe subs (`auth0|...`). These must be converted to LFID usernames during the DynamoDB → Postgres migration.
+#### Locked-in decisions
 
-2. **Conversion is one-directional at migration time.** Eric's guidance: there is an algorithm to go *from* LFID username *to* Auth0 pipe sub (for all users that exist today), but not reliably in reverse (the part after `auth0|` can be a SHA sub, not always a username). The correct approach is to call Auth0 at migration time to look up the username for each stored sub.
+| Topic | Decision |
+|---|---|
+| Migration strategy | Convert at migration time (DynamoDB → Postgres). Bulk-resolve every Auth0 sub to its LFID username via Auth0 Management API during the one-time migration script. |
+| Postgres storage shape | Keep both `users.user_id` (Auth0 sub) and `users.username` (LFID username). `username` is the join key for all new code; `user_id` is retained for migrated rows only as an audit/legacy reference. **For users created after migration, `user_id` is NULL** — only migrated rows have a sub. |
+| Direction of conversion | One-directional at migration time only. Going *from* username *to* sub is supported by Auth0 for users that exist today; going *from* sub *to* username is what the migration does (sub stored in DynamoDB → look up username via Auth0 → store username in Postgres). After migration, CF never needs to resolve sub ↔ username again. |
+| Frontend scope | **Both the CF frontend (user JWT) and SS → CF (M2M) use username.** CF handlers read `principal.Username` for every user identity check; `principal.UserID` (which holds the Auth0 sub) is no longer used as a join key or for ownership checks. The CF frontend's existing JWT already carries the `https://sso.linuxfoundation.org/claims/username` claim — no frontend change required beyond switching which field handlers read. |
+| SS → CF M2M | `X-Username` header carries LFID username. See `08-self-serve-auth.md`. |
+| Stripe customer metadata | Update at migration. One-time pass through every existing Stripe customer to set metadata.lfid_username; the Postgres `users.stripe_customer_id` mapping is keyed by username going forward. |
+| LFF coexistence | LFF keeps Auth0 sub forever (it's retiring). No dual-format support needed in new CF. |
 
-3. **New CF Postgres schema must use LFID username as the user identifier.** Columns that currently map to `users.user_id` (Auth0 sub) need to store LFID usernames instead. This affects the `donations`, `subscriptions`, and `stripe_payment_accounts` tables (and any others storing per-user data).
+#### What this affects in CF Postgres
 
-4. **Stripe customer keys.** CF currently keys Stripe customers by Auth0 sub. After migration these must be keyed by LFID username — requires a one-time Stripe customer metadata update alongside the Postgres migration.
+The following columns currently store Auth0 sub and must switch to LFID username as the canonical user identifier:
 
-5. **M2M identity header.** The `X-Username` header in `08-self-serve-auth.md` already reflects this decision — it carries LFID username, not sub.
+- `donations.user_id` → join by `username` going forward
+- `subscriptions.user_id` → join by `username` going forward
+- `users.stripe_customer_id` — Stripe customer mapping is keyed by username going forward (no `stripe_payment_accounts` table exists; Stripe customer data lives on `users`)
+- `organizations.owner_id` — ownership column references `users(user_id)` today; must switch to username-based lookup
+- `initiatives.owner_id` — same as above
+- Any other per-user table created during the rewrite
 
-6. **EasyCLA may be affected.** David Deal raised this on the call — needs a separate check.
+The `users` table gains a `username` column (NOT NULL going forward; NOT NULL after backfill for migrated rows) and keeps `user_id` (nullable for new users).
 
-**Required actions:**
-- Determine whether the Auth0 Management API is the right tool for the bulk sub → username lookup at migration time, or whether user-service already provides this.
-- Add the username conversion step to the DynamoDB → Postgres migration script.
-- Update CF Postgres schema columns that store user identity to use LFID username.
-- Check EasyCLA for the same issue.
+#### What this affects in CF backend code
 
-**Blocking:** DynamoDB → Postgres data migration; M2M middleware implementation in CF backend.
+- M2M middleware: reads `X-Username` → `Principal.Username` (already documented in `08-self-serve-auth.md`).
+- User JWT middleware: already extracts `Username` from the JWT custom claim (`jwt.go`) — no change needed.
+- All handlers on protected routes: switch from `principal.UserID` → `principal.Username` for user identity. Affected handlers: `donation_handler.go`, `subscription_handler.go`, `payment_handler.go`, `initiative_handler.go`. Note: `upload_handler.go` only verifies that a principal is present — it performs no per-user ownership check via `UserID` and does not need to change.
+- Services and repositories: parameter names and query columns change from `userID`/`user_id` to `username`.
+
+#### Open sub-items
+
+- **EasyCLA impact** — David Deal raised this on the call. Tracked separately; not in CF scope.
+- **New users post-migration: confirm `user_id` NULL is acceptable** — every code path that today reads `user_id` must be audited to confirm it's not load-bearing for new users.
+
+**Blocking:** DynamoDB → Postgres data migration script; M2M middleware implementation in CF backend; handler refactor across all me-routes and protected routes.
+
+**Tracking:** [LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025) (child of Epic [LFXV2-1690](https://linuxfoundation.atlassian.net/browse/LFXV2-1690)) — see ticket for full implementation breakdown.
 
 ---
 

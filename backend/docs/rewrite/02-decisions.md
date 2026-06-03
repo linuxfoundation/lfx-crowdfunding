@@ -242,12 +242,13 @@ Update: if this decision is reversed, use `oapi-codegen` (Go server stubs) and `
 
 No versioning changes. New endpoints keep `/v1/` prefix to preserve compatibility with any existing consumers.
 
-### Same URL as current system
+### URLs
 
-- Dev: `https://funding.dev.platform.linuxfoundation.org/`
-- Prod: `https://crowdfunding.lfx.linuxfoundation.org/`
+- Dev: `https://crowdfunding.dev.lfx.dev/`
+- Staging: `https://crowdfunding.staging.lfx.dev/`
+- Prod: `https://crowdfunding.linuxfoundation.org/`
 
-DNS cutover at go-live. Old and new systems must not run concurrently on the same URL. Cutover plan: switch DNS/ingress from Lambda API Gateway to K8s ingress. Rollback: switch back.
+The rewrite uses new hostnames (not the legacy `funding.dev.platform.linuxfoundation.org` / `crowdfunding.lfx.linuxfoundation.org`). DNS for the old hostnames can be decommissioned separately after the legacy Lambda stack is retired.
 
 ---
 
@@ -480,7 +481,7 @@ Note: the `mentorship-sync` CronJob reads **Mentorship data from Snowflake into 
 
 The PM has requested CF data surfaces in LFX Self Serve ("My Donations", "My Initiatives", and potentially more — full list TBD, see OQ-11). LFX Self Serve reads CF data from **Snowflake** via the Fivetran CF→Snowflake sync (the same pattern used for My Trainings, My Meetings, etc.).
 
-Rationale: the Snowflake pattern already exists in LFX Self Serve and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.lfx.linuxfoundation.org`, not in LFX Self Serve. This approach has no runtime dependency between LFX Self Serve and the CF API service. See OQ-11 for scope.
+Rationale: the Snowflake pattern already exists in LFX Self Serve and requires minimal new code. The 24h Fivetran sync delay is acceptable for summary widgets — real-time payment confirmation is handled on `crowdfunding.linuxfoundation.org`, not in LFX Self Serve. This approach has no runtime dependency between LFX Self Serve and the CF API service. See OQ-11 for scope.
 
 **No LFX Self Serve integration code will be written until:**
 1. The PM provides a UI design for the LFX Self Serve CF widgets (what data, what layout)
