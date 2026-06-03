@@ -18,6 +18,7 @@ export default defineNuxtConfig({
   plugins: [
     '~/plugins/vue-query.ts',
     '~/plugins/lfx-ui-core.client.ts',
+    '~/plugins/api.client.ts',
     '~/plugins/auth.client.ts',
   ],
   css: ['~/assets/styles/main.scss'],
