@@ -51,15 +51,26 @@ type JWTAuthConfig struct {
 type JWTClaims struct {
 	Subject         string `json:"sub"`
 	Username        string `json:"https://sso.linuxfoundation.org/claims/username"`
+	SSOEmail        string `json:"https://sso.linuxfoundation.org/claims/email"`
 	AuthorizedParty string `json:"azp"`
 	ClientID        string `json:"client_id"`
 	GrantType       string `json:"gty"`
-	Email           string `json:"email"`
+	Email           string `json:"email"` // standard claim; prefer SSOEmail when both present
 	EmailVerified   bool   `json:"email_verified"`
 	Name            string `json:"name"`
 	GivenName       string `json:"given_name"`
 	FamilyName      string `json:"family_name"`
 	Picture         string `json:"picture"`
+}
+
+// effectiveEmail returns the canonical email address for the token.
+// The LF SSO namespaced claim takes precedence over the standard "email" claim,
+// matching how Auth0 injects profile data into access tokens.
+func (c *JWTClaims) effectiveEmail() string {
+	if v := strings.TrimSpace(c.SSOEmail); v != "" {
+		return v
+	}
+	return strings.TrimSpace(c.Email)
 }
 
 const xUsernameHeader = "X-Username"
@@ -204,7 +215,7 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 
 // Validate satisfies validator.CustomClaims.
 func (c *JWTClaims) Validate(_ context.Context) error {
-	if c.EmailVerified && strings.TrimSpace(c.Email) == "" {
+	if c.EmailVerified && c.effectiveEmail() == "" {
 		return errors.New("email_verified requires email")
 	}
 	return nil
@@ -257,7 +268,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		principal := &models.Principal{
 			UserID:        principalUserID,
 			Username:      principalUsername,
-			Email:         claims.Email,
+			Email:         claims.effectiveEmail(),
 			EmailVerified: claims.EmailVerified,
 			Name:          claims.Name,
 			GivenName:     claims.GivenName,
@@ -290,7 +301,7 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 				principal := &models.Principal{
 					UserID:        claims.Subject,
 					Username:      claims.Username,
-					Email:         claims.Email,
+					Email:         claims.effectiveEmail(),
 					EmailVerified: claims.EmailVerified,
 					Name:          claims.Name,
 					GivenName:     claims.GivenName,

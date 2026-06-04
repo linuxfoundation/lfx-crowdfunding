@@ -153,6 +153,7 @@ func userTokenHS256() string {
 		"aud": testAudience,
 		"exp": time.Now().Add(time.Hour).Unix(),
 		"https://sso.linuxfoundation.org/claims/username": "testuser",
+		"https://sso.linuxfoundation.org/claims/email":    "test@example.com",
 		"email":          "test@example.com",
 		"email_verified": true,
 		"given_name":     "Test",
@@ -167,6 +168,7 @@ func userToken() string {
 		"aud": testAudience,
 		"exp": time.Now().Add(time.Hour).Unix(),
 		"https://sso.linuxfoundation.org/claims/username": "testuser",
+		"https://sso.linuxfoundation.org/claims/email":    "test@example.com",
 		"email":          "test@example.com",
 		"email_verified": true,
 		"given_name":     "Test",
@@ -273,6 +275,7 @@ func TestMiddleware_AcceptsRS256(t *testing.T) {
 		"aud": testAudience,
 		"exp": time.Now().Add(time.Hour).Unix(),
 		"https://sso.linuxfoundation.org/claims/username": "rs256user",
+		"https://sso.linuxfoundation.org/claims/email":    "rs256@example.com",
 		"email":          "rs256@example.com",
 		"email_verified": true,
 	}
@@ -392,6 +395,7 @@ func TestMiddleware_EnrichedClaimsPropagated(t *testing.T) {
 		"aud": testAudience,
 		"exp": time.Now().Add(time.Hour).Unix(),
 		"https://sso.linuxfoundation.org/claims/username": "elim",
+		"https://sso.linuxfoundation.org/claims/email":    "elim@ds9.ufp",
 		"email":          "elim@ds9.ufp",
 		"email_verified": true,
 		"given_name":     "Elim",
@@ -882,6 +886,82 @@ func TestNewJWTAuthenticator_EnforcesValidMethods(t *testing.T) {
 			t.Errorf("expected 200 for RS256 token via constructor, got %d", w.Code)
 		}
 	})
+}
+
+// ── email claim resolution ────────────────────────────────────────────────────
+
+// TestMiddleware_NamespacedEmailTakesPrecedenceOverStandardClaim verifies that
+// when both the LF SSO namespaced claim and the standard "email" claim are
+// present, the namespaced value is the one stored in the Principal.
+func TestMiddleware_NamespacedEmailTakesPrecedenceOverStandardClaim(t *testing.T) {
+	a := newTestAuthenticator(defaultCfg())
+
+	tok := sign(map[string]any{
+		"sub": "auth0|emailtest",
+		"iss": testIssuer,
+		"aud": testAudience,
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"https://sso.linuxfoundation.org/claims/username": "emailtest",
+		"https://sso.linuxfoundation.org/claims/email":    "namespaced@example.com",
+		"email":          "standard@example.com", // must be ignored when namespaced is present
+		"email_verified": true,
+	})
+
+	var got *models.Principal
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = PrincipalFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(tok))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if got == nil {
+		t.Fatal("principal not set in context")
+	}
+	if got.Email != "namespaced@example.com" {
+		t.Errorf("Email = %q, want namespaced claim %q", got.Email, "namespaced@example.com")
+	}
+}
+
+// TestMiddleware_FallsBackToStandardEmailWhenNamespacedAbsent verifies that
+// tokens without the namespaced email claim still populate Email from the
+// standard "email" claim.
+func TestMiddleware_FallsBackToStandardEmailWhenNamespacedAbsent(t *testing.T) {
+	a := newTestAuthenticator(defaultCfg())
+
+	tok := sign(map[string]any{
+		"sub": "auth0|fallbacktest",
+		"iss": testIssuer,
+		"aud": testAudience,
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"https://sso.linuxfoundation.org/claims/username": "fallbacktest",
+		// No namespaced email claim — only standard "email".
+		"email":          "standard@example.com",
+		"email_verified": true,
+	})
+
+	var got *models.Principal
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = PrincipalFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeRequest(tok))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if got == nil {
+		t.Fatal("principal not set in context")
+	}
+	if got.Email != "standard@example.com" {
+		t.Errorf("Email = %q, want standard claim %q", got.Email, "standard@example.com")
+	}
 }
 
 func TestAuthFailureCategory(t *testing.T) {

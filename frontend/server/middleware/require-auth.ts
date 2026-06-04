@@ -7,6 +7,7 @@ import type { ProtectedRoute } from '../types/auth.types';
 // Add entries here to require authentication on additional routes.
 // Omit `methods` to protect all HTTP methods on matching paths.
 const PROTECTED: ProtectedRoute[] = [
+  { match: (p) => p === '/api/me', methods: ['PATCH'] },
   { match: (p) => p.startsWith('/api/payment/') },
   {
     match: (p) => /^\/api\/initiatives\/[^/]+\/donations$/.test(p),

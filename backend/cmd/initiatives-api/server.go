@@ -121,6 +121,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, donationRepo, subscriptionRepo, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 	uploadH := handler.NewUploadHandler(s3Client)
+	userH := handler.NewUserHandler(userRepo)
 
 	// Router
 	r := chi.NewRouter()
@@ -174,6 +175,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
 		r.Get("/me/donations", donationH.ListForUser)
 		r.Get("/me/subscriptions", subscriptionH.ListForUser)
+
+		// Sync authenticated user profile from Auth0 JWT claims on every login.
+		r.Patch("/me", userH.SyncProfile)
 
 		// Payment account (saved card for 3DS flows).
 		r.Post("/me/setup-intent", paymentH.CreateSetupIntent)

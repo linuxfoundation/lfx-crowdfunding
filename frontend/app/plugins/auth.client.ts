@@ -45,6 +45,31 @@ export default defineNuxtPlugin(() => {
   const handleAuthQuery = async (authParam: string | undefined) => {
     if (authParam === 'logout') {
       await navigateTo('/', { replace: true });
+      return;
+    }
+
+    if (authParam === 'success') {
+      // Wait for auth state to be hydrated before syncing the profile so the
+      // session cookie is guaranteed to be present server-side.
+      if (!isAuthReady.value) {
+        await new Promise<void>((resolve) => {
+          const stop = watch(isAuthReady, (ready) => {
+            if (!ready) return;
+            stop();
+            resolve();
+          });
+        });
+      }
+
+      if (authState.value.isAuthenticated) {
+        await $fetch('/api/me', { method: 'PATCH', credentials: 'include' }).catch((err) =>
+          console.error('Profile sync error:', err),
+        );
+      }
+
+      // Strip ?auth=success from the URL without triggering a navigation.
+      const { auth: _auth, ...rest } = route.query;
+      await navigateTo({ path: route.path, query: rest }, { replace: true });
     }
   };
 
@@ -52,7 +77,7 @@ export default defineNuxtPlugin(() => {
     handleAuthQuery(authParam).catch((err) => console.error('Auth query handling error:', err));
   };
 
-  if (route.query.auth === 'logout') {
+  if (route.query.auth === 'logout' || route.query.auth === 'success') {
     nextTick(() => runAuthQuery(route.query.auth as string | undefined));
   }
 

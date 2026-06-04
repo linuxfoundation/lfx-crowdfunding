@@ -138,6 +138,9 @@ importers:
       eslint-plugin-vuejs-accessibility:
         specifier: ^2.4.1
         version: 2.5.0(eslint@9.39.4(jiti@2.7.0))(globals@17.6.0)
+      h3:
+        specifier: ^1.15.11
+        version: 1.15.11
       happy-dom:
         specifier: ^20.3.4
         version: 20.9.0
