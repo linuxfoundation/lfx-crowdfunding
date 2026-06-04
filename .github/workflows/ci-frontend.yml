@@ -65,12 +65,11 @@ jobs:
       - name: Notify ArgoCD image updater
         if: github.event_name != 'pull_request'
         run: |
-          curl -sf -X POST https://argocd-image-updater.dev.v2.cluster.linuxfound.info/webhook \
-            -H "Content-Type: application/json" \
-            -d '{
-              "action": "published",
-              "package_type": "container",
-              "registry": {"url": "ghcr.io"},
-              "repository": {"name": "lfx-crowdfunding-frontend", "full_name": "linuxfoundation/lfx-crowdfunding-frontend"},
-              "package": {"name": "lfx-crowdfunding-frontend", "package_version": {"container_metadata": {"tag": {"name": "development"}}}}
-            }' || true
+          payload='{"action":"published","package_type":"container",'
+          payload+='"registry":{"url":"ghcr.io"},'
+          payload+='"repository":{"name":"lfx-crowdfunding-frontend",'
+          payload+='"full_name":"linuxfoundation/lfx-crowdfunding-frontend"},'
+          payload+='"package":{"name":"lfx-crowdfunding-frontend",'
+          payload+='"package_version":{"container_metadata":{"tag":{"name":"development"}}}}}'
+          webhook=https://argocd-image-updater.dev.v2.cluster.linuxfound.info/webhook
+          curl -sf -X POST "$webhook" -H "Content-Type: application/json" -d "$payload" || true
