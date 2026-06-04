@@ -84,11 +84,11 @@ func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.Us
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (username) DO UPDATE SET
 			legacy_user_id = COALESCE(EXCLUDED.legacy_user_id, users.legacy_user_id),
-			email          = EXCLUDED.email,
-			given_name     = EXCLUDED.given_name,
-			family_name    = EXCLUDED.family_name,
-			name           = EXCLUDED.name,
-			avatar_url     = EXCLUDED.avatar_url,
+			email          = COALESCE(EXCLUDED.email, users.email),
+			given_name     = COALESCE(EXCLUDED.given_name, users.given_name),
+			family_name    = COALESCE(EXCLUDED.family_name, users.family_name),
+			name           = COALESCE(EXCLUDED.name, users.name),
+			avatar_url     = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
 			updated_on     = NOW()
 		RETURNING ` + userColumns
 

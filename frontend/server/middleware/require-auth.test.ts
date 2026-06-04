@@ -40,7 +40,8 @@ const makeEvent = (method: string, path: string, token?: string) => {
 describe('require-auth middleware', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Restore createError implementation after clearAllMocks resets it.
+    // vi.clearAllMocks() resets call history but not mock implementations.
+    // Re-apply the createError implementation so each test gets the throwing stub.
     mockCreateError.mockImplementation((input: unknown) => {
       const opts = input as { statusCode: number; statusMessage?: string };
       return Object.assign(new Error(opts.statusMessage ?? 'error'), {
