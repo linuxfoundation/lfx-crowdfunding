@@ -272,7 +272,7 @@ func toCardDetails(pm *stripe.PaymentMethod) *models.CardDetails {
 
 // buildChargeMetadata assembles the Stripe metadata map for charges and
 // subscriptions. initiative_id and user_id are always required; category and
-// orgID are only included when non-empty to avoid storing empty strings in
+// org_id are only included when non-empty to avoid storing empty strings in
 // Stripe (and downstream in Ledger).
 func buildChargeMetadata(initiativeID, userID, category, orgID string) map[string]string {
 	m := map[string]string{
@@ -283,7 +283,7 @@ func buildChargeMetadata(initiativeID, userID, category, orgID string) map[strin
 		m["category"] = category
 	}
 	if orgID != "" {
-		m["orgID"] = orgID
+		m["org_id"] = orgID
 	}
 	return m
 }
