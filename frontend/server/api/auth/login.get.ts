@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const authorizationUrl = buildAuthorizationUrl(authConfig, {
-      scope: 'openid profile email',
+      scope: 'openid profile email offline_access',
       state,
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
