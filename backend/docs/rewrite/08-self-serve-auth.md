@@ -28,8 +28,8 @@ CF uses a **single resource server** (`lfx_crowdfunding_api`, `/api/`) for both 
 ```
 SS server start / first CF call
   └─ Auth0 token endpoint (client_credentials grant)
-       client_id     = PCC_AUTH0_CLIENT_ID
-       client_secret = PCC_AUTH0_CLIENT_SECRET
+       client_id     = M2M_AUTH_CLIENT_ID
+       client_secret = M2M_AUTH_CLIENT_SECRET
        audience      = https://crowdfunding.{env}.lfx.dev/api/   (dev/staging)
                      = https://crowdfunding.linuxfoundation.org/api/  (prod)
        → M2M access token (cached, ~24hr lifetime)
@@ -103,7 +103,7 @@ resource "auth0_client_grant" "lfxone_crowdfunding" {
 ### `lfx-self-serve`
 
 New `crowdfunding.service.ts` modelled on `cdp.service.ts`:
-- M2M token via `client_credentials` using `PCC_AUTH0_CLIENT_ID/SECRET`, minted directly by the service (same pattern as `cdp.service.ts`)
+- M2M token via `client_credentials` using `M2M_AUTH_CLIENT_ID/SECRET` (the dedicated SS M2M client)
 - Proxy routes under `/api/crowdfunding/*` forwarding M2M Bearer + `X-Username`
 - `getEffectiveUsername()` resolves the acting user's LFID username from the `https://sso.linuxfoundation.org/claims/username` claim
 
