@@ -61,3 +61,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Notify ArgoCD image updater
+        if: github.event_name != 'pull_request'
+        run: |
+          curl -sf -X POST https://argocd-image-updater.dev.v2.cluster.linuxfound.info/webhook \
+            -H "Content-Type: application/json" \
+            -d '{
+              "action": "published",
+              "package_type": "container",
+              "registry": {"url": "ghcr.io"},
+              "repository": {"name": "lfx-crowdfunding-backend", "full_name": "linuxfoundation/lfx-crowdfunding-backend"},
+              "package": {"name": "lfx-crowdfunding-backend", "package_version": {"container_metadata": {"tag": {"name": "development"}}}}
+            }' || true
