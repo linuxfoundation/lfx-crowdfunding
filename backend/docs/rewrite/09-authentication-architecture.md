@@ -39,7 +39,6 @@ graph TD
     SSBFF["Self Serve\nExpress BFF\n(server)"]
     Reimburse["Reimbursement\nService"]
     Auth0(["Auth0\nlinuxfoundation-*.auth0.com"])
-    UserInfo["Auth0 /userinfo"]
 
     Browser -->|"PKCE auth code flow\n(redirect)"| Auth0
     Auth0 -->|"auth code"| Browser
@@ -57,8 +56,6 @@ graph TD
     Reimburse -->|"Bearer M2M token\n(access:manage scope)"| CFAPI
 
     Auth0 -->|"JWKS (RS256)"| CFAPI
-    CFAPI -->|"access token\n(on login sync only)"| UserInfo
-    UserInfo -->|"user profile JSON\n(email, name, avatar)"| CFAPI
 ```
 
 ---
@@ -214,50 +211,6 @@ sequenceDiagram
 
 ---
 
-## Flow 4 — Login Sync & User Profile
-
-On the first authenticated request after login (the `/v1/me` sync call), the CF Go API exchanges
-the user's access token for their full profile by calling the Auth0 `/userinfo` endpoint. This
-is the **only** time the Go API fetches profile data from Auth0; subsequent requests use the
-`users` table.
-
-**Why the Go API calls `/userinfo`, not Nuxt:** The Nuxt BFF has the ID token and profile claims
-available, but it passes only the access token to the Go API. The Go API cannot and should not
-read the Nuxt session. The access token is sufficient to call `/userinfo` because it carries
-the `openid profile email` scopes issued during the PKCE flow.
-
-```mermaid
-sequenceDiagram
-    actor User as Browser
-    participant BFF as CF Nuxt BFF
-    participant API as CF Go API
-    participant Auth0
-
-    User->>BFF: (after login) any authenticated request
-    BFF->>API: PATCH /v1/me<br/>Authorization: Bearer {access token}
-    API->>API: validate token, extract username claim
-    API->>Auth0: GET /userinfo<br/>Authorization: Bearer {access token}
-    Auth0->>API: { sub, email, given_name, family_name,<br/>          picture, https://sso…/claims/username }
-    API->>API: upsert users table:<br/>username, email, given_name, family_name, avatar_url
-    API->>BFF: 200
-    BFF->>User: response
-```
-
-**Claims written to `users` table on sync:**
-
-| Claim | Field |
-|---|---|
-| `https://sso.linuxfoundation.org/claims/username` | `username` (canonical identity key) |
-| `email` | `email` |
-| `given_name` | `given_name` |
-| `family_name` | `family_name` |
-| `picture` | `avatar_url` |
-
-All downstream operations (donation display name, Stripe customer email, sponsor avatar) read
-from the `users` table — never from the JWT or the Nuxt session.
-
----
-
 ## Go API Authorization Decision Tree
 
 The same `JWTAuthenticator.Middleware` handles all token types. After JWT validation, route class
@@ -356,7 +309,6 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 | `JWKS_URL` | Auth0 JWKS endpoint | `https://linuxfoundation-dev.auth0.com/.well-known/jwks.json` |
 | `JWT_ISSUER` | Expected `iss` claim | `https://linuxfoundation-dev.auth0.com/` |
 | `JWT_AUDIENCE` | Expected `aud` claim | `https://crowdfunding.dev.lfx.dev/api/` |
-| `AUTH0_USERINFO_URL` | Auth0 `/userinfo` endpoint (for login sync) | `https://linuxfoundation-dev.auth0.com/userinfo` |
 | `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Local-dev: skip JWKS, inject mock Principal with both scopes | not set in deployed envs |
 
 > **Removed:** `AUTHORIZED_CLIENTS`. The scope-based model does not require a client ID allowlist.
@@ -403,7 +355,6 @@ The previous design used a single `access:api` scope with an `AUTHORIZED_CLIENTS
 | `access:api` on all tokens | `access:me` for users, `access:manage` for M2M |
 | `AUTHORIZED_CLIENTS` allowlist + `X-Username` header | Scope-based; no allowlist, no identity header |
 | Self Serve uses M2M client credentials | Self Serve forwards user's own access token |
-| User profile data carried in JWT claims or passed via header | Go API calls Auth0 `/userinfo` on login sync; `users` table is source of truth |
 
 The `X-Username` header and `AUTHORIZED_CLIENTS` env var are **removed**. The ingress no longer
 needs to strip `X-Username` headers.
