@@ -218,29 +218,29 @@ and scope determine what happens next:
 
 ```mermaid
 flowchart TD
-    A[Request arrives] --> B{public route?\nGET /v1/statistics*\nGET /v1/initiatives\nwebhook / healthz}
-    B -- yes --> PUB[handle — no auth]
-    B -- no --> C{optional auth?\nGET /v1/initiatives/{id}}
-    C -- yes, no token --> OPT[handle — no principal]
-    C -- yes, valid token --> D
+    A[Request arrives] --> B{"public route?<br/>GET /v1/statistics*<br/>GET /v1/initiatives<br/>webhook / healthz"}
+    B -- yes --> PUB["handle — no auth"]
+    B -- no --> C{"optional auth?<br/>GET /v1/initiatives/{id}"}
+    C -- "yes, no token" --> OPT["handle — no principal"]
+    C -- "yes, valid token" --> D
     C -- no --> D
 
-    D{local dev bypass?}
-    D -- yes --> E[inject mock Principal\nboth scopes, mock username]
-    D -- no --> F{validate Bearer token\nRS256 · issuer · aud /api/ · expiry}
-    F -- invalid or missing --> G[401]
-    F -- valid --> H{route class}
+    D{"local dev bypass?"}
+    D -- yes --> E["inject mock Principal<br/>both scopes, mock username"]
+    D -- no --> F{"validate Bearer token<br/>RS256 · issuer · aud /api/ · expiry"}
+    F -- "invalid or missing" --> G[401]
+    F -- valid --> H{"route class"}
 
-    H -- me route --> I{access:me scope present?}
+    H -- "me route" --> I{"access:me scope present?"}
     I -- no --> J[403]
-    I -- yes, /me/... list --> K[handle — Principal.Username from JWT claim]
-    I -- yes, /me/initiatives/{id} --> L{owner check:\ninitiatives.owner_username == Principal.Username?}
+    I -- "yes, /me/... list" --> K["handle — Principal.Username from JWT claim"]
+    I -- "yes, /me/initiatives/{id}" --> L{"owner check:<br/>initiatives.owner_username == Principal.Username?"}
     L -- no --> M[403]
     L -- yes --> N[handle]
 
-    H -- privileged route --> O{access:manage scope present?}
+    H -- "privileged route" --> O{"access:manage scope present?"}
     O -- no --> P[403]
-    O -- yes --> Q[handle — no owner check]
+    O -- yes --> Q["handle — no owner check"]
 ```
 
 ---
