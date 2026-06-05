@@ -6,7 +6,7 @@
 ---
 
 This document describes the **target** authentication design for the Crowdfunding (CF) platform and how
-**LFX Self Serve ("LFX One")** and the **Reimbursement Service** authenticate to CF backend APIs.
+**LFX Self Serve** and the **Reimbursement Service** authenticate to CF backend APIs.
 It is written for architecture review. Scope is limited to **authentication only**; business logic
 and data flows are out of scope.
 
