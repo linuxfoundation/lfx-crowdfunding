@@ -9,7 +9,7 @@ import type {
   FundraiseResult,
   FundraiseContactInput,
   SecurityAuditFundraisePayload,
-  FundDistributionItemInput,
+  GoalItemInput,
 } from '../../types/fundraise.types';
 
 export default defineEventHandler(async (event): Promise<FundraiseResult> => {
@@ -56,18 +56,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
         beneficiaries: payload.beneficiaries?.length
           ? payload.beneficiaries.map((b) => ({ name: b.name, email: b.email }))
           : undefined,
-        goals: payload.annualFundingGoalCents
-          ? [
-              {
-                name: 'Annual Funding Goal',
-                amount_in_cents: payload.annualFundingGoalCents,
-                sort_order: 0,
-              },
-            ]
-          : undefined,
-        fund_distribution: payload.fundDistribution?.length
-          ? payload.fundDistribution.map(toSnakeCaseDistributionItem)
-          : undefined,
+        goals: buildProjectGoals(payload.annualFundingGoalCents, payload.goals),
       };
     }
 
@@ -82,7 +71,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
           ? [
               {
                 name: 'Audit Funding Goal',
-                amount_in_cents: payload.fundingGoalCents,
+                amount_cents: payload.fundingGoalCents,
                 sort_order: 0,
               },
             ]
@@ -108,7 +97,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
           ? [
               {
                 name: 'Sponsorship Goal',
-                amount_in_cents: payload.sponsorshipGoalCents,
+                amount_cents: payload.sponsorshipGoalCents,
                 sort_order: 0,
               },
             ]
@@ -130,7 +119,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
           ? [
               {
                 name: 'Annual Funding Goal',
-                amount_in_cents: payload.annualFundingGoalCents,
+                amount_cents: payload.annualFundingGoalCents,
                 sort_order: 0,
               },
             ]
@@ -140,7 +129,40 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
   }
 }
 
-function toSnakeCaseDistributionItem(item: FundDistributionItemInput): Record<string, unknown> {
+// buildProjectGoals merges the top-level annual goal (if set) with the
+// fund distribution items (enabled only) into a flat GoalInput array.
+// Distribution items are mapped to initiative_goals: label → name,
+// category → allocation, description → description, and amount_cents is
+// derived from the item's percentage share of annualFundingGoalCents.
+function buildProjectGoals(
+  annualFundingGoalCents: number | undefined,
+  goals: GoalItemInput[] | undefined,
+): Array<Record<string, unknown>> | undefined {
+  const result: Array<Record<string, unknown>> = [];
+
+  if (annualFundingGoalCents) {
+    result.push({
+      name: 'Annual Funding Goal',
+      amount_cents: annualFundingGoalCents,
+      sort_order: 0,
+    });
+  }
+
+  const enabledItems = goals?.filter((item) => item.enabled) ?? [];
+  enabledItems.forEach((item, index) => {
+    result.push({
+      name: item.label,
+      amount_cents: Math.round((item.percentage / 100) * (annualFundingGoalCents ?? 0)),
+      allocation: item.category || undefined,
+      description: item.description || undefined,
+      sort_order: index + 1,
+    });
+  });
+
+  return result.length > 0 ? result : undefined;
+}
+
+function toSnakeCaseDistributionItem(item: GoalItemInput): Record<string, unknown> {
   return {
     category: item.category,
     label: item.label,

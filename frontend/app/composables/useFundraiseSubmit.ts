@@ -77,9 +77,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? projectForm.details.beneficiaries
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(projectForm?.details.annualFundingGoal),
-        fundDistribution: projectForm?.details.fundDistribution?.length
-          ? projectForm.details.fundDistribution
-          : undefined,
+        goals: projectForm?.details.goals?.length ? projectForm.details.goals : undefined,
       };
     }
 

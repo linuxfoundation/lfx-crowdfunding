@@ -3,7 +3,7 @@
 
 // Wire shapes for POST /api/fundraise → POST /v1/initiatives
 
-export interface FundDistributionItemInput {
+export interface GoalItemInput {
   category: string;
   label: string;
   description: string;
@@ -34,7 +34,7 @@ export interface ProjectFundraisePayload {
   logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];
   annualFundingGoalCents?: number;
-  fundDistribution?: FundDistributionItemInput[];
+  goals?: GoalItemInput[];
 }
 
 export interface SecurityAuditFundraisePayload {
@@ -64,7 +64,7 @@ export interface EventFundraisePayload {
   logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];
   sponsorshipGoalCents?: number;
-  budgetDistribution?: FundDistributionItemInput[];
+  budgetDistribution?: GoalItemInput[];
 }
 
 export interface GeneralFundFundraisePayload {

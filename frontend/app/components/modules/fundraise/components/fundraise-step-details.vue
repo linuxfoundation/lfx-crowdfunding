@@ -45,7 +45,7 @@ import FundraiseEventSteps from './event-steps/fundraise-event-steps.vue';
 import type {
   InitiativeType,
   ProjectFormData,
-  FundDistributionItem,
+  GoalItem,
   SecurityAuditFormData,
   ContactPerson,
   GeneralFundFormData,
@@ -56,7 +56,7 @@ const props = defineProps<{
   initiativeType: InitiativeType | null;
 }>();
 
-const DEFAULT_FUND_DISTRIBUTION: FundDistributionItem[] = [
+const DEFAULT_FUND_DISTRIBUTION: GoalItem[] = [
   {
     category: 'development',
     label: 'Development',
@@ -114,7 +114,7 @@ const createInitialProjectForm = (): ProjectFormData => ({
     logoUrl: '',
     beneficiaries: [],
     annualFundingGoal: '',
-    fundDistribution: DEFAULT_FUND_DISTRIBUTION.map((item) => ({ ...item })),
+    goals: DEFAULT_FUND_DISTRIBUTION.map((item) => ({ ...item })),
   },
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
@@ -145,7 +145,7 @@ const createInitialSecurityAuditForm = (): SecurityAuditFormData => ({
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
-const DEFAULT_BUDGET_DISTRIBUTION: FundDistributionItem[] = [
+const DEFAULT_BUDGET_DISTRIBUTION: GoalItem[] = [
   {
     category: 'venue',
     label: 'Venue',

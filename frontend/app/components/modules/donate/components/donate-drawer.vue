@@ -79,7 +79,7 @@ SPDX-License-Identifier: MIT
           <donate-step-amount
             v-if="step === 0"
             v-model="amountForm"
-            :fund-distribution="initiative.fundDistribution"
+            :funding-goals="initiative.fundingGoals"
           />
           <donate-step-contact
             v-else-if="step === 1"
@@ -164,7 +164,7 @@ const props = defineProps<{
     id: string;
     name: string;
     logoUrl?: string;
-    fundDistribution?: import('~/types/fundraise.types').FundDistributionItem[];
+    fundingGoals?: import('#shared/types/initiative-detail.types').FundingGoal[];
   };
 }>();
 

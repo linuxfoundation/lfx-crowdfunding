@@ -73,10 +73,14 @@ SPDX-License-Identifier: MIT
         @update:model-value="onCategoryChange"
       >
         <lfx-dropdown-item
+          value=""
+          label="All project needs"
+        />
+        <lfx-dropdown-item
           v-for="item in categoryOptions"
-          :key="item.category"
-          :value="item.category"
-          :label="item.label"
+          :key="item.id"
+          :value="item.name"
+          :label="item.name"
         />
       </lfx-select>
     </div>
@@ -86,7 +90,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { DonateAmountForm, DonationType } from '#shared/types/donate.types';
-import type { FundDistributionItem } from '~/types/fundraise.types';
+import type { FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxInput from '~/components/uikit/input/input.vue';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
@@ -97,7 +101,7 @@ const QUICK_AMOUNTS = [5, 10, 25, 50, 150, 200];
 
 const props = defineProps<{
   modelValue: DonateAmountForm;
-  fundDistribution?: FundDistributionItem[];
+  fundingGoals?: FundingGoal[];
 }>();
 
 const emit = defineEmits<{
@@ -106,7 +110,7 @@ const emit = defineEmits<{
 
 const form = computed(() => props.modelValue);
 
-const categoryOptions = computed(() => (props.fundDistribution ?? []).filter((item) => item.enabled));
+const categoryOptions = computed(() => props.fundingGoals ?? []);
 
 const customAmountDisplay = computed(() => {
   if (form.value.tierId !== null) return '';
