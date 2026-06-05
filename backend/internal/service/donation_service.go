@@ -193,7 +193,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	// Guard against legacy/migrated rows that have no email yet.
 	// Stripe requires a non-empty email; direct the user to sync their profile.
 	if user.Email == "" {
-		return nil, fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before donating", domain.ErrUserNotFound)
+		return nil, fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before donating", domain.ErrProfileNotSynced)
 	}
 	customerID := user.StripeCustomerID
 	if customerID == "" {

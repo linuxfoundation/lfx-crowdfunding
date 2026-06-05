@@ -394,8 +394,8 @@ func TestSubscriptionService_Create_EmptyEmail_RequiresProfileSync(t *testing.T)
 			IdempotencyKey:        "key-2",
 		})
 
-	if !errors.Is(err, domain.ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound for empty email, got %v", err)
+	if !errors.Is(err, domain.ErrProfileNotSynced) {
+		t.Fatalf("expected ErrProfileNotSynced for empty email, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "PATCH /v1/me") {
 		t.Errorf("error should mention PATCH /v1/me, got: %v", err)

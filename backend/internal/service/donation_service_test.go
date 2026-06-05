@@ -531,8 +531,8 @@ func TestDonationService_Create_EmptyEmail_RequiresProfileSync(t *testing.T) {
 	_, err := svc.Create(context.Background(), "init-1", "u1",
 		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "key-2"})
 
-	if !errors.Is(err, domain.ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound for empty email, got %v", err)
+	if !errors.Is(err, domain.ErrProfileNotSynced) {
+		t.Fatalf("expected ErrProfileNotSynced for empty email, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "PATCH /v1/me") {
 		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
