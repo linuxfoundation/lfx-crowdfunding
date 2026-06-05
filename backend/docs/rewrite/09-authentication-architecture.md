@@ -343,11 +343,6 @@ route belongs to exactly one scope (Design Rule 2).
 | **`access:me` + owner check** | `GET /v1/me/initiatives/{id}`, `PATCH /v1/me/initiatives/{id}`, `DELETE /v1/me/initiatives/{id}`, `DELETE /v1/me/subscriptions/{id}` | As above, plus a DB lookup that the caller owns the resource (`initiative.owner_id == users.id` for the token's `username`). 403 if not owned. |
 | **`access:manage`** | `GET /v1/internal/initiatives/{id}` (Reimbursement: mentorship owner + beneficiaries); future `/v1/internal/*` | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
 
-> **`{id}`-bearing caller-scoped routes** (e.g. `POST /v1/me/initiatives/{id}/donations`) still
-> resolve the target initiative by `{id}` and may reject based on its state (e.g. not accepting
-> donations). That is business-logic validation, separate from the authentication owner check —
-> it is not an `initiative.owner_id == caller` gate.
-
 > **Approval routes.** Initiative approval (`process-approval`) is gated by the `ALLOWED_APPROVERS`
 > username list at the handler level. Approvers are real users, so this stays under `access:me`;
 > the approver list is an additional handler-level authorization check, independent of scope.
