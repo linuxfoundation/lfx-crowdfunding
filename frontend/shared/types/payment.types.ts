@@ -25,3 +25,19 @@ export interface DonationResult {
   status: string;
   clientSecret?: string;
 }
+
+export type SubscriptionFrequency = 'monthly' | 'yearly' | 'weekly' | 'daily';
+
+export interface SubscriptionRequest {
+  amountInCents: number;
+  frequency: SubscriptionFrequency;
+  stripePaymentMethodId: string;
+  category?: string;
+  organizationId?: string;
+}
+
+export interface SubscriptionResult {
+  id: string;
+  status: string;
+  clientSecret?: string;
+}

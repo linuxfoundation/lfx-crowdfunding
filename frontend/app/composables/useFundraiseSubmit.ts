@@ -69,6 +69,9 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         initiativeType: 'project',
         name: projectForm?.details.projectName ?? '',
         description: projectForm?.details.elevatorPitch ?? '',
+        industry: projectForm?.details.topics?.length
+          ? projectForm.details.topics.join(',')
+          : undefined,
         websiteUrl: projectForm?.details.websiteUrl || undefined,
         cocUrl: projectForm?.details.codeOfConductUrl || undefined,
         repositoryUrl: repoUrl,
@@ -77,6 +80,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? projectForm.details.beneficiaries
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(projectForm?.details.annualFundingGoal),
+        goals: projectForm?.details.goals?.length ? projectForm.details.goals : undefined,
       };
     }
 
@@ -85,6 +89,9 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         initiativeType: 'security_audit',
         name: securityAuditForm?.auditName ?? '',
         description: securityAuditForm?.elevatorPitch ?? '',
+        industry: securityAuditForm?.topics?.length
+          ? securityAuditForm.topics.join(',')
+          : undefined,
         websiteUrl: securityAuditForm?.websiteUrl || undefined,
         repositoryUrl: securityAuditForm?.repositoryUrl || undefined,
         logoUrl: securityAuditForm?.logoUrl || undefined,
@@ -100,6 +107,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         initiativeType: 'event',
         name: eventForm?.name ?? '',
         description: eventForm?.elevatorPitch ?? '',
+        industry: eventForm?.topics?.length ? eventForm.topics.join(',') : undefined,
         websiteUrl: eventForm?.websiteUrl || undefined,
         registrationUrl: eventForm?.registrationUrl || undefined,
         startDate: eventForm?.startDate || undefined,
@@ -109,6 +117,9 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         logoUrl: eventForm?.logoUrl || undefined,
         beneficiaries: eventForm?.beneficiaries?.length ? eventForm.beneficiaries : undefined,
         sponsorshipGoalCents: parseDollarsToCents(eventForm?.sponsorshipGoal),
+        budgetDistribution: eventForm?.budgetDistribution?.length
+          ? eventForm.budgetDistribution
+          : undefined,
       };
     }
 
@@ -117,6 +128,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         initiativeType: 'general_fund',
         name: generalFundForm?.name ?? '',
         description: generalFundForm?.elevatorPitch ?? '',
+        industry: generalFundForm?.topics?.length ? generalFundForm.topics.join(',') : undefined,
         websiteUrl: generalFundForm?.websiteUrl || undefined,
         logoUrl: generalFundForm?.logoUrl || undefined,
         beneficiaries: generalFundForm?.beneficiaries?.length
