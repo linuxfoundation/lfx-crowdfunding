@@ -4,7 +4,6 @@
 # Authentication Architecture
 
 **Status:** Target design — approved at architecture review (2026-06-04: Eric Searcy, Robert Detjens, Lewis Ojile).
-**Not yet implemented.**
 
 ---
 
@@ -12,12 +11,6 @@ This document describes the **target** authentication design for the Crowdfundin
 **LFX Self Serve ("LFX One")** and the **Reimbursement Service** authenticate to CF backend APIs.
 It is written for architecture review. Scope is limited to **authentication only**; business logic
 and data flows are out of scope.
-
-> **This is a target-state document, not a description of current behavior.** The current code
-> validates JWTs on every `/v1/*` route but does **not** yet enforce scopes, does **not** split
-> routes into `/me/*` and `/internal/*` classes, and still carries the `AUTHORIZED_CLIENTS` +
-> `X-Username` mechanism from the prior design. Everything below describes the state we are
-> building toward. Implementation tracking is out of scope for this doc.
 
 ---
 
@@ -96,13 +89,12 @@ scopes that gate access to different route classes:
 | `access:me` | Users (via interactive login) | `/v1/me/*` — everything a user does on their own data (initiatives, donations, subscriptions, payment methods) | `https://sso.linuxfoundation.org/claims/username` JWT claim |
 | `access:manage` | M2M clients (client_credentials) | `/v1/internal/*` — machine-to-machine, no user context (Reimbursement Service) | `sub` claim (Auth0 M2M client subject; no user identity) |
 
-This replaces the previous `access:api` single-scope + `AUTHORIZED_CLIENTS` allowlist pattern.
 The scope itself is the access control gate; no client ID allowlist is needed.
 
 > **Note on user-facing writes.** Creating, editing, donating to, and subscribing to initiatives
 > are **user** actions and live under `access:me`, not `access:manage`. `access:manage` is reserved
-> for genuine machine-to-machine traffic with no logged-in user — currently only the Reimbursement
-> Service (see Flow 3). The `/internal/` path prefix signals this at a glance.
+> for genuine machine-to-machine traffic with no logged-in user — the Reimbursement Service
+> (see Flow 3). The `/internal/` path prefix signals this at a glance.
 
 ---
 
@@ -211,10 +203,10 @@ sequenceDiagram
 
 ## Flow 3 — Reimbursement Service → CF API (M2M)
 
-The Reimbursement Service is a machine-to-machine caller. It does **not** call CF today; this is a
-target integration. When processing mentorship reimbursements, it needs to read CF data for
-**mentorship-type initiatives** — specifically the initiative **owner** and its **beneficiaries
-(the selected mentees)** — to attribute and validate reimbursement requests.
+The Reimbursement Service is a machine-to-machine caller. When processing mentorship
+reimbursements, it reads CF data for **mentorship-type initiatives** — specifically the initiative
+**owner** and its **beneficiaries (the selected mentees)** — to attribute and validate
+reimbursement requests.
 
 There is no logged-in user in this flow, so the user-token pattern does not apply. Reimbursement
 authenticates as itself via the **Auth0 client credentials grant** with the `access:manage` scope,
@@ -293,7 +285,7 @@ flowchart TD
     C -- no --> D
 
     D{"local dev bypass?"}
-    D -- yes --> E["inject mock Principal<br/>both scopes, mock username"]
+    D -- yes --> E["inject mock Principal<br/>(satisfies the route's scope,<br/>mock username)"]
     D -- no --> F{"validate Bearer token<br/>RS256 · issuer · aud /api/ · expiry"}
     F -- "invalid or missing" --> G[401]
     F -- valid --> H{"route class"}
@@ -312,12 +304,10 @@ flowchart TD
 
 ---
 
-## Route Authentication Tiers (target)
+## Route Authentication Tiers
 
-This is the route shape we are building toward. It requires restructuring the current API: the
-existing dual-purpose `/v1/initiatives/{id}` (which today serves both public reads and authenticated
-edits) is split so that user-scoped operations move under `/v1/me/*` and machine operations move
-under `/v1/internal/*`, per Design Rule 2.
+User-scoped operations live under `/v1/me/*` and machine operations under `/v1/internal/*`, so each
+route belongs to exactly one scope (Design Rule 2).
 
 | Tier | Routes | Auth mechanism |
 |---|---|---|
@@ -385,7 +375,7 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 | `JWKS_URL` | Auth0 JWKS endpoint | `https://linuxfoundation-dev.auth0.com/.well-known/jwks.json` |
 | `JWT_ISSUER` | Expected `iss` claim | `https://linuxfoundation-dev.auth0.com/` |
 | `JWT_AUDIENCE` | Expected `aud` claim | `https://crowdfunding.dev.lfx.dev/api/` |
-| `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Local-dev: skip JWKS, inject mock Principal with both scopes | not set in deployed envs |
+| `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Local-dev only: skip JWKS validation and inject a mock Principal that satisfies the route's required scope | not set in deployed envs |
 
 > **Removed:** `AUTHORIZED_CLIENTS`. The scope-based model does not require a client ID allowlist.
 
@@ -421,20 +411,21 @@ No M2M credentials needed for CF. The user's access token is forwarded directly.
 
 ---
 
-## Migration from Previous Design
+## Supersedes the Prior Proposal
 
-The previous design used a single `access:api` scope with an `AUTHORIZED_CLIENTS` allowlist and
-`X-Username` header impersonation to distinguish M2M callers (Self Serve) from user callers.
+An earlier proposal (see [`08-self-serve-auth.md`](08-self-serve-auth.md)) had Self Serve
+authenticate to CF with an M2M token plus an `X-Username` identity header, gated by an
+`AUTHORIZED_CLIENTS` allowlist on a single `access:api` scope. This design replaces that approach:
 
-| Previous | New |
+| Prior proposal | This design |
 |---|---|
-| `access:api` on all tokens | `access:me` for users, `access:manage` for M2M |
+| `access:api` (single scope) | `access:me` for users, `access:manage` for M2M |
 | `AUTHORIZED_CLIENTS` allowlist + `X-Username` header | Scope-based; no allowlist, no identity header |
-| Self Serve uses M2M client credentials | Self Serve forwards user's own access token |
+| Self Serve uses M2M client credentials | Self Serve forwards the user's own access token |
 | Single dual-purpose `/v1/initiatives/{id}` (read + edit) | Split: user edits under `/v1/me/initiatives/{id}`, machine reads under `/v1/internal/initiatives/{id}` |
 
-The `X-Username` header and `AUTHORIZED_CLIENTS` env var are **removed**. The ingress no longer
-needs to strip `X-Username` headers.
+There is therefore no `X-Username` header and no `AUTHORIZED_CLIENTS` allowlist in this design, and
+the ingress has no header-stripping requirement.
 
 ---
 
