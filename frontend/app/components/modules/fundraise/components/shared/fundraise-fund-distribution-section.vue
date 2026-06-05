@@ -101,7 +101,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { FundDistributionData, FundDistributionItem } from '~/types/fundraise.types';
+import type { FundDistributionData, GoalItem } from '~/types/fundraise.types';
 import LfxInput from '~/components/uikit/input/input.vue';
 import LfxToggle from '~/components/uikit/toggle/toggle.vue';
 
@@ -139,7 +139,7 @@ const computedAmount = (percentage: number): string => {
   return `$${Math.round(amount)}`;
 };
 
-const updateDistribution = (index: number, patch: Partial<FundDistributionItem>) => {
+const updateDistribution = (index: number, patch: Partial<GoalItem>) => {
   const distribution = props.modelValue.distribution.map((item, i) => (i === index ? { ...item, ...patch } : item));
   emit('update:modelValue', { ...props.modelValue, distribution });
 };

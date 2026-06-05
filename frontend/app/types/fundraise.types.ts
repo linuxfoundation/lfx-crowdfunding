@@ -29,7 +29,7 @@ export type FundCategory =
   | 'food_beverage'
   | 'equipment';
 
-export interface FundDistributionItem {
+export interface GoalItem {
   category: FundCategory;
   label: string;
   description: string;
@@ -47,7 +47,7 @@ export interface ProjectDetailsData {
   logoUrl: string;
   beneficiaries: Beneficiary[];
   annualFundingGoal: string;
-  fundDistribution: FundDistributionItem[];
+  goals: GoalItem[];
 }
 
 export interface ComplianceData {
@@ -98,7 +98,7 @@ export interface SecurityAuditFormData {
 
 export interface FundDistributionData {
   goal: string;
-  distribution: FundDistributionItem[];
+  distribution: GoalItem[];
 }
 
 export interface EventFormData {
@@ -114,7 +114,7 @@ export interface EventFormData {
   logoUrl: string;
   beneficiaries: Beneficiary[];
   sponsorshipGoal: string;
-  budgetDistribution: FundDistributionItem[];
+  budgetDistribution: GoalItem[];
   compliance: ComplianceData;
 }
 

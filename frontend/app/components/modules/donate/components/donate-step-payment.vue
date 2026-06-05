@@ -19,7 +19,7 @@ SPDX-License-Identifier: MIT
               :size="16"
               class="text-neutral-500"
             />
-            <span class="text-sm text-neutral-900 capitalize"> {{ card.brand }} ···· {{ card.last_four }} </span>
+            <span class="text-sm text-neutral-900 capitalize"> {{ card.brand }} ···· {{ card.lastFour }} </span>
           </div>
           <lfx-button
             type="tertiary"

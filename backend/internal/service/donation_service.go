@@ -213,6 +213,8 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		CustomerID:      customerID,
 		AmountCents:     input.AmountCents,
 		PaymentMethodID: input.StripePaymentMethodID,
+		Category:        input.Category,
+		OrganizationID:  input.OrganizationID,
 		IdempotencyKey:  input.IdempotencyKey,
 	})
 	if err != nil {
