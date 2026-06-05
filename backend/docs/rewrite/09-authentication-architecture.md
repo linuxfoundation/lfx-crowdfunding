@@ -371,11 +371,16 @@ resource "auth0_resource_server_scopes" "lfx_crowdfunding_api" {
 
 ### Client grants
 
-**CF frontend (Nuxt BFF)** — client grant with `access:me` scope.
+`lfx_crowdfunding_api` uses `user { policy = "allow_all" }`, so user-facing clients need **no**
+client grant — `access:me` is consented when the user logs in interactively.
 
-**Self Serve** — client grant with `access:me` scope. No M2M client grant needed; it forwards the user's own token.
+**CF frontend (Nuxt BFF)** — no client grant. Obtains `access:me` via the user's login.
 
-**Reimbursement Service** — client grant with `access:manage` scope:
+**Self Serve** — no client grant. Forwards the user's own access token; it never calls CF as itself,
+so it needs no M2M grant. (A `subject_type = "user"` client grant is only used when an app needs M2M
+access *in addition to* the user token — not the case for CF.)
+
+**Reimbursement Service** — the only client grant, for M2M `access:manage` access:
 
 ```hcl
 resource "auth0_client_grant" "reimbursement_crowdfunding" {
