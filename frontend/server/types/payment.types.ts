@@ -18,3 +18,9 @@ export interface DonationResultWire {
   status: string;
   client_secret?: string;
 }
+
+export interface SubscriptionResultWire {
+  id: string;
+  status: string;
+  client_secret?: string;
+}

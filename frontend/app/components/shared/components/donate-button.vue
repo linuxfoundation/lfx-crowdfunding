@@ -45,6 +45,7 @@ function handleClick() {
       id: initiative.value.id,
       name: initiative.value.name,
       logoUrl: initiative.value.logoUrl,
+      fundingGoals: initiative.value.fundingGoals,
     });
   }
 }

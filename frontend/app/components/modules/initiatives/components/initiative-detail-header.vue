@@ -171,7 +171,12 @@ function handleFundInitiative() {
   if (!isAuthenticated.value) {
     login();
   } else {
-    openDonateDrawer({ id: props.initiative.id, name: props.initiative.name, logoUrl: props.initiative.logoUrl });
+    openDonateDrawer({
+      id: props.initiative.id,
+      name: props.initiative.name,
+      logoUrl: props.initiative.logoUrl,
+      fundingGoals: props.initiative.fundingGoals,
+    });
   }
 }
 

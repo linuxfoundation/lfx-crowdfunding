@@ -23,7 +23,8 @@ export default defineEventHandler(async (event): Promise<ApprovalResult> => {
     event,
     `/v1/initiatives/${slug}`,
   ).catch((err) => {
-    if (err?.status === 404)
+    const status = err?.statusCode ?? err?.status;
+    if (status === 404)
       throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
     throw createError({ statusCode: 502, statusMessage: 'Failed to resolve initiative' });
   });
@@ -33,7 +34,6 @@ export default defineEventHandler(async (event): Promise<ApprovalResult> => {
     `/v1/initiatives/${initiative.id}/process-approval/${action}`,
     { method: 'POST' },
   );
-
   return {
     id: updated.id,
     name: updated.name,

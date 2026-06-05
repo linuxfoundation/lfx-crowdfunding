@@ -79,6 +79,7 @@ SPDX-License-Identifier: MIT
           <donate-step-amount
             v-if="step === 0"
             v-model="amountForm"
+            :funding-goals="initiative.fundingGoals"
           />
           <donate-step-contact
             v-else-if="step === 1"
@@ -145,6 +146,7 @@ import DonateStepContact from './donate-step-contact.vue';
 import DonateStepPayment from './donate-step-payment.vue';
 import DonateStepSuccess from './donate-step-success.vue';
 import type { DonateAmountForm, DonateContactForm } from '#shared/types/donate.types';
+import type { FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
@@ -155,6 +157,7 @@ const TOTAL_STEPS = 3;
 
 const { card, saveCard } = usePaymentAccount();
 const { donate, loading: donating, error: donationError } = useDonate();
+const { subscribe } = useSubscribe();
 
 const props = defineProps<{
   modelValue: boolean;
@@ -162,6 +165,7 @@ const props = defineProps<{
     id: string;
     name: string;
     logoUrl?: string;
+    fundingGoals?: FundingGoal[];
   };
 }>();
 
@@ -189,6 +193,8 @@ const amountForm = ref<DonateAmountForm>({
   tierName: null,
   customAmountCents: null,
   amountCents: 0,
+  donationType: 'one-time',
+  category: null,
 });
 
 const contactForm = ref<DonateContactForm>({
@@ -223,7 +229,11 @@ const amountSummary = computed(() => {
   if (!hasSelection.value) return null;
   const dollars = amountForm.value.amountCents / 100;
   const formatted = dollars >= 1_000 ? `$${(dollars / 1_000).toLocaleString()}K` : `$${dollars.toLocaleString()}`;
-  return amountForm.value.tierName ? `Amount: ${formatted} (${amountForm.value.tierName})` : `Amount: ${formatted}`;
+  const suffix = amountForm.value.donationType === 'monthly' ? '/mo' : '';
+  const base = amountForm.value.tierName
+    ? `${formatted}${suffix} (${amountForm.value.tierName})`
+    : `${formatted}${suffix}`;
+  return `Amount: ${base}`;
 });
 
 const close = () => {
@@ -232,7 +242,14 @@ const close = () => {
   submitted.value = false;
   paymentComplete.value = false;
   donationError.value = null;
-  amountForm.value = { tierId: null, tierName: null, customAmountCents: null, amountCents: 0 };
+  amountForm.value = {
+    tierId: null,
+    tierName: null,
+    customAmountCents: null,
+    amountCents: 0,
+    donationType: 'one-time',
+    category: null,
+  };
   contactForm.value = {
     donorType: 'individual',
     fullName: '',
@@ -277,10 +294,20 @@ const handleContinue = async () => {
       paymentMethodId = card.value!.paymentMethodId;
     }
 
-    await donate(props.initiative.id, {
-      amountInCents: amountForm.value.amountCents,
-      stripePaymentMethodId: paymentMethodId,
-    });
+    if (amountForm.value.donationType === 'monthly') {
+      await subscribe(props.initiative.id, {
+        amountInCents: amountForm.value.amountCents,
+        frequency: 'monthly',
+        stripePaymentMethodId: paymentMethodId,
+        ...(amountForm.value.category ? { category: amountForm.value.category } : {}),
+      });
+    } else {
+      await donate(props.initiative.id, {
+        amountInCents: amountForm.value.amountCents,
+        stripePaymentMethodId: paymentMethodId,
+        ...(amountForm.value.category ? { category: amountForm.value.category } : {}),
+      });
+    }
 
     submitted.value = true;
     emit('submitted');

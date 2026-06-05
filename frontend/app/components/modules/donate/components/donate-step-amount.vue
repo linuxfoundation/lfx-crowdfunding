@@ -40,19 +40,68 @@ SPDX-License-Identifier: MIT
         <template #prefix>$</template>
       </lfx-input>
     </div>
+
+    <!-- Donation type -->
+    <div>
+      <p class="text-sm font-medium text-neutral-700 mb-3">Donation frequency</p>
+      <div class="flex items-center gap-6">
+        <lfx-radio
+          name="donationType"
+          :model-value="form.donationType"
+          value="one-time"
+          @update:model-value="onDonationTypeChange"
+        >
+          One-time
+        </lfx-radio>
+        <lfx-radio
+          name="donationType"
+          :model-value="form.donationType"
+          value="monthly"
+          @update:model-value="onDonationTypeChange"
+        >
+          Monthly
+        </lfx-radio>
+      </div>
+    </div>
+
+    <!-- Category -->
+    <div v-if="categoryOptions.length > 0">
+      <p class="text-sm font-medium text-neutral-700 mb-3">Donation Allocation</p>
+      <lfx-select
+        :model-value="form.category ?? ''"
+        placeholder="Select a category"
+        @update:model-value="onCategoryChange"
+      >
+        <lfx-dropdown-item
+          value=""
+          label="All project needs"
+        />
+        <lfx-dropdown-item
+          v-for="item in categoryOptions"
+          :key="item.id"
+          :value="item.name"
+          :label="item.name"
+        />
+      </lfx-select>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { DonateAmountForm } from '#shared/types/donate.types';
+import type { DonateAmountForm, DonationType } from '#shared/types/donate.types';
+import type { FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxInput from '~/components/uikit/input/input.vue';
+import LfxRadio from '~/components/uikit/radio/radio.vue';
+import LfxSelect from '~/components/uikit/select/select.vue';
+import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 // import DonateSponsorshipTiers from './donate-sponsorship-tiers.vue'; Hiding sponsorship tiers for now
 
 const QUICK_AMOUNTS = [5, 10, 25, 50, 150, 200];
 
 const props = defineProps<{
   modelValue: DonateAmountForm;
+  fundingGoals?: FundingGoal[];
 }>();
 
 const emit = defineEmits<{
@@ -60,6 +109,8 @@ const emit = defineEmits<{
 }>();
 
 const form = computed(() => props.modelValue);
+
+const categoryOptions = computed(() => props.fundingGoals ?? []);
 
 const customAmountDisplay = computed(() => {
   if (form.value.tierId !== null) return '';
@@ -78,6 +129,7 @@ const customAmountDisplay = computed(() => {
 const selectQuickAmount = (dollars: number) => {
   const cents = dollars * 100;
   emit('update:modelValue', {
+    ...form.value,
     tierId: null,
     tierName: null,
     customAmountCents: cents,
@@ -88,6 +140,14 @@ const selectQuickAmount = (dollars: number) => {
 const isQuickAmountSelected = (dollars: number) =>
   form.value.tierId === null && form.value.customAmountCents === dollars * 100;
 
+const onDonationTypeChange = (val: string | number | boolean) => {
+  emit('update:modelValue', { ...form.value, donationType: val as DonationType });
+};
+
+const onCategoryChange = (val: string) => {
+  emit('update:modelValue', { ...form.value, category: val || null });
+};
+
 const onCustomAmountInput = (val: string | number) => {
   const dollars = parseFloat(String(val));
   if (isNaN(dollars) || dollars <= 0) {
@@ -96,6 +156,7 @@ const onCustomAmountInput = (val: string | number) => {
   }
   const cents = Math.round(dollars * 100);
   emit('update:modelValue', {
+    ...form.value,
     tierId: null,
     tierName: null,
     customAmountCents: cents,
