@@ -24,6 +24,7 @@ export interface BackendInitiative {
   name: string;
   slug: string;
   status: string;
+  accept_funding: boolean;
   industry?: string;
   description?: string;
   color?: string;
