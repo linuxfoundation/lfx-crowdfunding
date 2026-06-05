@@ -340,7 +340,7 @@ resource "auth0_resource_server_scopes" "lfx_crowdfunding_api" {
 
   scopes {
     name        = "access:manage"
-    description = "Privileged access to LFX Crowdfunding API (M2M, initiative management)"
+    description = "Privileged access to LFX Crowdfunding API (M2M, /v1/internal/* routes)"
   }
 }
 ```
@@ -355,7 +355,7 @@ resource "auth0_resource_server_scopes" "lfx_crowdfunding_api" {
 
 ```hcl
 resource "auth0_client_grant" "reimbursement_crowdfunding" {
-  client_id  = auth0_client.reimbursement_service.id
+  client_id  = auth0_client.m2m_clients["Reimbursement Service"].id
   audience   = auth0_resource_server.lfx_crowdfunding_api.identifier
   scopes     = ["access:manage"]
   depends_on = [auth0_resource_server_scopes.lfx_crowdfunding_api]
@@ -397,13 +397,17 @@ No M2M credentials needed for CF. The user's access token is forwarded directly.
 
 ### Reimbursement Service
 
-| Env var | Purpose |
+The Reimbursement Service needs the following inputs to mint an M2M token and call CF. Exact
+env-var names are owned by the Reimbursement Service repo (a Serverless/Lambda app whose secrets
+come from its own GitHub Actions secrets, not from lfx-secrets-management):
+
+| Input | Value |
 |---|---|
-| `CF_M2M_CLIENT_ID` | Auth0 M2M client ID for CF API |
-| `CF_M2M_CLIENT_SECRET` | Auth0 M2M client secret |
-| `CF_M2M_ISSUER_BASE_URL` | Auth0 token endpoint base URL |
-| `CF_API_BASE_URL` | CF API base URL |
-| `CF_API_AUDIENCE` | CF API audience (`https://crowdfunding.{env}.lfx.dev/api/`) |
+| Auth0 M2M client ID | the `Reimbursement Service` Auth0 client (auth0-terraform) |
+| Auth0 M2M client secret | for the same client |
+| Auth0 token endpoint | `https://linuxfoundation-{env}.auth0.com/oauth/token` |
+| CF API audience | `https://crowdfunding.{env}.lfx.dev/api/` (scope `access:manage`) |
+| CF API base URL | e.g. `https://crowdfunding-api.dev.lfx.dev` |
 
 ---
 
