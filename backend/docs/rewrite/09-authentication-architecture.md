@@ -240,9 +240,7 @@ GET /v1/internal/initiatives/{id}
 ```
 
 A list variant (`GET /v1/internal/initiatives?type=mentee&project={id}`) can be added if
-Reimbursement needs to enumerate rather than look up by ID. Both are read-only; if Reimbursement
-later needs to write back to CF, that would be a separate `POST/PATCH /v1/internal/*` route — still
-under `access:manage`, never mixed with a read route (Design Rule 2).
+Reimbursement needs to enumerate rather than look up by ID. Both are read-only.
 
 ### 3.2 Token Acquisition
 
