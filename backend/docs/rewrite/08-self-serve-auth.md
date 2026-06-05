@@ -27,8 +27,9 @@ User action in SS that needs CF data
        Authorization: Bearer {effective user's access token}
 ```
 
-The CF audience (`access:me` scope) must be requested when SS mints the user's token, or CF will
-reject the call. SS needs only the CF API base URL to make the call — no M2M client credentials.
+The user's token must be issued by Auth0 with the CF audience and `access:me` scope (requested at
+login), or CF will reject the call. SS needs only the CF API base URL to make the call — no M2M
+client credentials.
 
 ---
 

@@ -183,8 +183,10 @@ exchange and no identity header — the user-issued access token carries the use
 `https://sso.linuxfoundation.org/claims/username` claim, same as the CF frontend.
 
 This is correct because all SS→CF calls are me-style endpoints: `/v1/me/donations`,
-`/v1/me/subscriptions`, `/v1/me/payment-account`, etc. The user is always acting on their own
-data; no impersonation scope is needed at the CF layer.
+`/v1/me/subscriptions`, `/v1/me/payment-account`, etc. Impersonation is handled entirely on the
+Self Serve side (it forwards a token representing the effective user — see
+[`08-self-serve-auth.md`](08-self-serve-auth.md)); CF needs no special handling because it always
+sees a normal `access:me` user token.
 
 ```mermaid
 sequenceDiagram
