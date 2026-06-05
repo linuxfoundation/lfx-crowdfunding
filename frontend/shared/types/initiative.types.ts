@@ -26,7 +26,6 @@ export interface InitiativeBase {
   description: string;
   status: string;
   initiativeType: string;
-  acceptFunding: boolean;
   color: string;
   createdOn: string;
   updatedOn: string;

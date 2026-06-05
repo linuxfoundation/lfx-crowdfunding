@@ -13,7 +13,6 @@ export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
     description: b.description ?? '',
     status: b.status,
     initiativeType: b.initiative_type,
-    acceptFunding: b.accept_funding,
     color: b.color ?? '',
     createdOn: b.created_on,
     updatedOn: b.updated_on,

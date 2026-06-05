@@ -4,7 +4,6 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <lfx-button
-    v-if="!isInitiativeDetailPage || !initiative || initiative.acceptFunding"
     label="Donate"
     type="primary"
     button-style="pill"
@@ -41,7 +40,7 @@ function handleClick() {
     login();
     return;
   }
-  if (initiative.value?.acceptFunding) {
+  if (initiative.value) {
     openDonateDrawer({
       id: initiative.value.id,
       name: initiative.value.name,
