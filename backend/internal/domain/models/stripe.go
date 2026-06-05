@@ -35,6 +35,8 @@ type PaymentIntentRequest struct {
 	AmountCents     int64
 	Currency        string // defaults to "usd"
 	PaymentMethodID string
+	Category        string // e.g. "mentorship", "general fund", "event" — stored in Stripe metadata for Ledger
+	OrganizationID  string // organization ID — stored in Stripe metadata for Ledger
 	// IdempotencyKey is a per-request unique value (UUID) that prevents Stripe
 	// from creating a duplicate PaymentIntent when the client retries a timed-out
 	// request. Must be different for each logically distinct charge.
@@ -58,6 +60,8 @@ type StripeSubscriptionRequest struct {
 	StripeCustomerID string
 	StripePriceID    string
 	PaymentMethodID  string
+	Category         string // e.g. "mentorship", "general fund", "event" — stored in Stripe metadata for Ledger
+	OrganizationID   string // organization ID — stored in Stripe metadata for Ledger
 	// IdempotencyKey is the client-supplied key forwarded to Stripe so that
 	// retries of the same logical request are de-duped at the Stripe layer.
 	IdempotencyKey string

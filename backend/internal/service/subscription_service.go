@@ -169,6 +169,8 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		StripeCustomerID: customerID,
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
+		Category:         input.Category,
+		OrganizationID:   input.OrganizationID,
 		IdempotencyKey:   input.IdempotencyKey,
 	})
 	if err != nil {
