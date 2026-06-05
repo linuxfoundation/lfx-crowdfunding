@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
     );
 
     const tokenResponse = await refreshTokenGrant(authConfig, refreshToken, {
-      scope: 'openid profile email',
+      scope: 'openid profile email access:me',
     });
 
     if (!tokenResponse.access_token) {
