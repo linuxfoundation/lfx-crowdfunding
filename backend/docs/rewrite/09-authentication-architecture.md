@@ -33,17 +33,17 @@ These rules, set at the architecture review, constrain every decision in this do
 
 | Actor | Type | Notes |
 |---|---|---|
-| **Browser** | Untrusted client | Receives the access token only as an HTTP-only cookie — never exposed to client-side JavaScript |
-| **CF Nuxt BFF** | Trusted server | Holds tokens in HTTP-only cookies; proxies requests to CF API |
+| **Browser** | Untrusted client | Receives the access token only as an encrypted HTTP-only cookie — never exposed to client-side JavaScript |
+| **CF Nuxt BFF** | Trusted server | Holds tokens in encrypted HTTP-only cookies; proxies requests to CF API |
 | **CF Go API** (`initiatives-api`) | Trusted server | Validates JWTs; the protected resource server |
 | **Auth0** (`linuxfoundation-{dev,staging}.auth0.com`) | Identity provider | Issues all tokens; hosts JWKS endpoint |
 | **LFX Self Serve Express BFF** | Trusted server | Proxies user-issued access tokens on behalf of the logged-in user |
 | **Reimbursement Service** | Trusted server | M2M caller; uses `access:manage` scope for privileged routes |
 
 **Key principle:** the access token is never exposed to client-side JavaScript. In CF it is stored
-as an HTTP-only cookie (`auth_oidc_token`) the browser cannot read; in Self Serve it is held in the
-server-side session. Both BFFs attach it on the server when making upstream API calls, so it is
-never readable by page scripts or third parties.
+as an **encrypted** HTTP-only cookie (`auth_oidc_token`) the browser cannot read; in Self Serve it
+is held in the server-side session. Both BFFs attach it on the server when making upstream API
+calls, so it is never readable by page scripts or third parties.
 
 ---
 
@@ -69,7 +69,7 @@ graph TD
 
     SSBFF -->|"Bearer user-issued access token\n(access:me scope)"| CFAPI
 
-    Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF /api/\naccess:manage scope"| Auth0
+    Reimburse -->|"client_credentials grant\nprivate-key JWT assertion\naudience: CF /api/\naccess:manage scope"| Auth0
     Auth0 -->|"M2M access token\n(access:manage scope, cached ~24h)"| Reimburse
     Reimburse -->|"Bearer M2M token\nGET /v1/internal/*\n(access:manage scope)"| CFAPI
 
@@ -95,11 +95,10 @@ scopes that gate access to different route classes.
 
 The scope itself is the access control gate; no client ID allowlist is needed.
 
-> **Identity claims.** Profile fields (email, given/family name, avatar) can be carried either as
-> **custom claims** on the access token (via an Auth0 Action) or fetched from Auth0 **`/userinfo`** —
-> whichever is more efficient. CF is low-traffic, so the leaning is `/userinfo` at login sync rather
-> than bloating every token (see [User Profile Sync](#user-profile-sync)). The **username** is the
-> exception: the owner check needs it on every request, so it is carried as a custom claim regardless.
+> **Identity claims.** The access token carries **only the username** (a custom claim, needed on
+> every request for the owner check). All other profile fields — email, given/family name, avatar —
+> are **not** put on the token; CF fetches them from Auth0 **`/userinfo`** at login sync
+> (see [User Profile Sync](#user-profile-sync)).
 
 > **Note on user-facing writes.** Creating, editing, donating to, and subscribing to initiatives
 > are **user** actions and live under `access:me`, not `access:manage`. `access:manage` is reserved
@@ -148,10 +147,10 @@ sequenceDiagram
 ```
 
 Cookie details:
-- `auth_oidc_token` — the Auth0 access token (`access:me` scope) forwarded to the CF Go API as a Bearer token
-- `auth_refresh_token` — used to silently refresh; 30-day TTL
+- `auth_oidc_token` — the Auth0 access token (`access:me` scope) forwarded to the CF Go API as a Bearer token; **stored encrypted**
+- `auth_refresh_token` — used to silently refresh; 30-day TTL; **stored encrypted**
 - `auth_user_profile` — base64 JSON of display claims (name, email, username); **unsigned, for display only, never for authorization**
-- All cookies: `httpOnly: true`, `secure` (non-local), `sameSite: lax`
+- The token cookies are **encrypted** (not just opaque); all cookies are `httpOnly: true`, `secure` (non-local), `sameSite: lax`
 
 ### 1.3 Authenticated API Call
 
@@ -223,7 +222,9 @@ reimbursement requests.
 
 There is no logged-in user in this flow, so the user-token pattern does not apply. Reimbursement
 authenticates as itself via the **Auth0 client credentials grant** with the `access:manage` scope,
-and calls a dedicated **`/v1/internal/*`** route. The access is **read-only**.
+using **private-key JWT (`private_key_jwt`) attestation** — the LFX V2 convention for M2M clients,
+not a shared client secret. It calls a dedicated **`/v1/internal/*`** route. The access is
+**read-only**.
 
 ### 3.1 Suggested Endpoint
 
@@ -258,7 +259,8 @@ sequenceDiagram
     participant Auth0
 
     Note over RS: On first CF call (or after token expiry)
-    RS->>Auth0: POST /oauth/token<br/>grant_type: client_credentials<br/>client_id: M2M_CLIENT_ID<br/>client_secret: M2M_CLIENT_SECRET<br/>audience: https://crowdfunding.{env}.lfx.dev/api/<br/>scope: access:manage
+    RS->>RS: build client_assertion (signed JWT, RS private key)
+    RS->>Auth0: POST /oauth/token<br/>grant_type: client_credentials<br/>client_id: M2M_CLIENT_ID<br/>client_assertion_type: …jwt-bearer<br/>client_assertion: {signed JWT}<br/>audience: https://crowdfunding.{env}.lfx.dev/api/<br/>scope: access:manage
     Auth0->>RS: M2M access token (~24h TTL, access:manage scope)
     RS->>RS: cache token (refresh 5 min before expiry)
 ```
@@ -284,19 +286,15 @@ sequenceDiagram
 ## User Profile Sync
 
 CF needs the user's email, given/family name, and avatar (e.g. for donation display, sponsor
-avatars, Stripe). These can come from either source — whichever is more efficient:
+avatars, Stripe). These profile fields are **not** placed on the access token — only the username
+is. CF fetches them from **Auth0 `/userinfo`** on **login sync** (the `PATCH /v1/me` call at
+sign-in) and persists them to the `users` table. CF reads profile data from the `users` table
+thereafter, so behavior is deterministic: a user who never completed sync has no row, and
+user-scoped writes fail cleanly.
 
-- **Custom claims** on the access token (added via an Auth0 Action), or
-- **Auth0 `/userinfo`**, called with the user's access token.
-
-Since CF is low-traffic, the leaning is `/userinfo` — fetched on **login sync** (the `PATCH /v1/me`
-call at sign-in) and persisted to the `users` table, rather than bloating every access token. CF
-reads profile data from the `users` table thereafter, so behavior is deterministic: a user who
-never completed sync has no row, and user-scoped writes fail cleanly.
-
-If `/userinfo` is used, the call is made by the **Go API** (not Nuxt) using the user's access
-token — Nuxt only ever forwards the access token. Detailed design and implementation are owned by
-the sync handler work; this document covers only the authentication boundary.
+The `/userinfo` call is made by the **Go API** (not Nuxt) using the user's access token — Nuxt only
+ever forwards the access token. Detailed design and implementation are owned by the sync handler
+work; this document covers only the authentication boundary.
 
 ---
 
@@ -402,6 +400,10 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 }
 ```
 
+The Reimbursement Service client authenticates with **private-key JWT** (`private_key_jwt`), the
+LFX V2 M2M convention — not a client secret. Its credentials are managed via lfx-secrets-management
+as an `auth0_jwt` source (auto-rotated key pair), the same pattern as other LFX V2 services.
+
 ---
 
 ## Configuration Reference
@@ -445,7 +447,7 @@ come from its own GitHub Actions secrets, not from lfx-secrets-management):
 | Input | Value |
 |---|---|
 | Auth0 M2M client ID | the `Reimbursement Service` Auth0 client (auth0-terraform) |
-| Auth0 M2M client secret | for the same client |
+| Auth0 M2M private key | the client's `private_key_jwt` signing key (auto-rotated via lfx-secrets-management); used to build the `client_assertion`. No client secret. |
 | Auth0 token endpoint | `https://linuxfoundation-{env}.auth0.com/oauth/token` |
 | CF API audience | `https://crowdfunding.{env}.lfx.dev/api/` (scope `access:manage`) |
 | CF API base URL | e.g. `https://crowdfunding-api.dev.lfx.dev` |
