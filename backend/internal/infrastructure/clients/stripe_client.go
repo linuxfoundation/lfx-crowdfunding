@@ -324,7 +324,7 @@ func (c *stripeClientImpl) CreatePaymentIntent(ctx context.Context, req models.P
 			// that retries of the same timed-out request are de-duped, while
 			// separate donations with identical amounts are not.
 			IdempotencyKey: stripe.String(req.IdempotencyKey),
-			Metadata: buildChargeMetadata(req.InitiativeID, req.UserID, req.Category, req.OrgID),
+			Metadata: buildChargeMetadata(req.InitiativeID, req.UserID, req.Category, req.OrganizationID),
 		},
 	}
 	if req.CustomerID != "" {
@@ -441,7 +441,7 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 	params.Params = stripe.Params{
 		IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s", req.IdempotencyKey)),
 		Expand:         []*string{stripe.String("latest_invoice")},
-		Metadata: buildChargeMetadata(req.InitiativeID, req.UserID, req.Category, req.OrgID),
+		Metadata: buildChargeMetadata(req.InitiativeID, req.UserID, req.Category, req.OrganizationID),
 	}
 
 	sub, err := c.api.Subscriptions.New(params)

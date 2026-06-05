@@ -170,7 +170,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
 		Category:         input.Category,
-		OrgID:            input.OrganizationID,
+		OrganizationID:   input.OrganizationID,
 		IdempotencyKey:   input.IdempotencyKey,
 	})
 	if err != nil {
