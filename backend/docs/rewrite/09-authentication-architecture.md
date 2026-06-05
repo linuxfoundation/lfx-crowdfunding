@@ -81,7 +81,12 @@ graph TD
 ## Two Scopes, One Resource Server
 
 The CF API uses a single Auth0 resource server (`lfx_crowdfunding_api`, audience `/api/`) with two
-scopes that gate access to different route classes:
+scopes that gate access to different route classes.
+
+> Throughout this doc, **`/api/` is shorthand** for the full per-environment audience URL
+> (`https://crowdfunding.{env}.lfx.dev/api/`, prod `https://crowdfunding.linuxfoundation.org/api/`).
+> The exact value Auth0 issues and the API validates is the `JWT_AUDIENCE` in the
+> [Configuration Reference](#cf-backend-initiatives-api) — not a bare path.
 
 | Scope | Issued to | Route class | Identity source |
 |---|---|---|---|
@@ -170,9 +175,10 @@ sequenceDiagram
 
 ### 1.4 Token Refresh
 
-`POST /api/auth/refresh` calls `refreshTokenGrant` with the stored refresh token, rotates
-`auth_oidc_token` and `auth_refresh_token`. On any failure all auth cookies are cleared and
-the client receives 401 (forcing a new login).
+`POST /api/auth/refresh` calls `refreshTokenGrant` with the stored refresh token and sets a fresh
+`auth_oidc_token`. If Auth0 returns a new refresh token (rotation), `auth_refresh_token` is updated
+too; otherwise the existing one is kept. On any failure all auth cookies are cleared and the client
+receives 401 (forcing a new login).
 
 ---
 
