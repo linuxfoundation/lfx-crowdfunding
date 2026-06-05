@@ -89,6 +89,11 @@ scopes that gate access to different route classes:
 
 The scope itself is the access control gate; no client ID allowlist is needed.
 
+> **Identity claims.** The LF SSO username is the only user field the CF API reads from the access
+> token (a custom namespaced claim added via an Auth0 Action). Other profile fields — email,
+> given/family name, avatar — are **not** in the access token; CF obtains them from Auth0
+> `/userinfo` during login sync (see [User Profile Sync](#user-profile-sync)).
+
 > **Note on user-facing writes.** Creating, editing, donating to, and subscribing to initiatives
 > are **user** actions and live under `access:me`, not `access:manage`. `access:manage` is reserved
 > for genuine machine-to-machine traffic with no logged-in user — the Reimbursement Service
@@ -265,6 +270,20 @@ sequenceDiagram
     API->>API: no owner check (no user context on internal routes)
     API->>RS: 200 — initiative owner + beneficiaries
 ```
+
+---
+
+## User Profile Sync
+
+Access tokens carry only the LF SSO username (custom claim). The other profile fields CF needs —
+email, given name, family name, avatar — are fetched from Auth0 **`/userinfo`** and persisted to the
+`users` table on **login sync** (the `PATCH /v1/me` call made when the user signs in). CF reads
+profile data from the `users` table thereafter, making behavior deterministic: a user who never
+completed sync simply has no row, and user-scoped writes fail cleanly.
+
+The `/userinfo` call is made by the **Go API** (not Nuxt) using the user's access token — Nuxt only
+ever forwards the access token. Detailed design and implementation are owned by the sync handler
+work; this document covers only the authentication boundary.
 
 ---
 
