@@ -20,8 +20,7 @@ These rules, set at the architecture review, constrain every decision in this do
    M2M tokens. Both validate against the single `lfx_crowdfunding_api` resource server (`/api/`).
 2. **A route serves exactly one scope — never both.** If an operation is needed by both a user and
    a machine, it is split into two distinct routes (one under `/me/*`, one under `/internal/*`).
-   Eric was explicit: *"I would not design your API that way"* — no single endpoint accepts both
-   `access:me` and `access:manage`.
+   No single endpoint accepts both `access:me` and `access:manage`.
 3. **User-facing routes carry identity in the token.** No identity header. The acting user is the
    **custom** `username` claim (`https://sso.linuxfoundation.org/claims/username`, added via an
    Auth0 Action). This is why Self Serve forwards the user's own access token rather than an M2M token.
@@ -453,8 +452,8 @@ and is the expected long-term direction; the scope-based design here does not bl
 caller`) is a direct DB lookup. This is sufficient for single-owner initiatives at launch. The
 platform standard for fine-grained access control is OpenFGA, which would also enable richer rules
 (e.g. *"maintainers of the linked project may also manage this initiative"* or multi-owner/admin
-initiatives). Eric flagged OpenFGA as the idiomatic path if/when ownership rules grow beyond a
-single owner. Not in scope now.
+initiatives). OpenFGA is the idiomatic path if/when ownership rules grow beyond a single owner. Not
+in scope now.
 
 ---
 
