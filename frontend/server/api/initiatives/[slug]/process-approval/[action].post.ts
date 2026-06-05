@@ -28,6 +28,7 @@ export default defineEventHandler(async (event): Promise<ApprovalResult> => {
     throw createError({ statusCode: 502, statusMessage: 'Failed to resolve initiative' });
   });
 
+  // process-approval is not under /me — the caller is an approver, not the resource owner
   const updated = await useBackendFetch<BackendInitiative>(
     event,
     `/v1/initiatives/${initiative.id}/process-approval/${action}`,

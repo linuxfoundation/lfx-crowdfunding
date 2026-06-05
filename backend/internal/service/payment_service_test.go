@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -49,7 +50,7 @@ func TestPaymentService_CreateSetupIntent_NewCustomer(t *testing.T) {
 		},
 	)
 
-	result, err := svc.CreateSetupIntent(context.Background(), "u1", "user@example.com")
+	result, err := svc.CreateSetupIntent(context.Background(), "u1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +90,7 @@ func TestPaymentService_CreateSetupIntent_ExistingCustomer(t *testing.T) {
 		},
 	)
 
-	result, err := svc.CreateSetupIntent(context.Background(), "u1", "user@example.com")
+	result, err := svc.CreateSetupIntent(context.Background(), "u1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,7 +117,7 @@ func TestPaymentService_CreateSetupIntent_StripeError(t *testing.T) {
 		},
 	)
 
-	_, err := svc.CreateSetupIntent(context.Background(), "u1", "user@example.com")
+	_, err := svc.CreateSetupIntent(context.Background(), "u1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -130,7 +131,7 @@ func TestPaymentService_CreateSetupIntent_StripeError(t *testing.T) {
 func TestPaymentService_AttachPaymentMethod_EmptyID(t *testing.T) {
 	svc := NewPaymentService(&testUserRepo{}, &configStripeClient{})
 
-	_, err := svc.AttachPaymentMethod(context.Background(), "u1", "user@example.com", "")
+	_, err := svc.AttachPaymentMethod(context.Background(), "u1", "")
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput, got %v", err)
 	}
@@ -164,7 +165,7 @@ func TestPaymentService_AttachPaymentMethod_Success(t *testing.T) {
 		},
 	)
 
-	card, err := svc.AttachPaymentMethod(context.Background(), "u1", "user@example.com", "pm_abc")
+	card, err := svc.AttachPaymentMethod(context.Background(), "u1", "pm_abc")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -192,7 +193,7 @@ func TestPaymentService_AttachPaymentMethod_StripeError(t *testing.T) {
 		},
 	)
 
-	_, err := svc.AttachPaymentMethod(context.Background(), "u1", "user@example.com", "pm_abc")
+	_, err := svc.AttachPaymentMethod(context.Background(), "u1", "pm_abc")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -323,5 +324,28 @@ func TestPaymentService_DeletePaymentMethod_StripeError(t *testing.T) {
 	err := svc.DeletePaymentMethod(context.Background(), "u1")
 	if !errors.Is(err, stripeErr) {
 		t.Errorf("error = %v, want to wrap %v", err, stripeErr)
+	}
+}
+
+func TestPaymentService_EnsureCustomer_UserNotFound_DescriptiveError(t *testing.T) {
+	// When the user has not yet synced their profile, GetByUsername returns
+	// ErrUserNotFound. The error should be wrapped with a hint to call PATCH
+	// /v1/me so the API response is actionable.
+	svc := NewPaymentService(
+		&testUserRepo{
+			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+				return nil, domain.ErrUserNotFound
+			},
+		},
+		&configStripeClient{},
+	)
+
+	_, err := svc.CreateSetupIntent(context.Background(), "u1")
+
+	if !errors.Is(err, domain.ErrUserNotFound) {
+		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "PATCH /v1/me") {
+		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
 	}
 }

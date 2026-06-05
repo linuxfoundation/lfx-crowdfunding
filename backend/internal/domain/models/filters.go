@@ -43,6 +43,7 @@ type SubscriptionFilter struct {
 type Principal struct {
 	UserID        string // Auth0 subject (e.g. "auth0|elim") — no longer the DB FK
 	Username      string // LF SSO username from custom claim
+	Scope         string // space-separated OAuth2 scopes (e.g. "access:me")
 	Email         string
 	EmailVerified bool
 	Name          string // full name

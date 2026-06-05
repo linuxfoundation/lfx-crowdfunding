@@ -21,7 +21,7 @@ export default defineEventHandler(async (event): Promise<FundraiseResult> => {
     });
   }
 
-  const initiative = await useBackendFetch<BackendInitiative>(event, '/v1/initiatives', {
+  const initiative = await useBackendFetch<BackendInitiative>(event, '/v1/me/initiatives', {
     method: 'POST',
     body: buildBackendPayload(body),
   });

@@ -79,7 +79,7 @@ func (s *SubscriptionService) ListByUser(ctx context.Context, username string, f
 // has Status == "incomplete" and ClientSecret set — the frontend must call
 // stripe.confirmPayment(ClientSecret) to complete 3DS and activate the subscription.
 // The webhook (invoice.payment_succeeded) advances the status to "active".
-func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username, userEmail string, input models.SubscriptionCreateInput) (*models.Subscription, error) {
+func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username string, input models.SubscriptionCreateInput) (*models.Subscription, error) {
 	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.Create")
 	defer span.End()
 	span.SetAttributes(
@@ -124,27 +124,20 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		return nil, fmt.Errorf("%w: idempotency_key is required", domain.ErrInvalidInput)
 	}
 
-	// Resolve the Stripe customer for this user (create if first payment).
-	// Only treat ErrUserNotFound as "no existing customer"; any other error
-	// (e.g. transient DB outage) must be returned to avoid creating orphaned
-	// Stripe customers when the DB read fails.
+	// Resolve the Stripe customer for this user. Requires the user row to
+	// already exist — callers must have completed PATCH /me on login (REQ-P4).
+	// Email is sourced from the DB row, not from caller-supplied claims (REQ-P5).
 	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
-		if !errors.Is(err, domain.ErrUserNotFound) {
-			span.RecordError(err)
-			return nil, err
+		span.RecordError(err)
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, fmt.Errorf("%w: call PATCH /v1/me to sync your profile before subscribing", domain.ErrUserNotFound)
 		}
-		// First-time user: upsert a minimal users row so UpdateStripeInfo can
-		// persist the new customer ID (UpdateStripeInfo is UPDATE-only).
-		user, err = s.userRepo.Upsert(ctx, &models.User{Username: username, Email: userEmail})
-		if err != nil {
-			span.RecordError(err)
-			return nil, fmt.Errorf("ensure user record: %w", err)
-		}
+		return nil, fmt.Errorf("resolve user: %w", err)
 	}
 	customerID := user.StripeCustomerID
 	if customerID == "" {
-		customerID, err = s.stripe.CreateCustomer(ctx, user.ID, userEmail)
+		customerID, err = s.stripe.CreateCustomer(ctx, user.ID, user.Email)
 		if err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("create stripe customer: %w", err)

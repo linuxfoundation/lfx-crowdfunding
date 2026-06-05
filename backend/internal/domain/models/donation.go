@@ -15,19 +15,19 @@ const (
 
 // Donation maps to the crowdfunding.donations table.
 type Donation struct {
-	ID             string    `json:"id"`
-	UserID         string    `json:"-"`
-	InitiativeID   string    `json:"initiative_id"`
-	OrganizationID string    `json:"-"`
-	Category       string    `json:"category,omitempty"`
-	CurrentAmountCents int64 `json:"amount_cents"`
-	PONumber       string    `json:"po_number,omitempty"`
-	PaymentMethod  string    `json:"payment_method,omitempty"`
-	Status         string    `json:"status,omitempty"`
+	ID                 string `json:"id"`
+	UserID             string `json:"-"`
+	InitiativeID       string `json:"initiative_id"`
+	OrganizationID     string `json:"-"`
+	Category           string `json:"category,omitempty"`
+	CurrentAmountCents int64  `json:"amount_cents"`
+	PONumber           string `json:"po_number,omitempty"`
+	PaymentMethod      string `json:"payment_method,omitempty"`
+	Status             string `json:"status,omitempty"`
 	// Stripe IDs are internal operational fields used by the webhook reconciliation
 	// flow. They are never serialised to API consumers.
-	StripePaymentIntentID string `json:"-"`
-	StripeChargeID        string `json:"-"`
+	StripePaymentIntentID string    `json:"-"`
+	StripeChargeID        string    `json:"-"`
 	CreatedOn             time.Time `json:"created_on"`
 	UpdatedOn             time.Time `json:"updated_on"`
 
