@@ -66,7 +66,7 @@ SPDX-License-Identifier: MIT
 
     <!-- Category -->
     <div v-if="categoryOptions.length > 0">
-      <p class="text-sm font-medium text-neutral-700 mb-3">Fund category</p>
+      <p class="text-sm font-medium text-neutral-700 mb-3">Donation Allocation</p>
       <lfx-select
         :model-value="form.category ?? ''"
         placeholder="Select a category"

@@ -28,6 +28,7 @@ export interface ProjectFundraisePayload {
   initiativeType: 'project';
   name: string;
   description: string;
+  industry?: string;
   websiteUrl?: string;
   cocUrl?: string;
   repositoryUrl?: string;
@@ -41,6 +42,7 @@ export interface SecurityAuditFundraisePayload {
   initiativeType: 'security_audit';
   name: string;
   description: string;
+  industry?: string;
   websiteUrl?: string;
   repositoryUrl?: string;
   logoUrl?: string;
@@ -54,6 +56,7 @@ export interface EventFundraisePayload {
   initiativeType: 'event';
   name: string;
   description: string;
+  industry?: string;
   websiteUrl?: string;
   registrationUrl?: string;
   startDate?: string;
@@ -71,6 +74,7 @@ export interface GeneralFundFundraisePayload {
   initiativeType: 'general_fund';
   name: string;
   description: string;
+  industry?: string;
   websiteUrl?: string;
   logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];

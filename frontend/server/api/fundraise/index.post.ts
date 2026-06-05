@@ -40,6 +40,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     initiative_type: payload.initiativeType,
     name: payload.name,
     description: payload.description,
+    industry: payload.industry || undefined,
     website_url: payload.websiteUrl || undefined,
     accept_funding: true,
   };
