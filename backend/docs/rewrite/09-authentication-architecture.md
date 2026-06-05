@@ -333,6 +333,9 @@ flowchart TD
 User-scoped operations live under `/v1/me/*` and machine operations under `/v1/internal/*`, so each
 route belongs to exactly one scope (Design Rule 2).
 
+The two `access:me` rows below are the **same scope** — they differ only in whether an additional
+owner check runs after the scope is validated.
+
 | Tier | Routes | Auth mechanism |
 |---|---|---|
 | **No auth** | `GET /livez`, `/healthz`, `/readyz` | None |
