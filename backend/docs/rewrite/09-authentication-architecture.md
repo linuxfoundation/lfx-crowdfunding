@@ -234,7 +234,7 @@ GET /v1/internal/initiatives/{id}
   200 →
   {
     "id":             "…",
-    "initiative_type": "mentee",
+    "initiative_type": "mentorship",
     "owner": {
       "username":   "…",          // from initiatives.owner_id → users
       "email":      "…",
@@ -247,7 +247,7 @@ GET /v1/internal/initiatives/{id}
   }
 ```
 
-A list variant (`GET /v1/internal/initiatives?type=mentee&project={id}`) can be added if
+A list variant (`GET /v1/internal/initiatives?type=mentorship&project={id}`) can be added if
 Reimbursement needs to enumerate rather than look up by ID. Both are read-only.
 
 ### 3.2 Token Acquisition
@@ -413,7 +413,8 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 | `JWKS_URL` | Auth0 JWKS endpoint | `https://linuxfoundation-dev.auth0.com/.well-known/jwks.json` |
 | `JWT_ISSUER` | Expected `iss` claim | `https://linuxfoundation-dev.auth0.com/` |
 | `JWT_AUDIENCE` | Expected `aud` claim | `https://crowdfunding.dev.lfx.dev/api/` |
-| `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Local-dev only: skip JWKS validation and inject a mock Principal that satisfies the route's required scope | not set in deployed envs |
+| `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Local-dev safety gate — must be `true` to permit `DISABLED_MOCK_LOCAL_PRINCIPAL`. Does nothing on its own. | not set in deployed envs |
+| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Local-dev only: when set (and the gate above is `true`), skips JWKS and injects this static mock Principal. Mutually exclusive with `JWKS_URL`. | not set in deployed envs |
 
 ### CF Frontend (Nuxt BFF)
 
@@ -425,7 +426,7 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 | `NUXT_PUBLIC_AUTH0_AUDIENCE` | Token audience (`https://crowdfunding.dev.lfx.dev/api/`) |
 | `NUXT_PUBLIC_AUTH0_REDIRECT_URI` | OAuth2 callback URL |
 | `NUXT_API_BASE_URL` | CF Go API base URL (server-internal, default `http://localhost:8080`) |
-| `NUXT_JWT_SECRET` | Session cookie signing secret |
+| `NUXT_AUTH0_COOKIE_DOMAIN` | Cookie domain scope for the auth cookies (required in production) |
 
 ### LFX Self Serve (Express BFF)
 
