@@ -91,10 +91,15 @@ func (c *UserInfoClient) FetchUserInfo(ctx context.Context, accessToken string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		// Only true auth failures map to ErrUserInfoTokenRejected (forces re-auth).
+		// Rate limiting (429), not-found (404), and server errors are retryable
+		// upstream issues — classify them as ErrUserInfoUnavailable (503).
+		switch resp.StatusCode {
+		case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden:
 			return nil, fmt.Errorf("%w: HTTP %d", ErrUserInfoTokenRejected, resp.StatusCode)
+		default:
+			return nil, fmt.Errorf("%w: HTTP %d", ErrUserInfoUnavailable, resp.StatusCode)
 		}
-		return nil, fmt.Errorf("%w: HTTP %d", ErrUserInfoUnavailable, resp.StatusCode)
 	}
 
 	const maxBodyBytes = 64 * 1024 // 64 KB — well above any real OIDC UserInfo response

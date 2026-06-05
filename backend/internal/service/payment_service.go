@@ -44,6 +44,11 @@ func (s *PaymentService) ensureCustomer(ctx context.Context, username string) (u
 	if user.StripeCustomerID != "" {
 		return user.ID, user.StripeCustomerID, nil
 	}
+	// Guard against legacy/migrated rows that have no email yet.
+	// Stripe requires a non-empty email; direct the user to sync their profile.
+	if user.Email == "" {
+		return "", "", fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before using payment features", domain.ErrUserNotFound)
+	}
 	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.ID, user.Email)
 	if err != nil {
 		return "", "", fmt.Errorf("create stripe customer: %w", err)

@@ -118,6 +118,55 @@ func TestFetchUserInfo_Non200Response_ReturnsError(t *testing.T) {
 	}
 }
 
+func TestFetchUserInfo_RateLimited_ReturnsUnavailableError(t *testing.T) {
+	// 429 Too Many Requests is a transient upstream condition — it should be
+	// classified as ErrUserInfoUnavailable (retryable 503), not ErrUserInfoTokenRejected
+	// (which would force the user to re-authenticate unnecessarily).
+	mux := http.NewServeMux()
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client, err := NewUserInfoClient(srv.URL, srv.Client())
+	if err != nil {
+		t.Fatalf("NewUserInfoClient: %v", err)
+	}
+
+	_, err = client.FetchUserInfo(context.Background(), "valid-token")
+	if err == nil {
+		t.Fatal("expected error for 429 response, got nil")
+	}
+	if !errors.Is(err, ErrUserInfoUnavailable) {
+		t.Errorf("expected ErrUserInfoUnavailable for 429, got: %v", err)
+	}
+}
+
+func TestFetchUserInfo_404Response_ReturnsUnavailableError(t *testing.T) {
+	// 404 from the UserInfo endpoint indicates misconfiguration (wrong issuer
+	// URL), not a bad token — classify as ErrUserInfoUnavailable.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client, err := NewUserInfoClient(srv.URL, srv.Client())
+	if err != nil {
+		t.Fatalf("NewUserInfoClient: %v", err)
+	}
+
+	_, err = client.FetchUserInfo(context.Background(), "valid-token")
+	if err == nil {
+		t.Fatal("expected error for 404 response, got nil")
+	}
+	if !errors.Is(err, ErrUserInfoUnavailable) {
+		t.Errorf("expected ErrUserInfoUnavailable for 404, got: %v", err)
+	}
+}
+
 func TestFetchUserInfo_5xxResponse_ReturnsUnavailableError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, _ *http.Request) {

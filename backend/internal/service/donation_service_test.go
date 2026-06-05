@@ -318,7 +318,7 @@ func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 	donRepo := &testDonationRepo{}
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeCustomerID: ""}, nil
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -373,7 +373,7 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeCustomerID: existingCustomerID}, nil
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: existingCustomerID}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -503,5 +503,41 @@ func TestDonationService_Create_DBError(t *testing.T) {
 		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1"})
 	if !errors.Is(err, dbErr) {
 		t.Errorf("error = %v, want to wrap %v", err, dbErr)
+	}
+}
+
+func TestDonationService_Create_EmptyEmail_RequiresProfileSync(t *testing.T) {
+	// A legacy/migrated user row may exist without an email address.
+	// Stripe requires a non-empty email, so the service must fail fast and
+	// direct the caller to PATCH /v1/me before creating a Stripe customer.
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: "u-uuid", Username: "u1", Email: ""}, nil
+		},
+	}
+	customerCreated := false
+	svc := newDonationSvc(
+		&testDonationRepo{},
+		acceptingInitiative(),
+		userRepo,
+		&configStripeClient{
+			onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
+				customerCreated = true
+				return "cus_new", nil
+			},
+		},
+	)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1",
+		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "key-2"})
+
+	if !errors.Is(err, domain.ErrUserNotFound) {
+		t.Fatalf("expected ErrUserNotFound for empty email, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "PATCH /v1/me") {
+		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
+	}
+	if customerCreated {
+		t.Error("CreateCustomer must not be called when user email is empty")
 	}
 }

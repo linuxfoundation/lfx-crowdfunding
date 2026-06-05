@@ -135,6 +135,11 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		}
 		return nil, fmt.Errorf("resolve user: %w", err)
 	}
+	// Guard against legacy/migrated rows that have no email yet.
+	// Stripe requires a non-empty email; direct the user to sync their profile.
+	if user.Email == "" {
+		return nil, fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before subscribing", domain.ErrUserNotFound)
+	}
 	customerID := user.StripeCustomerID
 	if customerID == "" {
 		customerID, err = s.stripe.CreateCustomer(ctx, user.ID, user.Email)

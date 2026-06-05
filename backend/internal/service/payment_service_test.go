@@ -26,7 +26,7 @@ func TestPaymentService_CreateSetupIntent_NewCustomer(t *testing.T) {
 	svc := NewPaymentService(
 		&testUserRepo{
 			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-				return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", StripeCustomerID: ""}, nil
+				return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
 			},
 			onUpdateStripeInfo: func(_ context.Context, userUUID, customerID, _ string) error {
 				if userUUID != "00000000-0000-0000-0000-000000000001" {
@@ -347,5 +347,36 @@ func TestPaymentService_EnsureCustomer_UserNotFound_DescriptiveError(t *testing.
 	}
 	if !strings.Contains(err.Error(), "PATCH /v1/me") {
 		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
+	}
+}
+
+func TestPaymentService_EnsureCustomer_EmptyEmail_RequiresProfileSync(t *testing.T) {
+	// A legacy/migrated user row may exist without an email address.
+	// Stripe requires a non-empty email, so the service must fail fast.
+	customerCreated := false
+	svc := NewPaymentService(
+		&testUserRepo{
+			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+				return &models.User{ID: "u-uuid", Username: "u1", Email: ""}, nil
+			},
+		},
+		&configStripeClient{
+			onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
+				customerCreated = true
+				return "cus_new", nil
+			},
+		},
+	)
+
+	_, err := svc.CreateSetupIntent(context.Background(), "u1")
+
+	if !errors.Is(err, domain.ErrUserNotFound) {
+		t.Fatalf("expected ErrUserNotFound for empty email, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "PATCH /v1/me") {
+		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
+	}
+	if customerCreated {
+		t.Error("CreateCustomer must not be called when user email is empty")
 	}
 }
