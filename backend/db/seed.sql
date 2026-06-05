@@ -16,7 +16,9 @@ SET search_path TO crowdfunding, public;
 -- legacy_user_id — the old DynamoDB auth0 subject (kept for ledger JOIN enrichment)
 --
 -- Local dev mock principal: set DISABLED_MOCK_LOCAL_PRINCIPAL=<username> in backend/.env
--- (e.g. DISABLED_MOCK_LOCAL_PRINCIPAL=dev-user-001).  The value must match a seeded
+-- (e.g. DISABLED_MOCK_LOCAL_PRINCIPAL=dev-user-001).  This also REQUIRES
+-- ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true and an empty JWKS_URL (the two are mutually
+-- exclusive) — otherwise the API fails to start.  The value must match a seeded
 -- username row or the create-initiative path will fail with ErrForbidden.
 -- ============================================
 INSERT INTO users (id, username, legacy_user_id, email, given_name, family_name, name, avatar_url) VALUES
@@ -33,24 +35,28 @@ INSERT INTO users (id, username, legacy_user_id, email, given_name, family_name,
   ('a0000000-0000-0000-0000-000000000014', 'simk61',         'auth0|simk61',         'dev-simk61@example.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk61'),
   ('a0000000-0000-0000-0000-000000000015', 'simk.ment.admin','auth0|simk.ment.admin','dev-simkadmin@example.com',      'Simrit', 'Admin',  'Simrit Admin',  'https://i.pravatar.cc/150?u=simkadmin'),
   ('a0000000-0000-0000-0000-000000000016', 'simk43',         'auth0|simk43',         'dev-simk43@example.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk43'),
-  -- Local mock principal — set DISABLED_MOCK_LOCAL_PRINCIPAL=local-dev-user in backend/.env
+  -- Local mock principal — set DISABLED_MOCK_LOCAL_PRINCIPAL=local-dev-user (plus
+  -- ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true and empty JWKS_URL) in backend/.env
   ('a0000000-0000-0000-0000-000000000099', 'local-dev-user', NULL,                   'local-dev-user@local.dev',       'Local',  'Dev',    'Local Dev User','https://i.pravatar.cc/150?u=localdev'),
+  -- Ledger dev user — legacy_user_id matches the sponsor id in initiative_ledger_stats
+  -- for initiative 5f478c13-… so ledger-stats-sync enrichment resolves a real name/avatar.
+  ('a0000000-0000-0000-0000-000000000017', 'aj.maintainer',  'auth0|aj.maintainer',  'dev-ajmaintainer@example.com',   'AJ',     'Maintainer','AJ Maintainer','https://i.pravatar.cc/150?u=ajmaintainer'),
   -- Real dev users (LF SSO username must match Auth0 token claim)
   ('a0000000-0000-0000-0000-000000000100', 'elim',           'auth0|elim',           'elim@linuxfoundation.org',        'Efren',  'Lim',    'Efren Lim',     'https://i.pravatar.cc/150?u=elim')
-ON CONFLICT (username) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Organizations
 -- owner_id references users.id (UUID)
 -- ============================================
 INSERT INTO organizations (id, owner_id, name, avatar_url, status) VALUES
-  ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Acme Corp',       'https://i.pravatar.cc/150?u=acme',  'Active'),
-  ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'Open Source Inc', 'https://i.pravatar.cc/150?u=ossinc','Active'),
+  ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Acme Corp',       'https://i.pravatar.cc/150?u=acme',  'active'),
+  ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'Open Source Inc', 'https://i.pravatar.cc/150?u=ossinc','active'),
   -- Real Ledger dev org UUID — matches organizationID on Kubernetes transactions from auth0|kelo.
-  ('09b68fe3-12ae-4a7f-b021-7b522e87ae3d', 'a0000000-0000-0000-0000-000000000012', 'Google Cloud',    'https://ui-avatars.com/api/?name=Google+Cloud&background=4285F4&color=fff&size=128&bold=true', 'Active'),
+  ('09b68fe3-12ae-4a7f-b021-7b522e87ae3d', 'a0000000-0000-0000-0000-000000000012', 'Google Cloud',    'https://ui-avatars.com/api/?name=Google+Cloud&background=4285F4&color=fff&size=128&bold=true', 'active'),
   -- Real Ledger dev org UUIDs — match organizationID on Prometheus transactions.
-  ('a5df9992-9374-445c-8b88-545f6178bb11', 'a0000000-0000-0000-0000-000000000001', 'Grafana Labs',     'https://ui-avatars.com/api/?name=Grafana+Labs&background=F46800&color=fff&size=128&bold=true', 'Active'),
-  ('da78ebed-3c32-49ca-80db-234761b01979', 'a0000000-0000-0000-0000-000000000001', 'Weaveworks',       'https://ui-avatars.com/api/?name=Weaveworks&background=0077CC&color=fff&size=128&bold=true',   'Active')
+  ('a5df9992-9374-445c-8b88-545f6178bb11', 'a0000000-0000-0000-0000-000000000001', 'Grafana Labs',     'https://ui-avatars.com/api/?name=Grafana+Labs&background=F46800&color=fff&size=128&bold=true', 'active'),
+  ('da78ebed-3c32-49ca-80db-234761b01979', 'a0000000-0000-0000-0000-000000000001', 'Weaveworks',       'https://ui-avatars.com/api/?name=Weaveworks&background=0077CC&color=fff&size=128&bold=true',   'active')
 ON CONFLICT DO NOTHING;
 
 -- ============================================
@@ -340,49 +346,49 @@ INSERT INTO donations (
   (
     'd0000000-0000-0000-0000-000000000001',
     'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
-    'development', 10000, 'card', 'Processed', 'ch_dev_001',
+    'development', 10000, 'card', 'succeeded', 'ch_dev_001',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000002',
     'a0000000-0000-0000-0000-000000000003', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
-    'travel', 5000, 'card', 'Processed', 'ch_dev_002',
+    'travel', 5000, 'card', 'succeeded', 'ch_dev_002',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000003',
     'a0000000-0000-0000-0000-000000000004', '57135156-cb73-4896-bbd3-8d503b568b3b', NULL,
-    'development', 2500, 'card', 'Processed', 'ch_dev_003',
+    'development', 2500, 'card', 'succeeded', 'ch_dev_003',
     '{"initiative_name": "Prometheus", "initiative_slug": "prometheus"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000004',
     'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000010', 'b0000000-0000-0000-0000-000000000001',
-    'Diversity Scholarships', 50000, 'invoice', 'Processed', NULL,
+    'Diversity Scholarships', 50000, 'invoice', 'succeeded', NULL,
     '{"initiative_name": "KubeCon NA 2026", "initiative_slug": "kubecon-na-2026"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000005',
     'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
-    'mentee', 7500, 'card', 'Pending', NULL,
+    'mentee', 7500, 'card', 'pending', NULL,
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000006',
     'a0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000020', NULL,
-    'stipends', 15000, 'card', 'Processed', 'ch_dev_006',
+    'stipends', 15000, 'card', 'succeeded', 'ch_dev_006',
     '{"initiative_name": "Linux Kernel Bug Fixing", "initiative_slug": "linux-kernel-bug-fixing"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000007',
     'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000002',
-    'audit', 100000, 'invoice', 'Processed', NULL,
+    'audit', 100000, 'invoice', 'succeeded', NULL,
     '{"initiative_name": "Kubernetes Security Audit", "initiative_slug": "kubernetes-security-audit"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000008',
     'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000040', NULL,
-    'infrastructure', 25000, 'card', 'Processed', 'ch_dev_008',
+    'infrastructure', 25000, 'card', 'succeeded', 'ch_dev_008',
     '{"initiative_name": "CNCF General Fund", "initiative_slug": "cncf-general-fund"}'
   )
 ON CONFLICT DO NOTHING;
@@ -400,28 +406,28 @@ INSERT INTO subscriptions (
   (
     'e0000000-0000-0000-0000-000000000001',
     'a0000000-0000-0000-0000-000000000003', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
-    'development', 1000, 'monthly', 'Active',
+    'development', 1000, 'monthly', 'active',
     'sub_dev_001', 'si_dev_001',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'e0000000-0000-0000-0000-000000000002',
     'a0000000-0000-0000-0000-000000000004', '57135156-cb73-4896-bbd3-8d503b568b3b', NULL,
-    'development', 500, 'monthly', 'Active',
+    'development', 500, 'monthly', 'active',
     'sub_dev_002', 'si_dev_002',
     '{"initiative_name": "Prometheus", "initiative_slug": "prometheus"}'
   ),
   (
     'e0000000-0000-0000-0000-000000000003',
     'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'b0000000-0000-0000-0000-000000000002',
-    'travel', 2500, 'monthly', 'Cancelled',
+    'travel', 2500, 'monthly', 'canceled',
     'sub_dev_003', 'si_dev_003',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'e0000000-0000-0000-0000-000000000004',
     'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000040', NULL,
-    'infrastructure', 5000, 'monthly', 'Active',
+    'infrastructure', 5000, 'monthly', 'active',
     'sub_dev_004', 'si_dev_004',
     '{"initiative_name": "CNCF General Fund", "initiative_slug": "cncf-general-fund"}'
   )
