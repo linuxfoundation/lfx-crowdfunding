@@ -146,6 +146,7 @@ import DonateStepContact from './donate-step-contact.vue';
 import DonateStepPayment from './donate-step-payment.vue';
 import DonateStepSuccess from './donate-step-success.vue';
 import type { DonateAmountForm, DonateContactForm } from '#shared/types/donate.types';
+import type { FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
@@ -164,7 +165,7 @@ const props = defineProps<{
     id: string;
     name: string;
     logoUrl?: string;
-    fundingGoals?: import('#shared/types/initiative-detail.types').FundingGoal[];
+    fundingGoals?: FundingGoal[];
   };
 }>();
 
