@@ -33,16 +33,17 @@ These rules, set at the architecture review, constrain every decision in this do
 
 | Actor | Type | Notes |
 |---|---|---|
-| **Browser** | Untrusted client | Never receives access tokens directly |
+| **Browser** | Untrusted client | Receives the access token only as an HTTP-only cookie — never exposed to client-side JavaScript |
 | **CF Nuxt BFF** | Trusted server | Holds tokens in HTTP-only cookies; proxies requests to CF API |
 | **CF Go API** (`initiatives-api`) | Trusted server | Validates JWTs; the protected resource server |
 | **Auth0** (`linuxfoundation-{dev,staging}.auth0.com`) | Identity provider | Issues all tokens; hosts JWKS endpoint |
 | **LFX Self Serve Express BFF** | Trusted server | Proxies user-issued access tokens on behalf of the logged-in user |
 | **Reimbursement Service** | Trusted server | M2M caller; uses `access:manage` scope for privileged routes |
 
-**Key principle:** access tokens never reach the browser. Both BFFs hold them server-side
-(HTTP-only cookies in CF; forwarded from the user session in Self Serve) and attach them on the
-server when making upstream API calls.
+**Key principle:** the access token is never exposed to client-side JavaScript. In CF it is stored
+as an HTTP-only cookie (`auth_oidc_token`) the browser cannot read; in Self Serve it is held in the
+server-side session. Both BFFs attach it on the server when making upstream API calls, so it is
+never readable by page scripts or third parties.
 
 ---
 
