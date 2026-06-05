@@ -89,10 +89,11 @@ scopes that gate access to different route classes:
 
 The scope itself is the access control gate; no client ID allowlist is needed.
 
-> **Identity claims.** The LF SSO username is the only user field the CF API reads from the access
-> token (a custom namespaced claim added via an Auth0 Action). Other profile fields — email,
-> given/family name, avatar — are **not** in the access token; CF obtains them from Auth0
-> `/userinfo` during login sync (see [User Profile Sync](#user-profile-sync)).
+> **Identity claims.** Profile fields (email, given/family name, avatar) can be carried either as
+> **custom claims** on the access token (via an Auth0 Action) or fetched from Auth0 **`/userinfo`** —
+> whichever is more efficient. CF is low-traffic, so the leaning is `/userinfo` at login sync rather
+> than bloating every token (see [User Profile Sync](#user-profile-sync)). The **username** is the
+> exception: the owner check needs it on every request, so it is carried as a custom claim regardless.
 
 > **Note on user-facing writes.** Creating, editing, donating to, and subscribing to initiatives
 > are **user** actions and live under `access:me`, not `access:manage`. `access:manage` is reserved
@@ -275,15 +276,20 @@ sequenceDiagram
 
 ## User Profile Sync
 
-Access tokens carry only the LF SSO username (custom claim). The other profile fields CF needs —
-email, given name, family name, avatar — are fetched from Auth0 **`/userinfo`** and persisted to the
-`users` table on **login sync** (the `PATCH /v1/me` call made when the user signs in). CF reads
-profile data from the `users` table thereafter, making behavior deterministic: a user who never
-completed sync simply has no row, and user-scoped writes fail cleanly.
+CF needs the user's email, given/family name, and avatar (e.g. for donation display, sponsor
+avatars, Stripe). These can come from either source — whichever is more efficient:
 
-The `/userinfo` call is made by the **Go API** (not Nuxt) using the user's access token — Nuxt only
-ever forwards the access token. Detailed design and implementation are owned by the sync handler
-work; this document covers only the authentication boundary.
+- **Custom claims** on the access token (added via an Auth0 Action), or
+- **Auth0 `/userinfo`**, called with the user's access token.
+
+Since CF is low-traffic, the leaning is `/userinfo` — fetched on **login sync** (the `PATCH /v1/me`
+call at sign-in) and persisted to the `users` table, rather than bloating every access token. CF
+reads profile data from the `users` table thereafter, so behavior is deterministic: a user who
+never completed sync has no row, and user-scoped writes fail cleanly.
+
+If `/userinfo` is used, the call is made by the **Go API** (not Nuxt) using the user's access
+token — Nuxt only ever forwards the access token. Detailed design and implementation are owned by
+the sync handler work; this document covers only the authentication boundary.
 
 ---
 
