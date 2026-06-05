@@ -8,11 +8,15 @@ export interface SponsorshipTier {
   benefits: string[];
 }
 
+export type DonationType = 'one-time' | 'monthly';
+
 export interface DonateAmountForm {
   tierId: string | null;
   tierName: string | null;
   customAmountCents: number | null;
   amountCents: number;
+  donationType: DonationType;
+  category: string | null;
 }
 
 export type DonorType = 'individual' | 'company';

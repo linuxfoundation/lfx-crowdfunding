@@ -3,11 +3,13 @@
 
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import type { FundDistributionItem } from '~/types/fundraise.types';
 
 export interface DonateDrawerInitiative {
   id: string;
   name: string;
   logoUrl?: string;
+  fundDistribution?: FundDistributionItem[];
 }
 
 export const useDonateDrawerStore = defineStore('donateDrawer', () => {

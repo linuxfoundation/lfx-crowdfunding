@@ -77,6 +77,9 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? projectForm.details.beneficiaries
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(projectForm?.details.annualFundingGoal),
+        fundDistribution: projectForm?.details.fundDistribution?.length
+          ? projectForm.details.fundDistribution
+          : undefined,
       };
     }
 
@@ -109,6 +112,9 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         logoUrl: eventForm?.logoUrl || undefined,
         beneficiaries: eventForm?.beneficiaries?.length ? eventForm.beneficiaries : undefined,
         sponsorshipGoalCents: parseDollarsToCents(eventForm?.sponsorshipGoal),
+        budgetDistribution: eventForm?.budgetDistribution?.length
+          ? eventForm.budgetDistribution
+          : undefined,
       };
     }
 

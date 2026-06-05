@@ -16,7 +16,8 @@ export default defineEventHandler(async (event) => {
     event,
     `/v1/initiatives/${slug}`,
   ).catch((err) => {
-    if (err?.status === 404) throw createError({ statusCode: 404, message: 'Not found' });
+    const status = err?.statusCode ?? err?.status;
+    if (status === 404) throw createError({ statusCode: 404, message: 'Not found' });
     throw err;
   });
 

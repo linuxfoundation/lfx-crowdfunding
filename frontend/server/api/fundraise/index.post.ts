@@ -9,6 +9,7 @@ import type {
   FundraiseResult,
   FundraiseContactInput,
   SecurityAuditFundraisePayload,
+  FundDistributionItemInput,
 } from '../../types/fundraise.types';
 
 export default defineEventHandler(async (event): Promise<FundraiseResult> => {
@@ -64,6 +65,9 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
               },
             ]
           : undefined,
+        fund_distribution: payload.fundDistribution?.length
+          ? payload.fundDistribution.map(toSnakeCaseDistributionItem)
+          : undefined,
       };
     }
 
@@ -109,6 +113,9 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
               },
             ]
           : undefined,
+        budget_distribution: payload.budgetDistribution?.length
+          ? payload.budgetDistribution.map(toSnakeCaseDistributionItem)
+          : undefined,
       };
     }
 
@@ -131,6 +138,16 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
       };
     }
   }
+}
+
+function toSnakeCaseDistributionItem(item: FundDistributionItemInput): Record<string, unknown> {
+  return {
+    category: item.category,
+    label: item.label,
+    description: item.description,
+    enabled: item.enabled,
+    percentage: item.percentage,
+  };
 }
 
 function buildContacts(
