@@ -33,17 +33,18 @@ These rules, set at the architecture review, constrain every decision in this do
 
 | Actor | Type | Notes |
 |---|---|---|
-| **Browser** | Untrusted client | Receives the access token only as an encrypted HTTP-only cookie — never exposed to client-side JavaScript |
-| **CF Nuxt BFF** | Trusted server | Holds tokens in encrypted HTTP-only cookies; proxies requests to CF API |
+| **Browser** | Untrusted client | Receives the access token only as an HTTP-only cookie — never exposed to client-side JavaScript |
+| **CF Nuxt BFF** | Trusted server | Holds tokens in HTTP-only cookies; proxies requests to CF API |
 | **CF Go API** (`initiatives-api`) | Trusted server | Validates JWTs; the protected resource server |
 | **Auth0** (`linuxfoundation-{dev,staging}.auth0.com`) | Identity provider | Issues all tokens; hosts JWKS endpoint |
 | **LFX Self Serve Express BFF** | Trusted server | Proxies user-issued access tokens on behalf of the logged-in user |
 | **Reimbursement Service** | Trusted server | M2M caller; uses `access:manage` scope for privileged routes |
 
 **Key principle:** the access token is never exposed to client-side JavaScript. In CF it is stored
-as an **encrypted** HTTP-only cookie (`auth_oidc_token`) the browser cannot read; in Self Serve it
-is held in the server-side session. Both BFFs attach it on the server when making upstream API
-calls, so it is never readable by page scripts or third parties.
+as an HTTP-only cookie (`auth_oidc_token`) the browser cannot read; in Self Serve it is held in the
+server-side session. Both BFFs attach it on the server when making upstream API calls, so it is
+never readable by page scripts or third parties. **Target requirement:** the token cookies should
+additionally be **encrypted at rest** (sealed), not stored as the raw token — not yet implemented.
 
 ---
 
@@ -147,10 +148,11 @@ sequenceDiagram
 ```
 
 Cookie details:
-- `auth_oidc_token` — the Auth0 access token (`access:me` scope) forwarded to the CF Go API as a Bearer token; **stored encrypted**
-- `auth_refresh_token` — used to silently refresh; 30-day TTL; **stored encrypted**
+- `auth_oidc_token` — the Auth0 access token (`access:me` scope) forwarded to the CF Go API as a Bearer token
+- `auth_refresh_token` — used to silently refresh; 30-day TTL
 - `auth_user_profile` — base64 JSON of display claims (name, email, username); **unsigned, for display only, never for authorization**
-- The token cookies are **encrypted** (not just opaque); all cookies are `httpOnly: true`, `secure` (non-local), `sameSite: lax`
+- All cookies: `httpOnly: true`, `secure` (non-local), `sameSite: lax`
+- **Target requirement:** the token cookies (`auth_oidc_token`, `auth_refresh_token`) should be **encrypted at rest** rather than storing the raw token. Not yet implemented.
 
 ### 1.3 Authenticated API Call
 
@@ -401,8 +403,9 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 ```
 
 The Reimbursement Service client authenticates with **private-key JWT** (`private_key_jwt`), the
-LFX V2 M2M convention — not a client secret. Its credentials are managed via lfx-secrets-management
-as an `auth0_jwt` source (auto-rotated key pair), the same pattern as other LFX V2 services.
+LFX V2 M2M convention — not a client secret. The signing key pair is generated in Auth0; because
+the service runs in a separate AWS account, the key is provided to it via its own deployment
+secrets (see Configuration Reference) rather than the LFX secrets-distribution pipeline.
 
 ---
 
@@ -440,14 +443,15 @@ No M2M credentials needed for CF. The user's access token is forwarded directly.
 
 ### Reimbursement Service
 
-The Reimbursement Service needs the following inputs to mint an M2M token and call CF. Exact
-env-var names are owned by the Reimbursement Service repo (a Serverless/Lambda app whose secrets
-come from its own GitHub Actions secrets, not from lfx-secrets-management):
+The Reimbursement Service needs the following inputs to mint an M2M token and call CF. It is a
+Serverless/Lambda app in a separate AWS account, so it reads these from its **own GitHub Actions
+secrets** (the credential is copied there from Auth0); it is not wired into the LFX
+secrets-distribution pipeline. Exact env-var names are owned by that repo.
 
 | Input | Value |
 |---|---|
 | Auth0 M2M client ID | the `Reimbursement Service` Auth0 client (auth0-terraform) |
-| Auth0 M2M private key | the client's `private_key_jwt` signing key (auto-rotated via lfx-secrets-management); used to build the `client_assertion`. No client secret. |
+| Auth0 M2M private key | the client's `private_key_jwt` signing key; used to build the `client_assertion`. No client secret. |
 | Auth0 token endpoint | `https://linuxfoundation-{env}.auth0.com/oauth/token` |
 | CF API audience | `https://crowdfunding.{env}.lfx.dev/api/` (scope `access:manage`) |
 | CF API base URL | e.g. `https://crowdfunding-api.dev.lfx.dev` |
