@@ -104,7 +104,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
             ]
           : undefined,
         budget_distribution: payload.budgetDistribution?.length
-          ? payload.budgetDistribution.map(toSnakeCaseDistributionItem)
+          ? payload.budgetDistribution.map(buildBudgetDistributionItem)
           : undefined,
       };
     }
@@ -163,7 +163,7 @@ function buildProjectGoals(
   return result.length > 0 ? result : undefined;
 }
 
-function toSnakeCaseDistributionItem(item: GoalItemInput): Record<string, unknown> {
+function buildBudgetDistributionItem(item: GoalItemInput): Record<string, unknown> {
   return {
     category: item.category,
     label: item.label,

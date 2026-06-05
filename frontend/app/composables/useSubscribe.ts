@@ -36,9 +36,12 @@ export const useSubscribe = () => {
 
       return result;
     } catch (e: unknown) {
-      const err = e as { data?: { message?: string }; message?: string };
+      const err = e as { data?: { error?: string; message?: string }; message?: string };
       const message =
-        err?.data?.message ?? err?.message ?? 'Subscription failed. Please try again.';
+        err?.data?.error ??
+        err?.data?.message ??
+        err?.message ??
+        'Subscription failed. Please try again.';
       error.value = message;
       showError(message);
       throw e;
