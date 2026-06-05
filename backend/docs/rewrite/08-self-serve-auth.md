@@ -41,25 +41,28 @@ reject the call. SS needs only the CF API base URL to make the call — no M2M c
 | `lfx-v2-argocd` | `values/*/lfx-self-serve.yaml`: `CROWDFUNDING_API_BASE_URL` (and CF audience for the token request). No M2M client/secret for CF. |
 
 Infra specifics (Auth0 scopes/grants, CF backend env) are in
-[`09`](09-authentication-architecture.md#auth0-terraform). SS needs **no** `AUTHORIZED_CLIENTS`
-entry and **no** `X-Username` wiring — both were part of the superseded design.
+[`09`](09-authentication-architecture.md#auth0-terraform). SS needs no client-ID allowlist entry
+and no identity header — the user token carries identity, and the `access:me` scope is the gate.
 
 ---
 
 ## 3. Impersonation
 
-SS supports admin impersonation, and it works transparently with this model because SS swaps the
-**token**, not an identity header. CF never needs to know impersonation is happening — it sees a
-normal `access:me` user token.
+Admin impersonation works transparently with this model because SS swaps the **token**, not an
+identity header. CF never needs to know impersonation is happening — it sees a normal `access:me`
+user token.
 
-How SS handles it (in `lfx-self-serve`):
+The token SS forwards to CF must always represent the **effective user**:
 
-- An admin may impersonate only if their own token carries the `http://lfx.dev/claims/can_impersonate` claim.
-- On start, SS performs a **token exchange** to mint a genuine access token **for the target user**, stored in the session as the impersonation token (with its own expiry).
-- While impersonation is active, the SS BFF uses the **target user's** access token as the bearer for upstream calls (including CF); otherwise it uses the logged-in user's own token.
+- **Normal:** the logged-in user's own access token.
+- **Impersonating:** a token minted for the **target user** (via a token exchange, authorized by
+  the impersonator's `http://lfx.dev/claims/can_impersonate` claim) and used as the bearer while
+  impersonation is active.
 
-So the bearer token SS forwards to CF always represents the **effective user**. CF's owner check
-and `Principal.Username` resolve to that effective user with no special handling.
+**Requirement:** the CF integration must forward this effective-user token — the same token used
+for impersonation-aware upstream calls — and must **not** use a service/gateway token that carries
+the admin's own identity. Because the forwarded token already represents the effective user, CF's
+owner check and `Principal.Username` resolve correctly with no CF-side special handling.
 
 > Write access under impersonation is a product-level decision, gated on the SS side.
 
@@ -70,8 +73,8 @@ and `Principal.Username` resolve to that effective user with no special handling
 - **Identity migration (OQ-23).** New CF treats the LF SSO username as the canonical user
   identifier; CF handlers key on `Principal.Username`, not the Auth0 `sub`. See
   [`09`](09-authentication-architecture.md) for how the username claim is sourced.
-- **Heimdall.** CF is not behind the platform API gateway today; SS calls CF directly. If CF later
-  moves behind Heimdall, the token-forwarding pattern here does not block it. See the Known
+- **Heimdall.** CF sits outside the platform API gateway, so SS calls CF directly. The
+  token-forwarding pattern here does not block a future move behind Heimdall. See the Known
   Deviations section in [`09`](09-authentication-architecture.md#known-deviations--future-direction).
 
 ---
