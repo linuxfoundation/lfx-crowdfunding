@@ -3,8 +3,6 @@
 
 # Authentication Architecture
 
-**Status:** Target design — approved at architecture review (2026-06-04: Eric Searcy, Robert Detjens, Lewis Ojile).
-
 ---
 
 This document describes the **target** authentication design for the Crowdfunding (CF) platform and how
