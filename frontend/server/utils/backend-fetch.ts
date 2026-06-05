@@ -35,7 +35,7 @@ export const useBackendFetch = async <T = unknown>(
       statusMessage?: string;
     };
     const status = e?.status ?? e?.statusCode ?? 500;
-    const message = e?.data?.message ?? e?.statusMessage ?? 'Upstream error';
+    const message = e?.data?.error ?? e?.data?.message ?? e?.statusMessage ?? 'Upstream error';
     throw createError({ statusCode: status, statusMessage: message });
   }
 };

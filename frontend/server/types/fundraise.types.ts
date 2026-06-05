@@ -3,6 +3,14 @@
 
 // Wire shapes for POST /api/fundraise → POST /v1/initiatives
 
+export interface GoalItemInput {
+  category: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  percentage: number;
+}
+
 export interface FundraiseContactInput {
   firstName: string;
   lastName: string;
@@ -20,18 +28,21 @@ export interface ProjectFundraisePayload {
   initiativeType: 'project';
   name: string;
   description: string;
+  industry?: string;
   websiteUrl?: string;
   cocUrl?: string;
   repositoryUrl?: string;
   logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];
   annualFundingGoalCents?: number;
+  goals?: GoalItemInput[];
 }
 
 export interface SecurityAuditFundraisePayload {
   initiativeType: 'security_audit';
   name: string;
   description: string;
+  industry?: string;
   websiteUrl?: string;
   repositoryUrl?: string;
   logoUrl?: string;
@@ -45,6 +56,7 @@ export interface EventFundraisePayload {
   initiativeType: 'event';
   name: string;
   description: string;
+  industry?: string;
   websiteUrl?: string;
   registrationUrl?: string;
   startDate?: string;
@@ -55,12 +67,14 @@ export interface EventFundraisePayload {
   logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];
   sponsorshipGoalCents?: number;
+  budgetDistribution?: GoalItemInput[];
 }
 
 export interface GeneralFundFundraisePayload {
   initiativeType: 'general_fund';
   name: string;
   description: string;
+  industry?: string;
   websiteUrl?: string;
   logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];

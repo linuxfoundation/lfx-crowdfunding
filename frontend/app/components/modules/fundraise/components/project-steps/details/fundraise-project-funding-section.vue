@@ -27,14 +27,14 @@ const emit = defineEmits<{
 
 const distributionData = computed<FundDistributionData>(() => ({
   goal: props.modelValue.annualFundingGoal,
-  distribution: props.modelValue.fundDistribution,
+  distribution: props.modelValue.goals,
 }));
 
 const onUpdate = (updated: FundDistributionData) => {
   emit('update:modelValue', {
     ...props.modelValue,
     annualFundingGoal: updated.goal,
-    fundDistribution: updated.distribution,
+    goals: updated.distribution,
   });
 };
 </script>
