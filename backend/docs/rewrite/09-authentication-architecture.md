@@ -23,7 +23,8 @@ These rules, set at the architecture review, constrain every decision in this do
    Eric was explicit: *"I would not design your API that way"* — no single endpoint accepts both
    `access:me` and `access:manage`.
 3. **User-facing routes carry identity in the token.** No identity header. The acting user is the
-   `username` JWT claim. This is why Self Serve forwards the user's own token rather than an M2M token.
+   **custom** `username` claim (`https://sso.linuxfoundation.org/claims/username`, added via an
+   Auth0 Action). This is why Self Serve forwards the user's own access token rather than an M2M token.
 4. **Object-level authorization lives in the resource server, not the token.** A valid `access:me`
    token proves *who* you are; the CF API still checks *whether you own* the object you are touching.
 
@@ -65,9 +66,9 @@ graph TD
     Auth0 -->|"access token + refresh token\n(access:me scope)"| CFBFF
     CFBFF -->|"HTTP-only cookies"| Browser
     Browser -->|"request + session cookie"| CFBFF
-    CFBFF -->|"Bearer user token\n(access:me scope)"| CFAPI
+    CFBFF -->|"Bearer user-issued access token\n(access:me scope)"| CFAPI
 
-    SSBFF -->|"Bearer user token\n(access:me scope)"| CFAPI
+    SSBFF -->|"Bearer user-issued access token\n(access:me scope)"| CFAPI
 
     Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF /api/\naccess:manage scope"| Auth0
     Auth0 -->|"M2M access token\n(access:manage scope, cached ~24h)"| Reimburse
@@ -179,7 +180,7 @@ the client receives 401 (forcing a new login).
 ## Flow 2 — Self Serve → CF API (User Token)
 
 Self Serve proxies the logged-in user's **own** access token to the CF API. There is no M2M token
-exchange and no identity header — the user token carries the user's identity via the
+exchange and no identity header — the user-issued access token carries the user's identity via the
 `https://sso.linuxfoundation.org/claims/username` claim, same as the CF frontend.
 
 This is correct because all SS→CF calls are me-style endpoints: `/v1/me/donations`,

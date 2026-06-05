@@ -16,8 +16,8 @@ document only adds the SS-specific integration details.
 ## 1. How SS authenticates to CF
 
 SS forwards the **logged-in user's own access token** to CF. There is no M2M token and no identity
-header for SS — all SS→CF calls are me-style endpoints (`/v1/me/*`), and the user token carries the
-acting user's identity via the LF SSO username claim (per Design Rule 3 in
+header for SS — all SS→CF calls are me-style endpoints (`/v1/me/*`), and the access token carries the
+acting user's identity via the LF SSO username — a custom claim (per Design Rule 3 in
 [`09`](09-authentication-architecture.md#design-rules)).
 
 ```
@@ -37,12 +37,12 @@ reject the call. SS needs only the CF API base URL to make the call — no M2M c
 | Area | Change |
 |---|---|
 | `lfx-self-serve` | A `crowdfunding.service.ts` / proxy routes under `/api/crowdfunding/*` that forward the effective user's bearer token to CF `/v1/me/*`. |
-| Auth0 token request | Include the CF API audience + `access:me` scope so the user token is accepted by CF. |
+| Auth0 token request | Include the CF API audience + `access:me` scope so the access token is accepted by CF. |
 | `lfx-v2-argocd` | `values/*/lfx-self-serve.yaml`: `CROWDFUNDING_API_BASE_URL` (and CF audience for the token request). No M2M client/secret for CF. |
 
 Infra specifics (Auth0 scopes/grants, CF backend env) are in
 [`09`](09-authentication-architecture.md#auth0-terraform). SS needs no client-ID allowlist entry
-and no identity header — the user token carries identity, and the `access:me` scope is the gate.
+and no identity header — the user-issued access token carries identity, and the `access:me` scope is the gate.
 
 ---
 
@@ -50,7 +50,7 @@ and no identity header — the user token carries identity, and the `access:me` 
 
 Admin impersonation works transparently with this model because SS swaps the **token**, not an
 identity header. CF never needs to know impersonation is happening — it sees a normal `access:me`
-user token.
+user-issued access token.
 
 The token SS forwards to CF must always represent the **effective user**:
 
