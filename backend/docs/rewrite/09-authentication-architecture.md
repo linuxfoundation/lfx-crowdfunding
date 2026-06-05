@@ -325,11 +325,11 @@ route belongs to exactly one scope (Design Rule 2).
 
 ---
 
-## Auth0 Terraform — Required Changes
+## Auth0 Terraform
 
 ### Resource server scopes
 
-Replace the single `access:api` scope with two scopes on `lfx_crowdfunding_api`:
+The `lfx_crowdfunding_api` resource server defines two scopes:
 
 ```hcl
 resource "auth0_resource_server_scopes" "lfx_crowdfunding_api" {
@@ -349,11 +349,11 @@ resource "auth0_resource_server_scopes" "lfx_crowdfunding_api" {
 
 ### Client grants
 
-**CF frontend (Nuxt BFF)** — already has a client grant; update scope from `access:api` to `access:me`.
+**CF frontend (Nuxt BFF)** — client grant with `access:me` scope.
 
-**Self Serve** — already has a client grant; update scope from `access:api` to `access:me`. No M2M client grant needed.
+**Self Serve** — client grant with `access:me` scope. No M2M client grant needed; it forwards the user's own token.
 
-**Reimbursement Service** — new client grant with `access:manage` scope:
+**Reimbursement Service** — client grant with `access:manage` scope:
 
 ```hcl
 resource "auth0_client_grant" "reimbursement_crowdfunding" {
@@ -376,8 +376,6 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 | `JWT_ISSUER` | Expected `iss` claim | `https://linuxfoundation-dev.auth0.com/` |
 | `JWT_AUDIENCE` | Expected `aud` claim | `https://crowdfunding.dev.lfx.dev/api/` |
 | `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Local-dev only: skip JWKS validation and inject a mock Principal that satisfies the route's required scope | not set in deployed envs |
-
-> **Removed:** `AUTHORIZED_CLIENTS`. The scope-based model does not require a client ID allowlist.
 
 ### CF Frontend (Nuxt BFF)
 
@@ -411,24 +409,6 @@ No M2M credentials needed for CF. The user's access token is forwarded directly.
 
 ---
 
-## Supersedes the Prior Proposal
-
-An earlier proposal (see [`08-self-serve-auth.md`](08-self-serve-auth.md)) had Self Serve
-authenticate to CF with an M2M token plus an `X-Username` identity header, gated by an
-`AUTHORIZED_CLIENTS` allowlist on a single `access:api` scope. This design replaces that approach:
-
-| Prior proposal | This design |
-|---|---|
-| `access:api` (single scope) | `access:me` for users, `access:manage` for M2M |
-| `AUTHORIZED_CLIENTS` allowlist + `X-Username` header | Scope-based; no allowlist, no identity header |
-| Self Serve uses M2M client credentials | Self Serve forwards the user's own access token |
-| Single dual-purpose `/v1/initiatives/{id}` (read + edit) | Split: user edits under `/v1/me/initiatives/{id}`, machine reads under `/v1/internal/initiatives/{id}` |
-
-There is therefore no `X-Username` header and no `AUTHORIZED_CLIENTS` allowlist in this design, and
-the ingress has no header-stripping requirement.
-
----
-
 ## Known Deviations & Future Direction
 
 This design is a deliberate, scoped-for-launch choice. Two points an architecture reviewer should
@@ -451,5 +431,5 @@ single owner. Not in scope now.
 
 ## Related Documents
 
-- [`08-self-serve-auth.md`](08-self-serve-auth.md) — Self Serve integration rationale and impersonation handling. **Note:** §2–§4 of that doc still describe the prior M2M + `X-Username` mechanism and are superseded by this document for the auth mechanism.
+- [`08-self-serve-auth.md`](08-self-serve-auth.md) — Self Serve integration rationale
 - [`04-target-architecture.md`](04-target-architecture.md) — overall target architecture including Auth0 tenant topology
