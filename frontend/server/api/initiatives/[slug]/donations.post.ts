@@ -24,7 +24,7 @@ export default defineEventHandler(async (event): Promise<DonationResult> => {
   const body = await readBody<DonationRequest>(event);
   const raw = await useBackendFetch<DonationResultWire>(
     event,
-    `/v1/initiatives/${initiative.id}/donations`,
+    `/v1/me/initiatives/${initiative.id}/donations`,
     {
       method: 'POST',
       body: {

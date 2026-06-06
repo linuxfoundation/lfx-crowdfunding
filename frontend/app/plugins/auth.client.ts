@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import { defineNuxtPlugin, useAsyncData, useRoute, navigateTo } from 'nuxt/app';
-import { watch, watchEffect, nextTick } from 'vue';
+import { watch } from 'vue';
 import { authState, isAuthLoading, isAuthReady, setRefreshAuth } from '~/composables/useAuth';
+import { useErrorToast } from '~/composables/useErrorToast';
 import type { AuthState } from '~/composables/useAuth';
 
 export default defineNuxtPlugin(() => {
@@ -27,24 +28,54 @@ export default defineNuxtPlugin(() => {
     status,
     (s) => {
       if (s === 'success' || s === 'error') {
-        isAuthReady.value = true;
+        // Mirror userData → authState synchronously before raising isAuthReady,
+        // so any code that awaits isAuthReady already sees the correct authState.
+        // This removes the need for a nextTick() workaround in handleAuthQuery.
+        if (userData.value) {
+          authState.value = userData.value;
+        }
         isAuthLoading.value = false;
+        isAuthReady.value = true; // set last — watchers on this see consistent authState
       }
     },
     { immediate: true },
   );
 
-  watchEffect(() => {
-    if (!userData.value) return;
-    isAuthLoading.value = false;
-    authState.value = userData.value;
-  });
+  const { showError } = useErrorToast();
 
   const route = useRoute();
 
   const handleAuthQuery = async (authParam: string | undefined) => {
     if (authParam === 'logout') {
       await navigateTo('/', { replace: true });
+      return;
+    }
+
+    if (authParam === 'success') {
+      // wait for auth state to be hydrated before syncing the profile so the
+      // session cookie is guaranteed to be present server-side.
+      if (!isAuthReady.value) {
+        await new Promise<void>((resolve) => {
+          const stop = watch(isAuthReady, (ready) => {
+            if (!ready) return;
+            stop();
+            resolve();
+          });
+        });
+      }
+      // authState is now guaranteed to be populated: watch(status) sets it
+      // synchronously before raising isAuthReady (see above).
+
+      if (authState.value.isAuthenticated) {
+        await $fetch('/api/me', { method: 'PATCH', credentials: 'include' }).catch((err) => {
+          console.error('Profile sync error:', err);
+          showError('We could not update your profile. Please try again later.');
+        });
+      }
+
+      // Strip ?auth=success from the URL without triggering a navigation.
+      const { auth: _auth, ...rest } = route.query;
+      await navigateTo({ path: route.path, query: rest }, { replace: true });
     }
   };
 
@@ -52,8 +83,8 @@ export default defineNuxtPlugin(() => {
     handleAuthQuery(authParam).catch((err) => console.error('Auth query handling error:', err));
   };
 
-  if (route.query.auth === 'logout') {
-    nextTick(() => runAuthQuery(route.query.auth as string | undefined));
+  if (route.query.auth === 'logout' || route.query.auth === 'success') {
+    runAuthQuery(route.query.auth as string);
   }
 
   watch(

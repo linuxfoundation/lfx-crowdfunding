@@ -74,6 +74,37 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListForUser handles GET /v1/me/initiatives — requires JWT with access:me scope.
+// Returns initiatives owned by the authenticated caller, paginated.
+func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
+
+	initiatives, meta, err := h.svc.ListForUser(r.Context(), principal.Username, models.InitiativeFilter{
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if initiatives == nil {
+		initiatives = []*models.Initiative{}
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"data": initiatives,
+		"meta": meta,
+	})
+}
+
 // GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
 // Only published initiatives are returned to anonymous callers; approvers may
@@ -298,7 +329,7 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // isApprover reports whether the principal is in the allowed approvers list.
 // Identity is matched solely against Principal.Username — the LF SSO username
-// claim or the X-Username header value for M2M callers.
+// claim.
 func (h *InitiativeHandler) isApprover(principal *models.Principal) bool {
 	if principal == nil || principal.Username == "" {
 		return false

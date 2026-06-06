@@ -94,7 +94,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		Issuer:                     cfg.JWT.Issuer,
 		ClockSkew:                  cfg.JWT.ClockSkew,
 		AllowMockPrincipalBypass:   cfg.Local.AllowMockLocalPrincipalBypass,
-		AuthorizedClients:          cfg.JWT.AuthorizedClients,
 		DisabledMockLocalPrincipal: cfg.Local.DisabledMockLocalPrincipal,
 	}, logger)
 	if err != nil {
@@ -106,12 +105,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		logger.Warn("!!! TREATED AS AUTHENTICATED. NEVER USE IN PRODUCTION.   !!!")
 		logger.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	}
-	if cfg.JWT.AuthorizedClients != "" {
-		logger.Warn("X-Username / X-User-ID header impersonation is ACTIVE",
-			"authorized_clients", cfg.JWT.AuthorizedClients)
-		logger.Warn("Ensure this service is not directly reachable from the internet — " +
-			"the ingress MUST strip the X-Username and X-User-ID headers before forwarding requests")
-	}
 
 	// Handlers
 	initiativeH := handler.NewInitiativeHandler(initiativeSvc, cfg.Approval.AllowedApprovers, logger)
@@ -121,6 +114,19 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, donationRepo, subscriptionRepo, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 	uploadH := handler.NewUploadHandler(s3Client)
+
+	// UserInfo client — fetches full profile from Auth0 on login sync.
+	// In bypass mode (local dev) there is no real Auth0, so use a mock fetcher.
+	var userInfoFetcher auth.UserInfoFetcher
+	if jwtAuth.IsBypassActive() {
+		userInfoFetcher = auth.NewMockUserInfoFetcher(cfg.Local.DisabledMockLocalPrincipal)
+	} else {
+		userInfoFetcher, err = auth.NewUserInfoClient(cfg.JWT.Issuer, nil)
+		if err != nil {
+			return nil, fmt.Errorf("userinfo client: %w", err)
+		}
+	}
+	userH := handler.NewUserHandler(userRepo, userInfoFetcher)
 
 	// Router
 	r := chi.NewRouter()
@@ -156,34 +162,49 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// view non-published initiatives if a valid token is supplied.
 	r.With(jwtAuth.OptionalMiddleware).Get("/v1/initiatives/{id}", initiativeH.GetByID)
 
-	// Protected API
-	r.Route("/v1", func(r chi.Router) {
+	// Protected API — requires a valid bearer token with access:me scope.
+	// All routes are under /v1/me/* to make the identity-scoped contract explicit.
+	r.Route("/v1/me", func(r chi.Router) {
 		r.Use(jwtAuth.Middleware)
+		r.Use(jwtAuth.RequireScope(auth.ScopeMe))
 
-		r.Route("/initiatives", func(r chi.Router) {
-			r.Post("/", initiativeH.Create)
-			r.Patch("/{id}", initiativeH.Update)
-			r.Delete("/{id}", initiativeH.Delete)
-			r.Post("/{id}/process-approval/{action}", initiativeH.ProcessApproval)
-			r.Get("/{id}/donations", donationH.List)
-			r.Post("/{id}/donations", donationH.Create)
-			r.Get("/{id}/subscriptions", subscriptionH.List)
-			r.Post("/{id}/subscriptions", subscriptionH.Create)
-		})
+		// Profile sync — calls Auth0 UserInfo, writes to DB.
+		r.Patch("/", userH.SyncProfile)
 
-		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
-		r.Get("/me/donations", donationH.ListForUser)
-		r.Get("/me/subscriptions", subscriptionH.ListForUser)
+		// Caller's own initiatives, donations, and subscriptions across all initiatives.
+		r.Get("/initiatives", initiativeH.ListForUser)
+		r.Get("/donations", donationH.ListForUser)
+		r.Get("/subscriptions", subscriptionH.ListForUser)
 
 		// Payment account (saved card for 3DS flows).
-		r.Post("/me/setup-intent", paymentH.CreateSetupIntent)
-		r.Post("/me/payment-method", paymentH.AttachPaymentMethod)
-		r.Get("/me/payment-account", paymentH.GetPaymentAccount)
-		r.Delete("/me/payment-method", paymentH.DeletePaymentMethod)
+		r.Post("/setup-intent", paymentH.CreateSetupIntent)
+		r.Post("/payment-method", paymentH.AttachPaymentMethod)
+		r.Get("/payment-account", paymentH.GetPaymentAccount)
+		r.Delete("/payment-method", paymentH.DeletePaymentMethod)
 
-		// Logo uploads
+		// Logo uploads (used during initiative creation by the owning user).
 		r.Post("/presigned-url", uploadH.CreatePresignedURL)
+
+		// Owner-checked initiative mutations.
+		r.Post("/initiatives", initiativeH.Create)
+		r.Patch("/initiatives/{id}", initiativeH.Update)
+		r.Delete("/initiatives/{id}", initiativeH.Delete)
+
+		// Donations and subscriptions on a specific initiative (caller is the donor).
+		r.Get("/initiatives/{id}/donations", donationH.List)
+		r.Post("/initiatives/{id}/donations", donationH.Create)
+		r.Get("/initiatives/{id}/subscriptions", subscriptionH.List)
+		r.Post("/initiatives/{id}/subscriptions", subscriptionH.Create)
+		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
 	})
+
+	// Approval route — caller is an approver (allowlist check), not the resource owner.
+	// Lives outside /v1/me because the URL is initiative-scoped rather than
+	// identity-scoped; the handler enforces its own approver allowlist check.
+	// TODO: when M2M approver tokens are issued, switch to RequireScope(auth.ScopeManage).
+	// For now all callers hold user tokens with access:me, so that scope is used.
+	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).
+		Post("/v1/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{

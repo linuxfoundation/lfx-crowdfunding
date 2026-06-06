@@ -123,7 +123,7 @@ func (r *testUserRepo) GetByUsername(ctx context.Context, username string) (*mod
 	if r.onGetByUsername != nil {
 		return r.onGetByUsername(ctx, username)
 	}
-	return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: username}, nil
+	return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: username, Email: username + "@test.example"}, nil
 }
 func (r *testUserRepo) GetByID(ctx context.Context, id string) (*models.User, error) {
 	if r.onGetByID != nil {

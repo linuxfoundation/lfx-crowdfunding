@@ -25,6 +25,14 @@ import (
 // DefaultClockSkew is the default leeway applied when validating JWT expiry.
 const DefaultClockSkew = 5 * time.Second
 
+// ScopeMe is the OAuth2 scope required for /me-style (user-issued token) routes.
+const ScopeMe = "access:me"
+
+// ScopeManage is the OAuth2 scope reserved for privileged admin/M2M routes.
+// Currently unused in routing — no RequireScope(ScopeManage) route group exists yet.
+// Bypass mode grants this scope so local dev is not broken when it is wired up.
+const ScopeManage = "access:manage"
+
 // contextKey is an unexported type for context keys to avoid collisions.
 type contextKey int
 
@@ -39,30 +47,35 @@ type JWTAuthConfig struct {
 	// AllowMockPrincipalBypass must be true to permit DisabledMockLocalPrincipal.
 	// Keep false in all shared/non-local environments.
 	AllowMockPrincipalBypass bool
-	// AuthorizedClients, when non-empty, enforces that every token's client ID
-	// (azp, client_id, or @clients subject suffix) is in this whitespace-separated
-	// list. Applies to all token types — M2M and user alike.
-	AuthorizedClients string
 	// DisabledMockLocalPrincipal sets a static principal for local dev — empty in production.
 	DisabledMockLocalPrincipal string
 }
 
 // JWTClaims extends standard JWT claims with LFX-specific fields.
 type JWTClaims struct {
-	Subject         string `json:"sub"`
-	Username        string `json:"https://sso.linuxfoundation.org/claims/username"`
-	AuthorizedParty string `json:"azp"`
-	ClientID        string `json:"client_id"`
-	GrantType       string `json:"gty"`
-	Email           string `json:"email"`
-	EmailVerified   bool   `json:"email_verified"`
-	Name            string `json:"name"`
-	GivenName       string `json:"given_name"`
-	FamilyName      string `json:"family_name"`
-	Picture         string `json:"picture"`
+	Subject  string `json:"sub"`
+	Username string `json:"https://sso.linuxfoundation.org/claims/username"`
+	SSOEmail string `json:"https://sso.linuxfoundation.org/claims/email"`
+	// Scope is a space-separated list of OAuth2 scopes granted to this token.
+	// Route-group middleware checks for access:me or access:manage.
+	Scope         string `json:"scope"`
+	Email         string `json:"email"` // standard claim; prefer SSOEmail when both present
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+	GivenName     string `json:"given_name"`
+	FamilyName    string `json:"family_name"`
+	Picture       string `json:"picture"`
 }
 
-const xUsernameHeader = "X-Username"
+// effectiveEmail returns the canonical email address for the token.
+// The LF SSO namespaced claim takes precedence over the standard "email" claim,
+// matching how Auth0 injects profile data into access tokens.
+func (c *JWTClaims) effectiveEmail() string {
+	if v := strings.TrimSpace(c.SSOEmail); v != "" {
+		return v
+	}
+	return strings.TrimSpace(c.Email)
+}
 
 const (
 	authCategoryUnknown                    = "unknown"
@@ -78,7 +91,6 @@ const (
 	authCategoryInvalidIssuer              = "invalid_issuer"
 	authCategoryInvalidSignature           = "invalid_signature"
 	authCategoryTokenValidationFailed      = "token_validation_failed"
-	authCategoryUnauthorizedClient         = "unauthorized_client"
 )
 
 var (
@@ -92,11 +104,10 @@ var (
 
 // JWTAuthenticator validates JWTs using a JWKS endpoint.
 type JWTAuthenticator struct {
-	cfg               JWTAuthConfig
-	baseCtx           context.Context
-	validator         *validator.Validator
-	logger            *slog.Logger
-	authorizedClients map[string]struct{}
+	cfg       JWTAuthConfig
+	baseCtx   context.Context
+	validator *validator.Validator
+	logger    *slog.Logger
 }
 
 // NewJWTAuthenticator creates a JWTAuthenticator backed by the given JWKS URL.
@@ -135,10 +146,9 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 			)
 		}
 		return &JWTAuthenticator{
-			cfg:               cfg,
-			baseCtx:           ctx,
-			logger:            logger,
-			authorizedClients: buildClientSet(cfg.AuthorizedClients),
+			cfg:     cfg,
+			baseCtx: ctx,
+			logger:  logger,
 		}, nil
 	}
 
@@ -175,7 +185,7 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 	jwksProvider := jwks.NewCachingProvider(issuerURL, 5*time.Minute, jwks.WithCustomJWKSURI(jwksURL))
 	keyFunc := func(reqCtx context.Context) (interface{}, error) {
 		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("%w: %w", errAuthenticatorContextClosed, err)
+			return nil, fmt.Errorf("%w: %s", errAuthenticatorContextClosed, err)
 		}
 		ctxForKey, cancel := withValidatorRequestContext(ctx, reqCtx, 15*time.Second)
 		defer cancel()
@@ -194,17 +204,18 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 	}
 
 	return &JWTAuthenticator{
-		cfg:               cfg,
-		baseCtx:           ctx,
-		validator:         jwtValidator,
-		logger:            logger,
-		authorizedClients: buildClientSet(cfg.AuthorizedClients),
+		cfg:       cfg,
+		baseCtx:   ctx,
+		validator: jwtValidator,
+		logger:    logger,
 	}, nil
 }
 
 // Validate satisfies validator.CustomClaims.
 func (c *JWTClaims) Validate(_ context.Context) error {
-	if c.EmailVerified && strings.TrimSpace(c.Email) == "" {
+	// Use effectiveEmail so that the SSO email claim satisfies email_verified,
+	// matching the precedence logic in effectiveEmail().
+	if c.EmailVerified && c.effectiveEmail() == "" {
 		return errors.New("email_verified requires email")
 	}
 	return nil
@@ -225,6 +236,8 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 				Username:      a.cfg.DisabledMockLocalPrincipal,
 				Email:         a.cfg.DisabledMockLocalPrincipal + "@local.dev",
 				EmailVerified: true,
+				// Grant both scopes in bypass mode so all route groups work locally.
+				Scope: ScopeMe + " " + ScopeManage,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
@@ -237,17 +250,8 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if !a.isAuthorizedClient(claims) {
-			a.logger.WarnContext(r.Context(), "auth: client not in authorized list", "category", authCategoryUnauthorizedClient, "path", r.URL.Path)
-			jsonError(w, http.StatusUnauthorized, "invalid token claims")
-			return
-		}
-
 		principalUserID := strings.TrimSpace(claims.Subject)
 		principalUsername := strings.TrimSpace(claims.Username)
-		if principalUsername == "" && a.isTrustedM2MForHeaderImpersonation(claims) {
-			principalUsername = strings.TrimSpace(r.Header.Get(xUsernameHeader))
-		}
 		if principalUserID == "" {
 			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "category", authCategoryMissingSubject, "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid token claims")
@@ -257,7 +261,8 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		principal := &models.Principal{
 			UserID:        principalUserID,
 			Username:      principalUsername,
-			Email:         claims.Email,
+			Scope:         claims.Scope,
+			Email:         claims.effectiveEmail(),
 			EmailVerified: claims.EmailVerified,
 			Name:          claims.Name,
 			GivenName:     claims.GivenName,
@@ -279,6 +284,7 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 				Username:      a.cfg.DisabledMockLocalPrincipal,
 				Email:         a.cfg.DisabledMockLocalPrincipal + "@local.dev",
 				EmailVerified: true,
+				Scope:         ScopeMe + " " + ScopeManage,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
@@ -290,7 +296,8 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 				principal := &models.Principal{
 					UserID:        claims.Subject,
 					Username:      claims.Username,
-					Email:         claims.Email,
+					Scope:         claims.Scope,
+					Email:         claims.effectiveEmail(),
 					EmailVerified: claims.EmailVerified,
 					Name:          claims.Name,
 					GivenName:     claims.GivenName,
@@ -304,66 +311,44 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// isTrustedM2MForHeaderImpersonation reports whether the caller holds an M2M
-// token from a client that has been explicitly listed in AuthorizedClients.
-// When the list is empty the feature is disabled (false always returned), so
-// an empty AUTHORIZED_CLIENTS disables X-Username impersonation entirely.
-// User tokens (non-M2M) are never allowed to use the header regardless.
-func (a *JWTAuthenticator) isTrustedM2MForHeaderImpersonation(claims *JWTClaims) bool {
-	if len(a.authorizedClients) == 0 {
-		return false // feature disabled
+// RequireScope returns a middleware that enforces the given OAuth2 scope is
+// present in the authenticated principal. Must be used after Middleware.
+// Returns 403 Forbidden when the scope is absent.
+func (a *JWTAuthenticator) RequireScope(scope string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p := PrincipalFromContext(r.Context())
+			if p == nil {
+				// Defensive: Middleware always runs first in production route groups,
+				// so this branch is only reachable in misconfigured test setups.
+				jsonError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			if !hasScope(p.Scope, scope) {
+				a.logger.WarnContext(r.Context(), "auth: insufficient scope",
+					"required", scope, "path", r.URL.Path)
+				jsonError(w, http.StatusForbidden, "insufficient scope")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
-	if !isM2MToken(claims) {
-		return false // user tokens cannot use the header
-	}
-	actualClientID := strings.TrimSpace(getClientID(claims))
-	_, ok := a.authorizedClients[actualClientID]
-	return ok
 }
 
-// isAuthorizedClient reports whether the token's client ID is in the
-// AuthorizedClients allowlist. When the list is empty all tokens are allowed.
-// When non-empty, every token — M2M and user alike — must present a client ID
-// that appears in the list. User tokens carry their SPA client ID in azp.
-func (a *JWTAuthenticator) isAuthorizedClient(claims *JWTClaims) bool {
-	if len(a.authorizedClients) == 0 {
-		return true
+// hasScope reports whether the space-separated scope string contains required.
+func hasScope(scopeStr, required string) bool {
+	for _, s := range strings.Fields(scopeStr) {
+		if s == required {
+			return true
+		}
 	}
-	actualClientID := strings.TrimSpace(getClientID(claims))
-	if actualClientID == "" {
-		return false
-	}
-	_, ok := a.authorizedClients[actualClientID]
-	return ok
-}
-
-func isM2MToken(claims *JWTClaims) bool {
-	if strings.TrimSpace(claims.GrantType) == "client_credentials" {
-		return true
-	}
-	return strings.HasSuffix(strings.TrimSpace(claims.Subject), "@clients")
-}
-
-func getClientID(claims *JWTClaims) string {
-	if azp := strings.TrimSpace(claims.AuthorizedParty); azp != "" {
-		return azp
-	}
-	if clientID := strings.TrimSpace(claims.ClientID); clientID != "" {
-		return clientID
-	}
-	// Only fall back to the @clients subject suffix for confirmed M2M tokens;
-	// stripping this suffix from a user token subject would yield a nonsensical ID.
-	if isM2MToken(claims) {
-		sub := strings.TrimSpace(claims.Subject)
-		return strings.TrimSuffix(sub, "@clients")
-	}
-	return ""
+	return false
 }
 
 func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, error) {
 	if a.baseCtx != nil {
 		if err := a.baseCtx.Err(); err != nil {
-			return nil, fmt.Errorf("%w: %w", errAuthenticatorContextClosed, err)
+			return nil, fmt.Errorf("%w: %s", errAuthenticatorContextClosed, err)
 		}
 	}
 
@@ -504,17 +489,6 @@ func ContextWithPrincipal(ctx context.Context, p *models.Principal) context.Cont
 func PrincipalFromContext(ctx context.Context) *models.Principal {
 	p, _ := ctx.Value(principalKey).(*models.Principal)
 	return p
-}
-
-// buildClientSet parses a whitespace-separated list of client IDs into a set
-// for O(1) lookup. An empty string returns an empty (not nil) map.
-func buildClientSet(s string) map[string]struct{} {
-	ids := strings.Fields(s)
-	set := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		set[id] = struct{}{}
-	}
-	return set
 }
 
 // jsonError writes a JSON {"error":"..."} response with the given status,

@@ -9,7 +9,7 @@ import type { PresignedURLResult } from '#shared/types/upload.types';
 export default defineEventHandler(async (event): Promise<PresignedURLResult> => {
   const body = await readBody<{ contentType: string }>(event);
 
-  const raw = await useBackendFetch<PresignedURLWire>(event, '/v1/presigned-url', {
+  const raw = await useBackendFetch<PresignedURLWire>(event, '/v1/me/presigned-url', {
     method: 'POST',
     body: { content_type: body.contentType },
   });
