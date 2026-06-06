@@ -298,7 +298,7 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // isApprover reports whether the principal is in the allowed approvers list.
 // Identity is matched solely against Principal.Username — the LF SSO username
-// claim or the X-Username header value for M2M callers.
+// claim.
 func (h *InitiativeHandler) isApprover(principal *models.Principal) bool {
 	if principal == nil || principal.Username == "" {
 		return false

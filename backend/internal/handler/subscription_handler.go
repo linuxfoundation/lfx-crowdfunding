@@ -75,7 +75,7 @@ func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	input.IdempotencyKey = idempotencyKey
 
-	created, err := h.svc.Create(r.Context(), initiativeID, principal.Username, principal.Email, input)
+	created, err := h.svc.Create(r.Context(), initiativeID, principal.Username, input)
 	if err != nil {
 		Error(w, err)
 		return

@@ -30,25 +30,26 @@ func NewPaymentService(userRepo domain.UserRepository, stripe clients.StripeClie
 }
 
 // ensureCustomer returns the user's UUID and existing Stripe customer ID, or creates one.
-// When the user row does not exist yet (ErrUserNotFound), a minimal record is
-// upserted first so that UpdateStripeInfo (UPDATE-only) can persist the new
-// customer ID without leaving an orphaned Stripe customer.
-func (s *PaymentService) ensureCustomer(ctx context.Context, username, email string) (userUUID string, customerID string, err error) {
+// Requires the user row to already exist (created by PATCH /me on login — REQ-P4).
+// Email is read from the DB row so JWT claims are never used as the source of
+// truth for profile data (REQ-P5).
+func (s *PaymentService) ensureCustomer(ctx context.Context, username string) (userUUID string, customerID string, err error) {
 	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
-		if !errors.Is(err, domain.ErrUserNotFound) {
-			return "", "", err
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return "", "", fmt.Errorf("%w: no profile found — call PATCH /v1/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
 		}
-		// First-time user: upsert a minimal users row so UpdateStripeInfo can
-		// persist the new customer ID.
-		user, err = s.userRepo.Upsert(ctx, &models.User{Username: username, Email: email})
-		if err != nil {
-			return "", "", fmt.Errorf("ensure user record: %w", err)
-		}
-	} else if user.StripeCustomerID != "" {
+		return "", "", err
+	}
+	if user.StripeCustomerID != "" {
 		return user.ID, user.StripeCustomerID, nil
 	}
-	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.ID, email)
+	// Guard against legacy/migrated rows that have no email yet.
+	// Stripe requires a non-empty email; direct the user to sync their profile.
+	if user.Email == "" {
+		return "", "", fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
+	}
+	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.ID, user.Email)
 	if err != nil {
 		return "", "", fmt.Errorf("create stripe customer: %w", err)
 	}
@@ -61,12 +62,12 @@ func (s *PaymentService) ensureCustomer(ctx context.Context, username, email str
 // CreateSetupIntent creates a Stripe SetupIntent for the authenticated user.
 // The returned client_secret is passed to the frontend Stripe.js Payment Element
 // to collect and 3DS-challenge the card before it is attached to the customer.
-func (s *PaymentService) CreateSetupIntent(ctx context.Context, username, email string) (*models.SetupIntentResult, error) {
+func (s *PaymentService) CreateSetupIntent(ctx context.Context, username string) (*models.SetupIntentResult, error) {
 	ctx, span := paymentSvcTracer.Start(ctx, "PaymentService.CreateSetupIntent")
 	defer span.End()
 	span.SetAttributes(attribute.String("user.username", username))
 
-	_, customerID, err := s.ensureCustomer(ctx, username, email)
+	_, customerID, err := s.ensureCustomer(ctx, username)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -83,7 +84,7 @@ func (s *PaymentService) CreateSetupIntent(ctx context.Context, username, email 
 // AttachPaymentMethod attaches pm_xxx to the user's Stripe customer after the
 // frontend has confirmed the SetupIntent. The card is set as the customer's
 // default invoice payment method and persisted to the users table.
-func (s *PaymentService) AttachPaymentMethod(ctx context.Context, username, email, paymentMethodID string) (*models.CardDetails, error) {
+func (s *PaymentService) AttachPaymentMethod(ctx context.Context, username, paymentMethodID string) (*models.CardDetails, error) {
 	ctx, span := paymentSvcTracer.Start(ctx, "PaymentService.AttachPaymentMethod")
 	defer span.End()
 	span.SetAttributes(attribute.String("user.username", username))
@@ -92,7 +93,7 @@ func (s *PaymentService) AttachPaymentMethod(ctx context.Context, username, emai
 		return nil, fmt.Errorf("%w: payment_method_id is required", domain.ErrInvalidInput)
 	}
 
-	userUUID, customerID, err := s.ensureCustomer(ctx, username, email)
+	userUUID, customerID, err := s.ensureCustomer(ctx, username)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

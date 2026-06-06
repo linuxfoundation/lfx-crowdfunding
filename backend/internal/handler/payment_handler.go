@@ -35,7 +35,7 @@ func (h *PaymentHandler) CreateSetupIntent(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result, err := h.svc.CreateSetupIntent(r.Context(), principal.Username, principal.Email)
+	result, err := h.svc.CreateSetupIntent(r.Context(), principal.Username)
 	if err != nil {
 		Error(w, err)
 		return
@@ -62,7 +62,7 @@ func (h *PaymentHandler) AttachPaymentMethod(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	card, err := h.svc.AttachPaymentMethod(r.Context(), principal.Username, principal.Email, body.PaymentMethodID)
+	card, err := h.svc.AttachPaymentMethod(r.Context(), principal.Username, body.PaymentMethodID)
 	if err != nil {
 		Error(w, err)
 		return
