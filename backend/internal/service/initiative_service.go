@@ -218,6 +218,40 @@ func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFi
 	return initiatives, meta, nil
 }
 
+// ListForUser retrieves initiatives owned by the authenticated caller.
+func (s *InitiativeService) ListForUser(ctx context.Context, ownerUsername string, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ListForUser")
+	defer span.End()
+
+	owner, err := s.userRepo.GetByUsername(ctx, ownerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			limit := filter.Limit
+			if limit <= 0 || limit > 100 {
+				limit = 20
+			}
+			offset := filter.Offset
+			if offset < 0 {
+				offset = 0
+			}
+			return []*models.Initiative{}, &models.PaginationMeta{Limit: limit, Offset: offset}, nil
+		}
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("resolve owner: %w", err)
+	}
+
+	filter.OwnerID = owner.ID
+	initiatives, meta, err := s.repo.List(ctx, filter)
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("list initiatives for user: %w", err)
+	}
+	for _, i := range initiatives {
+		i.Sponsors = flattenSponsors(i.RawSponsors)
+	}
+	return initiatives, meta, nil
+}
+
 // Create creates a new initiative owned by the given principal.
 func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, input models.InitiativeCreateInput) (*models.Initiative, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.Create")

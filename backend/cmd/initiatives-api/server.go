@@ -171,7 +171,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// Profile sync — calls Auth0 UserInfo, writes to DB.
 		r.Patch("/", userH.SyncProfile)
 
-		// User's donations and subscriptions across all initiatives.
+		// Caller's own initiatives, donations, and subscriptions across all initiatives.
+		r.Get("/initiatives", initiativeH.ListForUser)
 		r.Get("/donations", donationH.ListForUser)
 		r.Get("/subscriptions", subscriptionH.ListForUser)
 
