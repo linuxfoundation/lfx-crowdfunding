@@ -457,8 +457,8 @@ func TestDonationService_Create_UserRepoTransientError(t *testing.T) {
 
 func TestDonationService_Create_UserNotFound_DescriptiveError(t *testing.T) {
 	// When the user has not yet synced their profile, GetByUsername returns
-	// ErrUserNotFound. The error should be wrapped with a hint to call PATCH
-	// /v1/me so the API response is actionable.
+	// ErrUserNotFound. The service converts this to ErrProfileNotSynced with
+	// a PATCH /v1/me hint so the API response is actionable (maps to 400).
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
 			return nil, domain.ErrUserNotFound
@@ -469,8 +469,8 @@ func TestDonationService_Create_UserNotFound_DescriptiveError(t *testing.T) {
 	_, err := svc.Create(context.Background(), "init-1", "u1",
 		models.DonationCreateInput{AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "key-1"})
 
-	if !errors.Is(err, domain.ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	if !errors.Is(err, domain.ErrProfileNotSynced) {
+		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "PATCH /v1/me") {
 		t.Errorf("error should mention PATCH /v1/me, got: %v", err)

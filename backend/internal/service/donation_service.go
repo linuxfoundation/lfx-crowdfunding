@@ -186,7 +186,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUserNotFound) {
-			return nil, fmt.Errorf("%w: call PATCH /v1/me to sync your profile before donating", domain.ErrUserNotFound)
+			return nil, fmt.Errorf("%w: no profile found — call PATCH /v1/me to sync your profile before donating", domain.ErrProfileNotSynced)
 		}
 		return nil, fmt.Errorf("resolve user: %w", err)
 	}

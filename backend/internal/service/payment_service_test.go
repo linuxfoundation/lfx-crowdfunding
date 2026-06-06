@@ -329,8 +329,8 @@ func TestPaymentService_DeletePaymentMethod_StripeError(t *testing.T) {
 
 func TestPaymentService_EnsureCustomer_UserNotFound_DescriptiveError(t *testing.T) {
 	// When the user has not yet synced their profile, GetByUsername returns
-	// ErrUserNotFound. The error should be wrapped with a hint to call PATCH
-	// /v1/me so the API response is actionable.
+	// ErrUserNotFound. The service converts this to ErrProfileNotSynced with
+	// a PATCH /v1/me hint so the API response is actionable (maps to 400).
 	svc := NewPaymentService(
 		&testUserRepo{
 			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
@@ -342,8 +342,8 @@ func TestPaymentService_EnsureCustomer_UserNotFound_DescriptiveError(t *testing.
 
 	_, err := svc.CreateSetupIntent(context.Background(), "u1")
 
-	if !errors.Is(err, domain.ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	if !errors.Is(err, domain.ErrProfileNotSynced) {
+		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "PATCH /v1/me") {
 		t.Errorf("error should mention PATCH /v1/me, got: %v", err)

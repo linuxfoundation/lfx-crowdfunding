@@ -37,7 +37,7 @@ func (s *PaymentService) ensureCustomer(ctx context.Context, username string) (u
 	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
-			return "", "", fmt.Errorf("%w: call PATCH /v1/me to sync your profile before using payment features", domain.ErrUserNotFound)
+			return "", "", fmt.Errorf("%w: no profile found — call PATCH /v1/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
 		}
 		return "", "", err
 	}

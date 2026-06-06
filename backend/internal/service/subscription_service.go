@@ -131,7 +131,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUserNotFound) {
-			return nil, fmt.Errorf("%w: call PATCH /v1/me to sync your profile before subscribing", domain.ErrUserNotFound)
+			return nil, fmt.Errorf("%w: no profile found — call PATCH /v1/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 		}
 		return nil, fmt.Errorf("resolve user: %w", err)
 	}
