@@ -51,7 +51,9 @@ POST /oauth/token
 
 Auth0 returns a CF-scoped access token carrying the user's identity. SS caches it in the server
 session (with a 5-minute expiry buffer) and forwards it to CF. This is the same mechanism SS uses
-to obtain legacy API Gateway tokens — there is no user interaction and no M2M credential involved.
+to obtain legacy API Gateway tokens — no user interaction, and no `client_credentials` (M2M) grant.
+The request is authenticated with SS's client secret (SS is a confidential client), but the
+resulting token represents the **user**, not the SS client.
 
 This exchange requires LFX One to have a client grant registered for the CF audience in
 `auth0-terraform` (see [`09`](09-authentication-architecture.md#client-grants) for the HCL).

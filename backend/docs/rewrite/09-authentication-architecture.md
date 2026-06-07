@@ -414,7 +414,9 @@ resource "auth0_client_grant" "lfxone_crowdfunding_user" {
 ```
 
 The resulting token is user-scoped — it carries the user's identity (`access:me` scope, username
-claim) and is not an M2M token. No client secret is used or needed.
+claim). The exchange is **not** a `client_credentials` (M2M) grant: even though SS authenticates the
+token request with its client secret (as a confidential client), the resulting token represents the
+**user**, not the SS client itself.
 
 **Reimbursement Service** — the only M2M client grant, for `access:manage` access:
 
