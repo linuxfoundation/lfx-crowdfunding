@@ -11,7 +11,7 @@ SPDX-License-Identifier: MIT
         <div class="flex flex-col gap-3">
           <NuxtLink :to="AppRoute.Home">
             <img
-              src="~/assets/images/logo.svg"
+              src="~/assets/images/logo.png"
               alt="LFX Crowdfunding"
               class="h-6 brightness-0 invert"
               loading="lazy"

@@ -18,6 +18,9 @@ type Donation struct {
 	ID                 string `json:"id"`
 	UserID             string `json:"-"`
 	InitiativeID       string `json:"initiative_id"`
+	// InitiativeName is populated by the user/initiative donation list queries via a
+	// join on initiatives; it is not a column on the donations table.
+	InitiativeName     string `json:"initiative_name,omitempty"`
 	OrganizationID     string `json:"-"`
 	Category           string `json:"category,omitempty"`
 	CurrentAmountCents int64  `json:"amount_cents"`

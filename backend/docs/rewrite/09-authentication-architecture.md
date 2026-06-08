@@ -70,7 +70,7 @@ graph TD
 
     SSBFF -->|"Bearer user-issued access token\n(access:me scope)"| CFAPI
 
-    Reimburse -->|"client_credentials grant\nprivate-key JWT assertion\naudience: CF /api/\naccess:manage scope"| Auth0
+    Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF /api/\naccess:manage scope"| Auth0
     Auth0 -->|"M2M access token\n(access:manage scope, cached ~24h)"| Reimburse
     Reimburse -->|"Bearer M2M token\nGET /v1/internal/*\n(access:manage scope)"| CFAPI
 
@@ -230,9 +230,8 @@ reimbursements, it reads CF data for **mentorship-type initiatives** — specifi
 reimbursement requests.
 
 There is no logged-in user in this flow, so the user-token pattern does not apply. Reimbursement
-authenticates as itself via the **Auth0 client credentials grant** with the `access:manage` scope,
-using **private-key JWT (`private_key_jwt`) attestation** — the LFX V2 convention for M2M clients,
-not a shared client secret. It calls a dedicated **`/v1/internal/*`** route. The access is
+authenticates as itself via the **Auth0 client credentials grant** (`client_id` / `client_secret`)
+with the `access:manage` scope, and calls a dedicated **`/v1/internal/*`** route. The access is
 **read-only**.
 
 ### 3.1 Suggested Endpoint
@@ -268,8 +267,7 @@ sequenceDiagram
     participant Auth0
 
     Note over RS: On first CF call (or after token expiry)
-    RS->>RS: build client_assertion (signed JWT, RS private key)
-    RS->>Auth0: POST /oauth/token<br/>grant_type: client_credentials<br/>client_id: M2M_CLIENT_ID<br/>client_assertion_type: …jwt-bearer<br/>client_assertion: {signed JWT}<br/>audience: https://crowdfunding.{env}.lfx.dev/api/<br/>scope: access:manage
+    RS->>Auth0: POST /oauth/token<br/>grant_type: client_credentials<br/>client_id: M2M_CLIENT_ID<br/>client_secret: M2M_CLIENT_SECRET<br/>audience: https://crowdfunding.{env}.lfx.dev/api/<br/>scope: access:manage
     Auth0->>RS: M2M access token (~24h TTL, access:manage scope)
     RS->>RS: cache token (refresh 5 min before expiry)
 ```
@@ -429,10 +427,11 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 }
 ```
 
-The Reimbursement Service client authenticates with **private-key JWT** (`private_key_jwt`), the
-LFX V2 M2M convention — not a client secret. The signing key pair is generated in Auth0; because
-the service runs in a separate AWS account, the key is provided to it via its own deployment
-secrets (see Configuration Reference) rather than the LFX secrets-distribution pipeline.
+The Reimbursement Service client authenticates with **`client_id` / `client_secret`** (the service
+is an existing Lambda already using client-secret auth, so it moves onto its own dedicated CF client
+without new code). The secret is generated in Auth0; because the service runs in a separate AWS
+account, it is provided via the service's own deployment secrets (see Configuration Reference)
+rather than the LFX secrets-distribution pipeline.
 
 ---
 
@@ -480,7 +479,7 @@ secrets-distribution pipeline. Exact env-var names are owned by that repo.
 | Input | Value |
 |---|---|
 | Auth0 M2M client ID | the `Reimbursement Service` Auth0 client (auth0-terraform) |
-| Auth0 M2M private key | the client's `private_key_jwt` signing key; used to build the `client_assertion`. No client secret. |
+| Auth0 M2M client secret | the client's secret (`client_id` / `client_secret` auth) |
 | Auth0 token endpoint | `https://linuxfoundation-{env}.auth0.com/oauth/token` |
 | CF API audience | `https://crowdfunding.{env}.lfx.dev/api/` (scope `access:manage`) |
 | CF API base URL | e.g. `https://crowdfunding-api.dev.lfx.dev` |
