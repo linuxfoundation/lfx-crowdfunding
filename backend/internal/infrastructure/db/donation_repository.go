@@ -82,27 +82,32 @@ func (r *DonationRepository) listDonations(ctx context.Context, col, val string,
 	}
 
 	// Build WHERE clause. col is always a hardcoded internal value (never user input).
+	// Columns are qualified with the donations alias (d) since the data query joins initiatives.
 	args := []any{val}
-	clauses := []string{fmt.Sprintf("%s = $1", col)}
+	clauses := []string{fmt.Sprintf("d.%s = $1", col)}
 	if filter.Status != "" {
 		args = append(args, filter.Status)
-		clauses = append(clauses, fmt.Sprintf("status = $%d", len(args)))
+		clauses = append(clauses, fmt.Sprintf("d.status = $%d", len(args)))
 	}
 	where := strings.Join(clauses, " AND ")
 
 	var total int
-	countQ := fmt.Sprintf("SELECT COUNT(*) FROM donations WHERE %s", where)
+	countQ := fmt.Sprintf("SELECT COUNT(*) FROM donations d WHERE %s", where)
 	if err := r.pool.QueryRow(ctx, countQ, args...).Scan(&total); err != nil {
 		return nil, nil, fmt.Errorf("count donations: %w", err)
 	}
 
+	// LEFT JOIN initiatives so each donation carries its initiative name for the
+	// caller to render (the donations table only stores initiative_id).
 	dataArgs := append(args, limit, offset) //nolint:gocritic // intentional re-slice
 	dataQ := fmt.Sprintf(`
-		SELECT id, user_id, initiative_id, organization_id, category,
-		       current_amount_in_cents, po_number, payment_method,
-		       status, stripe_payment_intent_id, stripe_charge_id, created_on, updated_on
-		FROM donations WHERE %s
-		ORDER BY created_on DESC LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2)
+		SELECT d.id, d.user_id, d.initiative_id, i.name, d.organization_id, d.category,
+		       d.current_amount_in_cents, d.po_number, d.payment_method,
+		       d.status, d.stripe_payment_intent_id, d.stripe_charge_id, d.created_on, d.updated_on
+		FROM donations d
+		LEFT JOIN initiatives i ON i.id = d.initiative_id
+		WHERE %s
+		ORDER BY d.created_on DESC LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2)
 
 	rows, err := r.pool.Query(ctx, dataQ, dataArgs...)
 	if err != nil {
@@ -112,7 +117,7 @@ func (r *DonationRepository) listDonations(ctx context.Context, col, val string,
 
 	var donations []models.Donation
 	for rows.Next() {
-		d, err := scanDonation(rows)
+		d, err := scanDonationWithInitiative(rows)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scan donation: %w", err)
 		}
@@ -202,6 +207,46 @@ func scanDonation(row scanner) (*models.Donation, error) {
 		return nil, err
 	}
 	d.InitiativeID = derefString(initiativeID)
+	d.OrganizationID = derefString(organizationID)
+	d.Category = derefString(category)
+	d.PONumber = derefString(poNumber)
+	d.PaymentMethod = derefString(paymentMethod)
+	d.Status = derefString(status)
+	d.StripePaymentIntentID = derefString(stripePaymentIntentID)
+	d.StripeChargeID = derefString(stripeChargeID)
+	if createdOn != nil {
+		d.CreatedOn = *createdOn
+	}
+	if updatedOn != nil {
+		d.UpdatedOn = *updatedOn
+	}
+	return d, nil
+}
+
+// scanDonationWithInitiative scans a donation row that includes the joined
+// initiative name (from the list queries). initiative_name is nullable because
+// the join is a LEFT JOIN.
+func scanDonationWithInitiative(row scanner) (*models.Donation, error) {
+	d := &models.Donation{}
+	var (
+		initiativeID, initiativeName, organizationID, category *string
+		poNumber, paymentMethod, status                        *string
+		stripePaymentIntentID, stripeChargeID                  *string
+		createdOn, updatedOn                                   *time.Time
+	)
+	err := row.Scan(
+		&d.ID, &d.UserID, &initiativeID, &initiativeName, &organizationID, &category,
+		&d.CurrentAmountCents, &poNumber, &paymentMethod,
+		&status, &stripePaymentIntentID, &stripeChargeID, &createdOn, &updatedOn,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrDonationNotFound
+		}
+		return nil, err
+	}
+	d.InitiativeID = derefString(initiativeID)
+	d.InitiativeName = derefString(initiativeName)
 	d.OrganizationID = derefString(organizationID)
 	d.Category = derefString(category)
 	d.PONumber = derefString(poNumber)
