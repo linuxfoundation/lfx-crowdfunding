@@ -102,7 +102,7 @@ SPDX-License-Identifier: MIT
         <!-- Order summary -->
         <div class="border-t border-neutral-200 pt-4 flex flex-col gap-2.5">
           <div class="flex items-center justify-between">
-            <span class="text-sm text-neutral-500">Donation to {{ initiativeName }}</span>
+            <span class="text-sm text-neutral-500">{{ donationType === 'monthly' ? 'Subscription' : 'Donation' }}</span>
             <span class="text-sm text-neutral-900">{{ formattedAmount }}</span>
           </div>
           <div class="flex items-center justify-between">
@@ -148,7 +148,7 @@ import LfxIcon from '~/components/uikit/icon/icon.vue';
 const props = defineProps<{
   amountCents: number;
   tierName: string | null;
-  initiativeName: string;
+  donationType: 'one-time' | 'monthly';
 }>();
 
 const emit = defineEmits<{
