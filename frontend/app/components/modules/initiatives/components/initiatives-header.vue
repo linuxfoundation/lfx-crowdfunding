@@ -49,7 +49,7 @@ SPDX-License-Identifier: MIT
       <div class="hidden md:block">
         <lfx-tabs
           :model-value="activeType"
-          :tabs="filterTabs"
+          :tabs="INITIATIVE_FILTER_TABS"
           tab-style="pill"
           @update:model-value="$emit('update:activeType', $event)"
         />
@@ -70,7 +70,7 @@ SPDX-License-Identifier: MIT
             />
           </template>
           <lfx-dropdown-item
-            v-for="tab in filterTabs"
+            v-for="tab in INITIATIVE_FILTER_TABS"
             :key="tab.value"
             :value="tab.value"
             :label="tab.value === 'all' ? 'All Initiatives' : tab.label"
@@ -86,23 +86,17 @@ SPDX-License-Identifier: MIT
       >
         <template #trigger="{ selectedOption }">
           <lfx-button
-            :label="selectedOption?.label ?? 'Most recent'"
+            :label="selectedOption?.label ?? DEFAULT_SORT_OPTION.label"
             type="outline"
             button-style="pill"
             icon="arrow-down-wide-short"
           />
         </template>
         <lfx-dropdown-item
-          value="created_on"
-          label="Most recent"
-        />
-        <lfx-dropdown-item
-          value="name"
-          label="Name (A–Z)"
-        />
-        <lfx-dropdown-item
-          value="total_raised"
-          label="Most funded"
+          v-for="option in INITIATIVE_SORT_OPTIONS"
+          :key="option.value"
+          :value="option.value"
+          :label="option.label"
         />
       </lfx-dropdown-select>
     </div>
@@ -111,6 +105,11 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
+import {
+  INITIATIVE_FILTER_TABS,
+  INITIATIVE_SORT_OPTIONS,
+  DEFAULT_SORT_OPTION,
+} from '../config/initiatives-header.config';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxInput from '~/components/uikit/input/input.vue';
 import LfxTabs from '~/components/uikit/tabs/tabs.vue';
@@ -144,15 +143,6 @@ defineEmits<{
   (e: 'update:activeType', value: string): void;
   (e: 'update:sortBy', value: string): void;
 }>();
-
-const filterTabs = [
-  { value: 'all', label: 'All', icon: 'grid-round-2' },
-  { value: 'project', label: 'Projects', icon: 'laptop-code' },
-  { value: 'mentorship', label: 'Mentorships', icon: 'chalkboard-user' },
-  { value: 'security_audit', label: 'Security Audits', icon: 'box-magnifying-glass' },
-  { value: 'event', label: 'Events', icon: 'calendar' },
-  { value: 'general_fund', label: 'General Funds', icon: 'piggy-bank' },
-];
 </script>
 
 <script lang="ts">
