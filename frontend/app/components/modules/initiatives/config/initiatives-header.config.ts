@@ -17,10 +17,10 @@ export interface SortOption {
   label: string;
 }
 
+export const DEFAULT_SORT_OPTION: SortOption = { value: 'total_raised', label: 'Most funded' };
+
 export const INITIATIVE_SORT_OPTIONS: SortOption[] = [
   { value: 'created_on', label: 'Most recent' },
   { value: 'name', label: 'Name (A–Z)' },
-  { value: 'total_raised', label: 'Most funded' },
+  DEFAULT_SORT_OPTION,
 ];
-
-export const DEFAULT_SORT_OPTION = INITIATIVE_SORT_OPTIONS.find((o) => o.value === 'total_raised')!;
