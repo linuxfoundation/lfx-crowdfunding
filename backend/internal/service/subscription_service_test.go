@@ -92,7 +92,7 @@ func TestSubscriptionService_Create_NewCustomerActive(t *testing.T) {
 			customerCreated = true
 			return "cus_new", nil
 		},
-		onGetOrCreatePrice: func(_ context.Context, productID string, amountCents int64, frequency string, idempotencyKey string) (string, error) {
+		onGetOrCreatePrice: func(_ context.Context, productID, _ string, amountCents int64, frequency string, _ string) (string, error) {
 			if productID != "prod-test" {
 				t.Errorf("GetOrCreatePrice productID = %q, want prod-test", productID)
 			}
@@ -172,7 +172,7 @@ func TestSubscriptionService_Create_ExistingCustomer3DS(t *testing.T) {
 			customerCreated = true
 			return "cus_unexpected", nil
 		},
-		onGetOrCreatePrice: func(_ context.Context, _ string, _ int64, _ string, _ string) (string, error) {
+		onGetOrCreatePrice: func(_ context.Context, _ string, _ string, _ int64, _ string, _ string) (string, error) {
 			return "price_1", nil
 		},
 		onCreateSubscription: func(_ context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error) {
@@ -218,7 +218,7 @@ func TestSubscriptionService_Create_StripeError(t *testing.T) {
 			onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
 				return "cus_1", nil
 			},
-			onGetOrCreatePrice: func(_ context.Context, _ string, _ int64, _ string, _ string) (string, error) {
+			onGetOrCreatePrice: func(_ context.Context, _ string, _ string, _ int64, _ string, _ string) (string, error) {
 				return "price_1", nil
 			},
 			onCreateSubscription: func(_ context.Context, _ models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error) {

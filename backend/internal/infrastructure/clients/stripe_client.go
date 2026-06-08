@@ -12,7 +12,6 @@ import (
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	stripe "github.com/stripe/stripe-go/v85"
-	"github.com/stripe/stripe-go/v85/client"
 	"github.com/stripe/stripe-go/v85/webhook"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -67,7 +66,7 @@ type StripeClient interface {
 	// initiative, many Prices).
 	// idempotencyKey is forwarded to Stripe so retries of the same request
 	// return the cached Price rather than creating a duplicate.
-	GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, interval string, idempotencyKey string) (string, error)
+	GetOrCreatePrice(ctx context.Context, productID, initiativeID string, amountCents int64, interval string, idempotencyKey string) (string, error)
 	// CreateSubscription creates a subscription with payment_behavior=default_incomplete
 	// so the first invoice's PaymentIntent can require 3DS before the subscription activates.
 	CreateSubscription(ctx context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
@@ -89,7 +88,7 @@ type StripeConfig struct {
 }
 
 type stripeClientImpl struct {
-	api       *client.API
+	api       *stripe.Client
 	returnURL string
 }
 
@@ -102,8 +101,7 @@ func NewStripeClient(cfg StripeConfig) StripeClient {
 	backends := stripe.NewBackendsWithConfig(&stripe.BackendConfig{
 		HTTPClient: httpClient,
 	})
-	api := &client.API{}
-	api.Init(cfg.SecretKey, backends)
+	api := stripe.NewClient(cfg.SecretKey, stripe.WithBackends(backends))
 	return &stripeClientImpl{api: api, returnURL: cfg.ReturnURL}
 }
 
@@ -115,13 +113,13 @@ func (c *stripeClientImpl) CreateProduct(ctx context.Context, initiativeID, name
 	defer span.End()
 	span.SetAttributes(attribute.String("stripe.initiative_id", initiativeID))
 
-	p, err := c.api.Products.New(&stripe.ProductParams{
-		Name: stripe.String(name),
+	p, err := c.api.V1Products.Create(ctx, &stripe.ProductCreateParams{
+		Name:     stripe.String(name),
+		Metadata: map[string]string{"initiative_id": initiativeID},
 		Params: stripe.Params{
 			// Idempotency key scoped to the pre-generated initiative UUID so that a
 			// network-timeout retry returns the cached Product instead of creating a duplicate.
 			IdempotencyKey: stripe.String(fmt.Sprintf("create-product:%s", initiativeID)),
-			Metadata:       map[string]string{"initiative_id": initiativeID},
 		},
 	})
 	if err != nil {
@@ -137,7 +135,7 @@ func (c *stripeClientImpl) DeleteProduct(ctx context.Context, productID string) 
 	defer span.End()
 	span.SetAttributes(attribute.String("stripe.product_id", productID))
 
-	_, err := c.api.Products.Del(productID, nil)
+	_, err := c.api.V1Products.Delete(ctx, productID, nil)
 	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("stripe delete product: %w", err)
@@ -151,7 +149,7 @@ func (c *stripeClientImpl) GetProduct(ctx context.Context, productID string) (*m
 	defer span.End()
 	span.SetAttributes(attribute.String("stripe.product_id", productID))
 
-	p, err := c.api.Products.Get(productID, nil)
+	p, err := c.api.V1Products.Retrieve(ctx, productID, nil)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("stripe get product: %w", err)
@@ -167,11 +165,9 @@ func (c *stripeClientImpl) CreateCustomer(ctx context.Context, userID, email str
 	defer span.End()
 	span.SetAttributes(attribute.String("stripe.user_id", userID))
 
-	cust, err := c.api.Customers.New(&stripe.CustomerParams{
-		Email: stripe.String(email),
-		Params: stripe.Params{
-			Metadata: map[string]string{"user_id": userID},
-		},
+	cust, err := c.api.V1Customers.Create(ctx, &stripe.CustomerCreateParams{
+		Email:    stripe.String(email),
+		Metadata: map[string]string{"user_id": userID},
 	})
 	if err != nil {
 		span.RecordError(err)
@@ -188,7 +184,7 @@ func (c *stripeClientImpl) CreateSetupIntent(ctx context.Context, customerID str
 	defer span.End()
 	span.SetAttributes(attribute.String("stripe.customer_id", customerID))
 
-	si, err := c.api.SetupIntents.New(&stripe.SetupIntentParams{
+	si, err := c.api.V1SetupIntents.Create(ctx, &stripe.SetupIntentCreateParams{
 		Customer:           stripe.String(customerID),
 		PaymentMethodTypes: []*string{stripe.String("card")},
 		Usage:              stripe.String("off_session"),
@@ -210,7 +206,7 @@ func (c *stripeClientImpl) AttachPaymentMethod(ctx context.Context, customerID, 
 		attribute.String("stripe.payment_method_id", paymentMethodID),
 	)
 
-	pm, err := c.api.PaymentMethods.Attach(paymentMethodID, &stripe.PaymentMethodAttachParams{
+	pm, err := c.api.V1PaymentMethods.Attach(ctx, paymentMethodID, &stripe.PaymentMethodAttachParams{
 		Customer: stripe.String(customerID),
 	})
 	if err != nil {
@@ -220,8 +216,8 @@ func (c *stripeClientImpl) AttachPaymentMethod(ctx context.Context, customerID, 
 
 	// Set as the customer's default invoice payment method so subscriptions and
 	// off-session PaymentIntents use it automatically.
-	_, err = c.api.Customers.Update(customerID, &stripe.CustomerParams{
-		InvoiceSettings: &stripe.CustomerInvoiceSettingsParams{
+	_, err = c.api.V1Customers.Update(ctx, customerID, &stripe.CustomerUpdateParams{
+		InvoiceSettings: &stripe.CustomerUpdateInvoiceSettingsParams{
 			DefaultPaymentMethod: stripe.String(paymentMethodID),
 		},
 	})
@@ -238,7 +234,7 @@ func (c *stripeClientImpl) GetPaymentMethod(ctx context.Context, paymentMethodID
 	_, span := stripeTracer.Start(ctx, "stripe.GetPaymentMethod")
 	defer span.End()
 
-	pm, err := c.api.PaymentMethods.Get(paymentMethodID, nil)
+	pm, err := c.api.V1PaymentMethods.Retrieve(ctx, paymentMethodID, nil)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("stripe get payment method: %w", err)
@@ -251,7 +247,7 @@ func (c *stripeClientImpl) DetachPaymentMethod(ctx context.Context, paymentMetho
 	_, span := stripeTracer.Start(ctx, "stripe.DetachPaymentMethod")
 	defer span.End()
 
-	_, err := c.api.PaymentMethods.Detach(paymentMethodID, nil)
+	_, err := c.api.V1PaymentMethods.Detach(ctx, paymentMethodID, nil)
 	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("stripe detach payment method: %w", err)
@@ -306,7 +302,7 @@ func (c *stripeClientImpl) CreatePaymentIntent(ctx context.Context, req models.P
 		currency = "usd"
 	}
 
-	params := &stripe.PaymentIntentParams{
+	params := &stripe.PaymentIntentCreateParams{
 		Amount:   stripe.Int64(req.AmountCents),
 		Currency: stripe.String(currency),
 		Confirm:  stripe.Bool(true),
@@ -314,17 +310,17 @@ func (c *stripeClientImpl) CreatePaymentIntent(ctx context.Context, req models.P
 		ReturnURL: stripe.String(c.returnURL),
 		// "automatic" lets Stripe decide when to trigger the 3DS challenge.
 		// EU/UK cards under PSD2/SCA will be challenged when the bank requires it.
-		PaymentMethodOptions: &stripe.PaymentIntentPaymentMethodOptionsParams{
-			Card: &stripe.PaymentIntentPaymentMethodOptionsCardParams{
+		PaymentMethodOptions: &stripe.PaymentIntentCreatePaymentMethodOptionsParams{
+			Card: &stripe.PaymentIntentCreatePaymentMethodOptionsCardParams{
 				RequestThreeDSecure: stripe.String("automatic"),
 			},
 		},
+		Metadata: buildChargeMetadata(req.InitiativeID, req.UserID, req.Category, req.OrganizationID),
 		Params: stripe.Params{
 			// Idempotency key is a per-request UUID generated by DonationService so
 			// that retries of the same timed-out request are de-duped, while
 			// separate donations with identical amounts are not.
 			IdempotencyKey: stripe.String(req.IdempotencyKey),
-			Metadata: buildChargeMetadata(req.InitiativeID, req.UserID, req.Category, req.OrganizationID),
 		},
 	}
 	if req.CustomerID != "" {
@@ -335,7 +331,7 @@ func (c *stripeClientImpl) CreatePaymentIntent(ctx context.Context, req models.P
 	// Expand latest_charge to capture ch_xxx on immediate success.
 	params.AddExpand("latest_charge")
 
-	pi, err := c.api.PaymentIntents.New(params)
+	pi, err := c.api.V1PaymentIntents.Create(ctx, params)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("stripe create payment intent: %w", err)
@@ -379,7 +375,7 @@ func stripeInterval(frequency string) (string, error) {
 // Using an existing Product avoids spamming Stripe with one Product per price.
 // idempotencyKey is passed to Stripe so that a client retry of the same request
 // returns the cached Price rather than creating a duplicate.
-func (c *stripeClientImpl) GetOrCreatePrice(ctx context.Context, productID string, amountCents int64, frequency string, idempotencyKey string) (string, error) {
+func (c *stripeClientImpl) GetOrCreatePrice(ctx context.Context, productID, initiativeID string, amountCents int64, frequency string, idempotencyKey string) (string, error) {
 	_, span := stripeTracer.Start(ctx, "stripe.GetOrCreatePrice")
 	defer span.End()
 	span.SetAttributes(
@@ -393,21 +389,22 @@ func (c *stripeClientImpl) GetOrCreatePrice(ctx context.Context, productID strin
 		return "", err
 	}
 
-	p, err := c.api.Prices.New(&stripe.PriceParams{
+	p, err := c.api.V1Prices.Create(ctx, &stripe.PriceCreateParams{
 		Currency:   stripe.String("usd"),
 		UnitAmount: stripe.Int64(amountCents),
-		Recurring: &stripe.PriceRecurringParams{
+		Recurring: &stripe.PriceCreateRecurringParams{
 			Interval: stripe.String(interval),
 		},
 		// Attach to the existing initiative Product rather than creating a new
 		// Product per Price — keeps the Stripe catalog clean.
 		Product: stripe.String(productID),
+		Metadata: map[string]string{
+			"product_id":    productID,
+			"initiative_id": initiativeID,
+		},
 		Params: stripe.Params{
 			// Prefix the key so price and subscription calls never share a key.
 			IdempotencyKey: stripe.String(fmt.Sprintf("sub-price:%s", idempotencyKey)),
-			Metadata: map[string]string{
-				"product_id": productID,
-			},
 		},
 	})
 	if err != nil {
@@ -425,26 +422,41 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 	_, span := stripeTracer.Start(ctx, "stripe.CreateSubscription")
 	defer span.End()
 
-	params := &stripe.SubscriptionParams{
-		Customer:        stripe.String(req.StripeCustomerID),
-		Items:           []*stripe.SubscriptionItemsParams{{Price: stripe.String(req.StripePriceID)}},
-		PaymentBehavior: stripe.String("default_incomplete"),
+	// Build subscription item metadata so the invoice line item carries initiative_id,
+	// org_id and category — the Ledger hook reads Lines.Data[0].Metadata for all
+	// three fields as its final fallback (covering new Stripe API versions where
+	// Plan is nil and Plan.Metadata is unavailable).
+	subItemMeta := map[string]string{
+		"initiative_id": req.InitiativeID,
 	}
+	if req.OrganizationID != "" {
+		subItemMeta["org_id"] = req.OrganizationID
+	}
+	if req.Category != "" {
+		subItemMeta["category"] = req.Category
+	}
+	subItem := &stripe.SubscriptionCreateItemParams{
+		Price:    stripe.String(req.StripePriceID),
+		Metadata: subItemMeta,
+	}
+	params := &stripe.SubscriptionCreateParams{
+		Customer:        stripe.String(req.StripeCustomerID),
+		Items:           []*stripe.SubscriptionCreateItemParams{subItem},
+		PaymentBehavior: stripe.String("default_incomplete"),
+		Metadata:        buildChargeMetadata(req.InitiativeID, req.UserID, req.Category, req.OrganizationID),
+		Params: stripe.Params{
+			// Idempotency key so retries return the cached Subscription rather than
+			// creating a duplicate. The price key (sub-price:) uses the same base key.
+			IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s", req.IdempotencyKey)),
+		},
+	}
+	// Expand latest_invoice so we can read ConfirmationSecret.ClientSecret.
+	params.AddExpand("latest_invoice")
 	if req.PaymentMethodID != "" {
 		params.DefaultPaymentMethod = stripe.String(req.PaymentMethodID)
 	}
-	// Expand latest_invoice so we can read ConfirmationSecret.ClientSecret.
-	// Use the client-supplied idempotency key (prefixed) so retries of the
-	// same logical request return the cached Subscription rather than creating
-	// a duplicate. The price key (sub-price:) uses the same base key so a
-	// retry also returns the cached Price.
-	params.Params = stripe.Params{
-		IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s", req.IdempotencyKey)),
-		Expand:         []*string{stripe.String("latest_invoice")},
-		Metadata: buildChargeMetadata(req.InitiativeID, req.UserID, req.Category, req.OrganizationID),
-	}
 
-	sub, err := c.api.Subscriptions.New(params)
+	sub, err := c.api.V1Subscriptions.Create(ctx, params)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("stripe create subscription: %w", err)
@@ -476,7 +488,7 @@ func (c *stripeClientImpl) CancelSubscription(ctx context.Context, subscriptionI
 	defer span.End()
 	span.SetAttributes(attribute.String("stripe.subscription_id", subscriptionID))
 
-	_, err := c.api.Subscriptions.Cancel(subscriptionID, nil)
+	_, err := c.api.V1Subscriptions.Cancel(ctx, subscriptionID, nil)
 	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("stripe cancel subscription: %w", err)

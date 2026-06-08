@@ -197,7 +197,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	}
 	customerID := user.StripeCustomerID
 	if customerID == "" {
-		customerID, err = s.stripe.CreateCustomer(ctx, user.ID, user.Email)
+		customerID, err = s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
 		if err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("create stripe customer: %w", err)
@@ -214,7 +214,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	// returns the cached response instead of creating a duplicate charge.
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
 		InitiativeID:    initiativeID,
-		UserID:          user.ID,
+		UserID:          user.LegacyUserID,
 		CustomerID:      customerID,
 		AmountCents:     input.AmountCents,
 		PaymentMethodID: input.StripePaymentMethodID,
