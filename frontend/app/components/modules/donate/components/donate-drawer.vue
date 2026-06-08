@@ -91,7 +91,7 @@ SPDX-License-Identifier: MIT
             ref="paymentStepRef"
             :amount-cents="amountForm.amountCents"
             :tier-name="amountForm.tierName"
-            :initiative-name="initiative.name"
+            :donation-type="amountForm.donationType"
             @update:complete="paymentComplete = $event"
           />
         </div>
@@ -220,7 +220,7 @@ const isCurrentStepValid = computed(() => {
 });
 
 const continueLabel = computed(() => {
-  if (step.value === 2) return 'Donate';
+  if (step.value === 2) return amountForm.value.donationType === 'monthly' ? 'Subscribe' : 'Donate';
   if (step.value === 1) return 'Continue to Payment';
   return 'Continue';
 });
