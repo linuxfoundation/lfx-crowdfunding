@@ -115,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           APP_VERSION="${REF_NAME#v}"
-          CHART_VERSION="$(yq '.version' backend/charts/lfx-v2-initiatives-service/Chart.yaml)"
+          CHART_VERSION="$(yq '.version' backend/charts/lfx-crowdfunding-backend/Chart.yaml)"
           echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
           echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
 
@@ -123,14 +123,14 @@ jobs:
         id: publish-ghcr
         uses: linuxfoundation/lfx-public-workflows/.github/actions/helm-chart-oci-publisher@c465d6571fa0b8be9d551d902955164ea04a00af # main
         with:
-          name: lfx-v2-initiatives-service
+          name: lfx-crowdfunding-backend
           repository: ${{ github.repository }}/chart
           chart_version: ${{ steps.prepare.outputs.chart_version }}
           app_version: ${{ steps.prepare.outputs.app_version }}
           registry: ghcr.io
           registry_username: ${{ github.actor }}
           registry_password: ${{ secrets.GITHUB_TOKEN }}
-          path: backend/charts/lfx-v2-initiatives-service
+          path: backend/charts/lfx-crowdfunding-backend
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
