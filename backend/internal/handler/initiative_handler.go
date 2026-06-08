@@ -150,6 +150,28 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
+// GetForUser handles GET /v1/me/initiatives/{id} — requires JWT with access:me scope.
+// Accepts a slug or UUID. Returns the caller's own initiative in any status, so
+// owners can open their drafts/submitted initiatives that the public detail
+// endpoint hides. Initiatives the caller does not own return 404 (not 403) to
+// avoid leaking their existence.
+func (h *InitiativeHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	initiative, err := h.svc.GetForUser(r.Context(), id, principal.Username)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	JSON(w, http.StatusOK, initiative)
+}
+
 // Create handles POST /v1/initiatives — requires JWT.
 func (h *InitiativeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
@@ -200,9 +222,53 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Resolves the initiative by slug or UUID, verifies it is published, then calls Ledger.
 func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	value := chi.URLParam(r, "id")
-	q := r.URL.Query()
 
-	txnTypeParam := strings.ToLower(q.Get("type"))
+	// Resolve identifier to a UUID, verifying the initiative exists and is published.
+	// Use lightweight lookups (no Ledger enrichment) since transactions come from Ledger directly.
+	var initiativeID string
+	if uuidPattern.MatchString(value) {
+		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = value
+	} else {
+		id, err := h.svc.GetIDBySlug(r.Context(), value)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = id
+	}
+
+	h.writeTransactions(w, r, initiativeID)
+}
+
+// GetTransactionsForUser handles GET /v1/me/initiatives/{id}/transactions — requires
+// JWT with access:me scope. Returns transactions for the caller's own initiative in
+// any status, so owners can view their non-published initiative's transactions (the
+// public endpoint resolves published-only).
+func (h *InitiativeHandler) GetTransactionsForUser(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	initiativeID, err := h.svc.ResolveOwnedInitiativeID(r.Context(), chi.URLParam(r, "id"), principal.Username)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	h.writeTransactions(w, r, initiativeID)
+}
+
+// writeTransactions parses the shared transaction query params, fetches the Ledger
+// transactions for the resolved initiative, and writes the cached JSON response.
+// Callers are responsible for resolving and authorizing initiativeID beforehand.
+func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Request, initiativeID string) {
+	txnTypeParam := strings.ToLower(r.URL.Query().Get("type"))
 	var ledgerTxnType string
 	switch txnTypeParam {
 	case "donations":
@@ -222,24 +288,6 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	}
 	if offset < 0 {
 		offset = 0
-	}
-
-	// Resolve identifier to a UUID, verifying the initiative exists and is published.
-	// Use lightweight lookups (no Ledger enrichment) since transactions come from Ledger directly.
-	var initiativeID string
-	if uuidPattern.MatchString(value) {
-		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
-			Error(w, err)
-			return
-		}
-		initiativeID = value
-	} else {
-		id, err := h.svc.GetIDBySlug(r.Context(), value)
-		if err != nil {
-			Error(w, err)
-			return
-		}
-		initiativeID = id
 	}
 
 	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, limit, offset)
