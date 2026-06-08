@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+
+env:
+  COSIGN_VERSION: v2.5.3
+  HELM_VERSION: v3.18.4
 
 jobs:
   build-backend:
@@ -88,3 +93,155 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release-helm-backend:
+    name: Publish Backend Helm Chart
+    needs: build-backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    outputs:
+      digest: ${{ steps.publish-ghcr.outputs.digest }}
+      image_name: ${{ steps.publish-ghcr.outputs.image_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare chart metadata
+        id: prepare
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          APP_VERSION=$(echo "$REF_NAME" | sed 's/v//g')
+          CHART_VERSION="$(yq '.version' backend/charts/lfx-v2-initiatives-service/Chart.yaml)"
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish chart to GHCR
+        id: publish-ghcr
+        uses: linuxfoundation/lfx-public-workflows/.github/actions/helm-chart-oci-publisher@c465d6571fa0b8be9d551d902955164ea04a00af # main
+        with:
+          name: lfx-v2-initiatives-service
+          repository: ${{ github.repository }}/chart
+          chart_version: ${{ steps.prepare.outputs.chart_version }}
+          app_version: ${{ steps.prepare.outputs.app_version }}
+          registry: ghcr.io
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
+          path: backend/charts/lfx-v2-initiatives-service
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        with:
+          cosign-release: "${{ env.COSIGN_VERSION }}"
+
+      - name: Log in to GHCR for signing
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign backend chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COSIGN_IMAGE: ${{ steps.publish-ghcr.outputs.image_name }}
+          COSIGN_DIGEST: ${{ steps.publish-ghcr.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${COSIGN_IMAGE}@${COSIGN_DIGEST}"
+
+  release-helm-frontend:
+    name: Publish Frontend Helm Chart
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    outputs:
+      digest: ${{ steps.publish-ghcr.outputs.digest }}
+      image_name: ${{ steps.publish-ghcr.outputs.image_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare chart metadata
+        id: prepare
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          APP_VERSION=$(echo "$REF_NAME" | sed 's/v//g')
+          CHART_VERSION="$(yq '.version' frontend/charts/lfx-crowdfunding-frontend/Chart.yaml)"
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish chart to GHCR
+        id: publish-ghcr
+        uses: linuxfoundation/lfx-public-workflows/.github/actions/helm-chart-oci-publisher@c465d6571fa0b8be9d551d902955164ea04a00af # main
+        with:
+          name: lfx-crowdfunding-frontend
+          repository: ${{ github.repository }}/chart
+          chart_version: ${{ steps.prepare.outputs.chart_version }}
+          app_version: ${{ steps.prepare.outputs.app_version }}
+          registry: ghcr.io
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
+          path: frontend/charts/lfx-crowdfunding-frontend
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        with:
+          cosign-release: "${{ env.COSIGN_VERSION }}"
+
+      - name: Log in to GHCR for signing
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign frontend chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COSIGN_IMAGE: ${{ steps.publish-ghcr.outputs.image_name }}
+          COSIGN_DIGEST: ${{ steps.publish-ghcr.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${COSIGN_IMAGE}@${COSIGN_DIGEST}"
+
+  provenance-helm-backend:
+    name: SLSA Provenance — Backend Chart
+    needs: release-helm-backend
+    permissions:
+      actions: read
+      id-token: write
+      packages: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ needs.release-helm-backend.outputs.image_name }}
+      digest: ${{ needs.release-helm-backend.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+  provenance-helm-frontend:
+    name: SLSA Provenance — Frontend Chart
+    needs: release-helm-frontend
+    permissions:
+      actions: read
+      id-token: write
+      packages: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ needs.release-helm-frontend.outputs.image_name }}
+      digest: ${{ needs.release-helm-frontend.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
