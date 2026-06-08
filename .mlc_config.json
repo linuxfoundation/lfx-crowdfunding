@@ -2,6 +2,12 @@
   "ignorePatterns": [
     {
       "pattern": "^https://img\\.shields\\.io/"
+    },
+    {
+      "pattern": "^https://github\\.com/linuxfoundation/lfx-v2-ui"
+    },
+    {
+      "pattern": "^https://github\\.com/mlehotskylf"
     }
   ],
   "timeout": "20s",

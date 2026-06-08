@@ -91,7 +91,6 @@ SPDX-License-Identifier: MIT
             ref="paymentStepRef"
             :amount-cents="amountForm.amountCents"
             :tier-name="amountForm.tierName"
-            :initiative-name="initiative.name"
             :donation-type="amountForm.donationType"
             @update:complete="paymentComplete = $event"
           />

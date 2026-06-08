@@ -148,7 +148,6 @@ import LfxIcon from '~/components/uikit/icon/icon.vue';
 const props = defineProps<{
   amountCents: number;
   tierName: string | null;
-  initiativeName: string;
   donationType: 'one-time' | 'monthly';
 }>();
 
