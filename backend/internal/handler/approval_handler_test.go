@@ -122,7 +122,7 @@ func (c *apprStripeClient) GetPaymentMethod(_ context.Context, _ string) (*model
 	return nil, nil
 }
 func (c *apprStripeClient) DetachPaymentMethod(_ context.Context, _ string) error { return nil }
-func (c *apprStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64, _ string, _ string) (string, error) {
+func (c *apprStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ string, _ int64, _ string, _ string) (string, error) {
 	return "", nil
 }
 

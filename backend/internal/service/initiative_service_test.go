@@ -127,7 +127,7 @@ func (m *mockStripeClient) GetPaymentMethod(_ context.Context, _ string) (*model
 	return &models.CardDetails{}, nil
 }
 func (m *mockStripeClient) DetachPaymentMethod(_ context.Context, _ string) error { return nil }
-func (m *mockStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ int64, _ string, _ string) (string, error) {
+func (m *mockStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ string, _ int64, _ string, _ string) (string, error) {
 	return "price_mock", nil
 }
 func (m *mockStripeClient) CreateProduct(_ context.Context, _, _ string) (string, error) {
