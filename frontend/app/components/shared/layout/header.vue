@@ -26,11 +26,10 @@ SPDX-License-Identifier: MIT
             class="flex items-center gap-2"
           >
             <img
-              src="~/assets/images/logo.svg"
+              src="~/assets/images/logo.png"
               alt="LFX"
               class="h-6"
             />
-            <span class="text-2xl font-normal text-brand-500">Crowdfunding</span>
           </NuxtLink>
         </div>
 

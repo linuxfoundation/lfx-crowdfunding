@@ -71,7 +71,7 @@ Requires `@nuxt/image` module (usually pre-installed).
   <NuxtImg src="/images/photo.jpg" loading="lazy" alt="Photo" />
 
   <!-- Eager loading for above-fold -->
-  <NuxtImg src="/images/logo.svg" loading="eager" alt="Logo" />
+  <NuxtImg src="/images/logo.png" loading="eager" alt="Logo" />
 
   <!-- With placeholder blur -->
   <NuxtImg src="/images/product.jpg" placeholder alt="Product" />
