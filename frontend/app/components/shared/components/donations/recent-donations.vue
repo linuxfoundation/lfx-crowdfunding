@@ -6,13 +6,13 @@ SPDX-License-Identifier: MIT
   <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between">
       <p class="text-base font-semibold text-neutral-900 leading-6">Recent donations</p>
-      <a
+      <!-- <a
         v-if="showSeeAllLink && !isLoading && donations.length"
         href="#"
         class="text-sm text-accent-500 hover:text-accent-600 font-medium leading-4"
       >
         See all
-      </a>
+      </a> -->
     </div>
 
     <!-- Loading skeleton -->
