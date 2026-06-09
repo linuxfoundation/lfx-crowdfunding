@@ -7,6 +7,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['**/*.test.ts', '**/*.spec.ts'],
-    exclude: ['**/node_modules/**', '**/.nuxt/**'],
+    exclude: ['**/node_modules/**', '**/.nuxt/**', '**/e2e/**'],
   },
 });
