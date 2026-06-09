@@ -13,30 +13,37 @@ const MOCK_USER = {
   username: 'e2e-test',
 };
 
-// A fake token string — only valid when backend runs with DISABLED_MOCK_LOCAL_PRINCIPAL=true.
+// A fake token string — only valid when the backend runs with both:
+//   DISABLED_MOCK_LOCAL_PRINCIPAL=<any non-empty string>
+//   ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true
 // The Nuxt BFF require-auth middleware checks for cookie presence only; full JWT validation
-// is delegated to the Go backend and skipped with the mock flag.
+// is delegated to the Go backend and bypassed with those flags.
 const MOCK_TOKEN = 'e2e-mock-token.placeholder.signature';
 
 async function injectAuthCookies(page: Page): Promise<void> {
+  const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+  const url = new URL(baseURL);
+  const domain = url.hostname;
+  const secure = url.protocol === 'https:';
+
   const profileBase64 = Buffer.from(JSON.stringify(MOCK_USER)).toString('base64');
   await page.context().addCookies([
     {
       name: 'auth_oidc_token',
       value: MOCK_TOKEN,
-      domain: 'localhost',
+      domain,
       path: '/',
       httpOnly: true,
-      secure: false,
+      secure,
       sameSite: 'Lax',
     },
     {
       name: 'auth_user_profile',
       value: profileBase64,
-      domain: 'localhost',
+      domain,
       path: '/',
       httpOnly: true,
-      secure: false,
+      secure,
       sameSite: 'Lax',
     },
   ]);
@@ -44,8 +51,9 @@ async function injectAuthCookies(page: Page): Promise<void> {
 
 export const test = base.extend<{ authenticatedPage: Page }>({
   authenticatedPage: async ({ page }, use) => {
-    await page.goto('/');
+    // Inject cookies before navigating so the first request is authenticated.
     await injectAuthCookies(page);
+    await page.goto('/');
     await use(page);
   },
 });

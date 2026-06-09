@@ -13,8 +13,10 @@ test.describe('Statistics page', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
-  test('shows statistics heading', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /statistics/i })).toBeVisible({
+  test('shows statistics label', async ({ page }) => {
+    // "Statistics" renders as a <span>, not a heading role.
+    // The <h1> contains dynamic text (e.g. "$X funds raised by Y supporters").
+    await expect(page.getByText('Statistics', { exact: true })).toBeVisible({
       timeout: 10000,
     });
   });

@@ -20,8 +20,9 @@ test.describe('Initiatives list', () => {
 
   test('shows initiative cards or empty state', async ({ page }) => {
     await page.waitForLoadState('networkidle');
-    const hasCards = await page.locator('[data-testid="initiative-card"]').count();
-    const hasEmpty = await page.getByText(/no initiatives/i).count();
+    // Cards render as <NuxtLink> anchors with hrefs like /initiatives/<slug>
+    const hasCards = await page.locator('a[href^="/initiatives/"]').count();
+    const hasEmpty = await page.getByText('No initiatives found.').count();
     expect(hasCards + hasEmpty).toBeGreaterThan(0);
   });
 });
