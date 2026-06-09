@@ -185,7 +185,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// Logo uploads (used during initiative creation by the owning user).
 		r.Post("/presigned-url", uploadH.CreatePresignedURL)
 
-		// Owner-checked initiative mutations.
+		// Owner-checked initiative read + mutations. The detail read returns the
+		// caller's own initiative in any status (the public detail endpoint hides
+		// non-published initiatives from non-approvers).
+		r.Get("/initiatives/{id}", initiativeH.GetForUser)
+		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactionsForUser)
 		r.Post("/initiatives", initiativeH.Create)
 		r.Patch("/initiatives/{id}", initiativeH.Update)
 		r.Delete("/initiatives/{id}", initiativeH.Delete)
