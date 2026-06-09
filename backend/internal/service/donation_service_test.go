@@ -315,7 +315,17 @@ func TestDonationService_Create_InitiativeNotAccepting(t *testing.T) {
 func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 	customerCreated := false
 
-	donRepo := &testDonationRepo{}
+	donRepo := &testDonationRepo{
+		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
+			// The donation must always be persisted as pending so the webhook
+			// can perform the pending→succeeded transition and send emails,
+			// even when Stripe confirms synchronously (no 3DS).
+			if d.Status != models.DonationStatusPending {
+				t.Errorf("repo.Create called with Status=%q, want %q", d.Status, models.DonationStatusPending)
+			}
+			return d, nil
+		},
+	}
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
 			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
@@ -393,7 +403,17 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 		},
 	}
 
-	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), userRepo, stripe)
+	donRepo3DS := &testDonationRepo{
+		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
+			// Even for 3DS flows the donation must be persisted as pending;
+			// requires_action is returned to the caller but not stored.
+			if d.Status != models.DonationStatusPending {
+				t.Errorf("repo.Create called with Status=%q, want %q", d.Status, models.DonationStatusPending)
+			}
+			return d, nil
+		},
+	}
+	svc := newDonationSvc(donRepo3DS, acceptingInitiative(), userRepo, stripe)
 	don, err := svc.Create(context.Background(), "init-1", "u1",
 		models.DonationCreateInput{AmountCents: 5000, StripePaymentMethodID: "pm_eu", IdempotencyKey: "idem-key-eu"})
 	if err != nil {
