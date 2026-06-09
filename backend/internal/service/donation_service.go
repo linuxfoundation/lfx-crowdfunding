@@ -212,9 +212,21 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	// The client-supplied idempotency key is forwarded to Stripe verbatim:
 	// if the client retries the same request it sends the same key, Stripe
 	// returns the cached response instead of creating a duplicate charge.
+	// Best-effort owner email lookup for admin notification email.
+	// Failure here is non-fatal — the donation proceeds without the email.
+	ownerEmail := ""
+	if owner, ownerErr := s.userRepo.GetByID(ctx, initiative.OwnerID); ownerErr == nil {
+		ownerEmail = owner.Email
+	}
+
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
 		InitiativeID:    initiativeID,
+		InitiativeSlug:  initiative.Slug,
+		InitiativeName:  initiative.Name,
 		UserID:          user.LegacyUserID,
+		DonorName:       user.Name,
+		DonorEmail:      user.Email,
+		OwnerEmail:      ownerEmail,
 		CustomerID:      customerID,
 		AmountCents:     input.AmountCents,
 		PaymentMethodID: input.StripePaymentMethodID,

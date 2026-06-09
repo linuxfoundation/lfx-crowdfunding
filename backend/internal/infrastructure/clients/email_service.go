@@ -74,6 +74,40 @@ func (s *emailService) SendProjectDeclinedEmail(ctx context.Context, toEmail, to
 	})
 }
 
+// SendDonationConfirmationEmail sends a donation receipt to the donor.
+func (s *emailService) SendDonationConfirmationEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL, amountFormatted string) error {
+	return s.sendEmail(ctx, emailRequest{
+		Recipient:     toEmail,
+		RecipientName: toName,
+		TemplateName:  MandrillTemplateDonationConfirmation,
+		TemplateParameters: map[string]string{
+			"FNAME":            toName,
+			"PROJECT_NAME":     initiativeName,
+			"VIEW_PROJECT_URL": initiativeURL,
+			"AMOUNT":           amountFormatted,
+		},
+	})
+}
+
+// SendDonationAdminNotificationEmail notifies the initiative owner of a new donation.
+func (s *emailService) SendDonationAdminNotificationEmail(ctx context.Context, ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted string) error {
+	if ownerEmail == "" {
+		return nil // owner email not available; skip silently
+	}
+	return s.sendEmail(ctx, emailRequest{
+		Recipient:     ownerEmail,
+		RecipientName: "",
+		TemplateName:  MandrillTemplateDonationAdminNotification,
+		TemplateParameters: map[string]string{
+			"DONOR_NAME":       donorName,
+			"DONOR_EMAIL":      donorEmail,
+			"PROJECT_NAME":     initiativeName,
+			"VIEW_PROJECT_URL": initiativeURL,
+			"AMOUNT":           amountFormatted,
+		},
+	})
+}
+
 // ErrNoNotificationRecipients is returned when MANDRILL_NOTIFICATION_EMAIL is empty or unset,
 // so callers can log a warning rather than silently dropping the review alert.
 var ErrNoNotificationRecipients = errors.New("email: no notification recipients configured")

@@ -161,9 +161,21 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		return nil, fmt.Errorf("stripe price: %w", err)
 	}
 
+	// Best-effort owner email lookup for admin notification email.
+	// Failure here is non-fatal — the subscription proceeds without the email.
+	ownerEmail := ""
+	if owner, ownerErr := s.userRepo.GetByID(ctx, initiative.OwnerID); ownerErr == nil {
+		ownerEmail = owner.Email
+	}
+
 	result, err := s.stripe.CreateSubscription(ctx, models.StripeSubscriptionRequest{
 		InitiativeID:     initiativeID,
+		InitiativeSlug:   initiative.Slug,
+		InitiativeName:   initiative.Name,
 		UserID:           user.LegacyUserID,
+		DonorName:        user.Name,
+		DonorEmail:       user.Email,
+		OwnerEmail:       ownerEmail,
 		StripeCustomerID: customerID,
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
