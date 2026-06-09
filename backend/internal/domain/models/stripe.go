@@ -34,6 +34,7 @@ type PaymentIntentRequest struct {
 	InitiativeName  string // stored in Stripe metadata for email subject/body
 	UserID          string
 	DonorName       string // stored in Stripe metadata for email greeting
+	DonorEmail      string // set as receipt_email on the PI; also stored in metadata for webhook use
 	OwnerEmail      string // stored in Stripe metadata — admin notification recipient
 	CustomerID      string // Stripe cus_xxx — required for 3DS off-session charges
 	AmountCents     int64
@@ -64,6 +65,7 @@ type StripeSubscriptionRequest struct {
 	InitiativeName   string // stored in Stripe metadata for email subject/body
 	UserID           string
 	DonorName        string // stored in Stripe metadata for email greeting
+	DonorEmail       string // stored in Stripe metadata for webhook email use; inv.CustomerEmail is the runtime source
 	OwnerEmail       string // stored in Stripe metadata — admin notification recipient
 	StripeCustomerID string
 	StripePriceID    string

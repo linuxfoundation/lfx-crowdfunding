@@ -188,11 +188,12 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		customerID = pi.Customer.ID
 	}
 	amount := int(pi.Amount)
+	donorEmail := pi.Metadata["donor_email"]
 	txn := clients.LedgerTransaction{
 		ProjectID:       initiativeID,
 		UserID:          userID,
 		OrganizationID:  pi.Metadata["org_id"],
-		AccountEmail:    pi.ReceiptEmail,
+		AccountEmail:    donorEmail,
 		SourceType:      ledgerSourceType,
 		SourceTxnID:     chargeID,
 		SourceAccountID: customerID,
@@ -222,22 +223,22 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 	amountFormatted := fmt.Sprintf("$%.2f", float64(amount)/100)
 	donorName := pi.Metadata["donor_name"]
 	if donorName == "" {
-		donorName = pi.ReceiptEmail
+		donorName = donorEmail
 	}
 	initiativeName := pi.Metadata["initiative_name"]
 	if initiativeName == "" {
 		initiativeName = initiativeID
 	}
-	if pi.ReceiptEmail != "" {
+	if donorEmail != "" {
 		if emailErr := h.emailService.SendDonationConfirmationEmail(
-			r.Context(), pi.ReceiptEmail, donorName, initiativeName, initiativeURL, amountFormatted,
+			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted,
 		); emailErr != nil {
 			h.logger.Warn("payment_intent.succeeded: donor confirmation email failed",
 				"pi_id", pi.ID, "error", emailErr)
 		}
 	}
 	if adminErr := h.emailService.SendDonationAdminNotificationEmail(
-		r.Context(), pi.Metadata["owner_email"], donorName, pi.ReceiptEmail, initiativeName, initiativeURL, amountFormatted,
+		r.Context(), pi.Metadata["owner_email"], donorName, donorEmail, initiativeName, initiativeURL, amountFormatted,
 	); adminErr != nil {
 		h.logger.Warn("payment_intent.succeeded: admin notification email failed",
 			"pi_id", pi.ID, "error", adminErr)

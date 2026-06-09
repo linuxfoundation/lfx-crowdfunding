@@ -225,6 +225,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		InitiativeName:  initiative.Name,
 		UserID:          user.LegacyUserID,
 		DonorName:       user.Name,
+		DonorEmail:      user.Email,
 		OwnerEmail:      ownerEmail,
 		CustomerID:      customerID,
 		AmountCents:     input.AmountCents,

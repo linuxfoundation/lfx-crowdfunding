@@ -177,7 +177,7 @@ func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, 
 			stripe_charge_id = COALESCE(NULLIF($3, ''), stripe_charge_id),
 			updated_on      = NOW()
 		WHERE stripe_payment_intent_id = $1
-		  AND status != $2`
+		  AND status IS DISTINCT FROM $2`
 
 	tag, err := r.pool.Exec(ctx, q, piID, status, chargeID)
 	if err != nil {

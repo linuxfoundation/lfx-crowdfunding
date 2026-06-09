@@ -193,7 +193,7 @@ func (r *SubscriptionRepository) UpdateByStripeSubscriptionID(ctx context.Contex
 	const q = `
 		UPDATE subscriptions SET status = $2, updated_on = NOW()
 		WHERE stripe_subscription_id = $1
-		  AND status != $2`
+		  AND status IS DISTINCT FROM $2`
 
 	tag, err := r.pool.Exec(ctx, q, stripeSubID, status)
 	if err != nil {

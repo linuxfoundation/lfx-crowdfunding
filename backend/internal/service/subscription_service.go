@@ -169,12 +169,11 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	}
 
 	result, err := s.stripe.CreateSubscription(ctx, models.StripeSubscriptionRequest{
-		InitiativeID:     initiativeID,
-		InitiativeSlug:   initiative.Slug,
-		InitiativeName:   initiative.Name,
-		UserID:           user.LegacyUserID,
-		DonorName:        user.Name,
-		OwnerEmail:       ownerEmail,
+		InitiativeID:   initiativeID,
+		InitiativeSlug: initiative.Slug,
+		InitiativeName: initiative.Name,
+		UserID:         user.LegacyUserID,
+		DonorName:      user.Name, DonorEmail: user.Email, OwnerEmail: ownerEmail,
 		StripeCustomerID: customerID,
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
