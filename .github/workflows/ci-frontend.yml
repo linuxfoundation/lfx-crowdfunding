@@ -34,17 +34,17 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: '11.1.2'
+          version: "11.1.2"
           run_install: false
 
       - name: Get pnpm store path
         id: pnpm-cache
-        run: echo "store=$(pnpm store path)" >> $GITHUB_OUTPUT
+        run: echo "store=$(pnpm store path)" >> "$GITHUB_OUTPUT"
         working-directory: frontend
 
       - name: Cache pnpm store
