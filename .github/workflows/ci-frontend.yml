@@ -128,8 +128,8 @@ jobs:
       - name: Run database migrations
         run: |
           for f in backend/db/migrations/*.up.sql; do
-            PGOPTIONS="-c ON_ERROR_STOP=on" \
-              psql "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding" -f "$f"
+            psql "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding" \
+              --variable=ON_ERROR_STOP=1 -f "$f"
           done
 
       - name: Build backend
