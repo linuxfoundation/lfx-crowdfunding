@@ -456,7 +456,8 @@ func TestWebhookHandler_SubscriptionUpdated_NonCancellation_Ignored(t *testing.T
 			return nil
 		},
 	}
-	// canceled_at=0, status=active — not a cancellation
+	// canceled_at omitted (Stripe does not send it for non-cancellation updates), status=active
+	subJSON := `{"id":"sub_updated_002","status":"active"}`
 	event := buildEvent("customer.subscription.updated", subJSON)
 	sc := &wbStripeClient{
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
