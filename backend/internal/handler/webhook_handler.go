@@ -91,6 +91,8 @@ func (h *WebhookHandler) dispatch(r *http.Request, event stripe.Event, w http.Re
 		err = h.handleInvoicePaymentSucceeded(r, event)
 	case "invoice.payment_failed":
 		err = h.handleInvoicePaymentFailed(r, event)
+	case "customer.subscription.updated":
+		err = h.handleSubscriptionUpdated(r, event)
 	case "customer.subscription.deleted":
 		err = h.handleSubscriptionDeleted(r, event)
 	default:
@@ -228,6 +230,29 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(r *http.Request, event strip
 	return nil
 }
 
+// handleSubscriptionUpdated handles customer.subscription.updated events.
+// It only acts when the update is a cancellation — identified by a non-zero CanceledAt
+// and a terminal status (canceled or incomplete_expired). All other updates are ignored.
+func (h *WebhookHandler) handleSubscriptionUpdated(r *http.Request, event stripe.Event) error {
+	if event.Data == nil {
+		return fmt.Errorf("customer.subscription.updated: event.Data is nil (event_id=%s)", event.ID)
+	}
+	var sub stripe.Subscription
+	if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
+		h.logger.Error("customer.subscription.updated: unmarshal failed", "event_id", event.ID, "error", err)
+		return fmt.Errorf("customer.subscription.updated: unmarshal: %w", err)
+	}
+	// Only act on cancellations: canceled_at must be set and the status must be terminal.
+	isCancellation := sub.CanceledAt != 0 &&
+		(sub.Status == stripe.SubscriptionStatusCanceled || sub.Status == stripe.SubscriptionStatusIncompleteExpired)
+	if !isCancellation {
+		h.logger.Debug("customer.subscription.updated: not a cancellation, ignoring",
+			"sub_id", sub.ID, "status", sub.Status)
+		return nil
+	}
+	return h.handleSubscriptionCanceled(r, sub.ID)
+}
+
 // handleSubscriptionDeleted marks a subscription cancelled when Stripe deletes it
 // (e.g. after too many failed invoices or an explicit cancellation via the Dashboard).
 func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe.Event) error {
@@ -239,12 +264,18 @@ func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe
 		h.logger.Error("customer.subscription.deleted: unmarshal failed", "event_id", event.ID, "error", err)
 		return fmt.Errorf("customer.subscription.deleted: unmarshal: %w", err)
 	}
-	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), sub.ID, models.SubscriptionStatusCanceled); err != nil {
+	return h.handleSubscriptionCanceled(r, sub.ID)
+}
+
+// handleSubscriptionCanceled writes the canceled status to the database.
+// It is the single exit point for both deleted and updated-to-canceled events.
+func (h *WebhookHandler) handleSubscriptionCanceled(r *http.Request, subID string) error {
+	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, models.SubscriptionStatusCanceled); err != nil {
 		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
-			h.logger.Error("customer.subscription.deleted: DB update failed", "sub_id", sub.ID, "error", err)
+			h.logger.Error("subscription cancellation: DB update failed", "sub_id", subID, "error", err)
 		}
-		return fmt.Errorf("customer.subscription.deleted: db update: %w", err)
+		return fmt.Errorf("subscription cancellation: db update: %w", err)
 	}
-	h.logger.Info("customer.subscription.deleted: subscription cancelled", "sub_id", sub.ID)
+	h.logger.Info("subscription cancelled", "sub_id", subID)
 	return nil
 }

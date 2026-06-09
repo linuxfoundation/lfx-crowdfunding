@@ -380,6 +380,139 @@ func TestWebhookHandler_SubscriptionDeleted_MarksCanceled(t *testing.T) {
 	}
 }
 
+// --- customer.subscription.updated (cancellation via Stripe portal) ---
+
+// TestWebhookHandler_SubscriptionUpdated_Cancellation_MarksCanceled validates that an
+// updated event with a non-zero canceled_at and a terminal status writes "canceled" to the DB.
+func TestWebhookHandler_SubscriptionUpdated_Cancellation_MarksCanceled(t *testing.T) {
+	var gotSubID, gotStatus string
+
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, subID, status string) error {
+			gotSubID = subID
+			gotStatus = status
+			return nil
+		},
+	}
+	// canceled_at=1780995361 (non-zero), status=incomplete_expired (terminal)
+	subJSON := `{"id":"sub_updated_001","canceled_at":1780995361,"status":"incomplete_expired"}`
+	event := buildEvent("customer.subscription.updated", subJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotSubID != "sub_updated_001" {
+		t.Errorf("subID = %q, want sub_updated_001", gotSubID)
+	}
+	if gotStatus != models.SubscriptionStatusCanceled {
+		t.Errorf("status = %q, want %q", gotStatus, models.SubscriptionStatusCanceled)
+	}
+}
+
+// TestWebhookHandler_SubscriptionUpdated_ExplicitCanceled_MarksCanceled covers the
+// explicit portal/API cancellation path where Stripe sets status=canceled directly.
+func TestWebhookHandler_SubscriptionUpdated_ExplicitCanceled_MarksCanceled(t *testing.T) {
+	var gotSubID, gotStatus string
+
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, subID, status string) error {
+			gotSubID = subID
+			gotStatus = status
+			return nil
+		},
+	}
+	// status=canceled + canceled_at set — explicit immediate cancellation
+	subJSON := `{"id":"sub_updated_003","canceled_at":1780995361,"status":"canceled"}`
+	event := buildEvent("customer.subscription.updated", subJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotSubID != "sub_updated_003" {
+		t.Errorf("subID = %q, want sub_updated_003", gotSubID)
+	}
+	if gotStatus != models.SubscriptionStatusCanceled {
+		t.Errorf("status = %q, want %q", gotStatus, models.SubscriptionStatusCanceled)
+	}
+}
+
+// TestWebhookHandler_SubscriptionUpdated_NonCancellation_Ignored validates that an
+// updated event without canceled_at set (e.g. a plan change) is silently ignored.
+func TestWebhookHandler_SubscriptionUpdated_NonCancellation_Ignored(t *testing.T) {
+	dbCalled := false
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, _, _ string) error {
+			dbCalled = true
+			return nil
+		},
+	}
+	// canceled_at absent (zero), status=active — not a cancellation
+	subJSON := `{"id":"sub_updated_002","canceled_at":0,"status":"active"}`
+	event := buildEvent("customer.subscription.updated", subJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if dbCalled {
+		t.Error("UpdateByStripeSubscriptionID must not be called for non-cancellation updates")
+	}
+}
+
+// TestWebhookHandler_SubscriptionUpdated_Cancellation_DBError_Returns500 verifies that
+// a transient DB error on the cancellation path causes a 500 so Stripe retries.
+func TestWebhookHandler_SubscriptionUpdated_Cancellation_DBError_Returns500(t *testing.T) {
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, _, _ string) error {
+			return errors.New("db failure")
+		},
+	}
+	subJSON := `{"id":"sub_dberr","canceled_at":1780995361,"status":"canceled"}`
+	event := buildEvent("customer.subscription.updated", subJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 on DB error with ackUnimplemented=false", rr.Code)
+	}
+}
+
+// TestWebhookHandler_SubscriptionUpdated_Cancellation_NotFound_Returns200 verifies that
+// a cancellation for an unknown subscription ID is acknowledged (no retry loop).
+func TestWebhookHandler_SubscriptionUpdated_Cancellation_NotFound_Returns200(t *testing.T) {
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, _, _ string) error {
+			return domain.ErrSubscriptionNotFound
+		},
+	}
+	subJSON := `{"id":"sub_notfound","canceled_at":1780995361,"status":"canceled"}`
+	event := buildEvent("customer.subscription.updated", subJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 for permanent not-found (no retry)", rr.Code)
+	}
+}
+
 // --- unknown event type ---
 
 func TestWebhookHandler_UnknownEvent_Returns200(t *testing.T) {
