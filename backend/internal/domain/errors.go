@@ -24,4 +24,8 @@ var (
 	ErrConflict            = errors.New("resource conflict")
 	ErrRateLimitExceeded   = errors.New("rate limit exceeded")
 	ErrUpstreamUnavailable = errors.New("upstream service unavailable")
+	// ErrAlreadyProcessed is returned by UpdateByPaymentIntentID when the
+	// donation is already in the target terminal state. The webhook handler uses
+	// this to skip idempotent re-processing (e.g. emails, Ledger POST) on retry.
+	ErrAlreadyProcessed = errors.New("already processed")
 )

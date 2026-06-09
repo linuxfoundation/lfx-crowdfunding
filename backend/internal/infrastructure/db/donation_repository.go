@@ -161,6 +161,8 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 
 // UpdateByPaymentIntentID is called by the Stripe webhook to reconcile the
 // result of an async 3DS challenge. chargeID may be empty on failure events.
+// Returns ErrAlreadyProcessed if the donation is already in the target status
+// (enabling idempotent webhook retries), or ErrDonationNotFound if no row exists.
 func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error {
 	ctx, span := donationTracer.Start(ctx, "db.donations.UpdateByPaymentIntentID")
 	defer span.End()
@@ -174,7 +176,8 @@ func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, 
 			status          = $2,
 			stripe_charge_id = COALESCE(NULLIF($3, ''), stripe_charge_id),
 			updated_on      = NOW()
-		WHERE stripe_payment_intent_id = $1`
+		WHERE stripe_payment_intent_id = $1
+		  AND status != $2`
 
 	tag, err := r.pool.Exec(ctx, q, piID, status, chargeID)
 	if err != nil {
@@ -182,7 +185,18 @@ func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, 
 		return fmt.Errorf("update donation by payment intent: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return domain.ErrDonationNotFound
+		// Distinguish "row exists but already in target state" from "row missing".
+		var exists bool
+		if err := r.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM donations WHERE stripe_payment_intent_id = $1)`, piID,
+		).Scan(&exists); err != nil {
+			span.RecordError(err)
+			return fmt.Errorf("check donation existence: %w", err)
+		}
+		if !exists {
+			return domain.ErrDonationNotFound
+		}
+		return domain.ErrAlreadyProcessed
 	}
 	return nil
 }

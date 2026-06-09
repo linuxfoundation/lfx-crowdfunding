@@ -97,6 +97,9 @@ func (c *testLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 func (c *testLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return c.recentDonations, c.err
 }
+func (c *testLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
+	return nil
+}
 
 func newStatsSvc(repo *testStatisticsRepo, ledger *testLedgerClient) *StatisticsService {
 	return NewStatisticsService(repo, ledger)

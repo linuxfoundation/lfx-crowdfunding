@@ -88,6 +88,9 @@ func (c *apprLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 func (c *apprLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
+func (c *apprLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
+	return nil
+}
 
 // apprStripeClient is a no-op StripeClient stub.
 type apprStripeClient struct{}
@@ -153,6 +156,12 @@ func (e *apprEmailService) SendProjectDeclinedEmail(_ context.Context, _, _, _, 
 	return nil
 }
 func (e *apprEmailService) SendProjectForReviewEmail(_ context.Context, _, _, _, _, _, _ string) error {
+	return nil
+}
+func (e *apprEmailService) SendDonationConfirmationEmail(_ context.Context, _, _, _, _, _ string) error {
+	return nil
+}
+func (e *apprEmailService) SendDonationAdminNotificationEmail(_ context.Context, _, _, _, _, _, _ string) error {
 	return nil
 }
 func (e *apprEmailService) InitiativeURL(slug string) string {

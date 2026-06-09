@@ -30,7 +30,11 @@ type SetupIntentResult struct {
 // PaymentIntentRequest is the input for creating a one-time Stripe payment.
 type PaymentIntentRequest struct {
 	InitiativeID    string
+	InitiativeSlug  string // stored in Stripe metadata for email deep-link
+	InitiativeName  string // stored in Stripe metadata for email subject/body
 	UserID          string
+	DonorName       string // stored in Stripe metadata for email greeting
+	OwnerEmail      string // stored in Stripe metadata — admin notification recipient
 	CustomerID      string // Stripe cus_xxx — required for 3DS off-session charges
 	AmountCents     int64
 	Currency        string // defaults to "usd"
@@ -56,7 +60,11 @@ type PaymentIntent struct {
 // StripeSubscriptionRequest is the input for creating a Stripe subscription.
 type StripeSubscriptionRequest struct {
 	InitiativeID     string
+	InitiativeSlug   string // stored in Stripe metadata for email deep-link
+	InitiativeName   string // stored in Stripe metadata for email subject/body
 	UserID           string
+	DonorName        string // stored in Stripe metadata for email greeting
+	OwnerEmail       string // stored in Stripe metadata — admin notification recipient
 	StripeCustomerID string
 	StripePriceID    string
 	PaymentMethodID  string

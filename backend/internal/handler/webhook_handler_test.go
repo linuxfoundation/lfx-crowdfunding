@@ -69,6 +69,67 @@ func (c *wbStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ string,
 // Ensure interface is fully satisfied at compile time.
 var _ clients.StripeClient = (*wbStripeClient)(nil)
 
+// wbLedgerClient is a no-op LedgerClient stub for webhook handler tests.
+type wbLedgerClient struct {
+	onPostTransaction func(ctx context.Context, txn clients.LedgerTransaction) error
+}
+
+func (c *wbLedgerClient) GetBalance(_ context.Context, _ string) (*clients.LedgerBalance, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetAllBalances(_ context.Context) ([]models.LedgerRawBalance, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetPlatformBalance(_ context.Context, _ int) (*clients.LedgerPlatformBalance, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clients.LedgerPlatformMonthly, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) PostTransaction(ctx context.Context, txn clients.LedgerTransaction) error {
+	if c.onPostTransaction != nil {
+		return c.onPostTransaction(ctx, txn)
+	}
+	return nil
+}
+
+// wbEmailService is a no-op EmailService stub for webhook handler tests.
+type wbEmailService struct {
+	onConfirmation func(toEmail, toName, initiativeName, initiativeURL, amount string)
+	onAdminNotify  func(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string)
+}
+
+func (e *wbEmailService) SendProjectApprovedEmail(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+func (e *wbEmailService) SendProjectDeclinedEmail(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+func (e *wbEmailService) SendProjectForReviewEmail(_ context.Context, _, _, _, _, _, _ string) error {
+	return nil
+}
+func (e *wbEmailService) SendDonationConfirmationEmail(_ context.Context, toEmail, toName, initiativeName, initiativeURL, amount string) error {
+	if e.onConfirmation != nil {
+		e.onConfirmation(toEmail, toName, initiativeName, initiativeURL, amount)
+	}
+	return nil
+}
+func (e *wbEmailService) SendDonationAdminNotificationEmail(_ context.Context, ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string) error {
+	if e.onAdminNotify != nil {
+		e.onAdminNotify(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount)
+	}
+	return nil
+}
+func (e *wbEmailService) InitiativeURL(slug string) string {
+	return "https://crowdfunding.lfx.linuxfoundation.org/initiatives/" + slug
+}
+
 // wbDonationRepo implements domain.DonationRepository for webhook tests.
 type wbDonationRepo struct {
 	onUpdateByPaymentIntentID func(ctx context.Context, piID, status, chargeID string) error
@@ -127,7 +188,12 @@ func discardLogger() *slog.Logger {
 
 // newTestWebhookHandler wires up a WebhookHandler with the given mocks.
 func newTestWebhookHandler(sc *wbStripeClient, dr *wbDonationRepo, sr *wbSubscriptionRepo) *WebhookHandler {
-	return NewWebhookHandler(sc, dr, sr, "whsec_test", discardLogger(), false)
+	return NewWebhookHandler(sc, &wbLedgerClient{}, dr, sr, &wbEmailService{}, "whsec_test", discardLogger(), false)
+}
+
+// newTestWebhookHandlerFull allows injecting custom ledger and email stubs.
+func newTestWebhookHandlerFull(sc *wbStripeClient, dr *wbDonationRepo, sr *wbSubscriptionRepo, lc *wbLedgerClient, es *wbEmailService) *WebhookHandler {
+	return NewWebhookHandler(sc, lc, dr, sr, es, "whsec_test", discardLogger(), false)
 }
 
 // postWebhook sends a simulated Stripe webhook POST to the handler.
