@@ -15,21 +15,49 @@ document only adds the SS-specific integration details.
 
 ## 1. How SS authenticates to CF
 
-SS forwards the **logged-in user's own access token** to CF. There is no M2M token and no identity
-header for SS — all SS→CF calls are me-style endpoints (`/v1/me/*`), and the access token carries the
-acting user's identity via the LF SSO username — a custom claim (per Design Rule 3 in
-[`09`](09-authentication-architecture.md#design-rules)).
+SS obtains a **user-issued access token scoped to the CF audience** and forwards it to CF. There is
+no M2M token and no identity header — all SS→CF calls are me-style endpoints (`/v1/me/*`), and the
+access token carries the acting user's identity via the LF SSO username — a custom claim (per
+Design Rule 3 in [`09`](09-authentication-architecture.md#design-rules)).
 
 ```
 User action in SS that needs CF data
-  └─ SS BFF resolves the effective user's access token (see §3)
+  └─ SS BFF resolves (or exchanges for) a CF-audience access token (see §2)
   └─ SS BFF proxies to CF /v1/me/*
-       Authorization: Bearer {effective user's access token}
+       Authorization: Bearer {CF-audience user access token}
 ```
 
-The user's token must be issued by Auth0 with the CF audience and `access:me` scope (requested at
-login), or CF will reject the call. SS needs only the CF API base URL to make the call — no M2M
-client credentials.
+The token forwarded to CF must have the CF audience (`/api/`) and `access:me` scope, or CF will
+reject the call. SS needs no M2M client credentials — the token is still user-issued.
+
+### How SS obtains the CF-audience token
+
+SS is a multi-audience BFF: its primary login audience is the LFX V2 cluster, which it needs for
+committees, meetings, and other LFX v2 services. It cannot log in with the CF audience as its
+primary audience without breaking those services.
+
+Instead, SS performs a **silent cross-audience refresh token exchange** on each authenticated
+request:
+
+```
+POST /oauth/token
+  grant_type=refresh_token
+  refresh_token={user's refresh token from OIDC session}
+  client_id={LFX One client ID}
+  client_secret={LFX One client secret}
+  audience=https://crowdfunding.{env}.lfx.dev/api/
+  scope=access:me
+```
+
+Auth0 returns a CF-scoped access token carrying the user's identity. SS caches it in the server
+session (with a 5-minute expiry buffer) and forwards it to CF. This is the same mechanism SS uses
+to obtain legacy API Gateway tokens — there is no user interaction and no M2M credential involved.
+
+This exchange requires LFX One to have a client grant registered for the CF audience in
+`auth0-terraform` (see [`09`](09-authentication-architecture.md#client-grants) for the HCL).
+Auth0's `allow_all` user policy on the CF resource server enables interactive logins without a
+grant, but cross-audience refresh token exchanges require explicit grant registration regardless of
+the `allow_all` policy.
 
 ---
 
@@ -37,13 +65,12 @@ client credentials.
 
 | Area | Change |
 |---|---|
-| `lfx-self-serve` | A `crowdfunding.service.ts` / proxy routes under `/api/crowdfunding/*` that forward the effective user's bearer token to CF `/v1/me/*`. |
-| Auth0 token request | Include the CF API audience + `access:me` scope so the access token is accepted by CF. |
-| `lfx-v2-argocd` | `values/*/lfx-self-serve.yaml`: `CROWDFUNDING_API_BASE_URL` (and CF audience for the token request). No M2M client/secret for CF. |
+| `lfx-self-serve` | `crowdfunding.service.ts` / proxy routes under `/api/crowdfunding/*` that perform the CF token exchange and forward the resulting CF-audience token to CF `/v1/me/*`. |
+| `auth0-terraform` | Register LFX One client grant for CF audience (`grants_crowdfunding.tf`) — required for cross-audience refresh token exchange. See [`09`](09-authentication-architecture.md#client-grants). |
+| `lfx-v2-argocd` | `values/*/lfx-self-serve.yaml`: `CROWDFUNDING_API_BASE_URL` + `CROWDFUNDING_API_AUDIENCE`. No M2M client/secret for CF. |
 
-Infra specifics (Auth0 scopes/grants, CF backend env) are in
-[`09`](09-authentication-architecture.md#auth0-terraform). SS needs no client-ID allowlist entry
-and no identity header — the user-issued access token carries identity, and the `access:me` scope is the gate.
+SS needs no client-ID allowlist entry and no identity header — the user-issued access token carries
+identity, and the `access:me` scope is the gate.
 
 ---
 
@@ -66,6 +93,12 @@ the admin's own identity. Because the forwarded token already represents the eff
 owner check and `Principal.Username` resolve correctly with no CF-side special handling.
 
 > Write access under impersonation is a product-level decision, gated on the SS side.
+
+> **Known gap (tracked separately).** The current cross-audience refresh token exchange uses the
+> logged-in admin's refresh token, so the CF-audience token is scoped to the **admin** rather than
+> the impersonated user during an impersonation session. This means CF calls during impersonation
+> use the admin's identity rather than the target user's. The fix requires the exchange to use the
+> impersonated user's token as the subject — tracked as a separate work item.
 
 ---
 
