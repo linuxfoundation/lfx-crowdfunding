@@ -86,7 +86,6 @@ config:
   NUXT_AUTH0_COOKIE_DOMAIN: "" # set per environment, e.g. platform.linuxfoundation.org
   NUXT_PUBLIC_AUTH0_CLIENT_ID: ""
   NUXT_PUBLIC_AUTH0_DOMAIN: "" # set per environment, e.g. https://linuxfoundation.auth0.com
-  NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID: ""
   NODE_ENV: "production"
   NITRO_HOST: "0.0.0.0"
   NITRO_PORT: "3000"
@@ -94,7 +93,7 @@ config:
 # ── Secret environment variables ─────────────────────────────────────────────
 # Expected keys in the Secret (populated by ESO from AWS Secrets Manager):
 #   NUXT_AUTH0_CLIENT_SECRET, NUXT_JWT_SECRET, NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-#   NUXT_GITHUB_OAUTH_CLIENT_SECRET
+#   NUXT_GITHUB_OAUTH_CLIENT_SECRET, NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID
 secretName: lfx-crowdfunding-frontend-secrets
 
 # createPlaceholderSecret — same semantics as backend chart.
