@@ -1,5 +1,8 @@
 #!/usr/bin/env sh
 # Run commitlint from frontend/ where @commitlint/config-conventional is installed.
-# $1 is relative to git root (e.g. .git/COMMIT_EDITMSG), so resolve to absolute.
-COMMIT_MSG_FILE="$(git rev-parse --show-toplevel)/$1"
+# $1 may be relative (e.g. .git/COMMIT_EDITMSG) or absolute (in git worktrees).
+case "$1" in
+  /*) COMMIT_MSG_FILE="$1" ;;
+  *)  COMMIT_MSG_FILE="$(git rev-parse --show-toplevel)/$1" ;;
+esac
 cd frontend && pnpm exec commitlint --edit "$COMMIT_MSG_FILE"
