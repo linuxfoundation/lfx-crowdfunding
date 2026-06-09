@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 ---
 apiVersion: v2
-name: lfx-v2-initiatives-service
-description: LFX Crowdfunding Initiatives API
+name: lfx-crowdfunding-backend
+description: LFX Crowdfunding Backend API
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.1.1
+appVersion: "0.1.1"
 keywords:
   - lfx
   - crowdfunding
