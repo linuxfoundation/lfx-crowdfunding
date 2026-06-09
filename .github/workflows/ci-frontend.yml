@@ -151,7 +151,6 @@ jobs:
           FRONTEND_BASE_URL: "http://localhost:3000"
           LEDGER_BASE_URL: "http://localhost:9999"
           LEDGER_API_KEY: "placeholder"
-          JWKS_URL: "https://example.com/.well-known/jwks.json"
           JWT_AUDIENCE: "https://example.com"
           JWT_ISSUER: "https://example.com/"
           OTEL_SERVICE_NAME: "initiatives-api-e2e"
