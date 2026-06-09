@@ -49,7 +49,7 @@ func (s *PaymentService) ensureCustomer(ctx context.Context, username string) (u
 	if user.Email == "" {
 		return "", "", fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
 	}
-	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.ID, user.Email)
+	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
 	if err != nil {
 		return "", "", fmt.Errorf("create stripe customer: %w", err)
 	}

@@ -19,6 +19,7 @@ func TestPaymentService_CreateSetupIntent_NewCustomer(t *testing.T) {
 	// User has no stripe customer yet — one must be created and persisted.
 	const wantSecret = "seti_abc_secret_xyz"
 	const wantCustomerID = "cus_new"
+	const wantLegacyUserID = "auth0|u1"
 
 	var createdCustomerID string
 	var savedCustomerID string
@@ -26,7 +27,7 @@ func TestPaymentService_CreateSetupIntent_NewCustomer(t *testing.T) {
 	svc := NewPaymentService(
 		&testUserRepo{
 			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-				return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
+				return &models.User{ID: "00000000-0000-0000-0000-000000000001", LegacyUserID: wantLegacyUserID, Username: "u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
 			},
 			onUpdateStripeInfo: func(_ context.Context, userUUID, customerID, _ string) error {
 				if userUUID != "00000000-0000-0000-0000-000000000001" {
@@ -38,6 +39,9 @@ func TestPaymentService_CreateSetupIntent_NewCustomer(t *testing.T) {
 		},
 		&configStripeClient{
 			onCreateCustomer: func(_ context.Context, userID, _ string) (string, error) {
+				if userID != wantLegacyUserID {
+					t.Errorf("CreateCustomer userID = %q, want LegacyUserID %q (not internal UUID)", userID, wantLegacyUserID)
+				}
 				createdCustomerID = wantCustomerID
 				return wantCustomerID, nil
 			},
