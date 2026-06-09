@@ -241,7 +241,8 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 		initiativeID = id
 	}
 
-	h.writeTransactions(w, r, initiativeID)
+	// Public, published-only data — safe for shared caches.
+	h.writeTransactions(w, r, initiativeID, "public, max-age=60, stale-while-revalidate=300")
 }
 
 // GetTransactionsForUser handles GET /v1/me/initiatives/{id}/transactions — requires
@@ -261,13 +262,18 @@ func (h *InitiativeHandler) GetTransactionsForUser(w http.ResponseWriter, r *htt
 		return
 	}
 
-	h.writeTransactions(w, r, initiativeID)
+	// Identity-scoped response — must not be shared-cacheable. Vary on Authorization
+	// so any intermediary keys per-caller and never serves one owner's data to another.
+	w.Header().Set("Vary", "Authorization")
+	h.writeTransactions(w, r, initiativeID, "private, max-age=60")
 }
 
 // writeTransactions parses the shared transaction query params, fetches the Ledger
-// transactions for the resolved initiative, and writes the cached JSON response.
-// Callers are responsible for resolving and authorizing initiativeID beforehand.
-func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Request, initiativeID string) {
+// transactions for the resolved initiative, and writes the JSON response with the
+// given Cache-Control policy. Callers are responsible for resolving and authorizing
+// initiativeID beforehand, and for choosing a cache policy appropriate to the route
+// (public for the published-only endpoint, private for the identity-scoped one).
+func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Request, initiativeID, cacheControl string) {
 	txnTypeParam := strings.ToLower(r.URL.Query().Get("type"))
 	var ledgerTxnType string
 	switch txnTypeParam {
@@ -306,7 +312,7 @@ func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Req
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
+	w.Header().Set("Cache-Control", cacheControl)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

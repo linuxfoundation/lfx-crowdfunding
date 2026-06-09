@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -192,6 +193,13 @@ func TestGetTransactionsForUser_OwnerSeesOwnDraft(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
+	// Identity-scoped responses must never be shared-cacheable.
+	if cc := w.Header().Get("Cache-Control"); !strings.Contains(cc, "private") {
+		t.Errorf("expected private Cache-Control on owner transactions, got %q", cc)
+	}
+	if v := w.Header().Get("Vary"); v != "Authorization" {
+		t.Errorf("expected Vary: Authorization, got %q", v)
+	}
 }
 
 func TestGetTransactionsForUser_NonOwnerGets404(t *testing.T) {
@@ -219,5 +227,19 @@ func TestGetTransactionsForUser_NoPrincipalReturns401(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestGetTransactionsForUser_NotFoundReturns404(t *testing.T) {
+	userRepo := &stubUserRepoForListForUser{user: &models.User{ID: "owner-uuid-1", Username: "owner"}}
+	repo := &stubRepoForGetForUser{err: domain.ErrInitiativeNotFound}
+	svc := service.NewInitiativeService(repo, userRepo, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	h := NewInitiativeHandler(svc, nil, slog.Default())
+
+	w := httptest.NewRecorder()
+	getForUserTxnRouter(h).ServeHTTP(w, getForUserTxnReq("missing-slug", &models.Principal{Username: "owner"}))
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
