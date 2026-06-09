@@ -240,13 +240,13 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	}
 
 	donation := &models.Donation{
-		UserID:                user.ID,
-		InitiativeID:          initiativeID,
-		OrganizationID:        input.OrganizationID,
-		Category:              input.Category,
-		CurrentAmountCents:    input.AmountCents,
-		PONumber:              input.PONumber,
-		PaymentMethod:         input.PaymentMethod,
+		UserID:             user.ID,
+		InitiativeID:       initiativeID,
+		OrganizationID:     input.OrganizationID,
+		Category:           input.Category,
+		CurrentAmountCents: input.AmountCents,
+		PONumber:           input.PONumber,
+		PaymentMethod:      input.PaymentMethod,
 		// Always start as pending so the payment_intent.succeeded webhook can
 		// perform the pending→succeeded transition unconditionally and send
 		// emails. When Stripe confirms synchronously (no 3DS), the PI comes
