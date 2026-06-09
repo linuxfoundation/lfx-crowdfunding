@@ -147,6 +147,8 @@ jobs:
           STRIPE_SECRET_KEY: "sk_test_placeholder"
           STRIPE_WEBHOOK_SECRET: "whsec_placeholder"
           STRIPE_RETURN_URL: "http://localhost:3000/payment/complete"
+          S3_UPLOAD_BUCKET: "e2e-placeholder-bucket"
+          FRONTEND_BASE_URL: "http://localhost:3000"
           LEDGER_BASE_URL: "http://localhost:9999"
           LEDGER_API_KEY: "placeholder"
           JWKS_URL: "https://example.com/.well-known/jwks.json"
