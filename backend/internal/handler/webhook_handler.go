@@ -189,13 +189,19 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 	}
 	amount := int(pi.Amount)
 	donorEmail := pi.Metadata["donor_email"]
+	// Use the charge ID as the stable deduplication key for Ledger; fall back
+	// to the PaymentIntent ID when latest_charge is not yet expanded.
+	sourceTxnID := chargeID
+	if sourceTxnID == "" {
+		sourceTxnID = pi.ID
+	}
 	txn := clients.LedgerTransaction{
 		ProjectID:       initiativeID,
 		UserID:          userID,
 		OrganizationID:  pi.Metadata["org_id"],
 		AccountEmail:    donorEmail,
 		SourceType:      ledgerSourceType,
-		SourceTxnID:     chargeID,
+		SourceTxnID:     sourceTxnID,
 		SourceAccountID: customerID,
 		TxnType:         ledgerTxnType,
 		TxnCategory:     pi.Metadata["category"],
@@ -324,11 +330,17 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 		customerID = inv.Customer.ID
 	}
 	amount := int(inv.AmountPaid)
+	// inv.CustomerEmail can be empty depending on how the Invoice was created.
+	// Fall back to the donor_email stored in the subscription metadata snapshot.
+	donorEmail := inv.CustomerEmail
+	if donorEmail == "" {
+		donorEmail = subMeta["donor_email"]
+	}
 	txn := clients.LedgerTransaction{
 		ProjectID:       initiativeID,
 		UserID:          userID,
 		OrganizationID:  subMeta["org_id"],
-		AccountEmail:    inv.CustomerEmail,
+		AccountEmail:    donorEmail,
 		SourceType:      ledgerSourceType,
 		SourceTxnID:     inv.ID, // invoice ID is the stable unique key for subscription payments
 		SourceAccountID: customerID,
@@ -356,22 +368,22 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	amountFormatted := fmt.Sprintf("$%.2f", float64(amount)/100)
 	donorName := subMeta["donor_name"]
 	if donorName == "" {
-		donorName = inv.CustomerEmail
+		donorName = donorEmail
 	}
 	initiativeName := subMeta["initiative_name"]
 	if initiativeName == "" {
 		initiativeName = initiativeID
 	}
-	if inv.CustomerEmail != "" {
+	if donorEmail != "" {
 		if emailErr := h.emailService.SendDonationConfirmationEmail(
-			r.Context(), inv.CustomerEmail, donorName, initiativeName, initiativeURL, amountFormatted,
+			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted,
 		); emailErr != nil {
 			h.logger.Warn("invoice.payment_succeeded: donor confirmation email failed",
 				"sub_id", subID, "error", emailErr)
 		}
 	}
 	if adminErr := h.emailService.SendDonationAdminNotificationEmail(
-		r.Context(), subMeta["owner_email"], donorName, inv.CustomerEmail, initiativeName, initiativeURL, amountFormatted,
+		r.Context(), subMeta["owner_email"], donorName, donorEmail, initiativeName, initiativeURL, amountFormatted,
 	); adminErr != nil {
 		h.logger.Warn("invoice.payment_succeeded: admin notification email failed",
 			"sub_id", subID, "error", adminErr)
