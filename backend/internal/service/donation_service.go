@@ -247,7 +247,12 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		CurrentAmountCents:    input.AmountCents,
 		PONumber:              input.PONumber,
 		PaymentMethod:         input.PaymentMethod,
-		Status:                pi.Status,
+		// Always start as pending so the payment_intent.succeeded webhook can
+		// perform the pending→succeeded transition unconditionally and send
+		// emails. When Stripe confirms synchronously (no 3DS), the PI comes
+		// back as "succeeded" immediately and the webhook would hit
+		// ErrAlreadyProcessed — skipping emails — if we stored that status.
+		Status:                models.DonationStatusPending,
 		StripePaymentIntentID: pi.ID,
 		StripeChargeID:        pi.ChargeID,
 	}
@@ -258,6 +263,10 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		return nil, fmt.Errorf("record donation: %w", err)
 	}
 
+	// Overlay the actual Stripe PI status on the response so the frontend
+	// can detect "requires_action" and trigger the 3DS challenge. The stored
+	// status remains "pending" until the webhook finalises it.
+	created.Status = pi.Status
 	// Surface client_secret when 3DS challenge is needed — transient, not stored.
 	created.ClientSecret = pi.ClientSecret
 	return created, nil
