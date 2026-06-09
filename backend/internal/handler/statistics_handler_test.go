@@ -59,6 +59,9 @@ func (c *statsLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clien
 func (c *statsLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
+func (c *statsLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
+	return nil
+}
 
 // newTestStatisticsHandler wires up a StatisticsHandler with the given ledger client stub.
 func newTestStatisticsHandler(lc *statsLedgerClient) *StatisticsHandler {

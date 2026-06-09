@@ -98,6 +98,9 @@ func (m *mockLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 func (m *mockLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
+func (m *mockLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
+	return nil
+}
 
 type mockStripeClient struct{}
 
@@ -201,6 +204,12 @@ func (m *mockEmailService) SendProjectForReviewEmail(_ context.Context, ownerNam
 }
 func (m *mockEmailService) InitiativeURL(slug string) string {
 	return "https://crowdfunding.lfx.linuxfoundation.org/initiatives/" + slug
+}
+func (m *mockEmailService) SendDonationConfirmationEmail(_ context.Context, _, _, _, _, _ string) error {
+	return nil
+}
+func (m *mockEmailService) SendDonationAdminNotificationEmail(_ context.Context, _, _, _, _, _, _ string) error {
+	return nil
 }
 
 // --- flattenSponsors ---

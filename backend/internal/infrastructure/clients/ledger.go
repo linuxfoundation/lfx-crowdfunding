@@ -71,6 +71,11 @@ type LedgerClient interface {
 
 	// GetPlatformRecentDonations returns the most recent platform-wide credit transactions.
 	GetPlatformRecentDonations(ctx context.Context) ([]LedgerRecentDonation, error)
+
+	// PostTransaction records a completed charge in the Ledger service.
+	// Passing version="v2" instructs the Ledger service to skip its own email
+	// notifications because this service handles them.
+	PostTransaction(ctx context.Context, txn LedgerTransaction) error
 }
 
 // LedgerConfig holds Ledger service connection settings.
@@ -481,4 +486,51 @@ func (c *ledgerHTTPClient) GetAllBalances(ctx context.Context) ([]models.LedgerR
 		return nil, fmt.Errorf("ledger all balances: %w", err)
 	}
 	return resp.Balances, nil
+}
+
+// LedgerTransaction is the wire representation of a single transaction sent to
+// the Ledger POST /transactions endpoint. Field names match the Ledger service's
+// JSON schema exactly (camelCase).
+type LedgerTransaction struct {
+	ProjectID       string `json:"projectID"`
+	UserID          string `json:"userID"`
+	OrganizationID  string `json:"organizationID,omitempty"`
+	AccountEmail    string `json:"accountEmail"`
+	TxnComment      string `json:"txnComment,omitempty"`
+	SourceType      string `json:"sourceType"`
+	SourceTxnID     string `json:"sourceTxnID"`
+	SourceAccountID string `json:"sourceAccountID"`
+	TxnType         string `json:"txnType"`
+	TxnCategory     string `json:"txnCategory,omitempty"`
+	Fee             int    `json:"fee"`
+	Amount          int    `json:"amount"`
+	TxnDate         int64  `json:"txnDate"`
+}
+
+type ledgerPostTransactionsRequest struct {
+	Transactions []LedgerTransaction `json:"transactions"`
+}
+
+// PostTransaction records a completed charge in the Ledger service.
+// The request is sent with ?version=v2 so the Ledger service skips its own
+// email notifications — this service is responsible for donor/admin emails.
+func (c *ledgerHTTPClient) PostTransaction(ctx context.Context, txn LedgerTransaction) error {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.PostTransaction")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("ledger.project_id", txn.ProjectID),
+		attribute.String("ledger.source_txn_id", txn.SourceTxnID),
+	)
+
+	endpoint := fmt.Sprintf("%s/transactions?version=v2", c.baseURL)
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
+	body := ledgerPostTransactionsRequest{Transactions: []LedgerTransaction{txn}}
+
+	if err := c.httpClient.PostJSON(ctx, endpoint, headers, body, nil, func(r *http.Response) error {
+		return fmt.Errorf("ledger POST /transactions returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	}); err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("ledger post transaction: %w", err)
+	}
+	return nil
 }

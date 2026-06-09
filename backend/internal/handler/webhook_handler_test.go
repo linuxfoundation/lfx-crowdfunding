@@ -69,6 +69,67 @@ func (c *wbStripeClient) GetOrCreatePrice(_ context.Context, _ string, _ string,
 // Ensure interface is fully satisfied at compile time.
 var _ clients.StripeClient = (*wbStripeClient)(nil)
 
+// wbLedgerClient is a no-op LedgerClient stub for webhook handler tests.
+type wbLedgerClient struct {
+	onPostTransaction func(ctx context.Context, txn clients.LedgerTransaction) error
+}
+
+func (c *wbLedgerClient) GetBalance(_ context.Context, _ string) (*clients.LedgerBalance, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetAllBalances(_ context.Context) ([]models.LedgerRawBalance, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetPlatformBalance(_ context.Context, _ int) (*clients.LedgerPlatformBalance, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clients.LedgerPlatformMonthly, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
+	return nil, nil
+}
+func (c *wbLedgerClient) PostTransaction(ctx context.Context, txn clients.LedgerTransaction) error {
+	if c.onPostTransaction != nil {
+		return c.onPostTransaction(ctx, txn)
+	}
+	return nil
+}
+
+// wbEmailService is a no-op EmailService stub for webhook handler tests.
+type wbEmailService struct {
+	onConfirmation func(toEmail, toName, initiativeName, initiativeURL, amount string)
+	onAdminNotify  func(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string)
+}
+
+func (e *wbEmailService) SendProjectApprovedEmail(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+func (e *wbEmailService) SendProjectDeclinedEmail(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+func (e *wbEmailService) SendProjectForReviewEmail(_ context.Context, _, _, _, _, _, _ string) error {
+	return nil
+}
+func (e *wbEmailService) SendDonationConfirmationEmail(_ context.Context, toEmail, toName, initiativeName, initiativeURL, amount string) error {
+	if e.onConfirmation != nil {
+		e.onConfirmation(toEmail, toName, initiativeName, initiativeURL, amount)
+	}
+	return nil
+}
+func (e *wbEmailService) SendDonationAdminNotificationEmail(_ context.Context, ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string) error {
+	if e.onAdminNotify != nil {
+		e.onAdminNotify(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount)
+	}
+	return nil
+}
+func (e *wbEmailService) InitiativeURL(slug string) string {
+	return "https://crowdfunding.lfx.linuxfoundation.org/initiatives/" + slug
+}
+
 // wbDonationRepo implements domain.DonationRepository for webhook tests.
 type wbDonationRepo struct {
 	onUpdateByPaymentIntentID func(ctx context.Context, piID, status, chargeID string) error
@@ -127,7 +188,12 @@ func discardLogger() *slog.Logger {
 
 // newTestWebhookHandler wires up a WebhookHandler with the given mocks.
 func newTestWebhookHandler(sc *wbStripeClient, dr *wbDonationRepo, sr *wbSubscriptionRepo) *WebhookHandler {
-	return NewWebhookHandler(sc, dr, sr, "whsec_test", discardLogger(), false)
+	return NewWebhookHandler(sc, &wbLedgerClient{}, dr, sr, &wbEmailService{}, "whsec_test", discardLogger(), false)
+}
+
+// newTestWebhookHandlerFull allows injecting custom ledger and email stubs.
+func newTestWebhookHandlerFull(sc *wbStripeClient, dr *wbDonationRepo, sr *wbSubscriptionRepo, lc *wbLedgerClient, es *wbEmailService) *WebhookHandler {
+	return NewWebhookHandler(sc, lc, dr, sr, es, "whsec_test", discardLogger(), false)
 }
 
 // postWebhook sends a simulated Stripe webhook POST to the handler.
@@ -585,5 +651,276 @@ func TestWebhookHandler_InvoicePaymentSucceeded_SubscriptionNotFound_Returns200(
 	rr := postWebhook(t, newTestWebhookHandler(sc, &wbDonationRepo{}, sr), "t=1,v1=sig", `{}`)
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200 for permanent not-found (no retry)", rr.Code)
+	}
+}
+
+// --- v2 side-effect tests: Ledger POST, emails, idempotency ---
+
+// v2 payment intent JSON with all required metadata fields.
+const piV2JSON = `{
+	"id":"pi_v2_001","amount":5000,"created":1700000000,
+	"latest_charge":{"id":"ch_v2_001"},
+	"metadata":{
+		"version":"v2","initiative_id":"init_001","initiative_slug":"test-slug",
+		"initiative_name":"Test Initiative","user_id":"usr_001",
+		"donor_name":"Jane Doe","donor_email":"jane@example.com",
+		"owner_email":"owner@example.com","category":"fund"
+	}
+}`
+
+// v2 invoice JSON with all required metadata fields.
+const invV2JSON = `{
+	"id":"in_v2_001","amount_paid":2500,"created":1700000000,
+	"customer_email":"jane@example.com",
+	"parent":{"subscription_details":{
+		"subscription":{"id":"sub_v2_001"},
+		"metadata":{
+			"version":"v2","initiative_id":"init_001","initiative_slug":"test-slug",
+			"initiative_name":"Test Initiative","user_id":"usr_001",
+			"donor_name":"Jane Doe","donor_email":"jane@example.com",
+			"owner_email":"owner@example.com","category":"fund"
+		}
+	}}
+}`
+
+// TestWebhookHandler_PaymentIntentSucceeded_V2_PostsLedgerAndSendsEmails verifies that
+// a v2 payment_intent.succeeded event posts to Ledger and sends donor + admin emails.
+func TestWebhookHandler_PaymentIntentSucceeded_V2_PostsLedgerAndSendsEmails(t *testing.T) {
+	var gotTxn clients.LedgerTransaction
+	var gotConfirmTo, gotAdminOwner string
+
+	lc := &wbLedgerClient{
+		onPostTransaction: func(_ context.Context, txn clients.LedgerTransaction) error {
+			gotTxn = txn
+			return nil
+		},
+	}
+	es := &wbEmailService{
+		onConfirmation: func(toEmail, _, _, _, _ string) { gotConfirmTo = toEmail },
+		onAdminNotify:  func(ownerEmail, _, _, _, _, _ string) { gotAdminOwner = ownerEmail },
+	}
+	event := buildEvent("payment_intent.succeeded", piV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, lc, es), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotTxn.ProjectID != "init_001" {
+		t.Errorf("Ledger ProjectID = %q, want init_001", gotTxn.ProjectID)
+	}
+	if gotTxn.SourceTxnID != "ch_v2_001" {
+		t.Errorf("Ledger SourceTxnID = %q, want ch_v2_001", gotTxn.SourceTxnID)
+	}
+	if gotTxn.AccountEmail != "jane@example.com" {
+		t.Errorf("Ledger AccountEmail = %q, want jane@example.com", gotTxn.AccountEmail)
+	}
+	if gotTxn.Amount != 5000 {
+		t.Errorf("Ledger Amount = %d, want 5000", gotTxn.Amount)
+	}
+	if gotConfirmTo != "jane@example.com" {
+		t.Errorf("confirmation email to = %q, want jane@example.com", gotConfirmTo)
+	}
+	if gotAdminOwner != "owner@example.com" {
+		t.Errorf("admin email owner = %q, want owner@example.com", gotAdminOwner)
+	}
+}
+
+// TestWebhookHandler_PaymentIntentSucceeded_V2_NilLatestCharge_UsesPIIDAsSourceTxnID
+// verifies the fallback: when latest_charge is absent, the PI ID is used as SourceTxnID.
+func TestWebhookHandler_PaymentIntentSucceeded_V2_NilLatestCharge_UsesPIIDAsSourceTxnID(t *testing.T) {
+	var gotSourceTxnID string
+	lc := &wbLedgerClient{
+		onPostTransaction: func(_ context.Context, txn clients.LedgerTransaction) error {
+			gotSourceTxnID = txn.SourceTxnID
+			return nil
+		},
+	}
+	piJSON := `{
+		"id":"pi_nocharge","amount":1000,"created":1700000000,
+		"metadata":{"version":"v2","initiative_id":"init_001","user_id":"usr_001"}
+	}`
+	event := buildEvent("payment_intent.succeeded", piJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, lc, &wbEmailService{}), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotSourceTxnID != "pi_nocharge" {
+		t.Errorf("SourceTxnID = %q, want pi_nocharge (PI ID fallback)", gotSourceTxnID)
+	}
+}
+
+// TestWebhookHandler_PaymentIntentSucceeded_V2_AlreadyProcessed_SkipsLedgerAndEmail
+// verifies that ErrAlreadyProcessed causes the handler to return 200 without posting
+// to Ledger or sending emails (idempotent retry behaviour).
+func TestWebhookHandler_PaymentIntentSucceeded_V2_AlreadyProcessed_SkipsLedgerAndEmail(t *testing.T) {
+	ledgerCalled := false
+	emailCalled := false
+
+	dr := &wbDonationRepo{
+		onUpdateByPaymentIntentID: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrAlreadyProcessed
+		},
+	}
+	lc := &wbLedgerClient{
+		onPostTransaction: func(_ context.Context, _ clients.LedgerTransaction) error {
+			ledgerCalled = true
+			return nil
+		},
+	}
+	es := &wbEmailService{
+		onConfirmation: func(_, _, _, _, _ string) { emailCalled = true },
+	}
+	event := buildEvent("payment_intent.succeeded", piV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, dr, &wbSubscriptionRepo{}, lc, es), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if ledgerCalled {
+		t.Error("Ledger must not be called when ErrAlreadyProcessed")
+	}
+	if emailCalled {
+		t.Error("email must not be sent when ErrAlreadyProcessed")
+	}
+}
+
+// TestWebhookHandler_InvoicePaymentSucceeded_V2_PostsLedgerAndSendsEmails verifies that
+// a v2 invoice.payment_succeeded event posts to Ledger and sends donor + admin emails.
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_PostsLedgerAndSendsEmails(t *testing.T) {
+	var gotTxn clients.LedgerTransaction
+	var gotConfirmTo, gotAdminOwner string
+
+	lc := &wbLedgerClient{
+		onPostTransaction: func(_ context.Context, txn clients.LedgerTransaction) error {
+			gotTxn = txn
+			return nil
+		},
+	}
+	es := &wbEmailService{
+		onConfirmation: func(toEmail, _, _, _, _ string) { gotConfirmTo = toEmail },
+		onAdminNotify:  func(ownerEmail, _, _, _, _, _ string) { gotAdminOwner = ownerEmail },
+	}
+	event := buildEvent("invoice.payment_succeeded", invV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, lc, es), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotTxn.ProjectID != "init_001" {
+		t.Errorf("Ledger ProjectID = %q, want init_001", gotTxn.ProjectID)
+	}
+	if gotTxn.SourceTxnID != "in_v2_001" {
+		t.Errorf("Ledger SourceTxnID = %q, want in_v2_001", gotTxn.SourceTxnID)
+	}
+	if gotTxn.AccountEmail != "jane@example.com" {
+		t.Errorf("Ledger AccountEmail = %q, want jane@example.com", gotTxn.AccountEmail)
+	}
+	if gotTxn.Amount != 2500 {
+		t.Errorf("Ledger Amount = %d, want 2500", gotTxn.Amount)
+	}
+	if gotConfirmTo != "jane@example.com" {
+		t.Errorf("confirmation email to = %q, want jane@example.com", gotConfirmTo)
+	}
+	if gotAdminOwner != "owner@example.com" {
+		t.Errorf("admin email owner = %q, want owner@example.com", gotAdminOwner)
+	}
+}
+
+// TestWebhookHandler_InvoicePaymentSucceeded_V2_AlreadyProcessed_SkipsLedgerAndEmail
+// verifies that ErrAlreadyProcessed returns 200 without posting to Ledger or sending emails.
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_AlreadyProcessed_SkipsLedgerAndEmail(t *testing.T) {
+	ledgerCalled := false
+	emailCalled := false
+
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, _, _ string) error {
+			return domain.ErrAlreadyProcessed
+		},
+	}
+	lc := &wbLedgerClient{
+		onPostTransaction: func(_ context.Context, _ clients.LedgerTransaction) error {
+			ledgerCalled = true
+			return nil
+		},
+	}
+	es := &wbEmailService{
+		onConfirmation: func(_, _, _, _, _ string) { emailCalled = true },
+	}
+	event := buildEvent("invoice.payment_succeeded", invV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, sr, lc, es), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if ledgerCalled {
+		t.Error("Ledger must not be called when ErrAlreadyProcessed")
+	}
+	if emailCalled {
+		t.Error("email must not be sent when ErrAlreadyProcessed")
+	}
+}
+
+// TestWebhookHandler_InvoicePaymentSucceeded_V2_FallsBackToMetaDonorEmail verifies that
+// when inv.CustomerEmail is empty, the handler falls back to donor_email in subscription
+// metadata for both the Ledger AccountEmail and the confirmation email recipient.
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_FallsBackToMetaDonorEmail(t *testing.T) {
+	var gotAccountEmail, gotConfirmTo string
+
+	lc := &wbLedgerClient{
+		onPostTransaction: func(_ context.Context, txn clients.LedgerTransaction) error {
+			gotAccountEmail = txn.AccountEmail
+			return nil
+		},
+	}
+	es := &wbEmailService{
+		onConfirmation: func(toEmail, _, _, _, _ string) { gotConfirmTo = toEmail },
+	}
+	// customer_email intentionally omitted — only donor_email in metadata.
+	invJSON := `{
+		"id":"in_nocemail","amount_paid":1000,"created":1700000000,
+		"parent":{"subscription_details":{
+			"subscription":{"id":"sub_nocemail"},
+			"metadata":{
+				"version":"v2","initiative_id":"init_001","user_id":"usr_001",
+				"donor_email":"meta@example.com"
+			}
+		}}
+	}`
+	event := buildEvent("invoice.payment_succeeded", invJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, lc, es), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotAccountEmail != "meta@example.com" {
+		t.Errorf("Ledger AccountEmail = %q, want meta@example.com (fallback from metadata)", gotAccountEmail)
+	}
+	if gotConfirmTo != "meta@example.com" {
+		t.Errorf("confirmation email to = %q, want meta@example.com (fallback from metadata)", gotConfirmTo)
 	}
 }
