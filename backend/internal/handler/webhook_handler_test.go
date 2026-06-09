@@ -456,8 +456,7 @@ func TestWebhookHandler_SubscriptionUpdated_NonCancellation_Ignored(t *testing.T
 			return nil
 		},
 	}
-	// canceled_at absent (zero), status=active — not a cancellation
-	subJSON := `{"id":"sub_updated_002","canceled_at":0,"status":"active"}`
+	// canceled_at=0, status=active — not a cancellation
 	event := buildEvent("customer.subscription.updated", subJSON)
 	sc := &wbStripeClient{
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
