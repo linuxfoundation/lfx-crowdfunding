@@ -205,10 +205,10 @@ func (m *mockEmailService) SendProjectForReviewEmail(_ context.Context, ownerNam
 func (m *mockEmailService) InitiativeURL(slug string) string {
 	return "https://crowdfunding.lfx.linuxfoundation.org/initiatives/" + slug
 }
-func (m *mockEmailService) SendDonationConfirmationEmail(_ context.Context, _, _, _, _, _ string) error {
+func (m *mockEmailService) SendDonationConfirmationEmail(_ context.Context, _, _, _, _, _, _, _, _, _ string) error {
 	return nil
 }
-func (m *mockEmailService) SendDonationAdminNotificationEmail(_ context.Context, _, _, _, _, _, _ string) error {
+func (m *mockEmailService) SendDonationAdminNotificationEmail(_ context.Context, _, _, _, _, _, _, _, _, _, _, _ string) error {
 	return nil
 }
 
