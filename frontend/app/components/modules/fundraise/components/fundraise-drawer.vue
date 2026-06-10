@@ -84,7 +84,7 @@ const isOpen = computed({
 });
 
 const step = ref(0);
-const submitted = ref(true); // TODO: revert — testing only
+const submitted = ref(false);
 
 const selectedType = ref<InitiativeType | null>(null);
 
