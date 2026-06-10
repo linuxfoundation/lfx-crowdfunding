@@ -78,7 +78,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		FromName:  cfg.Mandrill.FromName,
 		Timeout:   cfg.Mandrill.Timeout,
 	})
-	emailSvc := clients.NewEmailService(mandrillClient, cfg.Mandrill.FrontendBase, cfg.Mandrill.NotificationEmails, cfg.Mandrill.DryRun)
+	emailSvc := clients.NewEmailService(mandrillClient, cfg.Mandrill.FrontendBase, cfg.Mandrill.NotificationEmails, cfg.Mandrill.DryRun, logger)
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, logger)

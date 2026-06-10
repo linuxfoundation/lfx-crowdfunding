@@ -6,6 +6,7 @@ package clients
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 )
 
@@ -35,7 +36,7 @@ func (m *mockMandrill) SendTemplate(_ context.Context, _ MandrillTemplateName, t
 // --- helpers ---
 
 func newSvc(mandrill MandrillClient, emails []string) *emailService {
-	return NewEmailService(mandrill, "https://example.com", emails, false).(*emailService)
+	return NewEmailService(mandrill, "https://example.com", emails, false, slog.Default()).(*emailService)
 }
 
 // --- tests ---
@@ -88,7 +89,7 @@ func TestSendProjectForReviewEmail_MultipleRecipients(t *testing.T) {
 
 func TestEmailDryRun_SuppressesSend(t *testing.T) {
 	m := &mockMandrill{}
-	svc := NewEmailService(m, "https://example.com", []string{"reviewer@example.com"}, true).(*emailService)
+	svc := NewEmailService(m, "https://example.com", []string{"reviewer@example.com"}, true, slog.Default()).(*emailService)
 
 	if err := svc.SendProjectForReviewEmail(context.Background(), "owner", "owner@example.com", "My Project", "http://url", "http://approve", "http://decline"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
