@@ -168,6 +168,13 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	if input.IdempotencyKey == "" {
 		return nil, fmt.Errorf("%w: idempotency_key is required", domain.ErrInvalidInput)
 	}
+	switch input.PaymentMethod {
+	case models.PaymentMethodStripe, models.PaymentMethodInvoice, "":
+		// valid (empty defaults to card on the client side)
+	default:
+		return nil, fmt.Errorf("%w: unsupported payment_method %q; supported: %q, %q",
+			domain.ErrInvalidInput, input.PaymentMethod, models.PaymentMethodStripe, models.PaymentMethodInvoice)
+	}
 
 	// Verify the initiative exists and accepts funding.
 	initiative, err := s.initiativeRepo.GetByID(ctx, initiativeID)
@@ -212,27 +219,42 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	// The client-supplied idempotency key is forwarded to Stripe verbatim:
 	// if the client retries the same request it sends the same key, Stripe
 	// returns the cached response instead of creating a duplicate charge.
-	// Best-effort owner email lookup for admin notification email.
+	// Best-effort owner email and name lookup for admin notification email.
 	// Failure here is non-fatal — the donation proceeds without the email.
 	ownerEmail := ""
+	ownerName := ""
 	if owner, ownerErr := s.userRepo.GetByID(ctx, initiative.OwnerID); ownerErr == nil {
 		ownerEmail = owner.Email
+		ownerName = owner.Name
+	}
+
+	// Best-effort org name lookup for email rendering.
+	orgName := ""
+	if input.OrganizationID != "" {
+		if orgs, orgErr := s.initiativeRepo.GetOrganizationsByIDs(ctx, []string{input.OrganizationID}); orgErr == nil {
+			if org, ok := orgs[input.OrganizationID]; ok {
+				orgName = org.Name
+			}
+		}
 	}
 
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
-		InitiativeID:    initiativeID,
-		InitiativeSlug:  initiative.Slug,
-		InitiativeName:  initiative.Name,
-		UserID:          user.LegacyUserID,
-		DonorName:       user.Name,
-		DonorEmail:      user.Email,
-		OwnerEmail:      ownerEmail,
-		CustomerID:      customerID,
-		AmountCents:     input.AmountCents,
-		PaymentMethodID: input.StripePaymentMethodID,
-		Category:        input.Category,
-		OrganizationID:  input.OrganizationID,
-		IdempotencyKey:  input.IdempotencyKey,
+		InitiativeID:     initiativeID,
+		InitiativeSlug:   initiative.Slug,
+		InitiativeName:   initiative.Name,
+		UserID:           user.LegacyUserID,
+		DonorName:        user.Name,
+		DonorEmail:       user.Email,
+		OwnerEmail:       ownerEmail,
+		OwnerName:        ownerName,
+		CustomerID:       customerID,
+		AmountCents:      input.AmountCents,
+		PaymentMethodID:  input.StripePaymentMethodID,
+		Category:         input.Category,
+		OrganizationID:   input.OrganizationID,
+		OrganizationName: orgName,
+		PaymentMethod:    input.PaymentMethod,
+		IdempotencyKey:   input.IdempotencyKey,
 	})
 	if err != nil {
 		span.RecordError(err)

@@ -158,10 +158,10 @@ func (e *apprEmailService) SendProjectDeclinedEmail(_ context.Context, _, _, _, 
 func (e *apprEmailService) SendProjectForReviewEmail(_ context.Context, _, _, _, _, _, _ string) error {
 	return nil
 }
-func (e *apprEmailService) SendDonationConfirmationEmail(_ context.Context, _, _, _, _, _ string) error {
+func (e *apprEmailService) SendDonationConfirmationEmail(_ context.Context, _, _, _, _, _, _, _, _, _ string) error {
 	return nil
 }
-func (e *apprEmailService) SendDonationAdminNotificationEmail(_ context.Context, _, _, _, _, _, _ string) error {
+func (e *apprEmailService) SendDonationAdminNotificationEmail(_ context.Context, _, _, _, _, _, _, _, _, _, _, _ string) error {
 	return nil
 }
 func (e *apprEmailService) InitiativeURL(slug string) string {

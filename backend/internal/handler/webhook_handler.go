@@ -248,16 +248,21 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 	if initiativeName == "" {
 		initiativeName = initiativeID
 	}
+	category := pi.Metadata["category"]
+	orgName := pi.Metadata["org_name"]
+	ownerName := pi.Metadata["owner_name"]
+	payment := paymentLabel(pi.Metadata["payment_method"])
+	donationType := "One-time"
 	if donorEmail != "" {
 		if emailErr := h.emailService.SendDonationConfirmationEmail(
-			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted,
+			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 		); emailErr != nil {
 			h.logger.Warn("payment_intent.succeeded: donor confirmation email failed",
 				"pi_id", pi.ID, "error", emailErr)
 		}
 	}
 	if adminErr := h.emailService.SendDonationAdminNotificationEmail(
-		r.Context(), pi.Metadata["owner_email"], donorName, donorEmail, initiativeName, initiativeURL, amountFormatted,
+		r.Context(), pi.Metadata["owner_email"], ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 	); adminErr != nil {
 		h.logger.Warn("payment_intent.succeeded: admin notification email failed",
 			"pi_id", pi.ID, "error", adminErr)
@@ -387,16 +392,21 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	if initiativeName == "" {
 		initiativeName = initiativeID
 	}
+	category := subMeta["category"]
+	orgName := subMeta["org_name"]
+	ownerName := subMeta["owner_name"]
+	payment := paymentLabel(subMeta["payment_method"])
+	donationType := donationTypeLabel(subMeta["frequency"])
 	if donorEmail != "" {
 		if emailErr := h.emailService.SendDonationConfirmationEmail(
-			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted,
+			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 		); emailErr != nil {
 			h.logger.Warn("invoice.payment_succeeded: donor confirmation email failed",
 				"sub_id", subID, "error", emailErr)
 		}
 	}
 	if adminErr := h.emailService.SendDonationAdminNotificationEmail(
-		r.Context(), subMeta["owner_email"], donorName, donorEmail, initiativeName, initiativeURL, amountFormatted,
+		r.Context(), subMeta["owner_email"], ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 	); adminErr != nil {
 		h.logger.Warn("invoice.payment_succeeded: admin notification email failed",
 			"sub_id", subID, "error", adminErr)
@@ -493,4 +503,38 @@ func (h *WebhookHandler) handleSubscriptionCanceled(r *http.Request, subID strin
 	}
 	h.logger.Info("subscription cancelled", "sub_id", subID)
 	return nil
+}
+
+// donationTypeLabel maps a stored frequency metadata value to a human-readable
+// label for the Mandrill template TYPE field.
+// Old subscriptions created before frequency was stored in metadata default to
+// "Recurring" rather than an incorrect specific frequency.
+func donationTypeLabel(frequency string) string {
+	switch frequency {
+	case "monthly", "month":
+		return "Monthly"
+	case "yearly", "year", "annual":
+		return "Yearly"
+	case "weekly", "week":
+		return "Weekly"
+	case "daily", "day":
+		return "Daily"
+	default:
+		return "Recurring" // safe fallback for old metadata and unexpected values
+	}
+}
+
+// paymentLabel converts a payment_method metadata value to a human-readable
+// label for Mandrill template PAYMENT fields.
+// Old charges/subscriptions created before this field was stored default to
+// "Credit Card" since only card payments were supported at that time.
+func paymentLabel(method string) string {
+	switch method {
+	case models.PaymentMethodStripe:
+		return "Credit Card"
+	case models.PaymentMethodInvoice:
+		return "Invoice"
+	default:
+		return "Credit Card"
+	}
 }

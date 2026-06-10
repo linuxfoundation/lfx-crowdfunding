@@ -13,6 +13,13 @@ const (
 	DonationStatusFailed    = "failed"
 )
 
+// PaymentMethod values stored in crowdfunding.donations.payment_method and
+// propagated to Stripe metadata for email rendering.
+const (
+	PaymentMethodStripe  = "stripe"  // card payment via Stripe
+	PaymentMethodInvoice = "invoice" // PO/invoice billing
+)
+
 // Donation maps to the crowdfunding.donations table.
 type Donation struct {
 	ID                 string `json:"id"`

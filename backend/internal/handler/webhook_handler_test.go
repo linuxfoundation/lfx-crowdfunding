@@ -101,8 +101,10 @@ func (c *wbLedgerClient) PostTransaction(ctx context.Context, txn clients.Ledger
 
 // wbEmailService is a no-op EmailService stub for webhook handler tests.
 type wbEmailService struct {
-	onConfirmation func(toEmail, toName, initiativeName, initiativeURL, amount string)
-	onAdminNotify  func(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string)
+	onConfirmation     func(toEmail, toName, initiativeName, initiativeURL, amount string)
+	onConfirmationFull func(toEmail, toName, initiativeName, initiativeURL, amount, category, orgName, payment, donationType string)
+	onAdminNotify      func(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string)
+	onAdminNotifyFull  func(ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amount, category, orgName, payment, donationType string)
 }
 
 func (e *wbEmailService) SendProjectApprovedEmail(_ context.Context, _, _, _, _ string) error {
@@ -114,15 +116,21 @@ func (e *wbEmailService) SendProjectDeclinedEmail(_ context.Context, _, _, _, _ 
 func (e *wbEmailService) SendProjectForReviewEmail(_ context.Context, _, _, _, _, _, _ string) error {
 	return nil
 }
-func (e *wbEmailService) SendDonationConfirmationEmail(_ context.Context, toEmail, toName, initiativeName, initiativeURL, amount string) error {
+func (e *wbEmailService) SendDonationConfirmationEmail(_ context.Context, toEmail, toName, initiativeName, initiativeURL, amount, category, orgName, payment, donationType string) error {
 	if e.onConfirmation != nil {
 		e.onConfirmation(toEmail, toName, initiativeName, initiativeURL, amount)
 	}
+	if e.onConfirmationFull != nil {
+		e.onConfirmationFull(toEmail, toName, initiativeName, initiativeURL, amount, category, orgName, payment, donationType)
+	}
 	return nil
 }
-func (e *wbEmailService) SendDonationAdminNotificationEmail(_ context.Context, ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string) error {
+func (e *wbEmailService) SendDonationAdminNotificationEmail(_ context.Context, ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amount, category, orgName, payment, donationType string) error {
 	if e.onAdminNotify != nil {
 		e.onAdminNotify(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount)
+	}
+	if e.onAdminNotifyFull != nil {
+		e.onAdminNotifyFull(ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amount, category, orgName, payment, donationType)
 	}
 	return nil
 }
@@ -692,7 +700,8 @@ const piV2JSON = `{
 		"version":"v2","initiative_id":"init_001","initiative_slug":"test-slug",
 		"initiative_name":"Test Initiative","user_id":"usr_001",
 		"donor_name":"Jane Doe","donor_email":"jane@example.com",
-		"owner_email":"owner@example.com","category":"fund"
+		"owner_email":"owner@example.com","owner_name":"Bob Owner",
+		"category":"fund","org_name":"Acme Corp","payment_method":"stripe"
 	}
 }`
 
@@ -706,7 +715,9 @@ const invV2JSON = `{
 			"version":"v2","initiative_id":"init_001","initiative_slug":"test-slug",
 			"initiative_name":"Test Initiative","user_id":"usr_001",
 			"donor_name":"Jane Doe","donor_email":"jane@example.com",
-			"owner_email":"owner@example.com","category":"fund"
+			"owner_email":"owner@example.com","owner_name":"Bob Owner",
+			"category":"fund","org_name":"Acme Corp","payment_method":"stripe",
+			"frequency":"monthly"
 		}
 	}}
 }`
@@ -950,5 +961,81 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_FallsBackToMetaDonorEmail(t *
 	}
 	if gotConfirmTo != "meta@example.com" {
 		t.Errorf("confirmation email to = %q, want meta@example.com (fallback from metadata)", gotConfirmTo)
+	}
+}
+
+// TestWebhookHandler_PaymentIntentSucceeded_V2_EmailTemplateFields verifies that
+// payment, donationType, category and orgName are correctly derived from PI metadata.
+func TestWebhookHandler_PaymentIntentSucceeded_V2_EmailTemplateFields(t *testing.T) {
+	var gotPayment, gotDonationType, gotCategory, gotOrgName, gotOwnerName string
+
+	es := &wbEmailService{}
+	es.onConfirmationFull = func(_, _, _, _, _, category, orgName, payment, donationType string) {
+		gotPayment = payment
+		gotDonationType = donationType
+		gotCategory = category
+		gotOrgName = orgName
+	}
+	es.onAdminNotifyFull = func(_, ownerName, _, _, _, _, _, _, _, _, _ string) {
+		gotOwnerName = ownerName
+	}
+	event := buildEvent("payment_intent.succeeded", piV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, &wbLedgerClient{}, es), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotPayment != "Credit Card" {
+		t.Errorf("email PAYMENT = %q, want \"Credit Card\"", gotPayment)
+	}
+	if gotDonationType != "One-time" {
+		t.Errorf("email TYPE = %q, want \"One-time\"", gotDonationType)
+	}
+	if gotCategory != "fund" {
+		t.Errorf("email CATEGORY_NAME = %q, want \"fund\"", gotCategory)
+	}
+	if gotOrgName != "Acme Corp" {
+		t.Errorf("email ORGANIZATION_NAME = %q, want \"Acme Corp\"", gotOrgName)
+	}
+	if gotOwnerName != "Bob Owner" {
+		t.Errorf("admin email FNAME = %q, want \"Bob Owner\"", gotOwnerName)
+	}
+}
+
+// TestWebhookHandler_InvoicePaymentSucceeded_V2_EmailTemplateFields verifies that
+// payment, donationType (derived from frequency), category and orgName are correct.
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_EmailTemplateFields(t *testing.T) {
+	var gotPayment, gotDonationType, gotCategory, gotOrgName string
+
+	es := &wbEmailService{}
+	es.onConfirmationFull = func(_, _, _, _, _, category, orgName, payment, donationType string) {
+		gotPayment = payment
+		gotDonationType = donationType
+		gotCategory = category
+		gotOrgName = orgName
+	}
+	event := buildEvent("invoice.payment_succeeded", invV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, &wbLedgerClient{}, es), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotPayment != "Credit Card" {
+		t.Errorf("email PAYMENT = %q, want \"Credit Card\"", gotPayment)
+	}
+	if gotDonationType != "Monthly" {
+		t.Errorf("email TYPE = %q, want \"Monthly\" (from frequency=monthly)", gotDonationType)
+	}
+	if gotCategory != "fund" {
+		t.Errorf("email CATEGORY_NAME = %q, want \"fund\"", gotCategory)
+	}
+	if gotOrgName != "Acme Corp" {
+		t.Errorf("email ORGANIZATION_NAME = %q, want \"Acme Corp\"", gotOrgName)
 	}
 }
