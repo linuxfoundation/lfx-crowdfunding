@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -17,14 +18,18 @@ type emailService struct {
 	mandrill           MandrillClient
 	frontendBase       string   // e.g. "https://crowdfunding.lfx.linuxfoundation.org"
 	notificationEmails []string // reviewer inboxes for new-submission alerts
+	dryRun             bool     // when true, log instead of calling Mandrill
 }
 
 // NewEmailService returns a domain.EmailService backed by Mandrill.
-func NewEmailService(mandrill MandrillClient, frontendBase string, notificationEmails []string) domain.EmailService {
+// When dryRun is true all sends are suppressed and logged — use during
+// production data migrations to prevent accidental emails to real users.
+func NewEmailService(mandrill MandrillClient, frontendBase string, notificationEmails []string, dryRun bool) domain.EmailService {
 	return &emailService{
 		mandrill:           mandrill,
 		frontendBase:       strings.TrimRight(frontendBase, "/"),
 		notificationEmails: notificationEmails,
+		dryRun:             dryRun,
 	}
 }
 
@@ -38,6 +43,13 @@ type emailRequest struct {
 
 // sendEmail is the single generic send method that all specific email methods delegate to.
 func (s *emailService) sendEmail(ctx context.Context, req emailRequest) error {
+	if s.dryRun {
+		slog.InfoContext(ctx, "email dry-run: suppressed send",
+			"template", req.TemplateName,
+			"recipient", req.Recipient,
+		)
+		return nil
+	}
 	return s.mandrill.SendTemplate(ctx, req.TemplateName, req.Recipient, req.RecipientName, req.TemplateParameters)
 }
 

@@ -118,6 +118,10 @@ type MandrillConfig struct {
 	FrontendBase       string   // base URL for initiative deep-links in emails
 	NotificationEmails []string // inboxes that receive new-submission alerts
 	Timeout            time.Duration
+	// DryRun, when true, suppresses all Mandrill API calls and logs the email
+	// instead. Set EMAIL_DRY_RUN=true when testing with production data to
+	// prevent accidental emails to real users.
+	DryRun bool
 }
 
 // LoadConfig reads all configuration from environment variables.
@@ -206,6 +210,10 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	emailDryRun, err := getBoolEnv("EMAIL_DRY_RUN", false)
+	if err != nil {
+		return nil, err
+	}
 	stripeReturnURL := getEnv("STRIPE_RETURN_URL", "")
 	if stripeReturnURL == "" {
 		return nil, fmt.Errorf("STRIPE_RETURN_URL is required (set to the frontend URL Stripe redirects to after 3DS, e.g. https://yourdomain.com/payment/complete)")
@@ -286,6 +294,7 @@ func LoadConfig() (*Config, error) {
 			FrontendBase:       frontendBaseURL,
 			NotificationEmails: parseCommaList(getEnv("MANDRILL_NOTIFICATION_EMAIL", "")),
 			Timeout:            10 * time.Second,
+			DryRun:             emailDryRun,
 		},
 	}, nil
 }

@@ -35,7 +35,7 @@ func (m *mockMandrill) SendTemplate(_ context.Context, _ MandrillTemplateName, t
 // --- helpers ---
 
 func newSvc(mandrill MandrillClient, emails []string) *emailService {
-	return NewEmailService(mandrill, "https://example.com", emails).(*emailService)
+	return NewEmailService(mandrill, "https://example.com", emails, false).(*emailService)
 }
 
 // --- tests ---
@@ -83,6 +83,18 @@ func TestSendProjectForReviewEmail_MultipleRecipients(t *testing.T) {
 		if m.calls[i].toEmail != want {
 			t.Errorf("call %d: expected %q, got %q", i, want, m.calls[i].toEmail)
 		}
+	}
+}
+
+func TestEmailDryRun_SuppressesSend(t *testing.T) {
+	m := &mockMandrill{}
+	svc := NewEmailService(m, "https://example.com", []string{"reviewer@example.com"}, true).(*emailService)
+
+	if err := svc.SendProjectForReviewEmail(context.Background(), "owner", "owner@example.com", "My Project", "http://url", "http://approve", "http://decline"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(m.calls) != 0 {
+		t.Fatalf("dry-run: expected 0 Mandrill calls, got %d", len(m.calls))
 	}
 }
 
