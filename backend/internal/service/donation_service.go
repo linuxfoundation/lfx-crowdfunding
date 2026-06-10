@@ -263,10 +263,12 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		return nil, fmt.Errorf("record donation: %w", err)
 	}
 
-	// Overlay the actual Stripe PaymentIntent status on the response so the
-	// frontend can distinguish immediate success ("succeeded") from 3DS-pending
-	// ("requires_action"). The stored row remains "pending" — GET /donations/:id
-	// returns the DB status; this response is the only place pi.Status surfaces.
+	// Overlay the actual Stripe PaymentIntent status on the response.
+	// The DB row is always stored as "pending" (see above), but the caller
+	// needs the real PI status to decide the next step:
+	//   - "requires_action" → ClientSecret is set; call stripe.confirmCardPayment
+	//   - "succeeded"       → no 3DS; payment processing, webhook finalises
+	// ClientSecret is transient and is only populated for "requires_action" flows.
 	created.Status = pi.Status
 	created.ClientSecret = pi.ClientSecret
 	return created, nil

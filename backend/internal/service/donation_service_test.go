@@ -359,8 +359,8 @@ func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if don.Status != models.DonationStatusSucceeded {
-		t.Errorf("Status = %q, want %q (PI status overlaid on response; persisted as pending)", don.Status, models.DonationStatusSucceeded)
+	if don.Status != "succeeded" {
+		t.Errorf("Status = %q, want \"succeeded\" (pi.Status overlaid on response)", don.Status)
 	}
 	if don.StripePaymentIntentID != "pi_test" {
 		t.Errorf("StripePaymentIntentID = %q, want pi_test", don.StripePaymentIntentID)
@@ -406,7 +406,7 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 	donRepo3DS := &testDonationRepo{
 		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
 			// Even for 3DS flows the donation must be persisted as pending;
-			// the returned status is overlaid with pi.Status ("requires_action").
+			// requires_action is returned to the caller but not stored.
 			if d.Status != models.DonationStatusPending {
 				t.Errorf("repo.Create called with Status=%q, want %q", d.Status, models.DonationStatusPending)
 			}
@@ -420,7 +420,7 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if don.Status != "requires_action" {
-		t.Errorf("Status = %q, want %q (PI status overlaid on response; persisted as pending)", don.Status, "requires_action")
+		t.Errorf("Status = %q, want \"requires_action\" (pi.Status overlaid on response)", don.Status)
 	}
 	if don.ClientSecret != wantSecret {
 		t.Errorf("ClientSecret = %q, want %q", don.ClientSecret, wantSecret)
