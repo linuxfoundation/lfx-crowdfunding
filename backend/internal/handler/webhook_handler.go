@@ -161,6 +161,19 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 			h.logger.Debug("payment_intent.succeeded: already processed, skipping", "pi_id", pi.ID)
 			return nil
 		}
+		if errors.Is(err, domain.ErrDonationNotFound) {
+			if pi.Metadata["version"] == "v2" {
+				// INSERT/webhook race: the donation row may not be committed yet.
+				// Return a transient error (not wrapping ErrDonationNotFound) so
+				// dispatch returns 500 and Stripe retries with its normal backoff.
+				h.logger.Warn("payment_intent.succeeded: v2 donation not found — possible INSERT/webhook race, returning error for Stripe retry",
+					"pi_id", pi.ID)
+				return fmt.Errorf("payment_intent.succeeded: v2 donation not yet committed (pi_id=%s)", pi.ID)
+			}
+			// Non-v2 (LFF-era events): no row will ever appear — propagate
+			// ErrDonationNotFound so dispatch acknowledges with 200 and stops
+			// Stripe's 72-hour retry loop.
+		}
 		if !errors.Is(err, domain.ErrDonationNotFound) {
 			h.logger.Error("payment_intent.succeeded: DB update failed", "pi_id", pi.ID, "error", err)
 		}

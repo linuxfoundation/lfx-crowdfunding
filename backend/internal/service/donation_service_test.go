@@ -359,8 +359,8 @@ func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if don.Status != "succeeded" {
-		t.Errorf("Status = %q, want succeeded", don.Status)
+	if don.Status != models.DonationStatusPending {
+		t.Errorf("Status = %q, want %q (persisted status; webhook finalises to succeeded)", don.Status, models.DonationStatusPending)
 	}
 	if don.StripePaymentIntentID != "pi_test" {
 		t.Errorf("StripePaymentIntentID = %q, want pi_test", don.StripePaymentIntentID)
@@ -419,8 +419,8 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if don.Status != "requires_action" {
-		t.Errorf("Status = %q, want requires_action", don.Status)
+	if don.Status != models.DonationStatusPending {
+		t.Errorf("Status = %q, want %q (persisted status; 3DS detected via ClientSecret, not Status)", don.Status, models.DonationStatusPending)
 	}
 	if don.ClientSecret != wantSecret {
 		t.Errorf("ClientSecret = %q, want %q", don.ClientSecret, wantSecret)

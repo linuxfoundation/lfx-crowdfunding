@@ -614,24 +614,52 @@ func TestWebhookHandler_PaymentIntentSucceeded_DBError_Returns500(t *testing.T) 
 	}
 }
 
-// --- not-found: no local row for Stripe ID → 200 to prevent retry loops (permanent not-found) ---
+// --- not-found behaviour: permanent (non-v2) vs transient (v2 INSERT race) ---
 
-func TestWebhookHandler_PaymentIntentSucceeded_DonationNotFound_Returns200(t *testing.T) {
+// TestWebhookHandler_PaymentIntentSucceeded_NonV2DonationNotFound_Returns200 verifies
+// that a not-found on a non-v2 (LFF-era) payment intent is acknowledged with 200
+// to prevent Stripe's 72-hour retry loop from firing indefinitely.
+func TestWebhookHandler_PaymentIntentSucceeded_NonV2DonationNotFound_Returns200(t *testing.T) {
 	dr := &wbDonationRepo{
 		onUpdateByPaymentIntentID: func(_ context.Context, _, _, _ string) error {
 			return domain.ErrDonationNotFound
 		},
 	}
+	// No "version":"v2" metadata — this is an LFF-era orphan event.
 	event := buildEvent("payment_intent.succeeded",
 		`{"id":"pi_orphan","latest_charge":{"id":"ch_orphan"}}`)
 	sc := &wbStripeClient{
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
 	}
 
-	// Not-found is permanent — acknowledge so Stripe does not retry indefinitely.
+	// Not-found is permanent for non-v2 — acknowledge to stop the retry loop.
 	rr := postWebhook(t, newTestWebhookHandler(sc, dr, &wbSubscriptionRepo{}), "t=1,v1=sig", `{}`)
 	if rr.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200 for permanent not-found (no retry)", rr.Code)
+		t.Errorf("status = %d, want 200 for non-v2 permanent not-found", rr.Code)
+	}
+}
+
+// TestWebhookHandler_PaymentIntentSucceeded_V2DonationNotFound_Returns500 verifies
+// that a not-found on a v2 payment intent returns 500 (triggering Stripe retry)
+// to guard against the INSERT/webhook race where the row may not be committed yet.
+func TestWebhookHandler_PaymentIntentSucceeded_V2DonationNotFound_Returns500(t *testing.T) {
+	dr := &wbDonationRepo{
+		onUpdateByPaymentIntentID: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrDonationNotFound
+		},
+	}
+	// v2 metadata present — this row should exist; not-found is a transient race.
+	v2PI := `{"id":"pi_v2_race","latest_charge":{"id":"ch_v2_race"},` +
+		`"metadata":{"version":"v2","initiative_id":"init-1","user_id":"u1"}}`
+	event := buildEvent("payment_intent.succeeded", v2PI)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	// Not-found on a v2 PI is transient — return 500 so Stripe retries.
+	rr := postWebhook(t, newTestWebhookHandler(sc, dr, &wbSubscriptionRepo{}), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 for v2 INSERT/webhook race", rr.Code)
 	}
 }
 
