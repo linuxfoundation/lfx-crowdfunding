@@ -110,6 +110,9 @@ func (c *apprStripeClient) CreateSubscription(_ context.Context, _ models.Stripe
 	return nil, nil
 }
 func (c *apprStripeClient) CancelSubscription(_ context.Context, _ string) error { return nil }
+func (c *apprStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
 func (c *apprStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.Event, error) {
 	return stripe.Event{}, nil
 }

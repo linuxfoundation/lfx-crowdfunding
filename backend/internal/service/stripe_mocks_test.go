@@ -21,7 +21,8 @@ type configStripeClient struct {
 	onDeleteProduct       func(context.Context, string) error
 	onCreatePaymentIntent func(context.Context, models.PaymentIntentRequest) (*models.PaymentIntent, error)
 	onCreateSubscription  func(context.Context, models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
-	onCancelSubscription  func(context.Context, string) error
+	onCancelSubscription          func(context.Context, string) error
+	onUpdatePaymentIntentMetadata func(context.Context, string, map[string]string) error
 	onConstructWebhook    func([]byte, string, string) (stripe.Event, error)
 	onCreateCustomer      func(context.Context, string, string) (string, error)
 	onCreateSetupIntent   func(context.Context, string) (string, error)
@@ -66,6 +67,12 @@ func (c *configStripeClient) CancelSubscription(ctx context.Context, id string) 
 		return c.onCancelSubscription(ctx, id)
 	}
 	panic("CancelSubscription not expected")
+}
+func (c *configStripeClient) UpdatePaymentIntentMetadata(ctx context.Context, piID string, metadata map[string]string) error {
+	if c.onUpdatePaymentIntentMetadata != nil {
+		return c.onUpdatePaymentIntentMetadata(ctx, piID, metadata)
+	}
+	panic("UpdatePaymentIntentMetadata not expected")
 }
 func (c *configStripeClient) ConstructWebhookEvent(p []byte, sig, secret string) (stripe.Event, error) {
 	if c.onConstructWebhook != nil {
