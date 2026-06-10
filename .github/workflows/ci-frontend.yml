@@ -144,8 +144,8 @@ jobs:
           DATABASE_URL: "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding&sslmode=disable" # yamllint disable-line rule:line-length
           ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS: "true"
           DISABLED_MOCK_LOCAL_PRINCIPAL: "e2e-test-user"
-          STRIPE_SECRET_KEY: "sk_test_placeholder"
-          STRIPE_WEBHOOK_SECRET: "whsec_placeholder"
+          STRIPE_SECRET_KEY: "e2e-stripe-secret-key-placeholder"
+          STRIPE_WEBHOOK_SECRET: "e2e-stripe-webhook-secret-placeholder"
           STRIPE_RETURN_URL: "http://localhost:3000/payment/complete"
           S3_UPLOAD_BUCKET: "e2e-placeholder-bucket"
           FRONTEND_BASE_URL: "http://localhost:3000"
@@ -165,7 +165,7 @@ jobs:
           NUXT_JWT_SECRET: "e2e-test-jwt-secret-not-used-for-real-auth"
           NUXT_PUBLIC_AUTH0_CLIENT_ID: "placeholder"
           NUXT_AUTH0_CLIENT_SECRET: "placeholder"
-          NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_placeholder"
+          NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "e2e-stripe-publishable-key-placeholder"
 
       - name: Wait for backend
         run: |
