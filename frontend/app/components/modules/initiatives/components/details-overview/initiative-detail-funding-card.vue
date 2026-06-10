@@ -117,6 +117,7 @@ import type { InitiativeDetail, FundingGoal } from '#shared/types/initiative-det
 import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxDonutChart from '~/components/uikit/donut-chart/donut-chart.vue';
+import { formatAmountCents } from '~/utils/currency';
 
 const props = defineProps<{ initiative: InitiativeDetail }>();
 
@@ -126,12 +127,7 @@ const typeConfig = computed(
 
 const cardGradient = computed(() => typeConfig.value.gradient);
 
-const formatAmount = (cents: number): string => {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(2).replace(/\.?0+$/, '')}K`;
-  return `$${dollars.toLocaleString()}`;
-};
+const formatAmount = formatAmountCents;
 
 const currentBalanceFormatted = computed(() => formatAmount(props.initiative.currentBalanceCents ?? 0));
 
