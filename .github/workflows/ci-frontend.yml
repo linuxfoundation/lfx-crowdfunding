@@ -64,6 +64,141 @@ jobs:
         working-directory: frontend
         run: pnpm test --run
 
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: crowdfunding
+          POSTGRES_PASSWORD: crowdfunding
+          POSTGRES_DB: crowdfunding
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U crowdfunding"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "11.1.2"
+          run_install: false
+
+      - name: Get pnpm store path
+        id: pnpm-cache
+        run: echo "store=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        working-directory: frontend
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.store }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --prefer-offline
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run database migrations
+        run: |
+          for f in backend/db/migrations/*.up.sql; do
+            psql "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding" \
+              --variable=ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Build backend
+        working-directory: backend
+        run: go build -o bin/initiatives-api ./cmd/initiatives-api
+
+      - name: Start backend
+        working-directory: backend
+        run: ./bin/initiatives-api &
+        env:
+          PORT: "8080"
+          DATABASE_URL: "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding&sslmode=disable" # yamllint disable-line rule:line-length
+          ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS: "true"
+          DISABLED_MOCK_LOCAL_PRINCIPAL: "e2e-test-user"
+          STRIPE_SECRET_KEY: "e2e-stripe-secret-key-placeholder"
+          STRIPE_WEBHOOK_SECRET: "e2e-stripe-webhook-secret-placeholder"
+          STRIPE_RETURN_URL: "http://localhost:3000/payment/complete"
+          S3_UPLOAD_BUCKET: "e2e-placeholder-bucket"
+          FRONTEND_BASE_URL: "http://localhost:3000"
+          LEDGER_BASE_URL: "http://localhost:9999"
+          LEDGER_API_KEY: "placeholder"
+          JWT_AUDIENCE: "https://example.com"
+          JWT_ISSUER: "https://example.com/"
+          OTEL_SERVICE_NAME: "initiatives-api-e2e"
+          OTEL_SERVICE_VERSION: "e2e"
+
+      - name: Start frontend
+        working-directory: frontend
+        run: pnpm dev &
+        env:
+          NUXT_APP_ENV: "development"
+          NUXT_API_BASE_URL: "http://localhost:8080"
+          NUXT_JWT_SECRET: "e2e-test-jwt-secret-not-used-for-real-auth"
+          NUXT_PUBLIC_AUTH0_CLIENT_ID: "placeholder"
+          NUXT_AUTH0_CLIENT_SECRET: "placeholder"
+          NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "e2e-stripe-publishable-key-placeholder"
+
+      - name: Wait for backend
+        run: |
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8080/livez && exit 0
+            sleep 2
+          done
+          echo "Backend did not become healthy in time" && exit 1
+
+      - name: Wait for frontend
+        run: |
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:3000 && exit 0
+            sleep 2
+          done
+          echo "Frontend did not become healthy in time" && exit 1
+
+      - name: Run e2e tests
+        working-directory: frontend
+        run: pnpm test:e2e
+        env:
+          E2E_BASE_URL: "http://localhost:3000"
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
   build:
     name: Build & Push
     runs-on: ubuntu-latest
