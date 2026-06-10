@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -223,7 +222,7 @@ func donationListForUserReq(principal *models.Principal) *http.Request {
 
 // donationCreateReq builds a POST request to /v1/initiatives/{id}/donations.
 func donationCreateReq(initiativeID string, idempotencyKey string, body string, principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/donations", io.NopCloser(strings.NewReader(body)))
+	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/donations", strings.NewReader(body))
 	r.Header.Set("Idempotency-Key", idempotencyKey)
 	r.Header.Set("Content-Type", "application/json")
 	if principal != nil {
@@ -362,7 +361,7 @@ func TestDonationCreate_MissingIdempotencyKey_Returns400(t *testing.T) {
 	h := newDonationHandler(donRepo, &donationInitiativeRepo{}, &donationUserRepo{}, &donationStripeClient{})
 
 	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/donations",
-		io.NopCloser(strings.NewReader(`{"amount_cents":1000,"stripe_payment_method_id":"pm_xxx"}`)))
+		strings.NewReader(`{"amount_cents":1000,"stripe_payment_method_id":"pm_xxx"}`))
 	r.Header.Set("Content-Type", "application/json")
 	// Deliberately omit Idempotency-Key header
 	r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))

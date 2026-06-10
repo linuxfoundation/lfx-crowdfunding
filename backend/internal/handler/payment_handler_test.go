@@ -6,7 +6,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -119,7 +118,7 @@ func newPaymentHandler(userRepo *paymentUserRepo, stripeClient *paymentStripeCli
 
 // paymentReq builds a request for payment endpoints with optional principal and body.
 func paymentReq(method string, path string, body string, principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(method, path, io.NopCloser(strings.NewReader(body)))
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))

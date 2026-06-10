@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -248,7 +247,7 @@ func subscriptionListForUserReq(principal *models.Principal) *http.Request {
 // subscriptionCreateReq builds a POST request to /v1/initiatives/{id}/subscriptions.
 func subscriptionCreateReq(initiativeID string, idempotencyKey string, body string, principal *models.Principal) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/subscriptions",
-		io.NopCloser(strings.NewReader(body)))
+		strings.NewReader(body))
 	r.Header.Set("Idempotency-Key", idempotencyKey)
 	r.Header.Set("Content-Type", "application/json")
 	if principal != nil {
@@ -346,7 +345,7 @@ func TestSubscriptionCreate_MissingIdempotencyKey_Returns400(t *testing.T) {
 	h := newSubscriptionHandler(subRepo, &subscriptionInitiativeRepo{}, &subscriptionUserRepo{}, &subscriptionStripeClient{})
 
 	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/subscriptions",
-		io.NopCloser(strings.NewReader(`{"amount_cents":1000,"frequency":"month","stripe_payment_method_id":"pm_xxx"}`)))
+		strings.NewReader(`{"amount_cents":1000,"frequency":"month","stripe_payment_method_id":"pm_xxx"}`))
 	r.Header.Set("Content-Type", "application/json")
 	// Deliberately omit Idempotency-Key header
 	r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
