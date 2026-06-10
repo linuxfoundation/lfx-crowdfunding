@@ -263,10 +263,11 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		return nil, fmt.Errorf("record donation: %w", err)
 	}
 
-	// Surface client_secret when 3DS challenge is needed — transient, not stored.
-	// The frontend triggers the 3DS challenge by checking clientSecret != ""
-	// rather than by inspecting status, so Status correctly reflects the stored
-	// "pending" state — consistent with what GET /donations/:id would return.
+	// Overlay the actual Stripe PaymentIntent status on the response so the
+	// frontend can distinguish immediate success ("succeeded") from 3DS-pending
+	// ("requires_action"). The stored row remains "pending" — GET /donations/:id
+	// returns the DB status; this response is the only place pi.Status surfaces.
+	created.Status = pi.Status
 	created.ClientSecret = pi.ClientSecret
 	return created, nil
 }
