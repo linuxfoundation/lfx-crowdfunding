@@ -76,6 +76,7 @@ func (r *stubRepoForGetForUser) GetUsersByIDs(_ context.Context, _ []string) (ma
 func (r *stubRepoForGetForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
+func (r *stubRepoForGetForUser) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 
 // getForUserRouter mounts only the GetForUser route on a fresh Chi router so
 // chi.URLParam("id") resolves the slug from the path.

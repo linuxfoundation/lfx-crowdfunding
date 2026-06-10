@@ -75,35 +75,45 @@ func (s *emailService) SendProjectDeclinedEmail(ctx context.Context, toEmail, to
 }
 
 // SendDonationConfirmationEmail sends a donation receipt to the donor.
-func (s *emailService) SendDonationConfirmationEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL, amountFormatted string) error {
+func (s *emailService) SendDonationConfirmationEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType string) error {
 	return s.sendEmail(ctx, emailRequest{
 		Recipient:     toEmail,
 		RecipientName: toName,
 		TemplateName:  MandrillTemplateDonationConfirmation,
 		TemplateParameters: map[string]string{
-			"FNAME":            toName,
-			"PROJECT_NAME":     initiativeName,
-			"VIEW_PROJECT_URL": initiativeURL,
-			"AMOUNT":           amountFormatted,
+			"AMOUNT":            amountFormatted,
+			"CATEGORY_NAME":     category,
+			"DONOR_EMAIL":       toEmail,
+			"DONOR_NAME":        toName,
+			"ORGANIZATION_NAME": orgName,
+			"PAYMENT":           payment,
+			"PROJECT_NAME":      initiativeName,
+			"TYPE":              donationType,
+			"VIEW_PROJECT_URL":  initiativeURL,
 		},
 	})
 }
 
 // SendDonationAdminNotificationEmail notifies the initiative owner of a new donation.
-func (s *emailService) SendDonationAdminNotificationEmail(ctx context.Context, ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted string) error {
+func (s *emailService) SendDonationAdminNotificationEmail(ctx context.Context, ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType string) error {
 	if ownerEmail == "" {
 		return nil // owner email not available; skip silently
 	}
 	return s.sendEmail(ctx, emailRequest{
 		Recipient:     ownerEmail,
-		RecipientName: "",
+		RecipientName: ownerName,
 		TemplateName:  MandrillTemplateDonationAdminNotification,
 		TemplateParameters: map[string]string{
-			"DONOR_NAME":       donorName,
-			"DONOR_EMAIL":      donorEmail,
-			"PROJECT_NAME":     initiativeName,
-			"VIEW_PROJECT_URL": initiativeURL,
-			"AMOUNT":           amountFormatted,
+			"AMOUNT":            amountFormatted,
+			"CATEGORY_NAME":     category,
+			"DONOR_EMAIL":       donorEmail,
+			"DONOR_NAME":        donorName,
+			"FNAME":             ownerName,
+			"ORGANIZATION_NAME": orgName,
+			"PAYMENT":           payment,
+			"PROJECT_NAME":      initiativeName,
+			"TYPE":              donationType,
+			"VIEW_PROJECT_URL":  initiativeURL,
 		},
 	})
 }

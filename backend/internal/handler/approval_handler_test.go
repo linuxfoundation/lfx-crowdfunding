@@ -63,6 +63,7 @@ func (r *apprInitiativeRepo) Delete(_ context.Context, _ string) error { return 
 func (r *apprInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
+func (r *apprInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 func (r *apprInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
@@ -109,6 +110,9 @@ func (c *apprStripeClient) CreateSubscription(_ context.Context, _ models.Stripe
 	return nil, nil
 }
 func (c *apprStripeClient) CancelSubscription(_ context.Context, _ string) error { return nil }
+func (c *apprStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
 func (c *apprStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.Event, error) {
 	return stripe.Event{}, nil
 }
@@ -158,10 +162,10 @@ func (e *apprEmailService) SendProjectDeclinedEmail(_ context.Context, _, _, _, 
 func (e *apprEmailService) SendProjectForReviewEmail(_ context.Context, _, _, _, _, _, _ string) error {
 	return nil
 }
-func (e *apprEmailService) SendDonationConfirmationEmail(_ context.Context, _, _, _, _, _ string) error {
+func (e *apprEmailService) SendDonationConfirmationEmail(_ context.Context, _, _, _, _, _, _, _, _, _ string) error {
 	return nil
 }
-func (e *apprEmailService) SendDonationAdminNotificationEmail(_ context.Context, _, _, _, _, _, _ string) error {
+func (e *apprEmailService) SendDonationAdminNotificationEmail(_ context.Context, _, _, _, _, _, _, _, _, _, _, _ string) error {
 	return nil
 }
 func (e *apprEmailService) InitiativeURL(slug string) string {

@@ -8,6 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
+	stripe "github.com/stripe/stripe-go/v85"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -140,6 +143,17 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	if user.Email == "" {
 		return nil, fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 	}
+
+	// Prevent duplicate active subscriptions for the same user + initiative.
+	// A user may only hold one non-terminal subscription at a time per initiative.
+	if existing, lookupErr := s.repo.GetActiveByUserAndInitiative(ctx, user.ID, initiativeID); lookupErr == nil {
+		return nil, fmt.Errorf("%w: an active subscription already exists (id=%s, status=%s)",
+			domain.ErrConflict, existing.ID, existing.Status)
+	} else if !errors.Is(lookupErr, domain.ErrSubscriptionNotFound) {
+		span.RecordError(lookupErr)
+		return nil, fmt.Errorf("check existing subscription: %w", lookupErr)
+	}
+
 	customerID := user.StripeCustomerID
 	if customerID == "" {
 		customerID, err = s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
@@ -155,17 +169,48 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 
 	// Attach the Price to the initiative's existing Stripe Product rather than
 	// creating a new Product per Price — keeps the Stripe catalog manageable.
-	priceID, err := s.stripe.GetOrCreatePrice(ctx, initiative.StripeProductID, initiativeID, input.AmountCents, input.Frequency, input.IdempotencyKey)
+	// If the stored product no longer exists in Stripe (e.g. migrated from a
+	// legacy account), create a new one and persist it before retrying.
+	productID := initiative.StripeProductID
+	priceID, err := s.stripe.GetOrCreatePrice(ctx, productID, initiativeID, input.AmountCents, input.Frequency, input.IdempotencyKey)
 	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("stripe price: %w", err)
+		if isStripeProductMissing(err) {
+			span.AddEvent("stripe product missing — creating replacement")
+			newProductID, createErr := s.stripe.CreateProduct(ctx, initiativeID, initiative.Name)
+			if createErr != nil {
+				span.RecordError(createErr)
+				return nil, fmt.Errorf("stripe product (re-create): %w", createErr)
+			}
+			if updateErr := s.initiativeRepo.UpdateStripeProductID(ctx, initiativeID, newProductID); updateErr != nil {
+				span.RecordError(updateErr)
+				return nil, fmt.Errorf("persist new stripe product: %w", updateErr)
+			}
+			productID = newProductID
+			priceID, err = s.stripe.GetOrCreatePrice(ctx, productID, initiativeID, input.AmountCents, input.Frequency, input.IdempotencyKey)
+		}
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("stripe price: %w", err)
+		}
 	}
 
-	// Best-effort owner email lookup for admin notification email.
+	// Best-effort owner email and name lookup for admin notification email.
 	// Failure here is non-fatal — the subscription proceeds without the email.
 	ownerEmail := ""
+	ownerName := ""
 	if owner, ownerErr := s.userRepo.GetByID(ctx, initiative.OwnerID); ownerErr == nil {
 		ownerEmail = owner.Email
+		ownerName = owner.Name
+	}
+
+	// Best-effort org name lookup for email rendering.
+	orgName := ""
+	if input.OrganizationID != "" {
+		if orgs, orgErr := s.initiativeRepo.GetOrganizationsByIDs(ctx, []string{input.OrganizationID}); orgErr == nil {
+			if org, ok := orgs[input.OrganizationID]; ok {
+				orgName = org.Name
+			}
+		}
 	}
 
 	result, err := s.stripe.CreateSubscription(ctx, models.StripeSubscriptionRequest{
@@ -176,11 +221,15 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		DonorName:        user.Name,
 		DonorEmail:       user.Email,
 		OwnerEmail:       ownerEmail,
+		OwnerName:        ownerName,
 		StripeCustomerID: customerID,
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
 		Category:         input.Category,
 		OrganizationID:   input.OrganizationID,
+		OrganizationName: orgName,
+		PaymentMethod:    models.PaymentMethodStripe, // subscriptions are always card-based; invoice billing is not supported
+		Frequency:        input.Frequency,
 		IdempotencyKey:   input.IdempotencyKey,
 	})
 	if err != nil {
@@ -248,4 +297,17 @@ func (s *SubscriptionService) Cancel(ctx context.Context, id, callerUsername str
 		return fmt.Errorf("update subscription status: %w", err)
 	}
 	return nil
+}
+
+// isStripeProductMissing returns true when err is a Stripe resource_missing
+// error with param="product" — meaning the stored stripe_product_id no longer
+// exists in the Stripe account (e.g. after a migration from a legacy account).
+func isStripeProductMissing(err error) bool {
+	var se *stripe.Error
+	if errors.As(err, &se) {
+		return se.Code == stripe.ErrorCodeResourceMissing && se.Param == "product"
+	}
+	// Fallback for wrapped errors where the Stripe type is lost.
+	return strings.Contains(err.Error(), "resource_missing") &&
+		strings.Contains(err.Error(), "product")
 }

@@ -59,15 +59,11 @@ import InitiativeDetailTableSkeleton from './initiative-detail-table-skeleton.vu
 import type { ExpenseRecord } from '#shared/types/initiative-detail.types';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxTag from '~/components/uikit/tag/tag.vue';
+import { formatAmountCents } from '~/utils/currency';
 
 defineProps<{ expenses: ExpenseRecord[]; isLoading?: boolean }>();
 
-const formatAmount = (cents: number): string => {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}K`;
-  return `$${dollars.toLocaleString()}`;
-};
+const formatAmount = formatAmountCents;
 </script>
 
 <script lang="ts">

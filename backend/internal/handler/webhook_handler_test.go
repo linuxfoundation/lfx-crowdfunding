@@ -43,6 +43,9 @@ func (c *wbStripeClient) CreateSubscription(_ context.Context, _ models.StripeSu
 	return nil, nil
 }
 func (c *wbStripeClient) CancelSubscription(_ context.Context, _ string) error { return nil }
+func (c *wbStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
 func (c *wbStripeClient) ConstructWebhookEvent(payload []byte, sig, secret string) (stripe.Event, error) {
 	if c.onConstruct != nil {
 		return c.onConstruct(payload, sig, secret)
@@ -101,8 +104,10 @@ func (c *wbLedgerClient) PostTransaction(ctx context.Context, txn clients.Ledger
 
 // wbEmailService is a no-op EmailService stub for webhook handler tests.
 type wbEmailService struct {
-	onConfirmation func(toEmail, toName, initiativeName, initiativeURL, amount string)
-	onAdminNotify  func(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string)
+	onConfirmation     func(toEmail, toName, initiativeName, initiativeURL, amount string)
+	onConfirmationFull func(toEmail, toName, initiativeName, initiativeURL, amount, category, orgName, payment, donationType string)
+	onAdminNotify      func(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string)
+	onAdminNotifyFull  func(ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amount, category, orgName, payment, donationType string)
 }
 
 func (e *wbEmailService) SendProjectApprovedEmail(_ context.Context, _, _, _, _ string) error {
@@ -114,15 +119,21 @@ func (e *wbEmailService) SendProjectDeclinedEmail(_ context.Context, _, _, _, _ 
 func (e *wbEmailService) SendProjectForReviewEmail(_ context.Context, _, _, _, _, _, _ string) error {
 	return nil
 }
-func (e *wbEmailService) SendDonationConfirmationEmail(_ context.Context, toEmail, toName, initiativeName, initiativeURL, amount string) error {
+func (e *wbEmailService) SendDonationConfirmationEmail(_ context.Context, toEmail, toName, initiativeName, initiativeURL, amount, category, orgName, payment, donationType string) error {
 	if e.onConfirmation != nil {
 		e.onConfirmation(toEmail, toName, initiativeName, initiativeURL, amount)
 	}
+	if e.onConfirmationFull != nil {
+		e.onConfirmationFull(toEmail, toName, initiativeName, initiativeURL, amount, category, orgName, payment, donationType)
+	}
 	return nil
 }
-func (e *wbEmailService) SendDonationAdminNotificationEmail(_ context.Context, ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount string) error {
+func (e *wbEmailService) SendDonationAdminNotificationEmail(_ context.Context, ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amount, category, orgName, payment, donationType string) error {
 	if e.onAdminNotify != nil {
 		e.onAdminNotify(ownerEmail, donorName, donorEmail, initiativeName, initiativeURL, amount)
+	}
+	if e.onAdminNotifyFull != nil {
+		e.onAdminNotifyFull(ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amount, category, orgName, payment, donationType)
 	}
 	return nil
 }
@@ -161,6 +172,9 @@ type wbSubscriptionRepo struct {
 
 func (r *wbSubscriptionRepo) GetByID(_ context.Context, _ string) (*models.Subscription, error) {
 	return nil, nil
+}
+func (r *wbSubscriptionRepo) GetActiveByUserAndInitiative(_ context.Context, _, _ string) (*models.Subscription, error) {
+	return nil, domain.ErrSubscriptionNotFound
 }
 func (r *wbSubscriptionRepo) ListByInitiative(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	return nil, nil, nil
@@ -614,24 +628,52 @@ func TestWebhookHandler_PaymentIntentSucceeded_DBError_Returns500(t *testing.T) 
 	}
 }
 
-// --- not-found: no local row for Stripe ID → 200 to prevent retry loops (permanent not-found) ---
+// --- not-found behaviour: permanent (non-v2) vs transient (v2 INSERT race) ---
 
-func TestWebhookHandler_PaymentIntentSucceeded_DonationNotFound_Returns200(t *testing.T) {
+// TestWebhookHandler_PaymentIntentSucceeded_NonV2DonationNotFound_Returns200 verifies
+// that a not-found on a non-v2 (LFF-era) payment intent is acknowledged with 200
+// to prevent Stripe's 72-hour retry loop from firing indefinitely.
+func TestWebhookHandler_PaymentIntentSucceeded_NonV2DonationNotFound_Returns200(t *testing.T) {
 	dr := &wbDonationRepo{
 		onUpdateByPaymentIntentID: func(_ context.Context, _, _, _ string) error {
 			return domain.ErrDonationNotFound
 		},
 	}
+	// No "version":"v2" metadata — this is an LFF-era orphan event.
 	event := buildEvent("payment_intent.succeeded",
 		`{"id":"pi_orphan","latest_charge":{"id":"ch_orphan"}}`)
 	sc := &wbStripeClient{
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
 	}
 
-	// Not-found is permanent — acknowledge so Stripe does not retry indefinitely.
+	// Not-found is permanent for non-v2 — acknowledge to stop the retry loop.
 	rr := postWebhook(t, newTestWebhookHandler(sc, dr, &wbSubscriptionRepo{}), "t=1,v1=sig", `{}`)
 	if rr.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200 for permanent not-found (no retry)", rr.Code)
+		t.Errorf("status = %d, want 200 for non-v2 permanent not-found", rr.Code)
+	}
+}
+
+// TestWebhookHandler_PaymentIntentSucceeded_V2DonationNotFound_Returns500 verifies
+// that a not-found on a v2 payment intent returns 500 (triggering Stripe retry)
+// to guard against the INSERT/webhook race where the row may not be committed yet.
+func TestWebhookHandler_PaymentIntentSucceeded_V2DonationNotFound_Returns500(t *testing.T) {
+	dr := &wbDonationRepo{
+		onUpdateByPaymentIntentID: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrDonationNotFound
+		},
+	}
+	// v2 metadata present — this row should exist; not-found is a transient race.
+	v2PI := `{"id":"pi_v2_race","latest_charge":{"id":"ch_v2_race"},` +
+		`"metadata":{"version":"v2","initiative_id":"init-1","user_id":"u1"}}`
+	event := buildEvent("payment_intent.succeeded", v2PI)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	// Not-found on a v2 PI is transient — return 500 so Stripe retries.
+	rr := postWebhook(t, newTestWebhookHandler(sc, dr, &wbSubscriptionRepo{}), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 for v2 INSERT/webhook race", rr.Code)
 	}
 }
 
@@ -664,7 +706,8 @@ const piV2JSON = `{
 		"version":"v2","initiative_id":"init_001","initiative_slug":"test-slug",
 		"initiative_name":"Test Initiative","user_id":"usr_001",
 		"donor_name":"Jane Doe","donor_email":"jane@example.com",
-		"owner_email":"owner@example.com","category":"fund"
+		"owner_email":"owner@example.com","owner_name":"Bob Owner",
+		"category":"fund","org_name":"Acme Corp","payment_method":"stripe"
 	}
 }`
 
@@ -678,7 +721,9 @@ const invV2JSON = `{
 			"version":"v2","initiative_id":"init_001","initiative_slug":"test-slug",
 			"initiative_name":"Test Initiative","user_id":"usr_001",
 			"donor_name":"Jane Doe","donor_email":"jane@example.com",
-			"owner_email":"owner@example.com","category":"fund"
+			"owner_email":"owner@example.com","owner_name":"Bob Owner",
+			"category":"fund","org_name":"Acme Corp","payment_method":"stripe",
+			"frequency":"monthly"
 		}
 	}}
 }`
@@ -922,5 +967,81 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_FallsBackToMetaDonorEmail(t *
 	}
 	if gotConfirmTo != "meta@example.com" {
 		t.Errorf("confirmation email to = %q, want meta@example.com (fallback from metadata)", gotConfirmTo)
+	}
+}
+
+// TestWebhookHandler_PaymentIntentSucceeded_V2_EmailTemplateFields verifies that
+// payment, donationType, category and orgName are correctly derived from PI metadata.
+func TestWebhookHandler_PaymentIntentSucceeded_V2_EmailTemplateFields(t *testing.T) {
+	var gotPayment, gotDonationType, gotCategory, gotOrgName, gotOwnerName string
+
+	es := &wbEmailService{}
+	es.onConfirmationFull = func(_, _, _, _, _, category, orgName, payment, donationType string) {
+		gotPayment = payment
+		gotDonationType = donationType
+		gotCategory = category
+		gotOrgName = orgName
+	}
+	es.onAdminNotifyFull = func(_, ownerName, _, _, _, _, _, _, _, _, _ string) {
+		gotOwnerName = ownerName
+	}
+	event := buildEvent("payment_intent.succeeded", piV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, &wbLedgerClient{}, es), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotPayment != "Credit Card" {
+		t.Errorf("email PAYMENT = %q, want \"Credit Card\"", gotPayment)
+	}
+	if gotDonationType != "One-time" {
+		t.Errorf("email TYPE = %q, want \"One-time\"", gotDonationType)
+	}
+	if gotCategory != "fund" {
+		t.Errorf("email CATEGORY_NAME = %q, want \"fund\"", gotCategory)
+	}
+	if gotOrgName != "Acme Corp" {
+		t.Errorf("email ORGANIZATION_NAME = %q, want \"Acme Corp\"", gotOrgName)
+	}
+	if gotOwnerName != "Bob Owner" {
+		t.Errorf("admin email FNAME = %q, want \"Bob Owner\"", gotOwnerName)
+	}
+}
+
+// TestWebhookHandler_InvoicePaymentSucceeded_V2_EmailTemplateFields verifies that
+// payment, donationType (derived from frequency), category and orgName are correct.
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_EmailTemplateFields(t *testing.T) {
+	var gotPayment, gotDonationType, gotCategory, gotOrgName string
+
+	es := &wbEmailService{}
+	es.onConfirmationFull = func(_, _, _, _, _, category, orgName, payment, donationType string) {
+		gotPayment = payment
+		gotDonationType = donationType
+		gotCategory = category
+		gotOrgName = orgName
+	}
+	event := buildEvent("invoice.payment_succeeded", invV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, &wbLedgerClient{}, es), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotPayment != "Credit Card" {
+		t.Errorf("email PAYMENT = %q, want \"Credit Card\"", gotPayment)
+	}
+	if gotDonationType != "Monthly" {
+		t.Errorf("email TYPE = %q, want \"Monthly\" (from frequency=monthly)", gotDonationType)
+	}
+	if gotCategory != "fund" {
+		t.Errorf("email CATEGORY_NAME = %q, want \"fund\"", gotCategory)
+	}
+	if gotOrgName != "Acme Corp" {
+		t.Errorf("email ORGANIZATION_NAME = %q, want \"Acme Corp\"", gotOrgName)
 	}
 }

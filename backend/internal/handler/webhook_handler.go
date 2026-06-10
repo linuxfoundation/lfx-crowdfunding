@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -100,6 +101,8 @@ func (h *WebhookHandler) dispatch(r *http.Request, event stripe.Event, w http.Re
 		err = h.handlePaymentIntentSucceeded(r, event)
 	case "payment_intent.payment_failed":
 		err = h.handlePaymentIntentFailed(r, event)
+	case "invoice.finalized":
+		err = h.handleInvoiceFinalized(r, event)
 	case "invoice.payment_succeeded":
 		err = h.handleInvoicePaymentSucceeded(r, event)
 	case "invoice.payment_failed":
@@ -160,6 +163,19 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		if errors.Is(err, domain.ErrAlreadyProcessed) {
 			h.logger.Debug("payment_intent.succeeded: already processed, skipping", "pi_id", pi.ID)
 			return nil
+		}
+		if errors.Is(err, domain.ErrDonationNotFound) {
+			if pi.Metadata["version"] == "v2" {
+				// INSERT/webhook race: the donation row may not be committed yet.
+				// Return a transient error (not wrapping ErrDonationNotFound) so
+				// dispatch returns 500 and Stripe retries with its normal backoff.
+				h.logger.Warn("payment_intent.succeeded: v2 donation not found — possible INSERT/webhook race, returning error for Stripe retry",
+					"pi_id", pi.ID)
+				return fmt.Errorf("payment_intent.succeeded: v2 donation not yet committed (pi_id=%s)", pi.ID)
+			}
+			// Non-v2 (LFF-era events): no row will ever appear — propagate
+			// ErrDonationNotFound so dispatch acknowledges with 200 and stops
+			// Stripe's 72-hour retry loop.
 		}
 		if !errors.Is(err, domain.ErrDonationNotFound) {
 			h.logger.Error("payment_intent.succeeded: DB update failed", "pi_id", pi.ID, "error", err)
@@ -235,16 +251,21 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 	if initiativeName == "" {
 		initiativeName = initiativeID
 	}
+	category := pi.Metadata["category"]
+	orgName := pi.Metadata["org_name"]
+	ownerName := pi.Metadata["owner_name"]
+	payment := paymentLabel(pi.Metadata["payment_method"])
+	donationType := "One-time"
 	if donorEmail != "" {
 		if emailErr := h.emailService.SendDonationConfirmationEmail(
-			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted,
+			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 		); emailErr != nil {
 			h.logger.Warn("payment_intent.succeeded: donor confirmation email failed",
 				"pi_id", pi.ID, "error", emailErr)
 		}
 	}
 	if adminErr := h.emailService.SendDonationAdminNotificationEmail(
-		r.Context(), pi.Metadata["owner_email"], donorName, donorEmail, initiativeName, initiativeURL, amountFormatted,
+		r.Context(), pi.Metadata["owner_email"], ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 	); adminErr != nil {
 		h.logger.Warn("payment_intent.succeeded: admin notification email failed",
 			"pi_id", pi.ID, "error", adminErr)
@@ -374,20 +395,85 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	if initiativeName == "" {
 		initiativeName = initiativeID
 	}
+	category := subMeta["category"]
+	orgName := subMeta["org_name"]
+	ownerName := subMeta["owner_name"]
+	payment := paymentLabel(subMeta["payment_method"])
+	donationType := donationTypeLabel(subMeta["frequency"])
 	if donorEmail != "" {
 		if emailErr := h.emailService.SendDonationConfirmationEmail(
-			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted,
+			r.Context(), donorEmail, donorName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 		); emailErr != nil {
 			h.logger.Warn("invoice.payment_succeeded: donor confirmation email failed",
 				"sub_id", subID, "error", emailErr)
 		}
 	}
 	if adminErr := h.emailService.SendDonationAdminNotificationEmail(
-		r.Context(), subMeta["owner_email"], donorName, donorEmail, initiativeName, initiativeURL, amountFormatted,
+		r.Context(), subMeta["owner_email"], ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 	); adminErr != nil {
 		h.logger.Warn("invoice.payment_succeeded: admin notification email failed",
 			"sub_id", subID, "error", adminErr)
 	}
+	return nil
+}
+
+// handleInvoiceFinalized stamps version=v2 metadata onto a subscription invoice's
+// PaymentIntent immediately after the invoice is finalized.
+// This ensures the Ledger service's charge.succeeded webhook sees the version flag
+// and skips posting — preventing the duplicate Ledger entry that would otherwise
+// be posted alongside our invoice.payment_succeeded handler.
+func (h *WebhookHandler) handleInvoiceFinalized(r *http.Request, event stripe.Event) error {
+	if event.Data == nil {
+		return fmt.Errorf("invoice.finalized: event.Data is nil (event_id=%s)", event.ID)
+	}
+	var inv stripe.Invoice
+	if err := json.Unmarshal(event.Data.Raw, &inv); err != nil {
+		h.logger.Error("invoice.finalized: unmarshal failed", "event_id", event.ID, "error", err)
+		return fmt.Errorf("invoice.finalized: unmarshal: %w", err)
+	}
+
+	// Only handle subscription invoices.
+	if inv.Parent == nil || inv.Parent.SubscriptionDetails == nil || inv.Parent.SubscriptionDetails.Subscription == nil {
+		return nil
+	}
+	// Only stamp v2 subscriptions.
+	subMeta := inv.Parent.SubscriptionDetails.Metadata
+	if subMeta == nil || subMeta["version"] != "v2" {
+		return nil
+	}
+	// Extract the PI ID. The webhook payload carries it as a bare string in
+	// "payment_intent", but stripe.Invoice doesn't map that field. Decode it
+	// from the raw bytes, then fall back to parsing confirmation_secret if absent.
+	var rawInv struct {
+		PaymentIntent string `json:"payment_intent"`
+	}
+	if err := json.Unmarshal(event.Data.Raw, &rawInv); err != nil {
+		h.logger.Error("invoice.finalized: raw unmarshal failed", "event_id", event.ID, "error", err)
+		return fmt.Errorf("invoice.finalized: raw unmarshal: %w", err)
+	}
+	piID := rawInv.PaymentIntent
+	// Fallback: derive PI ID from confirmation_secret client_secret (format: pi_xxx_secret_yyy).
+	if piID == "" && inv.ConfirmationSecret != nil && inv.ConfirmationSecret.ClientSecret != "" {
+		parts := strings.SplitN(inv.ConfirmationSecret.ClientSecret, "_secret_", 2)
+		if len(parts) == 2 && parts[0] != "" {
+			piID = parts[0]
+		}
+	}
+	if piID == "" {
+		h.logger.Warn("invoice.finalized: could not determine PI ID, skipping metadata stamp",
+			"invoice_id", inv.ID)
+		return nil
+	}
+	if err := h.stripeClient.UpdatePaymentIntentMetadata(r.Context(), piID, map[string]string{"version": "v2"}); err != nil {
+		// Best-effort: log but do not fail the webhook. If this is missed once,
+		// the Ledger service will post a duplicate — but that is recoverable.
+		// Failing here would cause Stripe to retry invoice.finalized indefinitely,
+		// which would block the subscription lifecycle.
+		h.logger.Warn("invoice.finalized: failed to stamp version=v2 on PI, Ledger may double-post",
+			"invoice_id", inv.ID, "pi_id", piID, "error", err)
+	}
+	h.logger.Info("invoice.finalized: stamped version=v2 on subscription PI",
+		"invoice_id", inv.ID, "pi_id", piID)
 	return nil
 }
 
@@ -480,4 +566,38 @@ func (h *WebhookHandler) handleSubscriptionCanceled(r *http.Request, subID strin
 	}
 	h.logger.Info("subscription cancelled", "sub_id", subID)
 	return nil
+}
+
+// donationTypeLabel maps a stored frequency metadata value to a human-readable
+// label for the Mandrill template TYPE field.
+// Old subscriptions created before frequency was stored in metadata default to
+// "Recurring" rather than an incorrect specific frequency.
+func donationTypeLabel(frequency string) string {
+	switch frequency {
+	case "monthly", "month":
+		return "Monthly"
+	case "yearly", "year", "annual":
+		return "Yearly"
+	case "weekly", "week":
+		return "Weekly"
+	case "daily", "day":
+		return "Daily"
+	default:
+		return "Recurring" // safe fallback for old metadata and unexpected values
+	}
+}
+
+// paymentLabel converts a payment_method metadata value to a human-readable
+// label for Mandrill template PAYMENT fields.
+// Old charges/subscriptions created before this field was stored default to
+// "Credit Card" since only card payments were supported at that time.
+func paymentLabel(method string) string {
+	switch method {
+	case models.PaymentMethodStripe:
+		return "Credit Card"
+	case models.PaymentMethodInvoice:
+		return "Invoice"
+	default:
+		return "Credit Card"
+	}
 }
