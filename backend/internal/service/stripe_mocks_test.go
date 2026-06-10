@@ -8,6 +8,7 @@ import (
 
 	stripe "github.com/stripe/stripe-go/v85"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
@@ -180,10 +181,11 @@ func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, st
 
 // testSubscriptionRepo is a configurable SubscriptionRepository.
 type testSubscriptionRepo struct {
-	onGetByID                      func(context.Context, string) (*models.Subscription, error)
-	onCreate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
-	onUpdate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
-	onUpdateByStripeSubscriptionID func(context.Context, string, string) error
+	onGetByID                       func(context.Context, string) (*models.Subscription, error)
+	onGetActiveByUserAndInitiative  func(context.Context, string, string) (*models.Subscription, error)
+	onCreate                        func(context.Context, *models.Subscription) (*models.Subscription, error)
+	onUpdate                        func(context.Context, *models.Subscription) (*models.Subscription, error)
+	onUpdateByStripeSubscriptionID  func(context.Context, string, string) error
 }
 
 func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.Subscription, error) {
@@ -191,6 +193,12 @@ func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.
 		return r.onGetByID(ctx, id)
 	}
 	return nil, nil
+}
+func (r *testSubscriptionRepo) GetActiveByUserAndInitiative(ctx context.Context, userID, initiativeID string) (*models.Subscription, error) {
+	if r.onGetActiveByUserAndInitiative != nil {
+		return r.onGetActiveByUserAndInitiative(ctx, userID, initiativeID)
+	}
+	return nil, domain.ErrSubscriptionNotFound
 }
 func (r *testSubscriptionRepo) ListByInitiative(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	return nil, nil, nil

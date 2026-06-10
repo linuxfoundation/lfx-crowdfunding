@@ -485,6 +485,14 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 			IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s", req.IdempotencyKey)),
 		},
 	}
+	// Propagate version=v2 to the PaymentIntent created for each invoice.
+	// SubscriptionPaymentSettingsParams in the current SDK version does not expose
+	// payment_intent_data, so we use AddExtra to set it as a raw form field.
+	// Without this, the invoice's PI has no version metadata and the Ledger
+	// service's own Stripe webhook treats it as a legacy (v1) charge and posts
+	// a second ledger entry — duplicating the one already posted by our
+	// invoice.payment_succeeded handler.
+	params.AddExtra("payment_settings[payment_intent_data][metadata][version]", "v2")
 	// Expand latest_invoice and its confirmation_secret nested field.
 	// confirmation_secret is a separately-expandable field on Invoice even though
 	// it is a struct (not a resource pointer) — without this second expand path,
