@@ -74,6 +74,7 @@ func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[s
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
 }
+func (m *mockInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 
 type mockLedgerClient struct {
 	balance *clients.LedgerBalance
@@ -391,6 +392,7 @@ func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative, _ mo
 	return i, nil
 }
 func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error { return nil }
+func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 	repo := &mockRepoForEnrich{

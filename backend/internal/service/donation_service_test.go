@@ -49,6 +49,7 @@ func (r *summaryInitiativeRepo) GetUsersByIDs(ctx context.Context, ids []string)
 	}
 	return map[string]models.User{}, nil
 }
+func (r *summaryInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 func (r *summaryInitiativeRepo) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
 	if r.onGetOrganizationsByIDs != nil {
 		return r.onGetOrganizationsByIDs(ctx, ids)
