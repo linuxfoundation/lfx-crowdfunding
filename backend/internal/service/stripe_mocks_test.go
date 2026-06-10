@@ -8,6 +8,7 @@ import (
 
 	stripe "github.com/stripe/stripe-go/v85"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
@@ -20,7 +21,8 @@ type configStripeClient struct {
 	onDeleteProduct       func(context.Context, string) error
 	onCreatePaymentIntent func(context.Context, models.PaymentIntentRequest) (*models.PaymentIntent, error)
 	onCreateSubscription  func(context.Context, models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
-	onCancelSubscription  func(context.Context, string) error
+	onCancelSubscription          func(context.Context, string) error
+	onUpdatePaymentIntentMetadata func(context.Context, string, map[string]string) error
 	onConstructWebhook    func([]byte, string, string) (stripe.Event, error)
 	onCreateCustomer      func(context.Context, string, string) (string, error)
 	onCreateSetupIntent   func(context.Context, string) (string, error)
@@ -65,6 +67,12 @@ func (c *configStripeClient) CancelSubscription(ctx context.Context, id string) 
 		return c.onCancelSubscription(ctx, id)
 	}
 	panic("CancelSubscription not expected")
+}
+func (c *configStripeClient) UpdatePaymentIntentMetadata(ctx context.Context, piID string, metadata map[string]string) error {
+	if c.onUpdatePaymentIntentMetadata != nil {
+		return c.onUpdatePaymentIntentMetadata(ctx, piID, metadata)
+	}
+	panic("UpdatePaymentIntentMetadata not expected")
 }
 func (c *configStripeClient) ConstructWebhookEvent(p []byte, sig, secret string) (stripe.Event, error) {
 	if c.onConstructWebhook != nil {
@@ -180,10 +188,11 @@ func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, st
 
 // testSubscriptionRepo is a configurable SubscriptionRepository.
 type testSubscriptionRepo struct {
-	onGetByID                      func(context.Context, string) (*models.Subscription, error)
-	onCreate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
-	onUpdate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
-	onUpdateByStripeSubscriptionID func(context.Context, string, string) error
+	onGetByID                       func(context.Context, string) (*models.Subscription, error)
+	onGetActiveByUserAndInitiative  func(context.Context, string, string) (*models.Subscription, error)
+	onCreate                        func(context.Context, *models.Subscription) (*models.Subscription, error)
+	onUpdate                        func(context.Context, *models.Subscription) (*models.Subscription, error)
+	onUpdateByStripeSubscriptionID  func(context.Context, string, string) error
 }
 
 func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.Subscription, error) {
@@ -191,6 +200,12 @@ func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.
 		return r.onGetByID(ctx, id)
 	}
 	return nil, nil
+}
+func (r *testSubscriptionRepo) GetActiveByUserAndInitiative(ctx context.Context, userID, initiativeID string) (*models.Subscription, error) {
+	if r.onGetActiveByUserAndInitiative != nil {
+		return r.onGetActiveByUserAndInitiative(ctx, userID, initiativeID)
+	}
+	return nil, domain.ErrSubscriptionNotFound
 }
 func (r *testSubscriptionRepo) ListByInitiative(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	return nil, nil, nil
