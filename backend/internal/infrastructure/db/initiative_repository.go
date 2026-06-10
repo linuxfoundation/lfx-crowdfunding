@@ -781,6 +781,30 @@ func (r *InitiativeRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// UpdateStripeProductID patches only the stripe_product_id column for the
+// given initiative. Used to auto-heal initiatives with stale/missing Stripe products.
+func (r *InitiativeRepository) UpdateStripeProductID(ctx context.Context, id, productID string) error {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.UpdateStripeProductID")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.initiative_id", id),
+		attribute.String("stripe.product_id", productID),
+	)
+
+	tag, err := r.pool.Exec(ctx,
+		"UPDATE initiatives SET stripe_product_id = $2 WHERE id = $1",
+		id, productID,
+	)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("update stripe product id: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrInitiativeNotFound
+	}
+	return nil
+}
+
 // ── private helpers ──────────────────────────────────────────────────────────
 
 func (r *InitiativeRepository) listGoals(ctx context.Context, initiativeID string) ([]models.Goal, error) {

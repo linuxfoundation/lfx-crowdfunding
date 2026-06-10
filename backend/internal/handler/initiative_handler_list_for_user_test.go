@@ -63,6 +63,9 @@ func (r *stubInitiativeRepoForListForUser) GetUsersByIDs(_ context.Context, _ []
 func (r *stubInitiativeRepoForListForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
+func (r *stubInitiativeRepoForListForUser) UpdateStripeProductID(_ context.Context, _, _ string) error {
+	return nil
+}
 
 // stubUserRepoForListForUser implements domain.UserRepository for ListForUser tests.
 type stubUserRepoForListForUser struct {

@@ -8,6 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
+	stripe "github.com/stripe/stripe-go/v85"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -166,10 +169,29 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 
 	// Attach the Price to the initiative's existing Stripe Product rather than
 	// creating a new Product per Price — keeps the Stripe catalog manageable.
-	priceID, err := s.stripe.GetOrCreatePrice(ctx, initiative.StripeProductID, initiativeID, input.AmountCents, input.Frequency, input.IdempotencyKey)
+	// If the stored product no longer exists in Stripe (e.g. migrated from a
+	// legacy account), create a new one and persist it before retrying.
+	productID := initiative.StripeProductID
+	priceID, err := s.stripe.GetOrCreatePrice(ctx, productID, initiativeID, input.AmountCents, input.Frequency, input.IdempotencyKey)
 	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("stripe price: %w", err)
+		if isStripeProductMissing(err) {
+			span.AddEvent("stripe product missing — creating replacement")
+			newProductID, createErr := s.stripe.CreateProduct(ctx, initiativeID, initiative.Name)
+			if createErr != nil {
+				span.RecordError(createErr)
+				return nil, fmt.Errorf("stripe product (re-create): %w", createErr)
+			}
+			if updateErr := s.initiativeRepo.UpdateStripeProductID(ctx, initiativeID, newProductID); updateErr != nil {
+				span.RecordError(updateErr)
+				return nil, fmt.Errorf("persist new stripe product: %w", updateErr)
+			}
+			productID = newProductID
+			priceID, err = s.stripe.GetOrCreatePrice(ctx, productID, initiativeID, input.AmountCents, input.Frequency, input.IdempotencyKey)
+		}
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("stripe price: %w", err)
+		}
 	}
 
 	// Best-effort owner email and name lookup for admin notification email.
@@ -275,4 +297,17 @@ func (s *SubscriptionService) Cancel(ctx context.Context, id, callerUsername str
 		return fmt.Errorf("update subscription status: %w", err)
 	}
 	return nil
+}
+
+// isStripeProductMissing returns true when err is a Stripe resource_missing
+// error with param="product" — meaning the stored stripe_product_id no longer
+// exists in the Stripe account (e.g. after a migration from a legacy account).
+func isStripeProductMissing(err error) bool {
+	var se *stripe.Error
+	if errors.As(err, &se) {
+		return se.Code == stripe.ErrorCodeResourceMissing && se.Param == "product"
+	}
+	// Fallback for wrapped errors where the Stripe type is lost.
+	return strings.Contains(err.Error(), "resource_missing") &&
+		strings.Contains(err.Error(), "product")
 }

@@ -6,8 +6,11 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	stripe "github.com/stripe/stripe-go/v85"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -402,5 +405,133 @@ func TestSubscriptionService_Create_EmptyEmail_RequiresProfileSync(t *testing.T)
 	}
 	if customerCreated {
 		t.Error("CreateCustomer must not be called when user email is empty")
+	}
+}
+
+// --- Stripe product auto-heal ---
+
+// TestSubscriptionService_Create_StaleProductAutoHeals verifies that when
+// GetOrCreatePrice returns a resource_missing error for the product param,
+// the service creates a replacement Stripe product, persists the new ID, and
+// retries GetOrCreatePrice transparently so the subscription succeeds.
+// This test exercises the primary errors.As(*stripe.Error) branch of isStripeProductMissing.
+func TestSubscriptionService_Create_StaleProductAutoHeals(t *testing.T) {
+	const staleProductID = "prod_stale"
+	const newProductID = "prod_new"
+	const newPriceID = "price_healed"
+
+	var persistedProductID string
+	priceCallCount := 0
+
+	// Initiative starts with the stale product ID.
+	initRepo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID: "init-1", Name: "My Initiative",
+			AcceptFunding: true, StripeProductID: staleProductID,
+		},
+	}
+	// Capture the UpdateStripeProductID call.
+	initRepo.onUpdateStripeProductID = func(_ context.Context, _, id string) error {
+		persistedProductID = id
+		return nil
+	}
+
+	// Typed *stripe.Error wrapped via %w — mirrors what the Stripe client produces.
+	stripeProductMissingErr := fmt.Errorf("price create: %w",
+		&stripe.Error{Code: stripe.ErrorCodeResourceMissing, Param: "product"})
+
+	sc := &configStripeClient{
+		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
+			return "cus_1", nil
+		},
+		onCreateProduct: func(_ context.Context, _, _ string) (string, error) {
+			return newProductID, nil
+		},
+		onGetOrCreatePrice: func(_ context.Context, productID, _ string, _ int64, _ string, _ string) (string, error) {
+			priceCallCount++
+			if productID == staleProductID {
+				// First call: typed Stripe error exercises the errors.As branch.
+				return "", stripeProductMissingErr
+			}
+			// Second call (after auto-heal): succeed with the new product.
+			if productID != newProductID {
+				t.Errorf("retry call used productID=%q, want %q", productID, newProductID)
+			}
+			return newPriceID, nil
+		},
+		onCreateSubscription: func(_ context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error) {
+			if req.StripePriceID != newPriceID {
+				t.Errorf("CreateSubscription PriceID = %q, want %q", req.StripePriceID, newPriceID)
+			}
+			return &models.StripeSubscriptionResult{
+				SubscriptionID: "sub_healed",
+				PriceID:        newPriceID,
+				Status:         "active",
+			}, nil
+		},
+	}
+
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, initRepo, &testUserRepo{}, sc)
+	sub, err := svc.Create(context.Background(), "init-1", "u1",
+		models.SubscriptionCreateInput{
+			AmountCents:           1000,
+			Frequency:             "monthly",
+			StripePaymentMethodID: "pm_test",
+			IdempotencyKey:        "key-heal",
+		})
+	if err != nil {
+		t.Fatalf("expected auto-heal to succeed, got error: %v", err)
+	}
+	if sub.Status != "active" {
+		t.Errorf("Status = %q, want active", sub.Status)
+	}
+	if persistedProductID != newProductID {
+		t.Errorf("UpdateStripeProductID called with %q, want %q", persistedProductID, newProductID)
+	}
+	if priceCallCount != 2 {
+		t.Errorf("GetOrCreatePrice called %d time(s), want 2 (initial fail + retry)", priceCallCount)
+	}
+}
+
+// TestSubscriptionService_Create_StaleProductHealPersistFails verifies that if
+// UpdateStripeProductID fails after creating the new product, the error is
+// propagated and the subscription is not created.
+// This test exercises the string-fallback branch of isStripeProductMissing.
+func TestSubscriptionService_Create_StaleProductHealPersistFails(t *testing.T) {
+	persistErr := fmt.Errorf("db connection lost")
+
+	initRepo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID: "init-1", Name: "My Initiative",
+			AcceptFunding: true, StripeProductID: "prod_stale",
+		},
+	}
+	initRepo.onUpdateStripeProductID = func(_ context.Context, _, _ string) error {
+		return persistErr
+	}
+
+	sc2 := &configStripeClient{
+		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
+			return "cus_1", nil
+		},
+		onCreateProduct: func(_ context.Context, _, _ string) (string, error) {
+			return "prod_new", nil
+		},
+		// Plain string error — exercises the strings.Contains fallback branch.
+		onGetOrCreatePrice: func(_ context.Context, _ string, _ string, _ int64, _ string, _ string) (string, error) {
+			return "", fmt.Errorf("stripe create price: resource_missing product")
+		},
+	}
+
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, initRepo, &testUserRepo{}, sc2)
+	_, err := svc.Create(context.Background(), "init-1", "u1",
+		models.SubscriptionCreateInput{
+			AmountCents:           1000,
+			Frequency:             "monthly",
+			StripePaymentMethodID: "pm_test",
+			IdempotencyKey:        "key-heal-fail",
+		})
+	if !errors.Is(err, persistErr) {
+		t.Errorf("expected persistErr to be wrapped, got: %v", err)
 	}
 }

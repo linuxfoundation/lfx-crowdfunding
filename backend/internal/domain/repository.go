@@ -24,6 +24,9 @@ type InitiativeRepository interface {
 	Create(ctx context.Context, initiative *models.Initiative, input models.InitiativeCreateInput) (*models.Initiative, error)
 	Update(ctx context.Context, initiative *models.Initiative, input models.InitiativeUpdateInput) (*models.Initiative, error)
 	Delete(ctx context.Context, id string) error
+	// UpdateStripeProductID patches only the stripe_product_id column for the given
+	// initiative. Used to auto-heal initiatives with stale/missing Stripe products.
+	UpdateStripeProductID(ctx context.Context, id, productID string) error
 
 	// GetUsersByIDs returns a map of user UUID → User for the given UUIDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
