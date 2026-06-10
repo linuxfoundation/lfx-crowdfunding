@@ -20,6 +20,11 @@ if (isProduction) {
 }
 
 const appUrl = process.env.NUXT_APP_URL || 'http://localhost:3000';
+const selfServeUrl =
+  process.env.NUXT_PUBLIC_SELF_SERVE_URL ||
+  (isProduction
+    ? 'https://app.lfx.dev/crowdfunding/initiative'
+    : 'https://ui-pr-749.dev.v2.cluster.linuxfound.info/crowdfunding/initiatives');
 const auth0Domain =
   process.env.NUXT_PUBLIC_AUTH0_DOMAIN || 'https://linuxfoundation-staging.auth0.com';
 const auth0CookieDomain = process.env.NUXT_AUTH0_COOKIE_DOMAIN;
@@ -39,6 +44,7 @@ export default {
     auth0ClientId: process.env.NUXT_PUBLIC_AUTH0_CLIENT_ID || '',
     auth0RedirectUri: process.env.NUXT_PUBLIC_AUTH0_REDIRECT_URI || `${appUrl}/auth/callback`,
     auth0Audience: process.env.NUXT_PUBLIC_AUTH0_AUDIENCE || '',
+    selfServeUrl,
     stripePublishableKey: '', // populated from NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     githubOauthClientId: process.env.NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID || '',
     githubOauthRedirectUri: `${appUrl}/api/github/callback`,

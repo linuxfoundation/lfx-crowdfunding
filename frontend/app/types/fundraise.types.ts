@@ -3,6 +3,11 @@
 
 export type InitiativeType = 'project' | 'security_audit' | 'general_fund' | 'event';
 
+export interface TopicOption {
+  value: string;
+  label: string;
+}
+
 export type ProjectHostingType = 'github' | 'git_url';
 
 export interface GitHubRepo {

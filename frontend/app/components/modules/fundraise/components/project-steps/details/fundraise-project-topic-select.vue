@@ -54,7 +54,7 @@ SPDX-License-Identifier: MIT
       class="absolute top-full mt-1 left-0 right-0 z-50 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 max-h-52 overflow-y-auto"
     >
       <button
-        v-for="option in OPTIONS"
+        v-for="option in TOPIC_OPTIONS"
         :key="option.value"
         type="button"
         class="w-full px-3 py-2 text-sm text-left flex items-center gap-2.5 hover:bg-neutral-50 transition-colors"
@@ -82,26 +82,7 @@ SPDX-License-Identifier: MIT
 import { ref, computed } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
-
-interface TopicOption {
-  value: string;
-  label: string;
-}
-
-const OPTIONS: TopicOption[] = [
-  { value: 'security', label: 'Security' },
-  { value: 'cloud_native', label: 'Cloud Native' },
-  { value: 'developer_tools', label: 'Developer Tools' },
-  { value: 'ai_ml', label: 'AI / ML' },
-  { value: 'infrastructure', label: 'Infrastructure' },
-  { value: 'devops', label: 'DevOps' },
-  { value: 'observability', label: 'Observability' },
-  { value: 'networking', label: 'Networking' },
-  { value: 'storage', label: 'Storage' },
-  { value: 'serverless', label: 'Serverless' },
-  { value: 'web_standards', label: 'Web Standards' },
-  { value: 'runtime', label: 'Runtime' },
-];
+import { TOPIC_OPTIONS } from '~/config/pages/topic-options.config';
 
 const props = defineProps<{
   modelValue: string[];
@@ -118,7 +99,7 @@ onClickOutside(containerRef, () => {
   isOpen.value = false;
 });
 
-const selectedTopics = computed(() => OPTIONS.filter((o) => props.modelValue.includes(o.value)));
+const selectedTopics = computed(() => TOPIC_OPTIONS.filter((o) => props.modelValue.includes(o.value)));
 
 const isSelected = (value: string) => props.modelValue.includes(value);
 
