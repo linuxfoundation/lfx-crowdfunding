@@ -37,15 +37,11 @@ import { computed } from 'vue';
 import type { FinancialSummary } from '#shared/types/initiative-detail.types';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
+import { formatAmountCents } from '~/utils/currency';
 
 const props = defineProps<{ summary: FinancialSummary }>();
 
-const formatAmount = (cents: number): string => {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}K`;
-  return `$${dollars.toLocaleString()}`;
-};
+const formatAmount = formatAmountCents;
 
 const stats = computed(() => [
   {

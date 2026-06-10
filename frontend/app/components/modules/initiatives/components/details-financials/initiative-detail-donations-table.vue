@@ -87,15 +87,11 @@ import LfxCard from '~/components/uikit/card/card.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxTag from '~/components/uikit/tag/tag.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
+import { formatAmountCents } from '~/utils/currency';
 
 defineProps<{ donations: DonationRecord[]; isLoading?: boolean }>();
 
-const formatAmount = (cents: number): string => {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}K`;
-  return `$${dollars.toLocaleString()}`;
-};
+const formatAmount = formatAmountCents;
 </script>
 
 <script lang="ts">
