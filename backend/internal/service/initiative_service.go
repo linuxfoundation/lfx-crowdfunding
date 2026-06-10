@@ -690,8 +690,9 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 
 // syncReimbursementPolicy upserts the initiative's policy in the Reimbursement
 // Service. It is a no-op when the RS client is disabled or the initiative is not
-// published. Errors are non-fatal — logged at warn so that RS unavailability
-// never blocks the initiative create/update/approval response.
+// published. The sync runs in a background goroutine so RS latency (or
+// unavailability) never blocks the user-facing update/approval response. The RS
+// client's own timeout (10 s) bounds how long the goroutine can run.
 func (s *InitiativeService) syncReimbursementPolicy(ctx context.Context, initiative *models.Initiative) {
 	if s.reimbursement == nil {
 		return
@@ -700,16 +701,24 @@ func (s *InitiativeService) syncReimbursementPolicy(ctx context.Context, initiat
 	if !initiative.Status.EqualFold(models.StatusPublished) {
 		return
 	}
-	owner, err := s.userRepo.GetByID(ctx, initiative.OwnerID)
-	if err != nil {
-		s.logger.WarnContext(ctx, "reimbursement sync: could not fetch owner",
-			"initiative_id", initiative.ID, "owner_id", initiative.OwnerID, "error", err)
-		return
-	}
-	if syncErr := s.reimbursement.SyncPolicy(ctx, initiative, owner); syncErr != nil {
-		s.logger.WarnContext(ctx, "reimbursement sync: failed to sync policy",
-			"initiative_id", initiative.ID, "error", syncErr)
-	}
+	// Snapshot the initiative before launching the goroutine to avoid data races
+	// if the caller or another goroutine mutates the struct after this returns.
+	snap := *initiative
+	// Use a detached context so the goroutine is not cancelled when the HTTP
+	// request that triggered this call completes.
+	detached := context.WithoutCancel(ctx)
+	go func() {
+		owner, err := s.userRepo.GetByID(detached, snap.OwnerID)
+		if err != nil {
+			s.logger.WarnContext(detached, "reimbursement sync: could not fetch owner",
+				"initiative_id", snap.ID, "owner_id", snap.OwnerID, "error", err)
+			return
+		}
+		if syncErr := s.reimbursement.SyncPolicy(detached, &snap, owner); syncErr != nil {
+			s.logger.WarnContext(detached, "reimbursement sync: failed to sync policy",
+				"initiative_id", snap.ID, "error", syncErr)
+		}
+	}()
 }
 
 // enrichTransactionsFromDB batch-looks up users and organizations from the CF DB

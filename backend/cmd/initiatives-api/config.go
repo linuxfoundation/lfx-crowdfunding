@@ -311,6 +311,17 @@ func LoadConfig() (*Config, error) {
 	}, nil
 }
 
+// validateReimbursementConfig returns an error when REIMBURSEMENTS_API_URL is
+// set but REIMBURSEMENTS_API_KEY is empty — the integration would silently fail
+// every sync with 401/403 and there would be no startup signal for the
+// misconfiguration. Callers should check this before server startup.
+func validateReimbursementConfig(cfg ReimbursementConfig) error {
+	if cfg.APIURL != "" && cfg.APIKey == "" {
+		return fmt.Errorf("REIMBURSEMENTS_API_KEY is required when REIMBURSEMENTS_API_URL is set")
+	}
+	return nil
+}
+
 // parseCommaList splits a comma-separated string into trimmed, non-empty tokens.
 func parseCommaList(s string) []string {
 	if s == "" {

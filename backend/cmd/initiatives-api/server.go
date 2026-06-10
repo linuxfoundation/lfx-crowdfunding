@@ -82,6 +82,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 	// Reimbursement Service client — nil when REIMBURSEMENTS_API_URL is unset
 	// (integration disabled; no sync calls are made).
+	// Fail fast when URL is set but KEY is missing — the service would otherwise
+	// silently fail every sync with 401/403.
+	if err := validateReimbursementConfig(cfg.Reimbursement); err != nil {
+		return nil, fmt.Errorf("reimbursement config: %w", err)
+	}
 	reimbursementClient := clients.NewReimbursementClient(clients.ReimbursementConfig{
 		APIURL:       cfg.Reimbursement.APIURL,
 		APIKey:       cfg.Reimbursement.APIKey,
