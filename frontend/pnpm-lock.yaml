@@ -98,7 +98,10 @@ importers:
         version: 9.39.4
       "@nuxt/test-utils":
         specifier: ^3.23.0
-        version: 3.23.0(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4)))
+        version: 3.23.0(@playwright/test@1.60.0)(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(playwright-core@1.60.0)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4)))
+      "@playwright/test":
+        specifier: ^1.50.0
+        version: 1.60.0
       "@types/luxon":
         specifier: ^3.7.1
         version: 3.7.1
@@ -2459,6 +2462,14 @@ packages:
         integrity: sha512-QNqXyfVS2wm9hweSYD2O7F0G06uurj9kZ96TRQE5Y9hU7+tgdZwIkbAKc5Ocy1HxEY2kuDQa6cQ1WRs/O5LFKA==,
       }
     engines: { node: ^12.20.0 || ^14.18.0 || >=16.0.0 }
+
+  "@playwright/test@1.60.0":
+    resolution:
+      {
+        integrity: sha512-O71yZIbAh/PxDMNGns37GHBIfrVkEVyn+AXyIa5dOTfb4/xNvRWV+Vv/NMbNCtODB/pO7vLlF2OTmMVLhmr7Ag==,
+      }
+    engines: { node: ">=18" }
+    hasBin: true
 
   "@polka/url@1.0.0-next.29":
     resolution:
@@ -5778,6 +5789,14 @@ packages:
         integrity: sha512-OO0pH2lK6a0hZnAdau5ItzHPI6pUlvI7jMVnxUQRtw4owF2wk8lOSabtGDCTP4Ggrg2MbGnWO9X8K1t4+fGMDw==,
       }
 
+  fsevents@2.3.2:
+    resolution:
+      {
+        integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==,
+      }
+    engines: { node: ^8.16.0 || ^10.6.0 || >=11.0.0 }
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution:
       {
@@ -7905,6 +7924,22 @@ packages:
         integrity: sha512-y+ichcgc2LrADuhLNAx8DFjVfgz91pRxfZdI3UDhxHvcVEZsenLO+7XaU5vOp0u/7V/wZ+plyuQxtrDlZJ+yeg==,
       }
 
+  playwright-core@1.60.0:
+    resolution:
+      {
+        integrity: sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA==,
+      }
+    engines: { node: ">=18" }
+    hasBin: true
+
+  playwright@1.60.0:
+    resolution:
+      {
+        integrity: sha512-hheHdokM8cdqCb0lcE3s+zT4t4W+vvjpGxsZlDnikarzx8tSzMebh3UiFtgqwFwnTnjYQcsyMF8ei2mCO/tpeA==,
+      }
+    engines: { node: ">=18" }
+    hasBin: true
+
   pluralize@8.0.0:
     resolution:
       {
@@ -8773,10 +8808,10 @@ packages:
       }
     engines: { node: ">=8" }
 
-  shell-quote@1.8.3:
+  shell-quote@1.8.4:
     resolution:
       {
-        integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==,
+        integrity: sha512-VsC6n6vz1ihYYyZZwX7YZSF5l5x36ca17OC+a69h94YqB7X6XLwf+5MOgynYir2SLFUbl8gIYvBo8K8RoNQ6bQ==,
       }
     engines: { node: ">= 0.4" }
 
@@ -8937,6 +8972,14 @@ packages:
     resolution:
       {
         integrity: sha512-iXsux0UcOjdvs0LCMa2Ws3WwcDUozA3JN3BquNXkaFPP7TpRqgunKdEgoZ/uwb1J6xaYHfxtz9Twlh6yzwM6Tg==,
+      }
+    engines: { node: ">=20.16.0" }
+    hasBin: true
+
+  srvx@0.11.16:
+    resolution:
+      {
+        integrity: sha512-bp07zRuycfTY43IjAvvTFnmnJi8ikW0VFiHwOhhYcVW/L4xQ1XY4PAd4Nuum1rsA17C39zL7x+CDhrn5AL32Rw==,
       }
     engines: { node: ">=20.16.0" }
     hasBin: true
@@ -11452,7 +11495,7 @@ snapshots:
       rc9: 3.0.1
       std-env: 4.1.0
 
-  "@nuxt/test-utils@3.23.0(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4)))":
+  "@nuxt/test-utils@3.23.0(@playwright/test@1.60.0)(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(playwright-core@1.60.0)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4)))":
     dependencies:
       "@clack/prompts": 1.0.0-alpha.9
       "@nuxt/kit": 3.21.5(magicast@0.5.2)
@@ -11480,12 +11523,14 @@ snapshots:
       tinyexec: 1.1.2
       ufo: 1.6.4
       unplugin: 2.3.11
-      vitest-environment-nuxt: 1.0.1(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4)))
+      vitest-environment-nuxt: 1.0.1(@playwright/test@1.60.0)(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(playwright-core@1.60.0)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4)))
       vue: 3.5.34(typescript@5.9.3)
     optionalDependencies:
+      "@playwright/test": 1.60.0
       "@vue/test-utils": 2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3))
       happy-dom: 20.9.0
       jsdom: 28.1.0
+      playwright-core: 1.60.0
       vitest: 4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4))
     transitivePeerDependencies:
       - crossws
@@ -11850,6 +11895,10 @@ snapshots:
     optional: true
 
   "@pkgr/core@0.2.9": {}
+
+  "@playwright/test@1.60.0":
+    dependencies:
+      playwright: 1.60.0
 
   "@polka/url@1.0.0-next.29": {}
 
@@ -13950,6 +13999,9 @@ snapshots:
 
   fs.realpath@1.0.0: {}
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -14097,7 +14149,7 @@ snapshots:
   h3@2.0.1-rc.22(crossws@0.4.5(srvx@0.11.15)):
     dependencies:
       rou3: 0.8.1
-      srvx: 0.11.15
+      srvx: 0.11.16
     optionalDependencies:
       crossws: 0.4.5(srvx@0.11.15)
 
@@ -14610,7 +14662,7 @@ snapshots:
   launch-editor@2.13.2:
     dependencies:
       picocolors: 1.1.1
-      shell-quote: 1.8.3
+      shell-quote: 1.8.4
 
   lazystream@1.0.1:
     dependencies:
@@ -15436,6 +15488,14 @@ snapshots:
       exsolve: 1.0.8
       pathe: 2.0.3
 
+  playwright-core@1.60.0: {}
+
+  playwright@1.60.0:
+    dependencies:
+      playwright-core: 1.60.0
+    optionalDependencies:
+      fsevents: 2.3.2
+
   pluralize@8.0.0: {}
 
   portfinder@1.0.38:
@@ -15986,7 +16046,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.8.3: {}
+  shell-quote@1.8.4: {}
 
   side-channel-list@1.0.1:
     dependencies:
@@ -16079,6 +16139,8 @@ snapshots:
   split2@4.2.0: {}
 
   srvx@0.11.15: {}
+
+  srvx@0.11.16: {}
 
   stable-hash-x@0.2.0: {}
 
@@ -16736,9 +16798,9 @@ snapshots:
       terser: 5.47.1
       yaml: 2.8.4
 
-  vitest-environment-nuxt@1.0.1(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4))):
+  vitest-environment-nuxt@1.0.1(@playwright/test@1.60.0)(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(playwright-core@1.60.0)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4))):
     dependencies:
-      "@nuxt/test-utils": 3.23.0(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4)))
+      "@nuxt/test-utils": 3.23.0(@playwright/test@1.60.0)(@vue/test-utils@2.4.10(@vue/compiler-dom@3.5.34)(@vue/server-renderer@3.5.34(vue@3.5.34(typescript@5.9.3)))(vue@3.5.34(typescript@5.9.3)))(crossws@0.4.5(srvx@0.11.15))(happy-dom@20.9.0)(jsdom@28.1.0)(magicast@0.5.2)(playwright-core@1.60.0)(typescript@5.9.3)(vitest@4.1.5(@types/node@25.6.2)(happy-dom@20.9.0)(jsdom@28.1.0)(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(sass@1.99.0)(terser@5.47.1)(yaml@2.8.4)))
     transitivePeerDependencies:
       - "@cucumber/cucumber"
       - "@jest/globals"

@@ -74,6 +74,50 @@ func (s *emailService) SendProjectDeclinedEmail(ctx context.Context, toEmail, to
 	})
 }
 
+// SendDonationConfirmationEmail sends a donation receipt to the donor.
+func (s *emailService) SendDonationConfirmationEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType string) error {
+	return s.sendEmail(ctx, emailRequest{
+		Recipient:     toEmail,
+		RecipientName: toName,
+		TemplateName:  MandrillTemplateDonationConfirmation,
+		TemplateParameters: map[string]string{
+			"AMOUNT":            amountFormatted,
+			"CATEGORY_NAME":     category,
+			"DONOR_EMAIL":       toEmail,
+			"DONOR_NAME":        toName,
+			"ORGANIZATION_NAME": orgName,
+			"PAYMENT":           payment,
+			"PROJECT_NAME":      initiativeName,
+			"TYPE":              donationType,
+			"VIEW_PROJECT_URL":  initiativeURL,
+		},
+	})
+}
+
+// SendDonationAdminNotificationEmail notifies the initiative owner of a new donation.
+func (s *emailService) SendDonationAdminNotificationEmail(ctx context.Context, ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType string) error {
+	if ownerEmail == "" {
+		return nil // owner email not available; skip silently
+	}
+	return s.sendEmail(ctx, emailRequest{
+		Recipient:     ownerEmail,
+		RecipientName: ownerName,
+		TemplateName:  MandrillTemplateDonationAdminNotification,
+		TemplateParameters: map[string]string{
+			"AMOUNT":            amountFormatted,
+			"CATEGORY_NAME":     category,
+			"DONOR_EMAIL":       donorEmail,
+			"DONOR_NAME":        donorName,
+			"FNAME":             ownerName,
+			"ORGANIZATION_NAME": orgName,
+			"PAYMENT":           payment,
+			"PROJECT_NAME":      initiativeName,
+			"TYPE":              donationType,
+			"VIEW_PROJECT_URL":  initiativeURL,
+		},
+	})
+}
+
 // ErrNoNotificationRecipients is returned when MANDRILL_NOTIFICATION_EMAIL is empty or unset,
 // so callers can log a warning rather than silently dropping the review alert.
 var ErrNoNotificationRecipients = errors.New("email: no notification recipients configured")

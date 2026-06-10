@@ -24,7 +24,7 @@ export default defineEventHandler(async (event): Promise<SubscriptionResult> => 
   const body = await readBody<SubscriptionRequest>(event);
   const raw = await useBackendFetch<SubscriptionResultWire>(
     event,
-    `/v1/initiatives/${initiative.id}/subscriptions`,
+    `/v1/me/initiatives/${initiative.id}/subscriptions`,
     {
       method: 'POST',
       body: {

@@ -173,6 +173,94 @@ func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models
 	return initiative, nil
 }
 
+// GetForUser retrieves an initiative owned by the authenticated caller, by slug or
+// UUID, regardless of its status. The public GetByID/GetBySlug path only exposes
+// published initiatives to non-approvers, so owners need this identity-scoped read
+// to open their own drafts/submitted initiatives from the "My Initiatives" list.
+func (s *InitiativeService) GetForUser(ctx context.Context, idOrSlug, callerUsername string) (*models.Initiative, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetForUser")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.id_or_slug", idOrSlug))
+
+	caller, err := s.userRepo.GetByUsername(ctx, callerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			// Unknown caller cannot own any initiative.
+			return nil, domain.ErrInitiativeNotFound
+		}
+		span.RecordError(err)
+		return nil, err
+	}
+
+	var initiative *models.Initiative
+	if _, parseErr := uuid.Parse(idOrSlug); parseErr == nil {
+		initiative, err = s.repo.GetByID(ctx, idOrSlug)
+	} else {
+		initiative, err = s.repo.GetBySlug(ctx, idOrSlug)
+	}
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if initiative.OwnerID != caller.ID {
+		// Do not leak existence of initiatives the caller does not own.
+		return nil, domain.ErrInitiativeNotFound
+	}
+
+	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
+	enrichGoalsFromLedger(ctx, s.ledger, initiative)
+	return initiative, nil
+}
+
+// ResolveOwnedInitiativeID resolves a slug or UUID to the initiative's UUID, but
+// only if the initiative is owned by the authenticated caller — regardless of its
+// status. Mirrors GetForUser's ownership semantics for the transactions endpoint,
+// where the public path resolves published-only. Returns ErrInitiativeNotFound for
+// unknown callers, missing initiatives, or initiatives the caller does not own.
+func (s *InitiativeService) ResolveOwnedInitiativeID(ctx context.Context, idOrSlug, callerUsername string) (string, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ResolveOwnedInitiativeID")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.id_or_slug", idOrSlug))
+
+	caller, err := s.userRepo.GetByUsername(ctx, callerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return "", domain.ErrInitiativeNotFound
+		}
+		span.RecordError(err)
+		return "", err
+	}
+
+	var initiativeID, ownerID string
+	if _, parseErr := uuid.Parse(idOrSlug); parseErr == nil {
+		initiative, gErr := s.repo.GetByID(ctx, idOrSlug)
+		if gErr != nil {
+			span.RecordError(gErr)
+			return "", gErr
+		}
+		initiativeID, ownerID = initiative.ID, initiative.OwnerID
+	} else {
+		// Resolve the slug to a UUID regardless of status, then read the owner cheaply.
+		id, rErr := s.repo.ResolveSlug(ctx, idOrSlug)
+		if rErr != nil {
+			span.RecordError(rErr)
+			return "", rErr
+		}
+		initiative, gErr := s.repo.GetByID(ctx, id)
+		if gErr != nil {
+			span.RecordError(gErr)
+			return "", gErr
+		}
+		initiativeID, ownerID = initiative.ID, initiative.OwnerID
+	}
+
+	if ownerID != caller.ID {
+		return "", domain.ErrInitiativeNotFound
+	}
+	return initiativeID, nil
+}
+
 // enrichGoalsFromLedger populates donated_cents/spent_cents on each goal by
 // matching the goal name (case-insensitive) against Ledger subTotal categories.
 // Ledger uses PascalCase keys ("Mentorship", "BugBounty"); our goal names are
@@ -211,6 +299,40 @@ func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFi
 	if err != nil {
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list initiatives: %w", err)
+	}
+	for _, i := range initiatives {
+		i.Sponsors = flattenSponsors(i.RawSponsors)
+	}
+	return initiatives, meta, nil
+}
+
+// ListForUser retrieves initiatives owned by the authenticated caller.
+func (s *InitiativeService) ListForUser(ctx context.Context, ownerUsername string, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ListForUser")
+	defer span.End()
+
+	owner, err := s.userRepo.GetByUsername(ctx, ownerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			limit := filter.Limit
+			if limit <= 0 || limit > 100 {
+				limit = 20
+			}
+			offset := filter.Offset
+			if offset < 0 {
+				offset = 0
+			}
+			return []*models.Initiative{}, &models.PaginationMeta{Limit: limit, Offset: offset}, nil
+		}
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("resolve owner: %w", err)
+	}
+
+	filter.OwnerID = owner.ID
+	initiatives, meta, err := s.repo.List(ctx, filter)
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("list initiatives for user: %w", err)
 	}
 	for _, i := range initiatives {
 		i.Sponsors = flattenSponsors(i.RawSponsors)

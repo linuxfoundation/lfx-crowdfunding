@@ -29,14 +29,22 @@ type SetupIntentResult struct {
 
 // PaymentIntentRequest is the input for creating a one-time Stripe payment.
 type PaymentIntentRequest struct {
-	InitiativeID    string
-	UserID          string
-	CustomerID      string // Stripe cus_xxx — required for 3DS off-session charges
-	AmountCents     int64
-	Currency        string // defaults to "usd"
-	PaymentMethodID string
-	Category        string // e.g. "mentorship", "general fund", "event" — stored in Stripe metadata for Ledger
-	OrganizationID  string // organization ID — stored in Stripe metadata for Ledger
+	InitiativeID     string
+	InitiativeSlug   string // stored in Stripe metadata for email deep-link
+	InitiativeName   string // stored in Stripe metadata for email subject/body
+	UserID           string
+	DonorName        string // stored in Stripe metadata for email greeting
+	DonorEmail       string // set as receipt_email on the PI; also stored in metadata for webhook use
+	OwnerEmail       string // stored in Stripe metadata — admin notification recipient
+	CustomerID       string // Stripe cus_xxx — required for 3DS off-session charges
+	AmountCents      int64
+	Currency         string // defaults to "usd"
+	PaymentMethodID  string
+	Category         string // e.g. "mentorship", "general fund", "event" — stored in Stripe metadata for Ledger
+	OrganizationID   string // organization ID — stored in Stripe metadata for Ledger
+	OrganizationName string // org display name — stored in Stripe metadata for email rendering
+	OwnerName        string // initiative owner display name — stored in Stripe metadata for admin email greeting
+	PaymentMethod    string // PaymentMethodStripe or PaymentMethodInvoice — stored in Stripe metadata for email rendering
 	// IdempotencyKey is a per-request unique value (UUID) that prevents Stripe
 	// from creating a duplicate PaymentIntent when the client retries a timed-out
 	// request. Must be different for each logically distinct charge.
@@ -56,12 +64,21 @@ type PaymentIntent struct {
 // StripeSubscriptionRequest is the input for creating a Stripe subscription.
 type StripeSubscriptionRequest struct {
 	InitiativeID     string
+	InitiativeSlug   string // stored in Stripe metadata for email deep-link
+	InitiativeName   string // stored in Stripe metadata for email subject/body
 	UserID           string
+	DonorName        string // stored in Stripe metadata for email greeting
+	DonorEmail       string // stored in Stripe metadata for webhook email use; inv.CustomerEmail is the runtime source
+	OwnerEmail       string // stored in Stripe metadata — admin notification recipient
 	StripeCustomerID string
 	StripePriceID    string
 	PaymentMethodID  string
 	Category         string // e.g. "mentorship", "general fund", "event" — stored in Stripe metadata for Ledger
 	OrganizationID   string // organization ID — stored in Stripe metadata for Ledger
+	OrganizationName string // org display name — stored in Stripe metadata for email rendering
+	OwnerName        string // initiative owner display name — stored in Stripe metadata for admin email greeting
+	PaymentMethod    string // PaymentMethodStripe or PaymentMethodInvoice — stored in Stripe metadata for email rendering
+	Frequency        string // e.g. "monthly", "yearly" — stored in Stripe metadata for email TYPE field
 	// IdempotencyKey is the client-supplied key forwarded to Stripe so that
 	// retries of the same logical request are de-duped at the Stripe layer.
 	IdempotencyKey string

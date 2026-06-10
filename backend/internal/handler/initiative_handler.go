@@ -74,6 +74,37 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListForUser handles GET /v1/me/initiatives — requires JWT with access:me scope.
+// Returns initiatives owned by the authenticated caller, paginated.
+func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
+
+	initiatives, meta, err := h.svc.ListForUser(r.Context(), principal.Username, models.InitiativeFilter{
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if initiatives == nil {
+		initiatives = []*models.Initiative{}
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"data": initiatives,
+		"meta": meta,
+	})
+}
+
 // GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
 // Only published initiatives are returned to anonymous callers; approvers may
@@ -117,6 +148,28 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// GetForUser handles GET /v1/me/initiatives/{id} — requires JWT with access:me scope.
+// Accepts a slug or UUID. Returns the caller's own initiative in any status, so
+// owners can open their drafts/submitted initiatives that the public detail
+// endpoint hides. Initiatives the caller does not own return 404 (not 403) to
+// avoid leaking their existence.
+func (h *InitiativeHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	initiative, err := h.svc.GetForUser(r.Context(), id, principal.Username)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	JSON(w, http.StatusOK, initiative)
 }
 
 // Create handles POST /v1/initiatives — requires JWT.
@@ -169,9 +222,59 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Resolves the initiative by slug or UUID, verifies it is published, then calls Ledger.
 func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	value := chi.URLParam(r, "id")
-	q := r.URL.Query()
 
-	txnTypeParam := strings.ToLower(q.Get("type"))
+	// Resolve identifier to a UUID, verifying the initiative exists and is published.
+	// Use lightweight lookups (no Ledger enrichment) since transactions come from Ledger directly.
+	var initiativeID string
+	if uuidPattern.MatchString(value) {
+		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = value
+	} else {
+		id, err := h.svc.GetIDBySlug(r.Context(), value)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = id
+	}
+
+	// Public, published-only data — safe for shared caches.
+	h.writeTransactions(w, r, initiativeID, "public, max-age=60, stale-while-revalidate=300")
+}
+
+// GetTransactionsForUser handles GET /v1/me/initiatives/{id}/transactions — requires
+// JWT with access:me scope. Returns transactions for the caller's own initiative in
+// any status, so owners can view their non-published initiative's transactions (the
+// public endpoint resolves published-only).
+func (h *InitiativeHandler) GetTransactionsForUser(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	initiativeID, err := h.svc.ResolveOwnedInitiativeID(r.Context(), chi.URLParam(r, "id"), principal.Username)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	// Identity-scoped response — must not be shared-cacheable. Vary on Authorization
+	// so any intermediary keys per-caller and never serves one owner's data to another.
+	w.Header().Set("Vary", "Authorization")
+	h.writeTransactions(w, r, initiativeID, "private, max-age=60")
+}
+
+// writeTransactions parses the shared transaction query params, fetches the Ledger
+// transactions for the resolved initiative, and writes the JSON response with the
+// given Cache-Control policy. Callers are responsible for resolving and authorizing
+// initiativeID beforehand, and for choosing a cache policy appropriate to the route
+// (public for the published-only endpoint, private for the identity-scoped one).
+func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Request, initiativeID, cacheControl string) {
+	txnTypeParam := strings.ToLower(r.URL.Query().Get("type"))
 	var ledgerTxnType string
 	switch txnTypeParam {
 	case "donations":
@@ -193,24 +296,6 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 		offset = 0
 	}
 
-	// Resolve identifier to a UUID, verifying the initiative exists and is published.
-	// Use lightweight lookups (no Ledger enrichment) since transactions come from Ledger directly.
-	var initiativeID string
-	if uuidPattern.MatchString(value) {
-		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
-			Error(w, err)
-			return
-		}
-		initiativeID = value
-	} else {
-		id, err := h.svc.GetIDBySlug(r.Context(), value)
-		if err != nil {
-			Error(w, err)
-			return
-		}
-		initiativeID = id
-	}
-
 	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, limit, offset)
 	if err != nil {
 		Error(w, err)
@@ -227,7 +312,7 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
+	w.Header().Set("Cache-Control", cacheControl)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

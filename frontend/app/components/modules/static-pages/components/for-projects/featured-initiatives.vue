@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="pt-16 flex flex-col gap-10">
     <div class="flex flex-col gap-3">
-      <h2 class="text-2xl font-semibold leading-9 text-neutral-900">Projects already raising on LFX</h2>
+      <h2 class="text-2xl font-semibold leading-9 text-neutral-900">Initiatives raising with Crowdfunding</h2>
       <p class="text-base font-normal leading-6 text-neutral-900">
-        Join the projects that trust LFX CrowdFunding to fund their most important work.
+        Join the initiatives that trust LFX Crowdfunding to fund their most important work.
       </p>
     </div>
 

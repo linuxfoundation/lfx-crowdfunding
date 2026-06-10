@@ -70,7 +70,7 @@ graph TD
 
     SSBFF -->|"Bearer user-issued access token\n(access:me scope)"| CFAPI
 
-    Reimburse -->|"client_credentials grant\nprivate-key JWT assertion\naudience: CF /api/\naccess:manage scope"| Auth0
+    Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF /api/\naccess:manage scope"| Auth0
     Auth0 -->|"M2M access token\n(access:manage scope, cached ~24h)"| Reimburse
     Reimburse -->|"Bearer M2M token\nGET /v1/internal/*\n(access:manage scope)"| CFAPI
 
@@ -185,15 +185,18 @@ receives 401 (forcing a new login).
 
 ## Flow 2 — Self Serve → CF API (User Token)
 
-Self Serve proxies the logged-in user's **own** access token to the CF API. There is no M2M token
-exchange and no identity header — the user-issued access token carries the user's identity via the
+Self Serve forwards a **user-issued access token scoped to the CF audience** to the CF API. There
+is no M2M credential and no identity header — the token carries the user's identity via the
 `https://sso.linuxfoundation.org/claims/username` claim, same as the CF frontend.
 
-This is correct because all SS→CF calls are me-style endpoints: `/v1/me/donations`,
-`/v1/me/subscriptions`, `/v1/me/payment-account`, etc. Impersonation is handled entirely on the
-Self Serve side (it forwards a token representing the effective user — see
-[`08-self-serve-auth.md`](08-self-serve-auth.md)); CF needs no special handling because it always
-sees a normal `access:me` user token.
+Because SS's primary login audience is the LFX V2 cluster (not CF), SS performs a silent
+cross-audience refresh token exchange to obtain a CF-scoped token before each call. The exchange
+is cached in the server session. See [`08-self-serve-auth.md`](08-self-serve-auth.md) for details
+on why this mechanism is used and the auth0-terraform grant it requires.
+
+All SS→CF calls are me-style endpoints: `/v1/me/donations`, `/v1/me/subscriptions`,
+`/v1/me/payment-account`, etc. Impersonation is handled entirely on the Self Serve side — CF
+always sees a normal `access:me` user token.
 
 ```mermaid
 sequenceDiagram
@@ -203,8 +206,12 @@ sequenceDiagram
     participant Auth0
 
     User->>SSBFF: Request + OIDC session cookie
-    SSBFF->>SSBFF: extract user access token from session
-    SSBFF->>API: GET /v1/me/…<br/>Authorization: Bearer {user access token}
+    SSBFF->>SSBFF: check session cache for CF-audience token
+    SSBFF->>Auth0: POST /oauth/token<br/>grant_type: refresh_token<br/>audience: /api/<br/>scope: access:me
+    Note over SSBFF,Auth0: silent exchange — no user interaction
+    Auth0->>SSBFF: CF-audience access token (access:me scope, username claim)
+    SSBFF->>SSBFF: cache token in session (5 min expiry buffer)
+    SSBFF->>API: GET /v1/me/…<br/>Authorization: Bearer {CF-audience access token}
     API->>Auth0: fetch JWKS (cached)
     API->>API: validate JWT: RS256 · issuer · audience /api/ · expiry
     API->>API: check access:me scope present
@@ -223,9 +230,8 @@ reimbursements, it reads CF data for **mentorship-type initiatives** — specifi
 reimbursement requests.
 
 There is no logged-in user in this flow, so the user-token pattern does not apply. Reimbursement
-authenticates as itself via the **Auth0 client credentials grant** with the `access:manage` scope,
-using **private-key JWT (`private_key_jwt`) attestation** — the LFX V2 convention for M2M clients,
-not a shared client secret. It calls a dedicated **`/v1/internal/*`** route. The access is
+authenticates as itself via the **Auth0 client credentials grant** (`client_id` / `client_secret`)
+with the `access:manage` scope, and calls a dedicated **`/v1/internal/*`** route. The access is
 **read-only**.
 
 ### 3.1 Suggested Endpoint
@@ -261,8 +267,7 @@ sequenceDiagram
     participant Auth0
 
     Note over RS: On first CF call (or after token expiry)
-    RS->>RS: build client_assertion (signed JWT, RS private key)
-    RS->>Auth0: POST /oauth/token<br/>grant_type: client_credentials<br/>client_id: M2M_CLIENT_ID<br/>client_assertion_type: …jwt-bearer<br/>client_assertion: {signed JWT}<br/>audience: https://crowdfunding.{env}.lfx.dev/api/<br/>scope: access:manage
+    RS->>Auth0: POST /oauth/token<br/>grant_type: client_credentials<br/>client_id: M2M_CLIENT_ID<br/>client_secret: M2M_CLIENT_SECRET<br/>audience: https://crowdfunding.{env}.lfx.dev/api/<br/>scope: access:manage
     Auth0->>RS: M2M access token (~24h TTL, access:manage scope)
     RS->>RS: cache token (refresh 5 min before expiry)
 ```
@@ -382,16 +387,34 @@ resource "auth0_resource_server_scopes" "lfx_crowdfunding_api" {
 
 ### Client grants
 
-`lfx_crowdfunding_api` uses `user { policy = "allow_all" }`, so user-facing clients need **no**
-client grant — `access:me` is consented when the user logs in interactively.
+`lfx_crowdfunding_api` uses `user { policy = "allow_all" }`, so single-audience user-facing clients
+need **no** client grant — `access:me` is consented when the user logs in interactively.
 
-**CF frontend (Nuxt BFF)** — no client grant. Obtains `access:me` via the user's login.
+**CF frontend (Nuxt BFF)** — no client grant. Logs in with the CF audience as its primary
+`audience` parameter and forwards `req.bearerToken` directly to CF.
 
-**Self Serve** — no client grant. Forwards the user's own access token; it never calls CF as itself,
-so it needs no M2M grant. (A `subject_type = "user"` client grant is only used when an app needs M2M
-access *in addition to* the user token — not the case for CF.)
+**Self Serve** — requires a client grant. Unlike the CF Nuxt BFF, SS is a multi-audience BFF: its
+primary login audience is the LFX V2 cluster (`lfx-api.{env}.v2.cluster.linuxfound.info`), which
+it needs for committees, meetings, and other LFX v2 services. To call CF it performs a silent
+cross-audience refresh token exchange (`grant_type=refresh_token` + `audience=/api/`). Auth0's
+`allow_all` policy covers interactive `authorization_code` flows but **not** cross-audience refresh
+token exchanges — for those, the client must have a registered grant for the target audience. This
+is the same mechanism SS uses for the legacy API Gateway (see `grants_lfx.tf`).
 
-**Reimbursement Service** — the only client grant, for M2M `access:manage` access:
+```hcl
+resource "auth0_client_grant" "lfxone_crowdfunding_user" {
+  client_id    = auth0_client.lfx_one.id
+  audience     = auth0_resource_server.lfx_crowdfunding_api.identifier
+  subject_type = "user"
+  scopes       = ["access:me"]
+  depends_on   = [auth0_resource_server_scopes.lfx_crowdfunding_api]
+}
+```
+
+The resulting token is user-scoped — it carries the user's identity (`access:me` scope, username
+claim) and is not an M2M token. No client secret is used or needed.
+
+**Reimbursement Service** — the only M2M client grant, for `access:manage` access:
 
 ```hcl
 resource "auth0_client_grant" "reimbursement_crowdfunding" {
@@ -402,10 +425,11 @@ resource "auth0_client_grant" "reimbursement_crowdfunding" {
 }
 ```
 
-The Reimbursement Service client authenticates with **private-key JWT** (`private_key_jwt`), the
-LFX V2 M2M convention — not a client secret. The signing key pair is generated in Auth0; because
-the service runs in a separate AWS account, the key is provided to it via its own deployment
-secrets (see Configuration Reference) rather than the LFX secrets-distribution pipeline.
+The Reimbursement Service client authenticates with **`client_id` / `client_secret`** (the service
+is an existing Lambda already using client-secret auth, so it moves onto its own dedicated CF client
+without new code). The secret is generated in Auth0; because the service runs in a separate AWS
+account, it is provided via the service's own deployment secrets (see Configuration Reference)
+rather than the LFX secrets-distribution pipeline.
 
 ---
 
@@ -435,11 +459,13 @@ secrets (see Configuration Reference) rather than the LFX secrets-distribution p
 
 ### LFX Self Serve (Express BFF)
 
-No M2M credentials needed for CF. The user's access token is forwarded directly.
+No M2M credentials needed for CF. The token forwarded is a user-issued access token obtained via
+a silent refresh token exchange for the CF audience — not a service credential.
 
-| Env var | Purpose |
-|---|---|
-| `CROWDFUNDING_API_BASE_URL` | CF API base URL (`https://crowdfunding-api.dev.lfx.dev`) |
+| Env var | Purpose | Dev value |
+|---|---|---|
+| `CROWDFUNDING_API_BASE_URL` | CF API base URL | `https://crowdfunding-api.dev.lfx.dev` |
+| `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the refresh token exchange | `https://crowdfunding.dev.lfx.dev/api/` |
 
 ### Reimbursement Service
 
@@ -451,7 +477,7 @@ secrets-distribution pipeline. Exact env-var names are owned by that repo.
 | Input | Value |
 |---|---|
 | Auth0 M2M client ID | the `Reimbursement Service` Auth0 client (auth0-terraform) |
-| Auth0 M2M private key | the client's `private_key_jwt` signing key; used to build the `client_assertion`. No client secret. |
+| Auth0 M2M client secret | the client's secret (`client_id` / `client_secret` auth) |
 | Auth0 token endpoint | `https://linuxfoundation-{env}.auth0.com/oauth/token` |
 | CF API audience | `https://crowdfunding.{env}.lfx.dev/api/` (scope `access:manage`) |
 | CF API base URL | e.g. `https://crowdfunding-api.dev.lfx.dev` |

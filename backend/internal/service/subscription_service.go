@@ -142,7 +142,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	}
 	customerID := user.StripeCustomerID
 	if customerID == "" {
-		customerID, err = s.stripe.CreateCustomer(ctx, user.ID, user.Email)
+		customerID, err = s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
 		if err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("create stripe customer: %w", err)
@@ -155,20 +155,48 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 
 	// Attach the Price to the initiative's existing Stripe Product rather than
 	// creating a new Product per Price — keeps the Stripe catalog manageable.
-	priceID, err := s.stripe.GetOrCreatePrice(ctx, initiative.StripeProductID, input.AmountCents, input.Frequency, input.IdempotencyKey)
+	priceID, err := s.stripe.GetOrCreatePrice(ctx, initiative.StripeProductID, initiativeID, input.AmountCents, input.Frequency, input.IdempotencyKey)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("stripe price: %w", err)
 	}
 
+	// Best-effort owner email and name lookup for admin notification email.
+	// Failure here is non-fatal — the subscription proceeds without the email.
+	ownerEmail := ""
+	ownerName := ""
+	if owner, ownerErr := s.userRepo.GetByID(ctx, initiative.OwnerID); ownerErr == nil {
+		ownerEmail = owner.Email
+		ownerName = owner.Name
+	}
+
+	// Best-effort org name lookup for email rendering.
+	orgName := ""
+	if input.OrganizationID != "" {
+		if orgs, orgErr := s.initiativeRepo.GetOrganizationsByIDs(ctx, []string{input.OrganizationID}); orgErr == nil {
+			if org, ok := orgs[input.OrganizationID]; ok {
+				orgName = org.Name
+			}
+		}
+	}
+
 	result, err := s.stripe.CreateSubscription(ctx, models.StripeSubscriptionRequest{
 		InitiativeID:     initiativeID,
-		UserID:           user.ID,
+		InitiativeSlug:   initiative.Slug,
+		InitiativeName:   initiative.Name,
+		UserID:           user.LegacyUserID,
+		DonorName:        user.Name,
+		DonorEmail:       user.Email,
+		OwnerEmail:       ownerEmail,
+		OwnerName:        ownerName,
 		StripeCustomerID: customerID,
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
 		Category:         input.Category,
 		OrganizationID:   input.OrganizationID,
+		OrganizationName: orgName,
+		PaymentMethod:    models.PaymentMethodStripe, // subscriptions are always card-based; invoice billing is not supported
+		Frequency:        input.Frequency,
 		IdempotencyKey:   input.IdempotencyKey,
 	})
 	if err != nil {

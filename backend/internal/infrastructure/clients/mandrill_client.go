@@ -38,6 +38,12 @@ const (
 	// MandrillTemplateDeclined is sent to the initiative owner when their
 	// initiative is declined.
 	MandrillTemplateDeclined MandrillTemplateName = "admin-mentorship-submission-rejected"
+	// MandrillTemplateDonationConfirmation is sent to the donor after a
+	// successful one-time or recurring payment.
+	MandrillTemplateDonationConfirmation MandrillTemplateName = "fundspring-donation-ledger"
+	// MandrillTemplateDonationAdminNotification is sent to the initiative owner
+	// when a new donation is received on their initiative.
+	MandrillTemplateDonationAdminNotification MandrillTemplateName = "admin-donation-notification-ledger"
 )
 
 // MandrillClient is the interface consumed by the email service layer.

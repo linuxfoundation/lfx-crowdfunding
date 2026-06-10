@@ -15,6 +15,7 @@
     "format:check": "prettier --check .",
     "tsc-check": "tsc --noEmit",
     "test": "vitest",
+    "test:e2e": "playwright test",
     "prepare": "cd .. && husky ./frontend/.husky"
   },
   "dependencies": {
@@ -71,12 +72,18 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.1",
     "vitest": "^4.0.17",
-    "vue-eslint-parser": "^10.2.0"
+    "vue-eslint-parser": "^10.2.0",
+    "@playwright/test": "^1.50.0"
   },
   "postcss": {
     "plugins": {
       "tailwindcss": {},
       "autoprefixer": {}
+    }
+  },
+  "pnpm": {
+    "overrides": {
+      "shell-quote": ">=1.8.4"
     }
   },
   "lint-staged": {
@@ -87,5 +94,10 @@
     "*.{json,md,yaml,yml}": [
       "prettier --write"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "shell-quote": "1.8.4"
+    }
   }
 }

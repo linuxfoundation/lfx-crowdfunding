@@ -180,6 +180,8 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 
 // UpdateByStripeSubscriptionID is called by the Stripe webhook to advance
 // the subscription status (e.g. incomplete → active, active → past_due).
+// Returns ErrAlreadyProcessed if the subscription is already in the target
+// status (enabling idempotent webhook retries), or ErrSubscriptionNotFound.
 func (r *SubscriptionRepository) UpdateByStripeSubscriptionID(ctx context.Context, stripeSubID, status string) error {
 	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.UpdateByStripeSubscriptionID")
 	defer span.End()
@@ -190,7 +192,8 @@ func (r *SubscriptionRepository) UpdateByStripeSubscriptionID(ctx context.Contex
 
 	const q = `
 		UPDATE subscriptions SET status = $2, updated_on = NOW()
-		WHERE stripe_subscription_id = $1`
+		WHERE stripe_subscription_id = $1
+		  AND status IS DISTINCT FROM $2`
 
 	tag, err := r.pool.Exec(ctx, q, stripeSubID, status)
 	if err != nil {
@@ -198,7 +201,17 @@ func (r *SubscriptionRepository) UpdateByStripeSubscriptionID(ctx context.Contex
 		return fmt.Errorf("update subscription by stripe id: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return domain.ErrSubscriptionNotFound
+		var exists bool
+		if err := r.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM subscriptions WHERE stripe_subscription_id = $1)`, stripeSubID,
+		).Scan(&exists); err != nil {
+			span.RecordError(err)
+			return fmt.Errorf("check subscription existence: %w", err)
+		}
+		if !exists {
+			return domain.ErrSubscriptionNotFound
+		}
+		return domain.ErrAlreadyProcessed
 	}
 	return nil
 }
