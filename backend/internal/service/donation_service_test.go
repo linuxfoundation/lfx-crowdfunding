@@ -406,7 +406,7 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 	donRepo3DS := &testDonationRepo{
 		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
 			// Even for 3DS flows the donation must be persisted as pending;
-			// requires_action is returned to the caller but not stored.
+			// 3DS is detected via ClientSecret while Status remains "pending".
 			if d.Status != models.DonationStatusPending {
 				t.Errorf("repo.Create called with Status=%q, want %q", d.Status, models.DonationStatusPending)
 			}
