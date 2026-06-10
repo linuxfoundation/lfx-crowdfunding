@@ -81,6 +81,11 @@
       "autoprefixer": {}
     }
   },
+  "pnpm": {
+    "overrides": {
+      "shell-quote": ">=1.8.4"
+    }
+  },
   "lint-staged": {
     "*.{js,ts,vue}": [
       "eslint --fix",
@@ -89,5 +94,10 @@
     "*.{json,md,yaml,yml}": [
       "prettier --write"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "shell-quote": "1.8.4"
+    }
   }
 }
