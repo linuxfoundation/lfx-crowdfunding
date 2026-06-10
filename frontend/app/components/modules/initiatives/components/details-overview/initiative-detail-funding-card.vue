@@ -129,7 +129,7 @@ const cardGradient = computed(() => typeConfig.value.gradient);
 const formatAmount = (cents: number): string => {
   const dollars = cents / 100;
   if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}K`;
+  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(2).replace(/\.?0+$/, '')}K`;
   return `$${dollars.toLocaleString()}`;
 };
 
