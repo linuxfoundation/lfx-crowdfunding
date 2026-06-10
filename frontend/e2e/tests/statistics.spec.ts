@@ -14,9 +14,8 @@ test.describe('Statistics page', () => {
   });
 
   test('shows statistics label', async ({ page }) => {
-    // "Statistics" renders as a <span>, not a heading role.
-    // The <h1> contains dynamic text (e.g. "$X funds raised by Y supporters").
-    await expect(page.getByText('Statistics', { exact: true })).toBeVisible({
+    // Scoped to main to avoid matching the nav/footer links with the same text.
+    await expect(page.getByRole('main').getByText('Statistics', { exact: true })).toBeVisible({
       timeout: 10000,
     });
   });
