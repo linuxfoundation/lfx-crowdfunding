@@ -21,13 +21,14 @@ import (
 // --- mocks ---
 
 type mockInitiativeRepo struct {
-	initiative      *models.Initiative
-	lastCreated     *models.Initiative
-	lastInput       models.InitiativeCreateInput
-	lastUpdated     *models.Initiative
-	lastUpdateInput models.InitiativeUpdateInput
-	err             error
-	updateErr       error
+	initiative              *models.Initiative
+	lastCreated             *models.Initiative
+	lastInput               models.InitiativeCreateInput
+	lastUpdated             *models.Initiative
+	lastUpdateInput         models.InitiativeUpdateInput
+	err                     error
+	updateErr               error
+	onUpdateStripeProductID func(ctx context.Context, id, productID string) error
 }
 
 func (m *mockInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -74,7 +75,12 @@ func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[s
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
 }
-func (m *mockInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (m *mockInitiativeRepo) UpdateStripeProductID(ctx context.Context, id, productID string) error {
+	if m.onUpdateStripeProductID != nil {
+		return m.onUpdateStripeProductID(ctx, id, productID)
+	}
+	return nil
+}
 
 type mockLedgerClient struct {
 	balance *clients.LedgerBalance

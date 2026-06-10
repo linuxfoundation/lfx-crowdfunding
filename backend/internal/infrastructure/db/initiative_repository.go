@@ -792,7 +792,7 @@ func (r *InitiativeRepository) UpdateStripeProductID(ctx context.Context, id, pr
 	)
 
 	tag, err := r.pool.Exec(ctx,
-		"UPDATE crowdfunding.initiatives SET stripe_product_id = $2 WHERE id = $1",
+		"UPDATE initiatives SET stripe_product_id = $2 WHERE id = $1",
 		id, productID,
 	)
 	if err != nil {
