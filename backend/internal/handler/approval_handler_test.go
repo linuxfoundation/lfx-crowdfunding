@@ -177,7 +177,7 @@ func (e *apprEmailService) InitiativeURL(slug string) string {
 // newApprovalHandler builds an InitiativeHandler wired to the given repo and
 // approvers list. Ledger and Stripe clients are no-op stubs.
 func newApprovalHandler(repo *apprInitiativeRepo, approvers []string) *InitiativeHandler {
-	svc := service.NewInitiativeService(repo, &apprUserRepository{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(repo, &apprUserRepository{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	return NewInitiativeHandler(svc, approvers, slog.Default())
 }
 

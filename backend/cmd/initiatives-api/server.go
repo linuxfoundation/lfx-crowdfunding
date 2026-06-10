@@ -80,8 +80,20 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	})
 	emailSvc := clients.NewEmailService(mandrillClient, cfg.Mandrill.FrontendBase, cfg.Mandrill.NotificationEmails)
 
+	// Reimbursement Service client — nil when REIMBURSEMENTS_API_URL is unset
+	// (integration disabled; no sync calls are made).
+	reimbursementClient := clients.NewReimbursementClient(clients.ReimbursementConfig{
+		APIURL:       cfg.Reimbursement.APIURL,
+		APIKey:       cfg.Reimbursement.APIKey,
+		FrontendBase: cfg.Mandrill.FrontendBase,
+		Timeout:      cfg.Reimbursement.Timeout,
+	})
+	if reimbursementClient == nil {
+		logger.Warn("REIMBURSEMENTS_API_URL is not set — Reimbursement Service sync is disabled")
+	}
+
 	// Services
-	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, logger)
+	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
