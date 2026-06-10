@@ -27,6 +27,9 @@ type emailService struct {
 // When dryRun is true all sends are suppressed and logged — use during
 // production data migrations to prevent accidental emails to real users.
 func NewEmailService(mandrill MandrillClient, frontendBase string, notificationEmails []string, dryRun bool, logger *slog.Logger) domain.EmailService {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &emailService{
 		mandrill:           mandrill,
 		frontendBase:       strings.TrimRight(frontendBase, "/"),
