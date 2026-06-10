@@ -140,6 +140,17 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	if user.Email == "" {
 		return nil, fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 	}
+
+	// Prevent duplicate active subscriptions for the same user + initiative.
+	// A user may only hold one non-terminal subscription at a time per initiative.
+	if existing, lookupErr := s.repo.GetActiveByUserAndInitiative(ctx, user.ID, initiativeID); lookupErr == nil {
+		return nil, fmt.Errorf("%w: an active subscription already exists (id=%s, status=%s)",
+			domain.ErrConflict, existing.ID, existing.Status)
+	} else if !errors.Is(lookupErr, domain.ErrSubscriptionNotFound) {
+		span.RecordError(lookupErr)
+		return nil, fmt.Errorf("check existing subscription: %w", lookupErr)
+	}
+
 	customerID := user.StripeCustomerID
 	if customerID == "" {
 		customerID, err = s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
