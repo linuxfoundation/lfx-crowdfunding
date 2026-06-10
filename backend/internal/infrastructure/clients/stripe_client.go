@@ -485,8 +485,12 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 			IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s", req.IdempotencyKey)),
 		},
 	}
-	// Expand latest_invoice so we can read ConfirmationSecret.ClientSecret.
+	// Expand latest_invoice and its confirmation_secret nested field.
+	// confirmation_secret is a separately-expandable field on Invoice even though
+	// it is a struct (not a resource pointer) — without this second expand path,
+	// the Stripe API omits it and ConfirmationSecret is always nil.
 	params.AddExpand("latest_invoice")
+	params.AddExpand("latest_invoice.confirmation_secret")
 	if req.PaymentMethodID != "" {
 		params.DefaultPaymentMethod = stripe.String(req.PaymentMethodID)
 	}
