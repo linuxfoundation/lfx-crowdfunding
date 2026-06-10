@@ -502,6 +502,7 @@ func TestGetByID_FlattensSponsorsList(t *testing.T) {
 		&mockLedgerClient{},
 		&mockStripeClient{},
 		&mockEmailService{},
+		nil,
 		slog.Default(),
 	)
 
@@ -524,6 +525,7 @@ func TestGetByID_RepoError(t *testing.T) {
 		&mockLedgerClient{},
 		&mockStripeClient{},
 		&mockEmailService{},
+		nil,
 		slog.Default(),
 	)
 
@@ -534,7 +536,7 @@ func TestGetByID_RepoError(t *testing.T) {
 }
 
 func newCreateSvc(repo domain.InitiativeRepository) *InitiativeService {
-	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
 }
 
 func TestCreate_MissingName(t *testing.T) {
@@ -632,7 +634,7 @@ func TestCreate_ContactMissingType(t *testing.T) {
 // ── Update ────────────────────────────────────────────────────────────────────
 
 func newUpdateSvc(repo *mockInitiativeRepo) *InitiativeService {
-	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
 }
 
 func TestUpdate_GoalMissingName(t *testing.T) {
@@ -745,7 +747,7 @@ func TestUpdate_CannotSetApprovalControlledStatus(t *testing.T) {
 // ── Create — for-review email notification ────────────────────────────────────
 
 func newCreateSvcWithEmail(repo domain.InitiativeRepository, userRepo *mockUserRepository, emailSvc *mockEmailService) *InitiativeService {
-	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, slog.Default())
+	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, nil, slog.Default())
 }
 
 func TestCreate_SendsForReviewEmail(t *testing.T) {
@@ -843,7 +845,7 @@ func contains(s, substr string) bool {
 // ── Approve ───────────────────────────────────────────────────────────────────
 
 func newProcessApprovalSvc(repo *mockInitiativeRepo) *InitiativeService {
-	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
 }
 
 func TestProcessApproval_SetsStatusPublished(t *testing.T) {
@@ -917,7 +919,7 @@ func TestProcessApproval_RejectsNonApprovableStatus(t *testing.T) {
 // ── Email notification tests ──────────────────────────────────────────────────
 
 func newProcessApprovalSvcWithEmail(repo *mockInitiativeRepo, userRepo *mockUserRepository, emailSvc *mockEmailService) *InitiativeService {
-	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, slog.Default())
+	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, nil, slog.Default())
 }
 
 func TestProcessApproval_SendsApprovedEmail(t *testing.T) {
