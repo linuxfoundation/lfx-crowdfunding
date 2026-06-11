@@ -11,3 +11,5 @@ settings.json
 .claude/settings.local.json
 specs
 .playwright-mcp/
+.worktrees/
+.claude/worktrees/
