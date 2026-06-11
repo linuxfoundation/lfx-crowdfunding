@@ -28,6 +28,8 @@ type mockInitiativeRepo struct {
 	lastUpdateInput         models.InitiativeUpdateInput
 	err                     error
 	updateErr               error
+	ownerEmail              string
+	ownerEmailErr           error
 	onUpdateStripeProductID func(ctx context.Context, id, productID string) error
 }
 
@@ -76,7 +78,7 @@ func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string
 	return map[string]models.Organization{}, nil
 }
 func (m *mockInitiativeRepo) GetOwnerEmailBySlug(_ context.Context, _ string) (string, error) {
-	return "", nil
+	return m.ownerEmail, m.ownerEmailErr
 }
 func (m *mockInitiativeRepo) UpdateStripeProductID(ctx context.Context, id, productID string) error {
 	if m.onUpdateStripeProductID != nil {
@@ -1422,5 +1424,37 @@ func TestCreate_NilChildFieldsWhenNotProvided(t *testing.T) {
 	}
 	if repo.lastInput.EntityDetails != nil {
 		t.Error("expected nil EntityDetails")
+	}
+}
+// --- GetOwnerEmailBySlug ---
+
+func TestGetOwnerEmailBySlug_Success(t *testing.T) {
+	repo := &mockInitiativeRepo{ownerEmail: "owner@example.com"}
+	svc := newCreateSvc(repo)
+	email, err := svc.GetOwnerEmailBySlug(context.Background(), "some-project")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if email != "owner@example.com" {
+		t.Errorf("expected %q, got %q", "owner@example.com", email)
+	}
+}
+
+func TestGetOwnerEmailBySlug_NotFound(t *testing.T) {
+	repo := &mockInitiativeRepo{ownerEmailErr: domain.ErrInitiativeNotFound}
+	svc := newCreateSvc(repo)
+	_, err := svc.GetOwnerEmailBySlug(context.Background(), "nonexistent-slug")
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Fatalf("expected ErrInitiativeNotFound, got %v", err)
+	}
+}
+
+func TestGetOwnerEmailBySlug_UnexpectedError(t *testing.T) {
+	dbErr := errors.New("db connection reset")
+	repo := &mockInitiativeRepo{ownerEmailErr: dbErr}
+	svc := newCreateSvc(repo)
+	_, err := svc.GetOwnerEmailBySlug(context.Background(), "some-project")
+	if !errors.Is(err, dbErr) {
+		t.Fatalf("expected wrapped db error, got %v", err)
 	}
 }

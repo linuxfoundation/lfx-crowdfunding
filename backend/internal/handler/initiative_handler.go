@@ -391,6 +391,9 @@ func (h *InitiativeHandler) GetOwnerEmail(w http.ResponseWriter, r *http.Request
 		Error(w, err)
 		return
 	}
+	// PII response — must never be stored in shared or proxy caches.
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Vary", "Authorization")
 	JSON(w, http.StatusOK, map[string]string{"email": email})
 }
 
