@@ -27,8 +27,8 @@ User action in SS that needs CF data
        Authorization: Bearer {CF-audience user access token}
 ```
 
-The token forwarded to CF must have the CF audience (`/api/`) and `access:me` scope, or CF will
-reject the call. SS needs no M2M client credentials — the token is still user-issued.
+The token forwarded to CF must have the CF audience and `access:me` scope, or CF will reject the
+call. SS needs no M2M client credentials — the token is still user-issued.
 
 ### How SS obtains the CF-audience token
 
@@ -42,7 +42,7 @@ first top-level navigation to a `/crowdfunding/*` page when no valid CF token is
 ```
 1. SS BFF redirects browser to Auth0 /authorize
      client_id={LFX One client ID}
-     audience=https://crowdfunding.{env}.lfx.dev/api/
+     audience={CF audience}   e.g. https://crowdfunding-api.staging.lfx.dev
      scope=openid profile access:me
      prompt=none          ← silent: no UI if Auth0 session exists
      redirect_uri=/crowdfunding/callback
