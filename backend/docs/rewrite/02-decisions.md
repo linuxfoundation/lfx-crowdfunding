@@ -652,8 +652,8 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `JWKS_URL` | Auth0 JWKS endpoint for JWT validation | New — see `09-authentication-architecture.md` Configuration Reference |
 | `JWT_ISSUER` | Expected `iss` claim | New — environment-specific; see `09` |
 | `JWT_AUDIENCE` | Expected `aud` claim | New — `https://crowdfunding-api.{env}.lfx.dev`; see `09` |
-| `STRIPE_CLIENT_SECRET` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
-| `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /v1/hooks/stripe` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
+| `STRIPE_SECRET_KEY` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
+| `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /v1/stripe/webhook` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
 | `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
 | `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
 | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |

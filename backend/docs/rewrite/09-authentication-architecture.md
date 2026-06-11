@@ -19,7 +19,7 @@ These rules, set at the architecture review, constrain every decision in this do
 1. **Two scopes, one resource server.** `access:me` for user-issued tokens; `access:manage` for
    M2M tokens. Both validate against the single `lfx_crowdfunding_api` resource server.
 2. **A route serves exactly one scope — never both.** If an operation is needed by both a user and
-   a machine, it is split into two distinct routes (one under `/me/*`, one under `/internal/*`).
+   a machine, it is split into two distinct routes (one under `/v1/me/*`, one under `/v1/internal/*`).
    No single endpoint accepts both `access:me` and `access:manage`.
 3. **User-facing routes carry identity in the token.** No identity header. The acting user is the
    **custom** `username` claim (`https://sso.linuxfoundation.org/claims/username`, added via an
@@ -43,8 +43,7 @@ These rules, set at the architecture review, constrain every decision in this do
 **Key principle:** the access token is never exposed to client-side JavaScript. In CF it is stored
 as an HTTP-only cookie (`auth_oidc_token`) the browser cannot read; in Self Serve it is held in the
 server-side session. Both BFFs attach it on the server when making upstream API calls, so it is
-never readable by page scripts or third parties. The token cookies should be **encrypted at rest**
-(sealed), not stored as the raw token.
+never readable by page scripts or third parties.
 
 ---
 
@@ -72,7 +71,7 @@ graph TD
 
     Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF API audience\naccess:manage scope"| Auth0
     Auth0 -->|"M2M access token\n(access:manage scope, cached ~24h)"| Reimburse
-    Reimburse -->|"Bearer M2M token\nGET /v1/internal/*\n(access:manage scope)"| CFAPI
+    Reimburse -->|"Bearer M2M token\nGET /v1/initiatives/{slug}/owner-info\n(access:manage scope)"| CFAPI
 
     Auth0 -->|"JWKS (RS256)"| CFAPI
 ```
@@ -99,7 +98,7 @@ The exact value Auth0 issues and the API validates is the `JWT_AUDIENCE` env var
 | Scope | Issued to | Route class | Identity source |
 |---|---|---|---|
 | `access:me` | Users (via interactive login) | `/v1/me/*` — everything a user does on their own data (initiatives, donations, subscriptions, payment methods) | `https://sso.linuxfoundation.org/claims/username` JWT claim |
-| `access:manage` | M2M clients (client_credentials) | `/v1/internal/*` — machine-to-machine, no user context (Reimbursement Service) | `sub` claim (Auth0 M2M client subject; no user identity) |
+| `access:manage` | M2M clients (client_credentials) | M2M endpoints (e.g. `GET /v1/initiatives/{slug}/owner-info`) — machine-to-machine, no user context (Reimbursement Service) | `sub` claim (Auth0 M2M client subject; no user identity) |
 
 The scope itself is the access control gate; no client ID allowlist is needed.
 
@@ -111,7 +110,7 @@ The scope itself is the access control gate; no client ID allowlist is needed.
 > **Note on user-facing writes.** Creating, editing, donating to, and subscribing to initiatives
 > are **user** actions and live under `access:me`, not `access:manage`. `access:manage` is reserved
 > for genuine machine-to-machine traffic with no logged-in user — the Reimbursement Service
-> (see Flow 3). The `/internal/` path prefix signals this at a glance.
+> (see Flow 3).
 
 ---
 
@@ -257,33 +256,24 @@ reimbursement requests.
 
 There is no logged-in user in this flow, so the user-token pattern does not apply. Reimbursement
 authenticates as itself via the **Auth0 client credentials grant** (`client_id` / `client_secret`)
-with the `access:manage` scope, and calls a dedicated **`/v1/internal/*`** route. The access is
-**read-only**.
+with the `access:manage` scope, and calls a dedicated M2M endpoint on the CF API. The access is **read-only**.
 
-### 3.1 Suggested Endpoint
+### 3.1 Implemented Endpoint
 
 ```
-GET /v1/internal/initiatives/{id}
+GET /v1/initiatives/{slug}/owner-info
   Authorization: Bearer {M2M token, access:manage}
 
   200 →
   {
-    "id":             "…",
-    "initiative_type": "mentorship",
-    "owner": {
-      "username":   "…",          // from initiatives.owner_id → users
-      "email":      "…",
-      "given_name": "…",
-      "family_name":"…"
-    },
-    "beneficiaries": [             // from initiative_beneficiaries
-      { "name": "…", "email": "…" }
-    ]
+    "email": "…",
+    "name":  "…"
   }
 ```
 
-A list variant (`GET /v1/internal/initiatives?type=mentorship&project={id}`) can be added if
-Reimbursement needs to enumerate rather than look up by ID. Both are read-only.
+Returns the email address and display name of the initiative owner. No status filter is applied —
+the endpoint works for initiatives in any status. Used by the Reimbursement Service to resolve
+the owner contact for expense and beneficiary notifications.
 
 ### 3.2 Token Acquisition
 
@@ -306,12 +296,12 @@ sequenceDiagram
     participant API as CF Go API
     participant Auth0
 
-    RS->>API: GET /v1/internal/initiatives/{id}<br/>Authorization: Bearer {M2M token}
+    RS->>API: GET /v1/initiatives/{slug}/owner-info<br/>Authorization: Bearer {M2M token}
     API->>Auth0: fetch JWKS (cached)
     API->>API: validate JWT: RS256 · issuer · audience · expiry
     API->>API: check access:manage scope present → proceed
-    API->>API: no owner check (no user context on internal routes)
-    API->>RS: 200 — initiative owner + beneficiaries
+    API->>API: no owner check (no user context on M2M routes)
+    API->>RS: 200 — {email, name} of initiative owner
 ```
 
 ---
@@ -358,7 +348,7 @@ flowchart TD
     L -- no --> M[403]
     L -- yes --> N[handle]
 
-    H -- "/v1/internal/*" --> O{"access:manage scope present?"}
+    H -- "M2M route\n(/v1/initiatives/{slug}/owner-info)" --> O{"access:manage scope present?"}
     O -- no --> P[403]
     O -- yes --> Q["handle — no owner check<br/>(no user context)"]
 ```
@@ -367,7 +357,7 @@ flowchart TD
 
 ## Route Authentication Tiers
 
-User-scoped operations live under `/v1/me/*` and machine operations under `/v1/internal/*`, so each
+User-scoped operations live under `/v1/me/*` and machine operations are M2M-scoped endpoints, so each
 route belongs to exactly one scope (Design Rule 2).
 
 The two `access:me` rows below are the **same scope** — they differ only in whether an additional
@@ -381,7 +371,7 @@ owner check runs after the scope is validated.
 | **Optional auth** | `GET /v1/initiatives/{id}` | `OptionalMiddleware` — attaches Principal if a valid Bearer is present; never rejects. Lets approvers view unpublished initiatives. |
 | **`access:me`** (caller-scoped) | `PATCH /v1/me` (profile sync), `GET /v1/me/initiatives` (caller's own), `GET /v1/me/donations`, `GET /v1/me/subscriptions`, `GET /v1/me/payment-account`, `POST /v1/me/setup-intent`, `POST /v1/me/payment-method`, `DELETE /v1/me/payment-method`, `POST /v1/me/initiatives` (create — owner is always the caller), `POST /v1/me/initiatives/{id}/donations`, `POST /v1/me/initiatives/{id}/subscriptions`, `GET /v1/me/initiatives/{id}/donations`, `GET /v1/me/initiatives/{id}/subscriptions`, `POST /v1/me/presigned-url` | `Middleware` — 401 on missing/invalid token; 403 if `access:me` absent. The operation is keyed to the caller's `username` (collections filtered to the caller; donations/subscriptions recorded under the caller). No initiative-ownership check. |
 | **`access:me` + owner check** | `GET /v1/me/initiatives/{id}`, `PATCH /v1/me/initiatives/{id}`, `DELETE /v1/me/initiatives/{id}`, `DELETE /v1/me/subscriptions/{id}` | As above, plus a DB lookup that the caller owns the resource (`initiative.owner_id == users.id` for the token's `username`). 403 if not owned. |
-| **`access:manage`** | `GET /v1/internal/initiatives/{id}` (Reimbursement: mentorship owner + beneficiaries); future `/v1/internal/*` | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
+| **`access:manage`** | `GET /v1/initiatives/{slug}/owner-info` (Reimbursement Service: initiative owner email + name) | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
 
 > **Approval routes.** Initiative approval (`process-approval`) is gated by the `ALLOWED_APPROVERS`
 > username list at the handler level. Approvers are real users, so this stays under `access:me`;
@@ -406,7 +396,7 @@ resource "auth0_resource_server_scopes" "lfx_crowdfunding_api" {
 
   scopes {
     name        = "access:manage"
-    description = "Privileged access to LFX Crowdfunding API (M2M, /v1/internal/* routes)"
+    description = "Privileged access to LFX Crowdfunding API (M2M, service-to-service)"
   }
 }
 ```

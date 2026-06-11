@@ -191,7 +191,7 @@ backend/
 | `initiative_beneficiaries` | Beneficiaries linked to an initiative |
 | `initiative_contributors` | Contributors (project type only) |
 | `initiative_mentors` | Mentors (mentorship type only) |
-| `users` | LFX user identity; `username` (LFID) is the join key; `user_id` (Auth0 sub) retained for migrated rows only |
+| `users` | LFX user identity; `username` (LFID) is the join key; `legacy_user_id` (Auth0 sub) retained for migrated rows only |
 | `organizations` | Donor organizations |
 | `donations` | One-time donation records |
 | `subscriptions` | Recurring subscription records |
@@ -392,6 +392,8 @@ sequenceDiagram
 ### Mentorship Program Sync
 
 Mentorship programs in LFX are created and managed by the Mentorship service (jobspring). CF mirrors them as `mentorship`-type initiatives via the `mentorship-sync` K8s CronJob, which pulls data from Snowflake. There are no direct HTTP calls from the Mentorship service to CF.
+
+> **Note:** The `mentorship-sync` CronJob (`cmd/mentorship-sync/`) is not yet implemented in this repo — only `cmd/ledger-stats-sync/` currently exists. The Snowflake-pull design is the target; the CronJob is planned work.
 
 ```mermaid
 sequenceDiagram
