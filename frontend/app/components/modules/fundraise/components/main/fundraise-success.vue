@@ -49,14 +49,20 @@ SPDX-License-Identifier: MIT
       </div>
 
       <!-- CTA -->
-      <lfx-button
-        type="transparent"
-        label="Manage your Initiatives"
-        icon="arrow-up-right"
-        icon-type="light"
-        icon-position="right"
+      <a
+        :href="selfServeUrl"
+        target="_blank"
+        rel="noopener noreferrer"
         @click="emit('done')"
-      />
+      >
+        <lfx-button
+          type="transparent"
+          label="Manage your Initiatives"
+          icon="arrow-up-right"
+          icon-type="light"
+          icon-position="right"
+        />
+      </a>
     </div>
   </div>
 </template>
@@ -79,6 +85,10 @@ const emit = defineEmits<{
 }>();
 
 const config = computed(() => (props.initiativeType ? INITIATIVE_TYPE_CONFIG[props.initiativeType] : DEFAULT_CONFIG));
+
+const {
+  public: { selfServeUrl },
+} = useRuntimeConfig();
 </script>
 
 <script lang="ts">
