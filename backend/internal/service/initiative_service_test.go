@@ -21,13 +21,14 @@ import (
 // --- mocks ---
 
 type mockInitiativeRepo struct {
-	initiative      *models.Initiative
-	lastCreated     *models.Initiative
-	lastInput       models.InitiativeCreateInput
-	lastUpdated     *models.Initiative
-	lastUpdateInput models.InitiativeUpdateInput
-	err             error
-	updateErr       error
+	initiative              *models.Initiative
+	lastCreated             *models.Initiative
+	lastInput               models.InitiativeCreateInput
+	lastUpdated             *models.Initiative
+	lastUpdateInput         models.InitiativeUpdateInput
+	err                     error
+	updateErr               error
+	onUpdateStripeProductID func(ctx context.Context, id, productID string) error
 }
 
 func (m *mockInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -74,6 +75,12 @@ func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[s
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
 }
+func (m *mockInitiativeRepo) UpdateStripeProductID(ctx context.Context, id, productID string) error {
+	if m.onUpdateStripeProductID != nil {
+		return m.onUpdateStripeProductID(ctx, id, productID)
+	}
+	return nil
+}
 
 type mockLedgerClient struct {
 	balance *clients.LedgerBalance
@@ -114,6 +121,9 @@ func (m *mockStripeClient) CreateSubscription(_ context.Context, _ models.Stripe
 	return nil, nil
 }
 func (m *mockStripeClient) CancelSubscription(_ context.Context, _ string) error { return nil }
+func (m *mockStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
 func (m *mockStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.Event, error) {
 	return stripe.Event{}, nil
 }
@@ -391,6 +401,7 @@ func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative, _ mo
 	return i, nil
 }
 func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error { return nil }
+func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 	repo := &mockRepoForEnrich{
@@ -491,6 +502,7 @@ func TestGetByID_FlattensSponsorsList(t *testing.T) {
 		&mockLedgerClient{},
 		&mockStripeClient{},
 		&mockEmailService{},
+		nil,
 		slog.Default(),
 	)
 
@@ -513,6 +525,7 @@ func TestGetByID_RepoError(t *testing.T) {
 		&mockLedgerClient{},
 		&mockStripeClient{},
 		&mockEmailService{},
+		nil,
 		slog.Default(),
 	)
 
@@ -523,7 +536,7 @@ func TestGetByID_RepoError(t *testing.T) {
 }
 
 func newCreateSvc(repo domain.InitiativeRepository) *InitiativeService {
-	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
 }
 
 func TestCreate_MissingName(t *testing.T) {
@@ -621,7 +634,7 @@ func TestCreate_ContactMissingType(t *testing.T) {
 // ── Update ────────────────────────────────────────────────────────────────────
 
 func newUpdateSvc(repo *mockInitiativeRepo) *InitiativeService {
-	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
 }
 
 func TestUpdate_GoalMissingName(t *testing.T) {
@@ -734,7 +747,7 @@ func TestUpdate_CannotSetApprovalControlledStatus(t *testing.T) {
 // ── Create — for-review email notification ────────────────────────────────────
 
 func newCreateSvcWithEmail(repo domain.InitiativeRepository, userRepo *mockUserRepository, emailSvc *mockEmailService) *InitiativeService {
-	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, slog.Default())
+	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, nil, slog.Default())
 }
 
 func TestCreate_SendsForReviewEmail(t *testing.T) {
@@ -832,7 +845,7 @@ func contains(s, substr string) bool {
 // ── Approve ───────────────────────────────────────────────────────────────────
 
 func newProcessApprovalSvc(repo *mockInitiativeRepo) *InitiativeService {
-	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, slog.Default())
+	return NewInitiativeService(repo, &mockUserRepository{}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
 }
 
 func TestProcessApproval_SetsStatusPublished(t *testing.T) {
@@ -906,7 +919,7 @@ func TestProcessApproval_RejectsNonApprovableStatus(t *testing.T) {
 // ── Email notification tests ──────────────────────────────────────────────────
 
 func newProcessApprovalSvcWithEmail(repo *mockInitiativeRepo, userRepo *mockUserRepository, emailSvc *mockEmailService) *InitiativeService {
-	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, slog.Default())
+	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, emailSvc, nil, slog.Default())
 }
 
 func TestProcessApproval_SendsApprovedEmail(t *testing.T) {

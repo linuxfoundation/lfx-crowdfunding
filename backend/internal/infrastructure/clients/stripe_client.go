@@ -71,6 +71,11 @@ type StripeClient interface {
 	// so the first invoice's PaymentIntent can require 3DS before the subscription activates.
 	CreateSubscription(ctx context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
 	CancelSubscription(ctx context.Context, subscriptionID string) error
+	// UpdatePaymentIntentMetadata merges the given key/value pairs into an existing
+	// PaymentIntent's metadata without overwriting keys that are not in the map.
+	// Used by the invoice.finalized webhook to stamp version=v2 onto subscription
+	// invoice PIs so the Ledger service skips the duplicate charge.succeeded post.
+	UpdatePaymentIntentMetadata(ctx context.Context, piID string, metadata map[string]string) error
 
 	// Webhooks
 	// ConstructWebhookEvent validates the Stripe-Signature header and parses the event.
@@ -485,14 +490,6 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 			IdempotencyKey: stripe.String(fmt.Sprintf("sub:%s", req.IdempotencyKey)),
 		},
 	}
-	// Propagate version=v2 to the PaymentIntent created for each invoice.
-	// SubscriptionPaymentSettingsParams in the current SDK version does not expose
-	// payment_intent_data, so we use AddExtra to set it as a raw form field.
-	// Without this, the invoice's PI has no version metadata and the Ledger
-	// service's own Stripe webhook treats it as a legacy (v1) charge and posts
-	// a second ledger entry — duplicating the one already posted by our
-	// invoice.payment_succeeded handler.
-	params.AddExtra("payment_settings[payment_intent_data][metadata][version]", "v2")
 	// Expand latest_invoice and its confirmation_secret nested field.
 	// confirmation_secret is a separately-expandable field on Invoice even though
 	// it is a struct (not a resource pointer) — without this second expand path,
@@ -539,6 +536,27 @@ func (c *stripeClientImpl) CancelSubscription(ctx context.Context, subscriptionI
 	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("stripe cancel subscription: %w", err)
+	}
+	return nil
+}
+
+// UpdatePaymentIntentMetadata merges key/value pairs into a PI's metadata.
+// Only the provided keys are changed; existing keys not in the map are preserved
+// by Stripe's metadata-merge semantics.
+func (c *stripeClientImpl) UpdatePaymentIntentMetadata(ctx context.Context, piID string, metadata map[string]string) error {
+	_, span := stripeTracer.Start(ctx, "stripe.UpdatePaymentIntentMetadata")
+	defer span.End()
+	span.SetAttributes(attribute.String("stripe.pi_id", piID))
+
+	params := &stripe.PaymentIntentUpdateParams{
+		Metadata: make(map[string]string, len(metadata)),
+	}
+	for k, v := range metadata {
+		params.Metadata[k] = v
+	}
+	if _, err := c.api.V1PaymentIntents.Update(ctx, piID, params); err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("stripe update payment intent metadata: %w", err)
 	}
 	return nil
 }

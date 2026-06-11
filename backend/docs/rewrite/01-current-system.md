@@ -315,8 +315,8 @@ Project/entity approval uses signed JWT links emailed to admin (Sriji). No separ
   - `POST /reimbursement/{projectID}` — create Expensify policy for new project
   - `PATCH /reimbursement/{projectID}` — update policy when project changes
   - `POST /expense/{action}/{reportID}` — process expense approval/rejection
-- Auth: `X-API-KEY` header + Bearer token
-- Config: `REIMBURSEMENTS_API_URL`, `REIMBURSEMENTS_API_SECRET`
+- Auth: `X-API-KEY` header (static pre-shared key only; no Bearer token)
+- Config: `REIMBURSEMENTS_API_URL`, `REIMBURSEMENTS_API_KEY`
 
 ### Auth0
 
