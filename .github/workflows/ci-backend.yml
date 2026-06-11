@@ -27,6 +27,21 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: crowdfunding
+          POSTGRES_PASSWORD: crowdfunding
+          POSTGRES_DB: crowdfunding
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,8 +52,17 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
+      - name: Run DB migrations
+        working-directory: backend
+        run: |
+          go run github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
+            -path db/migrations \
+            -database "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?sslmode=disable" up
+
       - name: Run tests
         working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding,public
         run: go test -race -count=1 ./...
 
   build:
