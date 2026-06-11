@@ -22,7 +22,8 @@ Design Rule 3 in [`09`](09-authentication-architecture.md#design-rules)).
 
 ```
 User action in SS that needs CF data
-  └─ SS BFF resolves a CF-audience access token from session (see §2)
+  └─ SS BFF obtains a CF-audience access token (cached in session, or acquired
+       via a silent second auth-code flow on first navigation — see §1)
   └─ SS BFF proxies to CF /v1/me/*
        Authorization: Bearer {CF-audience user access token}
 ```
@@ -45,9 +46,9 @@ first top-level navigation to a `/crowdfunding/*` page when no valid CF token is
      audience={CF audience}   e.g. https://crowdfunding-api.staging.lfx.dev
      scope=openid profile access:me
      prompt=none          ← silent: no UI if Auth0 session exists
-     redirect_uri=/crowdfunding/callback
+     redirect_uri={PCC_BASE_URL}/crowdfunding/callback   ← absolute URL, must match Auth0 config
 
-2. Auth0 returns auth code to /crowdfunding/callback
+2. Auth0 returns auth code to {PCC_BASE_URL}/crowdfunding/callback
 
 3. SS BFF POSTs to Auth0 /oauth/token
      grant_type=authorization_code

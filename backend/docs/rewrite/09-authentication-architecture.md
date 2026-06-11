@@ -36,7 +36,7 @@ These rules, set at the architecture review, constrain every decision in this do
 | **Browser** | Untrusted client | Receives the access token only as an HTTP-only cookie — never exposed to client-side JavaScript |
 | **CF Nuxt BFF** | Trusted server | Holds tokens in HTTP-only cookies; proxies requests to CF API |
 | **CF Go API** (`initiatives-api`) | Trusted server | Validates JWTs; the protected resource server |
-| **Auth0** | Identity provider | Issues all tokens; hosts JWKS endpoint. Tenant: `linuxfoundation-dev/staging.auth0.com` (dev/staging), `sso.linuxfoundation.org` (prod) |
+| **Auth0** | Identity provider | Issues all tokens; hosts JWKS endpoint. Tenant: `linuxfoundation-{dev,staging}.auth0.com` (dev/staging), `sso.linuxfoundation.org` (prod) |
 | **LFX Self Serve Express BFF** | Trusted server | Proxies user-issued access tokens on behalf of the logged-in user |
 | **Reimbursement Service** | Trusted server | M2M caller; uses `access:manage` scope for privileged routes |
 
