@@ -586,6 +586,63 @@ func TestCreate_UnknownInitiativeType(t *testing.T) {
 	}
 }
 
+func TestCreate_DescriptionTooLong(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Project",
+			Slug:           "my-project",
+			InitiativeType: "project",
+			Description:    strings.Repeat("a", 5001),
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for description > 5000 chars, got %v", err)
+	}
+}
+
+func TestCreate_DescriptionTooLong_Unicode(t *testing.T) {
+	// Each "é" is 2 bytes but 1 rune — ensure we count characters, not bytes.
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Project",
+			Slug:           "my-project",
+			InitiativeType: "project",
+			Description:    strings.Repeat("é", 5001),
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unicode description > 5000 chars, got %v", err)
+	}
+}
+
+func TestUpdate_DescriptionTooLong(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	desc := strings.Repeat("a", 5001)
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{Description: &desc},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for description > 5000 chars, got %v", err)
+	}
+}
+
+func TestUpdate_DescriptionTooLong_Unicode(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	desc := strings.Repeat("é", 5001)
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{Description: &desc},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unicode description > 5000 chars, got %v", err)
+	}
+}
+
 func TestCreate_GoalMissingName(t *testing.T) {
 	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
 		context.Background(), "owner-1",
