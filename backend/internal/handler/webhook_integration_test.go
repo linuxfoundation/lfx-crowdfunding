@@ -148,7 +148,7 @@ func discardLogger() *slog.Logger {
 
 // postSignedWebhook sends a Stripe webhook request with a mock signature header
 // (real signature validation is tested in unit tests; this tests handler behavior).
-func postSignedWebhook(t *testing.T, h *handler.WebhookHandler, payload []byte, secret string) *httptest.ResponseRecorder {
+func postSignedWebhook(t *testing.T, h *handler.WebhookHandler, payload []byte, _ string) *httptest.ResponseRecorder {
 	t.Helper()
 	// For integration tests, we use a dummy signature since we're not testing
 	// signature validation (that's done in unit tests with mocks).
@@ -220,7 +220,7 @@ func TestWebhookIntegration_PaymentIntentSucceeded(t *testing.T) {
 
 	// Build payment_intent.succeeded event - the webhook handler expects event.Data.Raw
 	// to contain the PaymentIntent object JSON (not wrapped in a "data" envelope)
-	piObjectJSON := map[string]interface{}{
+	piObjectJSON := map[string]any{
 		"id":            piID,
 		"object":        "payment_intent",
 		"amount":        5000,
@@ -231,10 +231,10 @@ func TestWebhookIntegration_PaymentIntentSucceeded(t *testing.T) {
 
 	// The event payload itself contains the wrapped structure, but intStripeClient
 	// will extract just the object for Data.Raw
-	eventPayload := map[string]interface{}{
+	eventPayload := map[string]any{
 		"id":   "evt_test_001",
 		"type": "payment_intent.succeeded",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"object": piObjectJSON,
 		},
 	}
@@ -319,12 +319,12 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 
 	// Build invoice.payment_succeeded event - activates the subscription
 	// The invoice includes a parent.subscription_details.subscription reference
-	invoiceObjectJSON := map[string]interface{}{
+	invoiceObjectJSON := map[string]any{
 		"id":     "in_int_test_001",
 		"object": "invoice",
 		"status": "paid",
-		"parent": map[string]interface{}{
-			"subscription_details": map[string]interface{}{
+		"parent": map[string]any{
+			"subscription_details": map[string]any{
 				"subscription": map[string]string{
 					"id": subID,
 				},
@@ -332,10 +332,10 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 		},
 	}
 
-	eventPayload := map[string]interface{}{
+	eventPayload := map[string]any{
 		"id":   "evt_inv_test_001",
 		"type": "invoice.payment_succeeded",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"object": invoiceObjectJSON,
 		},
 	}
