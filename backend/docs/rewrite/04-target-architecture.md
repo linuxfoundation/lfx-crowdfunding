@@ -344,7 +344,7 @@ Services that CF integrates with but does not own:
 | Service | Location | Notes |
 |---|---|---|
 | Ledger Service | AWS Lambda | Own Postgres (Ledger DB). CF calls it read-only via HTTP. Ledger calls CF HTTP API for donation notification emails. |
-| Reimbursement Service | AWS Lambda | Reads CF initiative data via `/v1/internal/*` endpoints. Cannot reach shared RDS directly (separate AWS account/VPC). |
+| Reimbursement Service | AWS Lambda | Reads CF initiative data via `GET /v1/initiatives/{slug}/owner-info` (M2M, `access:manage`). Cannot reach shared RDS directly (separate AWS account/VPC). |
 | Mentorship (jobspring) | AWS Lambda | Publishes data to Snowflake. No direct calls to CF. |
 
 ---

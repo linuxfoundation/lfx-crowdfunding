@@ -185,7 +185,7 @@ backend/
 
 | Table | Purpose |
 |---|---|
-| `initiatives` | Unified table for all initiative types (project, event, mentorship, general_fund, ostif, other) |
+| `initiatives` | Unified table for all initiative types (project, event, mentorship, general_fund, security_audit, ostif, other) |
 | `initiative_goals` | Funding goals per initiative; donated/spent enriched live from Ledger |
 | `initiative_ledger_stats` | Hourly-cached financial stats and sponsors (written by CronJob) |
 | `initiative_beneficiaries` | Beneficiaries linked to an initiative |
@@ -204,8 +204,8 @@ backend/
 | `mentorship` | Mentorship program (managed by Mentorship service) |
 | `event` | Conference or community event |
 | `general_fund` | General-purpose fundraising fund |
-| `ostif` | OSTIF security audit |
-| `other` | Legacy general type (migrated rows only) |
+| `security_audit` | Security audit fund |
+| `ostif` | Legacy OSTIF type (migrated rows only) |
 | `other` | Legacy general type (migrated rows only) |
 
 **Financial data flow:**
