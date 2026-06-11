@@ -36,7 +36,7 @@ SPDX-License-Identifier: MIT
             {{ initiative.name }}
           </h3>
           <p class="text-sm text-neutral-600 leading-5 line-clamp-2">
-            {{ initiative.description }}
+            {{ plainDescription }}
           </p>
         </div>
 
@@ -86,8 +86,13 @@ import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
+import { useSanitize } from '~/composables/useSanitize';
 
 const props = defineProps<{ initiative: Initiative }>();
+
+const { stripHtml } = useSanitize();
+
+const plainDescription = computed(() => stripHtml(props.initiative.description ?? ''));
 
 const typeConfig = computed(
   () => initiativeTypeConfigMap[props.initiative.initiativeType] ?? defaultInitiativeTypeConfig,

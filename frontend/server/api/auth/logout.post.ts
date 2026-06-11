@@ -28,13 +28,14 @@ function clearAuthCookies(event: H3Event) {
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
 
-  let returnToUrl = `${config.public.appUrl}?auth=logout`;
+  const requestOrigin = getRequestURL(event).origin;
+  let returnToUrl = `${requestOrigin}?auth=logout`;
 
   try {
     const body = await readBody(event);
     if (body?.returnTo && isValidRedirectUrl(body.returnTo)) {
       const base = body.returnTo.startsWith('/')
-        ? `${config.public.appUrl}${body.returnTo}`
+        ? `${requestOrigin}${body.returnTo}`
         : body.returnTo;
       returnToUrl = base.includes('?') ? `${base}&auth=logout` : `${base}?auth=logout`;
     }
