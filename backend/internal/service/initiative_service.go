@@ -190,6 +190,9 @@ func (s *InitiativeService) GetOwnerInfoBySlug(ctx context.Context, slug string)
 		if !errors.Is(err, domain.ErrInitiativeNotFound) {
 			span.RecordError(err)
 		}
+		if errors.Is(err, domain.ErrProfileNotSynced) {
+			return models.OwnerInfo{}, fmt.Errorf("%w: initiative owner has no email address set", domain.ErrProfileNotSynced)
+		}
 		return models.OwnerInfo{}, fmt.Errorf("get owner info by slug: %w", err)
 	}
 	return info, nil

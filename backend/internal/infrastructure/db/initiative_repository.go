@@ -166,7 +166,7 @@ func (r *InitiativeRepository) GetOwnerInfoBySlug(ctx context.Context, slug stri
 		return models.OwnerInfo{}, fmt.Errorf("get owner info by slug: %w", err)
 	}
 	if email == nil {
-		return models.OwnerInfo{}, fmt.Errorf("get owner info by slug: %w", domain.ErrProfileNotSynced)
+		return models.OwnerInfo{}, domain.ErrProfileNotSynced
 	}
 	info := models.OwnerInfo{Email: *email}
 	if name != nil {
