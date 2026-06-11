@@ -13,16 +13,16 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 )
 
-// ── GetOwnerEmail ─────────────────────────────────────────────────────────────
+// ── GetOwnerInfo ──────────────────────────────────────────────────────────────
 
-func TestGetOwnerEmail_ReturnsEmail(t *testing.T) {
+func TestGetOwnerInfo_ReturnsEmail(t *testing.T) {
 	repo := &initiativeRepo{ownerEmail: "owner@example.com"}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/my-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "my-slug")
 	w := httptest.NewRecorder()
-	h.GetOwnerEmail(w, req)
+	h.GetOwnerInfo(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -40,14 +40,14 @@ func TestGetOwnerEmail_ReturnsEmail(t *testing.T) {
 	}
 }
 
-func TestGetOwnerEmail_SetsNoCacheHeaders(t *testing.T) {
+func TestGetOwnerInfo_SetsNoCacheHeaders(t *testing.T) {
 	repo := &initiativeRepo{ownerEmail: "owner@example.com"}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/my-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "my-slug")
 	w := httptest.NewRecorder()
-	h.GetOwnerEmail(w, req)
+	h.GetOwnerInfo(w, req)
 
 	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
 		t.Errorf("expected Cache-Control %q, got %q", "private, no-store", got)
@@ -57,42 +57,42 @@ func TestGetOwnerEmail_SetsNoCacheHeaders(t *testing.T) {
 	}
 }
 
-func TestGetOwnerEmail_NotFound_Returns404(t *testing.T) {
+func TestGetOwnerInfo_NotFound_Returns404(t *testing.T) {
 	repo := &initiativeRepo{ownerEmailErr: domain.ErrInitiativeNotFound}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/missing-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "missing-slug")
 	w := httptest.NewRecorder()
-	h.GetOwnerEmail(w, req)
+	h.GetOwnerInfo(w, req)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestGetOwnerEmail_UnexpectedError_Returns500(t *testing.T) {
+func TestGetOwnerInfo_UnexpectedError_Returns500(t *testing.T) {
 	repo := &initiativeRepo{ownerEmailErr: errors.New("db timeout")}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/some-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "some-slug")
 	w := httptest.NewRecorder()
-	h.GetOwnerEmail(w, req)
+	h.GetOwnerInfo(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestGetOwnerEmail_NullEmail_Returns400(t *testing.T) {
+func TestGetOwnerInfo_NullEmail_Returns400(t *testing.T) {
 	repo := &initiativeRepo{ownerEmailErr: domain.ErrProfileNotSynced}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/some-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "some-slug")
 	w := httptest.NewRecorder()
-	h.GetOwnerEmail(w, req)
+	h.GetOwnerInfo(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
