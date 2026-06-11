@@ -230,7 +230,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// M2M routes — require a valid bearer token with access:manage scope.
 	// These endpoints are for service-to-service callers, not end users.
 	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
-		Get("/v1/initiatives/{slug}/owner-info", initiativeH.GetOwnerEmail)
+		Get("/v1/initiatives/{slug}/owner-info", initiativeH.GetOwnerInfo)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{
