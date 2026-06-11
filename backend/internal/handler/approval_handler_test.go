@@ -64,6 +64,9 @@ func (r *apprInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[s
 	return nil, nil
 }
 func (r *apprInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (r *apprInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
+	return models.OwnerInfo{}, nil
+}
 func (r *apprInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }

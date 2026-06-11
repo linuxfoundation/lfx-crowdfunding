@@ -36,3 +36,9 @@ type User struct {
 	StripeCustomerID           string `json:"-"` // cus_xxx
 	StripeDefaultPaymentMethod string `json:"-"` // pm_xxx
 }
+
+// OwnerInfo holds PII fields returned by the M2M owner-info endpoint.
+type OwnerInfo struct {
+	Email string `json:"email"`
+	Name  string `json:"name,omitempty"`
+}

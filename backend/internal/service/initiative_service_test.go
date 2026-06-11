@@ -28,6 +28,9 @@ type mockInitiativeRepo struct {
 	lastUpdateInput         models.InitiativeUpdateInput
 	err                     error
 	updateErr               error
+	ownerEmail              string
+	ownerName               string
+	ownerEmailErr           error
 	onUpdateStripeProductID func(ctx context.Context, id, productID string) error
 }
 
@@ -74,6 +77,12 @@ func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[s
 }
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
+}
+func (m *mockInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
+	if m.ownerEmailErr != nil {
+		return models.OwnerInfo{}, m.ownerEmailErr
+	}
+	return models.OwnerInfo{Email: m.ownerEmail, Name: m.ownerName}, nil
 }
 func (m *mockInitiativeRepo) UpdateStripeProductID(ctx context.Context, id, productID string) error {
 	if m.onUpdateStripeProductID != nil {
@@ -402,6 +411,9 @@ func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative, _ mo
 }
 func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error { return nil }
 func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (m *mockRepoForEnrich) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
+	return models.OwnerInfo{}, nil
+}
 
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 	repo := &mockRepoForEnrich{
@@ -1473,5 +1485,49 @@ func TestCreate_NilChildFieldsWhenNotProvided(t *testing.T) {
 	}
 	if repo.lastInput.EntityDetails != nil {
 		t.Error("expected nil EntityDetails")
+	}
+}
+// --- GetOwnerInfoBySlug ---
+
+func TestGetOwnerInfoBySlug_Success(t *testing.T) {
+	repo := &mockInitiativeRepo{ownerEmail: "owner@example.com", ownerName: "Alice Smith"}
+	svc := newCreateSvc(repo)
+	info, err := svc.GetOwnerInfoBySlug(context.Background(), "some-project")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.Email != "owner@example.com" {
+		t.Errorf("expected email %q, got %q", "owner@example.com", info.Email)
+	}
+	if info.Name != "Alice Smith" {
+		t.Errorf("expected name %q, got %q", "Alice Smith", info.Name)
+	}
+}
+
+func TestGetOwnerInfoBySlug_NotFound(t *testing.T) {
+	repo := &mockInitiativeRepo{ownerEmailErr: domain.ErrInitiativeNotFound}
+	svc := newCreateSvc(repo)
+	_, err := svc.GetOwnerInfoBySlug(context.Background(), "nonexistent-slug")
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Fatalf("expected ErrInitiativeNotFound, got %v", err)
+	}
+}
+
+func TestGetOwnerInfoBySlug_UnexpectedError(t *testing.T) {
+	dbErr := errors.New("db connection reset")
+	repo := &mockInitiativeRepo{ownerEmailErr: dbErr}
+	svc := newCreateSvc(repo)
+	_, err := svc.GetOwnerInfoBySlug(context.Background(), "some-project")
+	if !errors.Is(err, dbErr) {
+		t.Fatalf("expected wrapped db error, got %v", err)
+	}
+}
+
+func TestGetOwnerInfoBySlug_NullEmail(t *testing.T) {
+	repo := &mockInitiativeRepo{ownerEmailErr: domain.ErrProfileNotSynced}
+	svc := newCreateSvc(repo)
+	_, err := svc.GetOwnerInfoBySlug(context.Background(), "some-project")
+	if !errors.Is(err, domain.ErrProfileNotSynced) {
+		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
 	}
 }

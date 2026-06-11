@@ -122,6 +122,9 @@ func (r *subscriptionInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string
 func (r *subscriptionInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error {
 	return nil
 }
+func (r *subscriptionInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
+	return models.OwnerInfo{}, nil
+}
 func (r *subscriptionInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	if r.orgsByIDs != nil {
 		return r.orgsByIDs, nil

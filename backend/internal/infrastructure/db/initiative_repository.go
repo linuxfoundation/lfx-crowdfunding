@@ -145,6 +145,36 @@ func (r *InitiativeRepository) ResolveSlug(ctx context.Context, slug string) (st
 	return id, nil
 }
 
+// GetOwnerInfoBySlug returns the email and display name of the initiative owner in a
+// single JOIN query. It matches any initiative status, making it suitable for M2M callers.
+func (r *InitiativeRepository) GetOwnerInfoBySlug(ctx context.Context, slug string) (models.OwnerInfo, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.GetOwnerInfoBySlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.initiative_slug", slug))
+
+	var email, name *string
+	err := r.pool.QueryRow(ctx, `
+		SELECT u.email, u.name
+		FROM initiatives i
+		JOIN users u ON u.id = i.owner_id
+		WHERE i.slug = $1`, slug).Scan(&email, &name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.OwnerInfo{}, domain.ErrInitiativeNotFound
+		}
+		span.RecordError(err)
+		return models.OwnerInfo{}, fmt.Errorf("get owner info by slug: %w", err)
+	}
+	if email == nil {
+		return models.OwnerInfo{}, domain.ErrProfileNotSynced
+	}
+	info := models.OwnerInfo{Email: *email}
+	if name != nil {
+		info.Name = *name
+	}
+	return info, nil
+}
+
 // List retrieves initiatives matching the filter with pagination.
 func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")
