@@ -62,8 +62,16 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     }
 
     case 'security_audit': {
+      const ostifDetail =
+        payload.licenseType || payload.currentSecurityStrategy
+          ? {
+              license_type: payload.licenseType || undefined,
+              current_security_strategy: payload.currentSecurityStrategy || undefined,
+            }
+          : undefined;
       return {
         ...base,
+        coc_url: payload.cocUrl || undefined,
         logo_url: payload.logoUrl || undefined,
         custom_websites: payload.repositoryUrl
           ? [{ name: 'Repository', url: payload.repositoryUrl }]
@@ -78,6 +86,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
             ]
           : undefined,
         contacts: buildContacts(payload),
+        ostif_detail: ostifDetail,
       };
     }
 

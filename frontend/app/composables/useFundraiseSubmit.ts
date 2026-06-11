@@ -93,8 +93,11 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? securityAuditForm.topics.join(',')
           : undefined,
         websiteUrl: securityAuditForm?.websiteUrl || undefined,
+        cocUrl: securityAuditForm?.codeOfConductUrl || undefined,
         repositoryUrl: securityAuditForm?.repositoryUrl || undefined,
         logoUrl: securityAuditForm?.logoUrl || undefined,
+        licenseType: securityAuditForm?.licenseType || undefined,
+        currentSecurityStrategy: securityAuditForm?.currentSecurityStrategy || undefined,
         fundingGoalCents: parseDollarsToCents(securityAuditForm?.fundingGoal),
         primaryContact: securityAuditForm?.primaryContact,
         secondaryContact: securityAuditForm?.secondaryContact,
