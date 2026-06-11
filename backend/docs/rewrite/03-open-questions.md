@@ -26,8 +26,8 @@ Questions that must be answered before or during implementation. Update status a
 | Migration strategy | Convert at migration time (DynamoDB → Postgres). Bulk-resolve every Auth0 sub to its LFID username via Auth0 Management API during the one-time migration script. |
 | Postgres storage shape | Keep both `users.user_id` (Auth0 sub) and `users.username` (LFID username). `username` is the join key for all new code; `user_id` is retained for migrated rows only as an audit/legacy reference. **For users created after migration, `user_id` is NULL** — only migrated rows have a sub. |
 | Direction of conversion | One-directional at migration time only. Going *from* username *to* sub is supported by Auth0 for users that exist today; going *from* sub *to* username is what the migration does (sub stored in DynamoDB → look up username via Auth0 → store username in Postgres). After migration, CF never needs to resolve sub ↔ username again. |
-| Frontend scope | **Both the CF frontend (user JWT) and SS → CF (M2M) use username.** CF handlers read `principal.Username` for every user identity check; `principal.UserID` (which holds the Auth0 sub) is no longer used as a join key or for ownership checks. The CF frontend's existing JWT already carries the `https://sso.linuxfoundation.org/claims/username` claim — no frontend change required beyond switching which field handlers read. |
-| SS → CF M2M | `X-Username` header carries LFID username. See `08-self-serve-auth.md`. |
+| Frontend scope | **Both the CF frontend (user JWT) and SS → CF (user token) use username.** CF handlers read `principal.Username` for every user identity check; `principal.UserID` (which holds the Auth0 sub) is no longer used as a join key or for ownership checks. The CF frontend's existing JWT already carries the `https://sso.linuxfoundation.org/claims/username` claim — no frontend change required beyond switching which field handlers read. |
+| SS → CF | SS forwards a user-issued access token scoped to the CF audience — no M2M credential and no identity header. Identity is carried via the `https://sso.linuxfoundation.org/claims/username` JWT claim. See `08-self-serve-auth.md`. |
 | Stripe customer metadata | Update at migration. One-time pass through every existing Stripe customer to set metadata.lfid_username; the Postgres `users.stripe_customer_id` mapping is keyed by username going forward. |
 | LFF coexistence | LFF keeps Auth0 sub forever (it's retiring). No dual-format support needed in new CF. |
 
@@ -46,7 +46,7 @@ The `users` table gains a `username` column (NOT NULL going forward; NOT NULL af
 
 #### What this affects in CF backend code
 
-- M2M middleware: reads `X-Username` → `Principal.Username` (already documented in `08-self-serve-auth.md`).
+- SS → CF: no middleware change needed — SS forwards a user-issued `access:me` token; the existing JWT middleware extracts `Principal.Username` from the `https://sso.linuxfoundation.org/claims/username` claim. No identity header. See `08-self-serve-auth.md`.
 - User JWT middleware: already extracts `Username` from the JWT custom claim (`jwt.go`) — no change needed.
 - All handlers on protected routes: switch from `principal.UserID` → `principal.Username` for user identity. Affected handlers: `donation_handler.go`, `subscription_handler.go`, `payment_handler.go`, `initiative_handler.go`. Note: `upload_handler.go` only verifies that a principal is present — it performs no per-user ownership check via `UserID` and does not need to change.
 - Services and repositories: parameter names and query columns change from `userID`/`user_id` to `username`.

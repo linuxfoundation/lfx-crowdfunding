@@ -254,15 +254,13 @@ Jobs removed from old system (not ported):
 
 ### Internal Endpoints (for Reimbursement Service)
 
-Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-owned data. Authenticated via `X-Internal-Token` shared secret (not Auth0). On the public HTTPS ingress — RS Lambda can reach them the same way it reaches any other public HTTPS service.
+Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-owned data. Authenticated via Auth0 **`access:manage`** M2M token (`client_credentials` grant) — see `09-authentication-architecture.md` Flow 3. On the public HTTPS ingress — RS Lambda can reach them the same way it reaches any other public HTTPS service.
 
 | Method | Path | Returns | Replaces | Used by |
 |---|---|---|---|---|
-| `GET` | `/internal/v1/initiatives?slug={slug}` | `{id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
-| `GET` | `/internal/v1/initiatives?status=published` | `[{id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
-| `GET` | `/internal/v1/users/{owner_id}` | `{id, email}` | `lff-users` reads | `getEmailBySlug()` |
-
-`X-Internal-Token` secret stored in AWS Secrets Manager, injected via ESO into both CF and RS at deploy time.
+| `GET` | `/v1/internal/initiatives?slug={slug}` | `{id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
+| `GET` | `/v1/internal/initiatives?status=published` | `[{id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
+| `GET` | `/v1/internal/users/{owner_id}` | `{id, email}` | `lff-users` reads | `getEmailBySlug()` |
 
 **The bulk endpoint is release-blocking.** Once CF DNS cuts over, OpenSearch receives no new CF writes and goes stale. `RefreshTags()` must switch to the bulk endpoint on cutover day or new projects will never appear as Expensify tags — beneficiaries cannot submit expenses against them. This is a silent financial failure.
 
