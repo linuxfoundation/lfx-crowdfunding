@@ -49,6 +49,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     case 'project': {
       return {
         ...base,
+        cii_project_id: payload.ciiProjectId || undefined,
         coc_url: payload.cocUrl || undefined,
         logo_url: payload.logoUrl || undefined,
         custom_websites: payload.repositoryUrl
@@ -71,6 +72,7 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
           : undefined;
       return {
         ...base,
+        cii_project_id: payload.ciiProjectId || undefined,
         coc_url: payload.cocUrl || undefined,
         logo_url: payload.logoUrl || undefined,
         custom_websites: payload.repositoryUrl
