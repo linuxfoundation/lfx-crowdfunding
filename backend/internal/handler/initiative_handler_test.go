@@ -93,8 +93,11 @@ func (r *initiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) e
 func (r *initiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
-func (r *initiativeRepo) GetOwnerEmailBySlug(_ context.Context, _ string) (string, error) {
-	return r.ownerEmail, r.ownerEmailErr
+func (r *initiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
+	if r.ownerEmailErr != nil {
+		return models.OwnerInfo{}, r.ownerEmailErr
+	}
+	return models.OwnerInfo{Email: r.ownerEmail}, nil
 }
 func (r *initiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil

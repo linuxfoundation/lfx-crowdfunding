@@ -28,11 +28,14 @@ func TestGetOwnerEmail_ReturnsEmail(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var body map[string]string
+	var body struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	}
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got := body["email"]; got != "owner@example.com" {
+	if got := body.Email; got != "owner@example.com" {
 		t.Errorf("expected email %q, got %q", "owner@example.com", got)
 	}
 }

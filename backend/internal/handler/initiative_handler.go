@@ -383,10 +383,10 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // GetOwnerEmail handles GET /v1/initiatives/{slug}/owner-email.
 // Requires a valid bearer token with the access:manage scope (M2M only).
-// Returns the email address of the owner of the initiative with the given slug.
+// Returns the email address and display name of the owner of the initiative with the given slug.
 func (h *InitiativeHandler) GetOwnerEmail(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	email, err := h.svc.GetOwnerEmailBySlug(r.Context(), slug)
+	info, err := h.svc.GetOwnerInfoBySlug(r.Context(), slug)
 	if err != nil {
 		Error(w, err)
 		return
@@ -394,7 +394,7 @@ func (h *InitiativeHandler) GetOwnerEmail(w http.ResponseWriter, r *http.Request
 	// PII response — must never be stored in shared or proxy caches.
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Vary", "Authorization")
-	JSON(w, http.StatusOK, map[string]string{"email": email})
+	JSON(w, http.StatusOK, info)
 }
 
 // isApprover reports whether the principal is in the allowed approvers list.
