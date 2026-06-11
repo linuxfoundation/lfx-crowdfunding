@@ -50,11 +50,23 @@ func (c *intStripeClient) ConstructWebhookEvent(payload []byte, sig, secret stri
 		return c.onConstruct(payload, sig, secret)
 	}
 	// For integration tests, parse the payload directly without signature validation
-	// (signature validation is tested in the unit tests)
+	// (signature validation is tested in the unit tests).
+	// Explicitly populate Data.Raw from the data.object JSON so the handler's
+	// json.Unmarshal(event.Data.Raw, &...) calls receive the correct bytes.
+	var envelope struct {
+		Type string `json:"type"`
+		Data struct {
+			Object json.RawMessage `json:"object"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return stripe.Event{}, err
+	}
 	var event stripe.Event
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return stripe.Event{}, err
 	}
+	event.Data.Raw = envelope.Data.Object
 	return event, nil
 }
 func (c *intStripeClient) CreateCustomer(_ context.Context, _, _ string) (string, error) {

@@ -6,8 +6,12 @@ import { test as base, expect, type Page } from '@playwright/test';
 // loginAsTestUser calls the e2e-auth endpoint to set auth cookies,
 // then navigates home to establish the session.
 export async function loginAsTestUser(page: Page): Promise<void> {
-  // Use fetch via page.request to POST to the auth endpoint
-  await page.request.post('/api/e2e-auth');
+  const response = await page.request.post('/api/e2e-auth');
+  if (!response.ok()) {
+    throw new Error(
+      `e2e-auth endpoint returned ${response.status()} — is NUXT_E2E_TEST_MODE=true set?`,
+    );
+  }
   await page.goto('/');
 }
 

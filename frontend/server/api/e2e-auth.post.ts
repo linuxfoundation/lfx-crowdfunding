@@ -7,7 +7,7 @@
 // NEVER enable this in production or staging.
 
 export default defineEventHandler((event) => {
-  if (!process.env.NUXT_E2E_TEST_MODE) {
+  if (process.env.NUXT_E2E_TEST_MODE !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' });
   }
 
@@ -36,7 +36,7 @@ export default defineEventHandler((event) => {
     event,
     'auth_user_profile',
     Buffer.from(JSON.stringify(profile)).toString('base64'),
-    { ...cookieOptions, httpOnly: false },
+    cookieOptions,
   );
 
   return { ok: true };
