@@ -135,7 +135,7 @@ The `initiative_stats` table that existed in an earlier schema version has been 
 
 The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
-**Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SIGNING_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
+**Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
 
 **Cutover:** run `ledger-stats-sync` once manually before DNS cutover to pre-populate `initiative_ledger_stats` for all migrated initiatives. Rows are absent before the first run — the `initiative_repository` LEFT JOINs `initiative_ledger_stats` and COALESCEs all financial values to `0`, so missing rows display cleanly as zero. See OQ-15 for post-cutover ID strategy.
 
@@ -546,15 +546,15 @@ if initiative.OwnerID != currentUser.ID {
 }
 ```
 
-**2. CF admin / initiative approver — `CF_APPROVERS` env var**
-The person who approves or rejects initiative submissions is identified by their LFID, stored in a `CF_APPROVERS` environment variable (comma- or pipe-separated). This is not an Auth0 role — it is a config value injected at deploy time.
+**2. CF admin / initiative approver — `ALLOWED_APPROVERS` env var**
+The person who approves or rejects initiative submissions is identified by their LFID, stored in a `ALLOWED_APPROVERS` environment variable (comma- or pipe-separated). This is not an Auth0 role — it is a config value injected at deploy time.
 
 Production value: `shubhrakar` (Sriji). Confirmed as the approver for the new system.
 Dev/staging value: `*` (any authenticated user can approve — allows testing).
 
 Stored in AWS Secrets Manager, injected via ESO. The approval check at the API layer:
 ```go
-authorized := strings.Contains(os.Getenv("CF_APPROVERS"), user.LFID)
+authorized := strings.Contains(os.Getenv("ALLOWED_APPROVERS"), user.LFID)
 ```
 
 **3. Email approval links — HMAC-signed token, no Auth0**
@@ -653,7 +653,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `JWT_ISSUER` | Expected `iss` claim | New — environment-specific; see `09` |
 | `JWT_AUDIENCE` | Expected `aud` claim | New — `https://crowdfunding-api.{env}.lfx.dev`; see `09` |
 | `STRIPE_CLIENT_SECRET` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
-| `STRIPE_WEBHOOK_SIGNING_SECRET` | Per-endpoint signing secret for `POST /v1/hooks/stripe` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
+| `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /v1/hooks/stripe` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
 | `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
 | `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
 | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |
@@ -661,7 +661,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `CF_LEDGER_AUTH_TOKEN` | Shared secret for authenticating Ledger→CF API calls (`Authorization: Bearer`) | Same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`; must match what Ledger sends after the `fundspring.go` auth header fix |
 | *(removed)* | RS→CF auth uses Auth0 M2M (`access:manage` scope) — no shared secret on the CF side. RS mints a token via `client_credentials` grant; CF validates via JWKS. See `09-authentication-architecture.md` Flow 3. |
 | `CF_APPROVAL_SIGNING_SECRET` | HMAC secret for initiative/expense approval email links | New — replaces LFF `EMAIL_TOKEN_SIGNING_KEY` |
-| `CF_APPROVERS` | Comma-separated list of LFIDs who can approve initiatives | Replaces LFF `APPROVERS` env var |
+| `ALLOWED_APPROVERS` | Comma-separated list of LFIDs who can approve initiatives | Replaces LFF `APPROVERS` env var |
 | `SNOWFLAKE_ACCOUNT` | Snowflake account identifier (for `mentorship-sync` CronJob) | Follow LFX platform pattern (see `lfx-lens` ArgoCD values) |
 | `SNOWFLAKE_USER` | Snowflake user for CF service account | New — to be provisioned by DevOps |
 | `SNOWFLAKE_PRIVATE_KEY` | Snowflake private key (key-pair auth) | New — LFX platform standard (no password auth) |

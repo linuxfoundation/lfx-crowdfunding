@@ -19,7 +19,7 @@ deployed to Kubernetes.
           │
           ▼
   ┌───────────────────┐
-  │  Nuxt 3 Frontend  │  K8s Deployment + Ingress
+  │  Nuxt 4 Frontend  │  K8s Deployment + Ingress
   │  (Vue 3 / TS)     │
   └────────┬──────────┘
            │ $fetch HTTPS
@@ -74,13 +74,13 @@ deployed to Kubernetes.
 
 ---
 
-## Frontend — Nuxt 3
+## Frontend — Nuxt 4
 
 ### Tech Stack
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Framework | Nuxt 3 (latest) + Vue 3 | LFX platform standard |
+| Framework | Nuxt 4 + Vue 3 | LFX platform standard |
 | Language | TypeScript strict | Follow Insights repo |
 | Styling | Tailwind CSS + CSS variables | Follow Insights |
 | Component library | PrimeVue v4 (theme: none) | Custom Tailwind styles applied |
@@ -254,19 +254,17 @@ Jobs removed from old system (not in new architecture):
 
 ### Internal Endpoints (for Reimbursement Service)
 
-Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-owned data. Authenticated via Auth0 **`access:manage`** M2M token (`client_credentials` grant) — see `09-authentication-architecture.md` Flow 3. On the public HTTPS ingress — RS Lambda can reach them the same way it reaches any other public HTTPS service.
+A narrow read-only M2M endpoint for RS to replace its OpenSearch reads of CF-owned owner data. Authenticated via Auth0 **`access:manage`** M2M token (`client_credentials` grant) — see `09-authentication-architecture.md` Flow 3. On the public HTTPS ingress — RS Lambda can reach it the same way it reaches any other public HTTPS service.
 
-| Method | Path | Returns | Replaces | Used by |
-|---|---|---|---|---|
-| `GET` | `/v1/internal/initiatives?slug={slug}` | `{id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
-| `GET` | `/v1/internal/initiatives?status=published` | `[{id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
-| `GET` | `/v1/internal/users/{owner_id}` | `{id, email}` | `lff-users` reads | `getEmailBySlug()` |
+| Method | Path | Returns | Used by |
+|---|---|---|---|
+| `GET` | `/v1/initiatives/{slug}/owner-info` | `{email, name}` of the initiative owner | RS — resolve owner email for expense/beneficiary notifications |
 
-`id` in the response is `initiatives.id` (Postgres UUID). For migrated initiatives whose DynamoDB ID was already UUID-form (the vast majority), `initiatives.id` is identical to the original DynamoDB string ID — RS can use it directly as the Expensify GL code. For the small number of non-UUID legacy IDs, `initiatives.id` is a `uuid5`-derived value that differs from the original DynamoDB string ID; RS must maintain a mapping in that case to match existing Expensify GL codes.
+`{slug}` is the initiative slug. No status filter is applied — the endpoint works for any initiative status so RS can resolve owner details regardless of publication state.
 
 ### Stripe Webhook
 
-`POST /v1/hooks/stripe` — handles `customer.subscription.deleted` → cancel subscription in Postgres. Stripe signature verification required.
+`POST /v1/stripe/webhook` — handles `customer.subscription.deleted` → cancel subscription in Postgres. Stripe signature verification required.
 
 `invoice.payment_succeeded` is handled by the Ledger Service's own Stripe webhook. This does not change.
 

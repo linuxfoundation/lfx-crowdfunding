@@ -165,7 +165,7 @@ backend/
 | `POST` | `/v1/me/initiatives/{id}/subscriptions` | `access:me` | Create recurring subscription |
 | `POST` | `/v1/initiatives/{id}/process-approval/{action}` | `access:me` (approver list) | Approve or decline initiative |
 | `POST` | `/v1/stripe/webhook` | Stripe HMAC | Stripe event receiver |
-| `GET` | `/v1/internal/initiatives/{id}` | `access:manage` | Reimbursement Service: initiative owner + beneficiaries |
+| `GET` | `/v1/initiatives/{slug}/owner-info` | `access:manage` | Reimbursement Service: initiative owner info |
 
 ---
 
@@ -185,7 +185,7 @@ backend/
 
 | Table | Purpose |
 |---|---|
-| `initiatives` | Unified table for all initiative types (project, event, mentorship, general_fund, security_audit, ostif, other) |
+| `initiatives` | Unified table for all initiative types (project, event, mentorship, general_fund, ostif, other) |
 | `initiative_goals` | Funding goals per initiative; donated/spent enriched live from Ledger |
 | `initiative_ledger_stats` | Hourly-cached financial stats and sponsors (written by CronJob) |
 | `initiative_beneficiaries` | Beneficiaries linked to an initiative |
@@ -204,8 +204,8 @@ backend/
 | `mentorship` | Mentorship program (managed by Mentorship service) |
 | `event` | Conference or community event |
 | `general_fund` | General-purpose fundraising fund |
-| `security_audit` | OSTIF security audit |
-| `ostif` | Legacy OSTIF type (migrated rows only) |
+| `ostif` | OSTIF security audit |
+| `other` | Legacy general type (migrated rows only) |
 | `other` | Legacy general type (migrated rows only) |
 
 **Financial data flow:**
@@ -421,9 +421,8 @@ sequenceDiagram
 | Stripe | CF → Stripe | Charges, subscriptions, Stripe Connect |
 | Stripe webhook | Stripe → CF | `customer.subscription.deleted` → cancel in DB |
 | Ledger Service | CF → Ledger (read-only) | Balance, per-goal subtotals, transaction history |
-
 | Reimbursement Service | Bidirectional | Expense policy, beneficiary lifecycle |
-| Mentorship Service | Bidirectional | Program sync via SNS/SQS + direct HTTP calls |
+| Mentorship Service | Snowflake → CF | Program sync via `mentorship-sync` CronJob (Snowflake pull); no direct HTTP calls |
 | Mandrill | CF → Mandrill | Transactional email |
 | GitHub | CF → GitHub | Repo stats; OAuth for project creation |
 
