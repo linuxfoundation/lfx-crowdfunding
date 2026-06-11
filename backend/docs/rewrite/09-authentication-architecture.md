@@ -233,9 +233,18 @@ sequenceDiagram
     SSBFF->>User: response
 ```
 
+> **Scope note.** The SS authorization request uses `openid profile access:me` — no `email` or
+> `offline_access`. `email` is omitted because CF fetches profile data from Auth0 `/userinfo` at
+> login sync (not from the token). `offline_access` is omitted because SS does not use a refresh
+> token for CF — token renewal re-runs the silent auth-code flow instead.
+
 ---
 
 ## Flow 3 — Reimbursement Service → CF API (M2M)
+
+> **Not yet implemented.** The `/v1/internal/*` routes and the `access:manage` route group do not
+> exist in the CF backend yet (`ScopeManage` is defined but unused in routing). This section
+> describes the **target design** for when the integration is built.
 
 The Reimbursement Service is a machine-to-machine caller. When processing mentorship
 reimbursements, it reads CF data for **mentorship-type initiatives** — specifically the initiative
@@ -368,7 +377,7 @@ owner check runs after the scope is validated.
 | **Optional auth** | `GET /v1/initiatives/{id}` | `OptionalMiddleware` — attaches Principal if a valid Bearer is present; never rejects. Lets approvers view unpublished initiatives. |
 | **`access:me`** (caller-scoped) | `PATCH /v1/me` (profile sync), `GET /v1/me/initiatives` (caller's own), `GET /v1/me/donations`, `GET /v1/me/subscriptions`, `GET /v1/me/payment-account`, `POST /v1/me/setup-intent`, `POST /v1/me/payment-method`, `DELETE /v1/me/payment-method`, `POST /v1/me/initiatives` (create — owner is always the caller), `POST /v1/me/initiatives/{id}/donations`, `POST /v1/me/initiatives/{id}/subscriptions`, `GET /v1/me/initiatives/{id}/donations`, `GET /v1/me/initiatives/{id}/subscriptions`, `POST /v1/me/presigned-url` | `Middleware` — 401 on missing/invalid token; 403 if `access:me` absent. The operation is keyed to the caller's `username` (collections filtered to the caller; donations/subscriptions recorded under the caller). No initiative-ownership check. |
 | **`access:me` + owner check** | `GET /v1/me/initiatives/{id}`, `PATCH /v1/me/initiatives/{id}`, `DELETE /v1/me/initiatives/{id}`, `DELETE /v1/me/subscriptions/{id}` | As above, plus a DB lookup that the caller owns the resource (`initiative.owner_id == users.id` for the token's `username`). 403 if not owned. |
-| **`access:manage`** | `GET /v1/internal/initiatives/{id}` (Reimbursement: mentorship owner + beneficiaries); future `/v1/internal/*` | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
+| **`access:manage`** *(not yet implemented)* | `GET /v1/internal/initiatives/{id}` (Reimbursement: mentorship owner + beneficiaries); future `/v1/internal/*` | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
 
 > **Approval routes.** Initiative approval (`process-approval`) is gated by the `ALLOWED_APPROVERS`
 > username list at the handler level. Approvers are real users, so this stays under `access:me`;
