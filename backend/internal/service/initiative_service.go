@@ -428,6 +428,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		AcceptFunding:   input.AcceptFunding,
 		Status:          models.StatusSubmitted,
 		StripeProductID: productID,
+		CiiProjectID:    input.CiiProjectID,
 
 		// Entity-only display fields
 		EventbriteURL:  input.EventbriteURL,
@@ -531,6 +532,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	}
 	if input.AcceptFunding != nil {
 		existing.AcceptFunding = *input.AcceptFunding
+	}
+	if input.CiiProjectID != nil {
+		existing.CiiProjectID = *input.CiiProjectID
 	}
 
 	if input.EventbriteURL != nil {
