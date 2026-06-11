@@ -9,7 +9,8 @@ export const useSanitize = () => {
    * Strips all HTML tags from a string, returning plain text suitable for
    * display in contexts where no markup should appear (e.g. card previews).
    */
-  const stripHtml = (html: string): string => html.replace(/<[^>]*>/g, '');
+  const stripHtml = (html: string): string =>
+    DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
 
   /**
    * Sanitizes an HTML description and returns a safe string for use with v-html.
