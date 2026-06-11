@@ -381,7 +381,7 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetOwnerEmail handles GET /v1/initiatives/{slug}/owner-email.
+// GetOwnerEmail handles GET /v1/initiatives/{slug}/owner-info.
 // Requires a valid bearer token with the access:manage scope (M2M only).
 // Returns the email address and display name of the owner of the initiative with the given slug.
 func (h *InitiativeHandler) GetOwnerEmail(w http.ResponseWriter, r *http.Request) {
