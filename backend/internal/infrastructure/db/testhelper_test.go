@@ -5,6 +5,7 @@ package db
 
 import (
 	"context"
+	"flag"
 	"os"
 	"testing"
 
@@ -17,7 +18,14 @@ var testPool *pgxpool.Pool
 
 // TestMain connects to a real Postgres and provides a shared pool to all tests
 // in the db package. Set TEST_DATABASE_URL to override the default DSN.
+// When -short is passed, skips DB setup entirely — individual tests also guard
+// with testing.Short() so they are skipped cleanly without a pool.
 func TestMain(m *testing.M) {
+	flag.Parse()
+	if testing.Short() {
+		os.Exit(m.Run())
+	}
+
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		dsn = "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding,public"

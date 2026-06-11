@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, type Page } from '@playwright/test';
 
 // loginAsTestUser calls the e2e-auth endpoint to set auth cookies,
 // then navigates home to establish the session.

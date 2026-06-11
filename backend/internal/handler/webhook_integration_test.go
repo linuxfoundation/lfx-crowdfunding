@@ -23,7 +23,9 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/db"
 )
 
-// intStripeClient implements clients.StripeClient for integration tests using real HMAC-signed payloads.
+// intStripeClient implements clients.StripeClient for integration tests.
+// Signature validation is intentionally bypassed — it is covered by the unit tests in
+// webhook_handler_test.go. These integration tests focus on the handler→service→DB path.
 type intStripeClient struct {
 	onConstruct func(payload []byte, sig, secret string) (stripe.Event, error)
 }
@@ -183,8 +185,9 @@ func skipIfNoTestDB(t *testing.T) {
 
 // --- Integration Tests ---
 
-// TestWebhookIntegration_PaymentIntentSucceeded tests that a real payment_intent.succeeded
-// event with HMAC signature advances a donation from "pending" to "succeeded" in the DB.
+// TestWebhookIntegration_PaymentIntentSucceeded verifies that a payment_intent.succeeded
+// event advances a donation from "pending" to "succeeded" in the DB.
+// Signature validation is bypassed in the stub — see webhook_handler_test.go for that coverage.
 func TestWebhookIntegration_PaymentIntentSucceeded(t *testing.T) {
 	skipIfNoTestDB(t)
 
