@@ -43,8 +43,8 @@ These rules, set at the architecture review, constrain every decision in this do
 **Key principle:** the access token is never exposed to client-side JavaScript. In CF it is stored
 as an HTTP-only cookie (`auth_oidc_token`) the browser cannot read; in Self Serve it is held in the
 server-side session. Both BFFs attach it on the server when making upstream API calls, so it is
-never readable by page scripts or third parties. **Target requirement:** the token cookies should
-additionally be **encrypted at rest** (sealed), not stored as the raw token — not yet implemented.
+never readable by page scripts or third parties. The token cookies should be **encrypted at rest**
+(sealed), not stored as the raw token.
 
 ---
 

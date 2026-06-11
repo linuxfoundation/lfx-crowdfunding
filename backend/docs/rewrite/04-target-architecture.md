@@ -10,7 +10,7 @@ This document describes the intended architecture for the rewritten LFX Crowdfun
 ## System Overview
 
 Architecture validated against diagram (May 2026). The purple "NEW" box is everything
-deployed to Kubernetes. Everything outside the box is unchanged for the initial release.
+deployed to Kubernetes.
 
 ```text
 ━━━━━━━━━━━━━━━━━━━━━━━ NEW (Kubernetes) ━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -69,7 +69,7 @@ deployed to Kubernetes. Everything outside the box is unchanged for the initial 
   Mentorship data ──► Snowflake ──► CF mentorship-sync CronJob ──► CF Postgres
   (no direct HTTP calls between Mentorship and CF)
 
-  Old LFF Lambda + DynamoDB + OpenSearch  (parallel, until cutover)
+  Old LFF Lambda + DynamoDB + OpenSearch  (decommissioned post-cutover)
 ```
 
 ---
@@ -242,15 +242,7 @@ When `EMAIL_DRY_RUN=true`:
 |---|---|---|---|
 | `mentorship-sync` | CronJob | Daily (or a few times/day) | Pulls mentorship program data from Snowflake, creates/updates `initiative_type = mentorship` rows in CF Postgres |
 | GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
-| `ledger-stats-sync` | CronJob | Every hour | Calls Ledger HTTP API to sync pre-aggregated financial stats as cached columns on `crowdfunding.initiatives`. **Required for correctness** — the only mechanism that reflects Expensify debit-side disbursements. Must run once manually before DNS cutover. Initial release syncs `amount_raised_in_cents` only (`GET /balance/{id}`). Full set of stats columns (backer count, subscription totals, etc.) defined after UI design review — see OQ-11 and OQ-19. |
-
-Jobs removed from old system (not ported):
-- `amountraised` / `amountraised-entities` → replaced by `ledger-stats-sync` CronJob
-- `export-projects`, `export-organizations`, `export-users`, `entities-sync` → OpenSearch dropped; search replaced by Postgres full-text search
-- `ledger-viewmodel` → no longer needed
-- `expensify-sync` → stays on old Lambda, not ported for initial release
-- `cii-badge` → deferred
-- `sqs-consumer` → dropped; replaced by `mentorship-sync` Snowflake CronJob
+| `ledger-stats-sync` | CronJob | Every hour | Calls Ledger HTTP API to sync pre-aggregated financial stats as cached columns on `crowdfunding.initiatives`. Required for correctness — the only mechanism that reflects Expensify debit-side disbursements. |
 
 ### Internal Endpoints (for Reimbursement Service)
 
@@ -261,8 +253,6 @@ Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-ow
 | `GET` | `/v1/internal/initiatives?slug={slug}` | `{id, name, owner_id, status, initiative_type}` | `projects` + `entities` per-slug reads | `getEmailBySlug()` |
 | `GET` | `/v1/internal/initiatives?status=published` | `[{id, name}]` (all published) | `projects` + `entities` bulk reads | `RefreshTags()` cron (every 3h) |
 | `GET` | `/v1/internal/users/{owner_id}` | `{id, email}` | `lff-users` reads | `getEmailBySlug()` |
-
-**The bulk endpoint is release-blocking.** Once CF DNS cuts over, OpenSearch receives no new CF writes and goes stale. `RefreshTags()` must switch to the bulk endpoint on cutover day or new projects will never appear as Expensify tags — beneficiaries cannot submit expenses against them. This is a silent financial failure.
 
 `id` in the response is `initiatives.id` (Postgres UUID). For migrated initiatives whose DynamoDB ID was already UUID-form (the vast majority), `initiatives.id` is identical to the original DynamoDB string ID — RS can use it directly as the Expensify GL code. For the small number of non-UUID legacy IDs, `initiatives.id` is a `uuid5`-derived value that differs from the original DynamoDB string ID; RS must maintain a mapping in that case to match existing Expensify GL codes.
 
@@ -322,7 +312,6 @@ Key structural notes:
 - GitHub stats, mentors, skills, terms, beneficiaries, contributors etc. are in dedicated child tables
 - Column names use `_on` suffix for timestamps (`created_on`, `updated_on`)
 - Monetary amounts use `current_amount_in_cents` on transactions; `amount_raised_in_cents` on initiatives
-- `source_dynamo_table` column on initiatives is migration-only and must be dropped post-cutover
 - `stripe_subscription_id` and `stripe_charge_id` are nullable `VARCHAR(255)` with no UNIQUE constraint in the schema; uniqueness is enforced by Stripe
 
 See `db/migrations/001_initial.up.sql` and `docs/rewrite/data-design_and_migration.md` for the full DDL and field-by-field rationale.
@@ -342,59 +331,49 @@ CREATE INDEX IF NOT EXISTS idx_initiatives_amount_raised  ON initiatives(amount_
 
 ---
 
-## Services That Remain Unchanged (initial release)
+## External Services
+
+Services that CF integrates with but does not own:
 
 | Service | Location | Notes |
 |---|---|---|
-| Ledger Service | AWS Lambda | Unchanged. Own Postgres (Ledger DB). CF calls it read-only via HTTP. Ledger calls CF HTTP API (`GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}`) for donation notification emails — new CF API must support legacy ID lookups on these paths (see decisions doc). |
-| Ledger DB | AWS RDS / Postgres | Separate from Crowdfunding DB. Migrated post-initial-release. |
-| Reimbursement Service | AWS Lambda | On CF release: switches CF data reads (`projects`, `entities`, `lff-users` OpenSearch indices) to three internal HTTPS endpoints on the CF Go API. Own tables (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) stay on OpenSearch until RS moves to K8s. Cannot reach shared RDS directly (separate AWS account/VPC; RDS is private). |
-| Mentorship (jobspring) | AWS Lambda | Unchanged. Publishes data to Snowflake. No direct calls to CF in new system. |
-| Old LFF Lambda | AWS Lambda | Runs in parallel until cutover. Keeps OpenSearch fed for Reimbursement Service. |
-| DynamoDB tables | AWS DynamoDB | Read during migration. Kept until decommission is confirmed safe. |
-| OpenSearch | AWS OpenSearch | Kept alive until RS moves to K8s and migrates its three owned indices (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) to Postgres. Timeline TBD. Must NOT be decommissioned before that point. |
+| Ledger Service | AWS Lambda | Own Postgres (Ledger DB). CF calls it read-only via HTTP. Ledger calls CF HTTP API for donation notification emails. |
+| Reimbursement Service | AWS Lambda | Reads CF initiative data via `/v1/internal/*` endpoints. Cannot reach shared RDS directly (separate AWS account/VPC). |
+| Mentorship (jobspring) | AWS Lambda | Publishes data to Snowflake. No direct calls to CF. |
 
 ---
 
-## Deployment — Kubernetes (all NEW components)
+## Deployment — Kubernetes
 
-Every component inside the "NEW" purple box is deployed to Kubernetes via ArgoCD.
-Nothing in the initial release runs on Lambda or Serverless Framework.
+All CF components are deployed to Kubernetes via ArgoCD.
 
 | Component | K8s Resource | Notes |
 |---|---|---|
-| Nuxt 3 frontend | `Deployment` + `Service` + `Ingress` | TLS termination at Ingress |
+| Nuxt 4 frontend | `Deployment` + `Service` + `Ingress` | TLS termination at Ingress |
 | Go HTTP API | `Deployment` + `Service` + `Ingress` | Chi router, long-running |
-| Crowdfunding Postgres | Shared AWS RDS instance | LFX standard — DevOps adds `crowdfunding` DB + role to existing `lfx-v2` RDS in `lfx-v2-opentofu/postgres.tf`; app connects via `rds-postgres.lfx:5432` |
+| Crowdfunding Postgres | Shared AWS RDS instance | LFX standard — `crowdfunding` schema on `lfx-v2` RDS; app connects via `rds-postgres.lfx:5432` |
 | mentorship-sync job | `CronJob` | Daily or a few times/day; Snowflake → CF Postgres |
 | ledger-stats-sync job | `CronJob` | Every hour; syncs financial stats from Ledger API into cached columns on `initiatives` |
 | Secrets | External Secrets Operator → AWS Secrets Manager | LFX standard — ESO syncs secrets from AWS Secrets Manager into K8s Secrets; service account uses IRSA |
-| ArgoCD app | New entry in `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
+| ArgoCD app | `linuxfoundation/lfx-v2-argocd` | `crowdfunding` namespace; `lfx-v2-applications.yaml` |
 
 URLs:
 - Dev: `https://crowdfunding.dev.lfx.dev/`
 - Staging: `https://crowdfunding.staging.lfx.dev/`
 - Prod: `https://crowdfunding.linuxfoundation.org/`
 
-The rewrite uses new hostnames. The old Lambda stack (`funding.dev.platform.linuxfoundation.org` / `crowdfunding.lfx.linuxfoundation.org`) can be decommissioned separately once traffic is fully cut over.
-
 ---
 
 ## What Is Intentionally Not in This Architecture
 
 - OpenSearch — replaced by Postgres full-text search
-- AWS Lambda — application code moves to K8s
-- DynamoDB — data moves to Postgres
+- AWS Lambda — application code runs in Kubernetes
+- DynamoDB — data lives in PostgreSQL
 - Serverless Framework — replaced by K8s manifests + ArgoCD
 - CloudWatch Events — replaced by K8s CronJobs
 - DynamoDB Streams — stream-triggered logic moved to jobs or eliminated
 - SNS/SQS — replaced by Snowflake CronJob for Mentorship sync
 - `entities` / `projects` split — merged into unified `crowdfunding.initiatives` table with `initiative_type` discriminator
 - `initiative` fund type — merged into `general fund` during migration
-- `travel_fund` / `other` entity types — stored as `initiative_type = 'other'` (not merged into `general fund`)
-- `community` entity type — 3 rows from 2019 migrated as `initiative_type = 'community'` (not discarded)
-- Datadog RUM — deferred
-- Intercom — deferred
-- Stacks / security vulnerabilities — deferred
-- Sponsor Tiers — deferred
-- CII badge — deferred
+- `travel_fund` / `other` entity types — stored as `initiative_type = 'other'`
+- `community` entity type — 3 rows from 2019 migrated as `initiative_type = 'community'`

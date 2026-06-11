@@ -77,9 +77,9 @@ required for this flow — `allow_all` on the CF resource server covers `authori
 
 ---
 
-## 2. SS-side implementation (lfx-self-serve PR #901)
+## 2. SS-side implementation
 
-The SS-side integration is implemented in `lfx-self-serve` (merged). Key components:
+Key components in `lfx-self-serve`:
 
 | File | Purpose |
 |---|---|
