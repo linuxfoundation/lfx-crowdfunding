@@ -22,7 +22,7 @@ Design Rule 3 in [`09`](09-authentication-architecture.md#design-rules)).
 
 ```
 User action in SS that needs CF data
-  └─ SS BFF resolves (or exchanges for) a CF-audience access token (see §2)
+  └─ SS BFF resolves a CF-audience access token from session (see §2)
   └─ SS BFF proxies to CF /v1/me/*
        Authorization: Bearer {CF-audience user access token}
 ```
@@ -36,38 +36,67 @@ SS is a multi-audience BFF: its primary login audience is the LFX V2 cluster, wh
 committees, meetings, and other LFX v2 services. It cannot log in with the CF audience as its
 primary audience without breaking those services.
 
-Instead, SS performs a **silent cross-audience refresh token exchange** on each authenticated
-request:
+SS runs a **silent second `authorization_code` flow** for the CF audience. This happens on the
+first top-level navigation to a `/crowdfunding/*` page when no valid CF token is in the session:
 
 ```
-POST /oauth/token
-  grant_type=refresh_token
-  refresh_token={user's refresh token from OIDC session}
-  client_id={LFX One client ID}
-  client_secret={LFX One client secret}
-  audience=https://crowdfunding.{env}.lfx.dev/api/
-  scope=access:me
+1. SS BFF redirects browser to Auth0 /authorize
+     client_id={LFX One client ID}
+     audience=https://crowdfunding.{env}.lfx.dev/api/
+     scope=openid profile access:me
+     prompt=none          ← silent: no UI if Auth0 session exists
+     redirect_uri=/crowdfunding/callback
+
+2. Auth0 returns auth code to /crowdfunding/callback
+
+3. SS BFF POSTs to Auth0 /oauth/token
+     grant_type=authorization_code
+     client_id + client_secret
+     code + redirect_uri
+
+4. Auth0 returns a CF-audience access token (access:me scope, username claim)
+
+5. SS stores token in server session (5-minute expiry buffer);
+   subsequent XHRs to /api/crowdfunding/* read it from session
 ```
 
-Auth0 returns a CF-scoped access token carrying the user's identity. SS caches it in the server
-session (with a 5-minute expiry buffer) and forwards it to CF. This is the same mechanism SS uses
-to obtain legacy API Gateway tokens — there is no user interaction and no M2M credential involved.
+The redirect is silent (`prompt=none`) when the user already has an Auth0 session — no second login
+or consent screen is shown. If Auth0 returns `consent_required` or `interaction_required`, the
+callback retries without `prompt=none` so the user sees the one-time CF audience consent screen.
+Subsequent navigations are silent because consent is remembered.
 
-This exchange requires LFX One to have a client grant registered for the CF audience in
-`auth0-terraform` (see [`09`](09-authentication-architecture.md#client-grants) for the HCL).
-Auth0's `allow_all` user policy on the CF resource server enables interactive logins without a
-grant, but cross-audience refresh token exchanges require explicit grant registration regardless of
-the `allow_all` policy.
+**Why not a refresh-token exchange?** The refresh-token exchange approach
+(`grant_type=refresh_token` + `audience=CF`) does not work with Auth0: Auth0 ignores the requested
+audience on a refresh grant and returns the primary LFX V2 cluster token, which CF rejects with 401
+(audience mismatch, confirmed by decoding the returned token). The second auth-code flow was
+validated with the LFX platform team and is the confirmed approach. No Auth0 client grant is
+required for this flow — `allow_all` on the CF resource server covers `authorization_code` flows.
 
 ---
 
-## 2. Required SS-side changes
+## 2. SS-side implementation (lfx-self-serve PR #901)
 
-| Area | Change |
+The SS-side integration is implemented in `lfx-self-serve` (merged). Key components:
+
+| File | Purpose |
 |---|---|
-| `lfx-self-serve` | `crowdfunding.service.ts` / proxy routes under `/api/crowdfunding/*` that perform the CF token exchange and forward the resulting CF-audience token to CF `/v1/me/*`. |
-| `auth0-terraform` | Register LFX One client grant for CF audience (`grants_crowdfunding.tf`) — required for cross-audience refresh token exchange. See [`09`](09-authentication-architecture.md#client-grants). |
-| `lfx-v2-argocd` | `values/*/lfx-self-serve.yaml`: `CROWDFUNDING_API_BASE_URL` + `CROWDFUNDING_API_AUDIENCE`. No M2M client/secret for CF. |
+| `server/services/crowdfunding-auth.service.ts` | Builds the Auth0 `/authorize` URL for the CF audience, exchanges the auth code for a token at `/oauth/token`, validates the token `sub`, stores in session |
+| `server/controllers/crowdfunding.controller.ts` | Handles `/crowdfunding/callback`; retries without `prompt=none` on `consent_required`/`interaction_required`; returns `?error=login_required` without re-triggering the silent redirect |
+| `server/middleware/auth.middleware.ts` | `extractCrowdfundingToken` reads the cached CF token from session onto `req.crowdfundingToken` on every authenticated request |
+| `server/services/crowdfunding.service.ts` | All `/api/crowdfunding/*` proxy calls forward `req.crowdfundingToken` as `Authorization: Bearer` to CF `/v1/me/*` |
+
+**Environment variables (lfx-v2-argocd `values/*/lfx-self-serve.yaml`):**
+
+| Env var | Purpose |
+|---|---|
+| `CROWDFUNDING_API_BASE_URL` | CF API base URL |
+| `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the auth-code flow |
+| `CROWDFUNDING_REDIRECT_URI` | Auth0 callback URL (defaults to `{PCC_BASE_URL}/crowdfunding/callback`) |
+
+SS reuses the existing `PCC_AUTH0_CLIENT_ID` / `PCC_AUTH0_CLIENT_SECRET` / `PCC_AUTH0_ISSUER_BASE_URL`
+(the LFX One app client). No dedicated CF client credentials are needed. No auth0-terraform grant is
+required — `authorization_code` flows work under Auth0's `allow_all` user policy on the CF resource
+server without an explicit client grant.
 
 SS needs no client-ID allowlist entry and no identity header — the user-issued access token carries
 identity, and the `access:me` scope is the gate.
@@ -82,23 +111,21 @@ user-issued access token.
 
 The token SS forwards to CF must always represent the **effective user**:
 
-- **Normal:** the logged-in user's own access token.
-- **Impersonating:** a token minted for the **target user** (via a token exchange, authorized by
-  the impersonator's `http://lfx.dev/claims/can_impersonate` claim) and used as the bearer while
-  impersonation is active.
+- **Normal:** the logged-in user's own CF-audience access token (from the second auth-code flow).
+- **Impersonating:** a CF-audience token minted for the **target user** and used as the bearer
+  while impersonation is active.
 
-**Requirement:** the CF integration must forward this effective-user token — the same token used
-for impersonation-aware upstream calls — and must **not** use a service/gateway token that carries
-the admin's own identity. Because the forwarded token already represents the effective user, CF's
-owner check and `Principal.Username` resolve correctly with no CF-side special handling.
+**Requirement:** the CF integration must forward this effective-user token and must **not** use the
+admin's own CF token. Because the forwarded token already represents the effective user, CF's owner
+check and `Principal.Username` resolve correctly with no CF-side special handling.
 
 > Write access under impersonation is a product-level decision, gated on the SS side.
 
-> **Known gap (tracked separately).** The current cross-audience refresh token exchange uses the
-> logged-in admin's refresh token, so the CF-audience token is scoped to the **admin** rather than
-> the impersonated user during an impersonation session. This means CF calls during impersonation
-> use the admin's identity rather than the target user's. The fix requires the exchange to use the
-> impersonated user's token as the subject — tracked as a separate work item.
+> **Known gap (tracked separately).** The current second auth-code flow authenticates the
+> **logged-in admin** — the resulting CF token is scoped to the admin's identity, not the
+> impersonated user. CF calls during impersonation therefore use the admin's identity. The fix
+> requires running the second auth-code flow (or a token exchange) for the impersonated user's
+> identity — tracked as a separate work item.
 
 ---
 

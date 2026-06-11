@@ -189,10 +189,16 @@ Self Serve forwards a **user-issued access token scoped to the CF audience** to 
 is no M2M credential and no identity header — the token carries the user's identity via the
 `https://sso.linuxfoundation.org/claims/username` claim, same as the CF frontend.
 
-Because SS's primary login audience is the LFX V2 cluster (not CF), SS performs a silent
-cross-audience refresh token exchange to obtain a CF-scoped token before each call. The exchange
-is cached in the server session. See [`08-self-serve-auth.md`](08-self-serve-auth.md) for details
-on why this mechanism is used and the auth0-terraform grant it requires.
+Because SS's primary login audience is the LFX V2 cluster (not CF), SS runs a **silent second
+`authorization_code` flow** for the CF audience. This happens on the first top-level navigation to
+a `/crowdfunding/*` page; the resulting token is cached in the server session. The redirect uses
+`prompt=none` so it is invisible to the user when an Auth0 session already exists.
+
+> **Why not a refresh-token exchange?** Auth0 ignores the `audience` parameter on a
+> `grant_type=refresh_token` request and returns the primary LFX V2 cluster token, which CF
+> rejects with 401. The second auth-code flow is the confirmed approach (validated with the LFX
+> platform team, lfx-self-serve PR #901). No auth0-terraform client grant is required — Auth0's
+> `allow_all` policy covers `authorization_code` flows without an explicit grant.
 
 All SS→CF calls are me-style endpoints: `/v1/me/donations`, `/v1/me/subscriptions`,
 `/v1/me/payment-account`, etc. Impersonation is handled entirely on the Self Serve side — CF
@@ -205,12 +211,19 @@ sequenceDiagram
     participant API as CF Go API
     participant Auth0
 
-    User->>SSBFF: Request + OIDC session cookie
-    SSBFF->>SSBFF: check session cache for CF-audience token
-    SSBFF->>Auth0: POST /oauth/token<br/>grant_type: refresh_token<br/>audience: /api/<br/>scope: access:me
-    Note over SSBFF,Auth0: silent exchange — no user interaction
+    Note over User,SSBFF: First /crowdfunding/* page load — no CF token in session
+    User->>SSBFF: GET /crowdfunding/... + OIDC session cookie
+    SSBFF->>User: Redirect → Auth0 /authorize<br/>audience: /api/<br/>scope: openid profile access:me<br/>prompt=none (silent)
+    User->>Auth0: follow redirect (existing Auth0 session — no UI shown)
+    Auth0->>User: auth code → /crowdfunding/callback
+    User->>SSBFF: GET /crowdfunding/callback?code=…
+    SSBFF->>Auth0: POST /oauth/token<br/>grant_type: authorization_code<br/>code + redirect_uri + client_id/secret
     Auth0->>SSBFF: CF-audience access token (access:me scope, username claim)
     SSBFF->>SSBFF: cache token in session (5 min expiry buffer)
+    SSBFF->>User: redirect back to original page
+
+    Note over User,SSBFF: Subsequent XHRs — CF token already in session
+    User->>SSBFF: XHR /api/crowdfunding/... + OIDC session cookie
     SSBFF->>API: GET /v1/me/…<br/>Authorization: Bearer {CF-audience access token}
     API->>Auth0: fetch JWKS (cached)
     API->>API: validate JWT: RS256 · issuer · audience /api/ · expiry
@@ -393,26 +406,10 @@ need **no** client grant — `access:me` is consented when the user logs in inte
 **CF frontend (Nuxt BFF)** — no client grant. Logs in with the CF audience as its primary
 `audience` parameter and forwards `req.bearerToken` directly to CF.
 
-**Self Serve** — requires a client grant. Unlike the CF Nuxt BFF, SS is a multi-audience BFF: its
-primary login audience is the LFX V2 cluster (`lfx-api.{env}.v2.cluster.linuxfound.info`), which
-it needs for committees, meetings, and other LFX v2 services. To call CF it performs a silent
-cross-audience refresh token exchange (`grant_type=refresh_token` + `audience=/api/`). Auth0's
-`allow_all` policy covers interactive `authorization_code` flows but **not** cross-audience refresh
-token exchanges — for those, the client must have a registered grant for the target audience. This
-is the same mechanism SS uses for the legacy API Gateway (see `grants_lfx.tf`).
-
-```hcl
-resource "auth0_client_grant" "lfxone_crowdfunding_user" {
-  client_id    = auth0_client.lfx_one.id
-  audience     = auth0_resource_server.lfx_crowdfunding_api.identifier
-  subject_type = "user"
-  scopes       = ["access:me"]
-  depends_on   = [auth0_resource_server_scopes.lfx_crowdfunding_api]
-}
-```
-
-The resulting token is user-scoped — it carries the user's identity (`access:me` scope, username
-claim) and is not an M2M token. No client secret is used or needed.
+**Self Serve** — no client grant needed. SS uses a silent second `authorization_code` flow for the
+CF audience (see Flow 2). Auth0's `allow_all` policy covers `authorization_code` flows without an
+explicit client grant, so no terraform change is required. The resulting token is user-scoped —
+it carries the user's identity (`access:me` scope, username claim).
 
 **Reimbursement Service** — the only M2M client grant, for `access:manage` access:
 
@@ -460,12 +457,15 @@ rather than the LFX secrets-distribution pipeline.
 ### LFX Self Serve (Express BFF)
 
 No M2M credentials needed for CF. The token forwarded is a user-issued access token obtained via
-a silent refresh token exchange for the CF audience — not a service credential.
+a silent second `authorization_code` flow for the CF audience — not a service credential.
+The LFX One app client (`PCC_AUTH0_CLIENT_ID` / `PCC_AUTH0_CLIENT_SECRET`) is reused; no
+dedicated CF client credentials are needed.
 
 | Env var | Purpose | Dev value |
 |---|---|---|
 | `CROWDFUNDING_API_BASE_URL` | CF API base URL | `https://crowdfunding-api.dev.lfx.dev` |
-| `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the refresh token exchange | `https://crowdfunding.dev.lfx.dev/api/` |
+| `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the auth-code flow | `https://crowdfunding.dev.lfx.dev/api/` |
+| `CROWDFUNDING_REDIRECT_URI` | Auth0 callback URL for the second auth-code flow | `{PCC_BASE_URL}/crowdfunding/callback` |
 
 ### Reimbursement Service
 
