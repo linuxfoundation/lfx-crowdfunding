@@ -45,10 +45,12 @@ first top-level navigation to a `/crowdfunding/*` page when no valid CF token is
      client_id={LFX One client ID}
      audience={CF audience}   e.g. https://crowdfunding-api.staging.lfx.dev
      scope=openid profile access:me
-     prompt=none          ← silent: no UI if Auth0 session exists
+     state={random nonce}     ← CSRF protection; validated in step 2
+     prompt=none              ← silent: no UI if Auth0 session exists
      redirect_uri={PCC_BASE_URL}/crowdfunding/callback   ← absolute URL, must match Auth0 config
 
-2. Auth0 returns auth code to {PCC_BASE_URL}/crowdfunding/callback
+2. Auth0 returns auth code + state to {PCC_BASE_URL}/crowdfunding/callback
+     SS BFF validates returned state matches the nonce from step 1
 
 3. SS BFF POSTs to Auth0 /oauth/token
      grant_type=authorization_code

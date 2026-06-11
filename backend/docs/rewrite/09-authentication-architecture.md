@@ -220,10 +220,11 @@ sequenceDiagram
 
     Note over User,SSBFF: First /crowdfunding/* page load — no CF token in session
     User->>SSBFF: GET /crowdfunding/... + OIDC session cookie
-    SSBFF->>User: Redirect → Auth0 /authorize<br/>audience: {CF audience}<br/>scope: openid profile access:me<br/>prompt=none (silent)
+    SSBFF->>User: Redirect → Auth0 /authorize<br/>audience: {CF audience}<br/>scope: openid profile access:me<br/>state={nonce}, redirect_uri={absolute callback URL}<br/>prompt=none (silent)
     User->>Auth0: follow redirect (existing Auth0 session — no UI shown)
-    Auth0->>User: auth code → /crowdfunding/callback
-    User->>SSBFF: GET /crowdfunding/callback?code=…
+    Auth0->>User: auth code + state → /crowdfunding/callback
+    User->>SSBFF: GET /crowdfunding/callback?code=…&state=…
+    SSBFF->>SSBFF: validate state matches stored nonce (CSRF check)
     SSBFF->>Auth0: POST /oauth/token<br/>grant_type: authorization_code<br/>code + redirect_uri + client_id/secret
     Auth0->>SSBFF: CF-audience access token (access:me scope, username claim)
     SSBFF->>SSBFF: cache token in session (5 min expiry buffer)
@@ -473,7 +474,7 @@ a silent second `authorization_code` flow for the CF audience — not a service 
 The LFX One app client (`PCC_AUTH0_CLIENT_ID` / `PCC_AUTH0_CLIENT_SECRET`) is reused; no
 dedicated CF client credentials are needed.
 
-| Env var | Purpose | Dev value |
+| Env var | Purpose | Example value (staging) |
 |---|---|---|
 | `CROWDFUNDING_API_BASE_URL` | CF API base URL | `https://crowdfunding-api.staging.lfx.dev` |
 | `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the auth-code flow | `https://crowdfunding-api.staging.lfx.dev` |
