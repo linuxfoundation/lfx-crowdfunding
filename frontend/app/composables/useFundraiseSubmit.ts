@@ -73,6 +73,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? projectForm.details.topics.join(',')
           : undefined,
         websiteUrl: projectForm?.details.websiteUrl || undefined,
+        ciiProjectId: projectForm?.details.ciiProjectId || undefined,
         cocUrl: projectForm?.details.codeOfConductUrl || undefined,
         repositoryUrl: repoUrl,
         logoUrl: projectForm?.details.logoUrl || undefined,
@@ -93,8 +94,12 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? securityAuditForm.topics.join(',')
           : undefined,
         websiteUrl: securityAuditForm?.websiteUrl || undefined,
+        ciiProjectId: securityAuditForm?.ciiProjectId || undefined,
+        cocUrl: securityAuditForm?.codeOfConductUrl || undefined,
         repositoryUrl: securityAuditForm?.repositoryUrl || undefined,
         logoUrl: securityAuditForm?.logoUrl || undefined,
+        licenseType: securityAuditForm?.licenseType || undefined,
+        currentSecurityStrategy: securityAuditForm?.currentSecurityStrategy || undefined,
         fundingGoalCents: parseDollarsToCents(securityAuditForm?.fundingGoal),
         primaryContact: securityAuditForm?.primaryContact,
         secondaryContact: securityAuditForm?.secondaryContact,
