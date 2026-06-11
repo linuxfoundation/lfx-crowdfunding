@@ -1,0 +1,74 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
+// Styles for HTML/Markdown content rendered via v-html (e.g. initiative descriptions).
+.lfx-rich-text {
+  @apply text-sm text-neutral-900 leading-5;
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold text-neutral-900 mt-4 mb-1 leading-6;
+  }
+
+  h1 {
+    @apply text-xl;
+  }
+
+  h2 {
+    @apply text-lg;
+  }
+
+  h3,
+  h4 {
+    @apply text-base;
+  }
+
+  p {
+    @apply mb-3;
+
+    &:last-child {
+      @apply mb-0;
+    }
+  }
+
+  a {
+    @apply text-brand-600 underline hover:text-brand-700;
+  }
+
+  ul,
+  ol {
+    @apply pl-5 mb-3 space-y-1;
+  }
+
+  ul {
+    @apply list-disc;
+  }
+
+  ol {
+    @apply list-decimal;
+  }
+
+  strong {
+    @apply font-semibold;
+  }
+
+  em {
+    @apply italic;
+  }
+
+  code {
+    @apply bg-neutral-100 text-neutral-800 rounded-sm px-1 py-0.5 text-xs;
+    font-family: ui-monospace, monospace;
+  }
+
+  pre {
+    @apply bg-neutral-100 rounded-sm p-3 mb-3 overflow-x-auto text-xs;
+    font-family: ui-monospace, monospace;
+  }
+
+  blockquote {
+    @apply border-l-4 border-neutral-300 pl-4 italic text-neutral-600 my-3;
+  }
+}

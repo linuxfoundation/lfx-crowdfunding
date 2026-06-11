@@ -68,7 +68,7 @@ SPDX-License-Identifier: MIT
                   class="text-sm text-neutral-600 leading-5"
                   :class="{ hidden: isScrolled }"
                 >
-                  {{ initiative.description }}
+                  {{ plainDescription }}
                 </p>
               </div>
             </div>
@@ -141,6 +141,7 @@ import {
 } from '../../../shared/components/initiative-card/initiative-card.config';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
+import { useSanitize } from '~/composables/useSanitize';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
@@ -155,6 +156,9 @@ const props = defineProps<{
   initiative: InitiativeDetail;
   activeTab: string;
 }>();
+
+const { stripHtml } = useSanitize();
+const plainDescription = computed(() => stripHtml(props.initiative.description ?? ''));
 
 const { openDonateDrawer } = useDonateDrawerStore();
 const { openShareModal } = useShareModalStore();

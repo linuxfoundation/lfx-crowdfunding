@@ -351,6 +351,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	if input.Name == "" {
 		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}
+	if len(input.Description) > 5000 {
+		return nil, fmt.Errorf("%w: description must be 5000 characters or fewer", domain.ErrInvalidInput)
+	}
 	if input.Slug == "" {
 		input.Slug = slug.Make(input.Name)
 	}
@@ -513,6 +516,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		existing.Status = *input.Status
 	}
 	if input.Description != nil {
+		if len(*input.Description) > 5000 {
+			return nil, fmt.Errorf("%w: description must be 5000 characters or fewer", domain.ErrInvalidInput)
+		}
 		existing.Description = *input.Description
 	}
 	if input.Industry != nil {
