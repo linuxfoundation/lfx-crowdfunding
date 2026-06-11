@@ -1489,7 +1489,7 @@ func TestCreate_NilChildFieldsWhenNotProvided(t *testing.T) {
 }
 // --- GetOwnerInfoBySlug ---
 
-func TestGetOwnerEmailBySlug_Success(t *testing.T) {
+func TestGetOwnerInfoBySlug_Success(t *testing.T) {
 	repo := &mockInitiativeRepo{ownerEmail: "owner@example.com", ownerName: "Alice Smith"}
 	svc := newCreateSvc(repo)
 	info, err := svc.GetOwnerInfoBySlug(context.Background(), "some-project")
@@ -1504,7 +1504,7 @@ func TestGetOwnerEmailBySlug_Success(t *testing.T) {
 	}
 }
 
-func TestGetOwnerEmailBySlug_NotFound(t *testing.T) {
+func TestGetOwnerInfoBySlug_NotFound(t *testing.T) {
 	repo := &mockInitiativeRepo{ownerEmailErr: domain.ErrInitiativeNotFound}
 	svc := newCreateSvc(repo)
 	_, err := svc.GetOwnerInfoBySlug(context.Background(), "nonexistent-slug")
@@ -1513,7 +1513,7 @@ func TestGetOwnerEmailBySlug_NotFound(t *testing.T) {
 	}
 }
 
-func TestGetOwnerEmailBySlug_UnexpectedError(t *testing.T) {
+func TestGetOwnerInfoBySlug_UnexpectedError(t *testing.T) {
 	dbErr := errors.New("db connection reset")
 	repo := &mockInitiativeRepo{ownerEmailErr: dbErr}
 	svc := newCreateSvc(repo)
@@ -1523,7 +1523,7 @@ func TestGetOwnerEmailBySlug_UnexpectedError(t *testing.T) {
 	}
 }
 
-func TestGetOwnerEmailBySlug_NullEmail(t *testing.T) {
+func TestGetOwnerInfoBySlug_NullEmail(t *testing.T) {
 	repo := &mockInitiativeRepo{ownerEmailErr: domain.ErrProfileNotSynced}
 	svc := newCreateSvc(repo)
 	_, err := svc.GetOwnerInfoBySlug(context.Background(), "some-project")
