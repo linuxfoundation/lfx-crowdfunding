@@ -30,7 +30,7 @@ SPDX-License-Identifier: MIT
           </label>
           <span
             class="text-xs"
-            :class="modelValue.elevatorPitch.length > 5000 ? 'text-negative-500' : 'text-neutral-500'"
+            :class="modelValue.elevatorPitch.length >= 5000 ? 'text-negative-500' : 'text-neutral-500'"
           >
             {{ modelValue.elevatorPitch.length }}/5000
           </span>
