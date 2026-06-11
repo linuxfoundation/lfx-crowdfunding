@@ -77,6 +77,7 @@ export const logout = async () => {
   try {
     const response = await $fetch<{ success: boolean; logoutUrl: string }>('/api/auth/logout', {
       method: 'POST',
+      body: process.client ? { returnTo: window.location.origin } : undefined,
     });
 
     if (response.success) {
