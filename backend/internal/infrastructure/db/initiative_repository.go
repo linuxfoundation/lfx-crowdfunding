@@ -266,11 +266,11 @@ const (
 		INSERT INTO initiatives
 		       (id, initiative_type, owner_id, name, slug, status, industry,
 		        description, color, logo_url, website_url, coc_url,
-		        stripe_plan_id, stripe_product_id, accept_funding,
+		        stripe_plan_id, stripe_product_id, accept_funding, cii_project_id,
 		        eventbrite_url, application_url, event_start_date, event_end_date,
 		        country, city, is_online)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-		        $16,$17,$18,$19,$20,$21,$22)`
+		        $16,$17,$18,$19,$20,$21,$22,$23)`
 
 	insertGoal = `
 		INSERT INTO initiative_goals
@@ -366,13 +366,14 @@ const (
 		    website_url       = $9,
 		    coc_url           = $10,
 		    accept_funding    = $11,
-		    eventbrite_url    = $12,
-		    application_url   = $13,
-		    event_start_date  = $14,
-		    event_end_date    = $15,
-		    country           = $16,
-		    city              = $17,
-		    is_online         = $18
+		    cii_project_id    = $12,
+		    eventbrite_url    = $13,
+		    application_url   = $14,
+		    event_start_date  = $15,
+		    event_end_date    = $16,
+		    country           = $17,
+		    city              = $18,
+		    is_online         = $19
 		WHERE id = $1`
 )
 
@@ -402,7 +403,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
 		nullableString(i.StripePlanID), nullableString(i.StripeProductID),
-		i.AcceptFunding,
+		i.AcceptFunding, nullableString(i.CiiProjectID),
 		nullableString(i.EventbriteURL), nullableString(i.ApplicationURL),
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
@@ -578,7 +579,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		i.ID, i.Name, nullableString(i.Slug), nullableString(string(i.Status)),
 		nullableString(i.Industry), nullableString(i.Description), nullableString(i.Color),
 		nullableString(i.LogoURL), nullableString(i.WebsiteURL), nullableString(i.CocURL),
-		i.AcceptFunding,
+		i.AcceptFunding, nullableString(i.CiiProjectID),
 		nullableString(i.EventbriteURL), nullableString(i.ApplicationURL),
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
