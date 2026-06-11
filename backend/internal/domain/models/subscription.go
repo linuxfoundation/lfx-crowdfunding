@@ -35,7 +35,7 @@ type Subscription struct {
 	// ClientSecret is transient — set by the service when 3DS is required, never stored.
 	ClientSecret string `json:"client_secret,omitempty"`
 
-	// Initiative fields — populated by ListByUser via JOIN; omitted on other endpoints.
+	// Initiative fields — populated by ListByUser via LEFT JOIN; omitted on other endpoints.
 	InitiativeName    string `json:"initiative_name,omitempty"`
 	InitiativeLogoURL string `json:"initiative_logo_url,omitempty"`
 }
