@@ -127,11 +127,96 @@ func (r *SubscriptionRepository) ListByInitiative(ctx context.Context, initiativ
 	return r.listSubs(ctx, "initiative_id", initiativeID, filter)
 }
 
-// ListByUser returns paginated subscriptions for a user.
+// ListByUser returns paginated subscriptions for a user, enriched with initiative name and logo.
 func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.ListByUser")
 	defer span.End()
-	return r.listSubs(ctx, "user_id", userID, filter)
+	return r.listSubsForUser(ctx, userID, filter)
+}
+
+// listSubsForUser fetches subscriptions for a user, LEFT JOINing initiatives to populate
+// InitiativeName and InitiativeLogoURL on each result.
+func (r *SubscriptionRepository) listSubsForUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	args := []any{userID}
+	clauses := []string{"s.user_id = $1"}
+	if filter.Status != "" {
+		args = append(args, filter.Status)
+		clauses = append(clauses, fmt.Sprintf("s.status = $%d", len(args)))
+	}
+	where := strings.Join(clauses, " AND ")
+
+	var total int
+	if err := r.pool.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM subscriptions s WHERE %s", where), args...).Scan(&total); err != nil {
+		return nil, nil, fmt.Errorf("count subscriptions: %w", err)
+	}
+
+	dataArgs := append(args, limit, offset) //nolint:gocritic // intentional re-slice
+	q := fmt.Sprintf(`
+		SELECT s.id, s.user_id, s.initiative_id, s.organization_id, s.category,
+		       s.current_amount_in_cents, s.frequency, s.status,
+		       s.stripe_subscription_id, s.stripe_subscription_item_id, s.stripe_price_id,
+		       s.created_on, s.updated_on,
+		       COALESCE(i.name, ''), COALESCE(i.logo_url, '')
+		FROM subscriptions s
+		LEFT JOIN initiatives i ON i.id = s.initiative_id
+		WHERE %s
+		ORDER BY s.created_on DESC
+		LIMIT $%d OFFSET $%d`,
+		where, len(args)+1, len(args)+2)
+
+	rows, err := r.pool.Query(ctx, q, dataArgs...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list subscriptions for user: %w", err)
+	}
+	defer rows.Close()
+
+	var subs []models.Subscription
+	for rows.Next() {
+		s := &models.Subscription{}
+		var (
+			initiativeID, organizationID, category                        *string
+			frequency, status                                             *string
+			stripeSubscriptionID, stripeSubscriptionItemID, stripePriceID *string
+			createdOn, updatedOn                                          *time.Time
+		)
+		if err := rows.Scan(
+			&s.ID, &s.UserID, &initiativeID, &organizationID, &category,
+			&s.CurrentAmountCents, &frequency, &status,
+			&stripeSubscriptionID, &stripeSubscriptionItemID, &stripePriceID,
+			&createdOn, &updatedOn,
+			&s.InitiativeName, &s.InitiativeLogoURL,
+		); err != nil {
+			return nil, nil, fmt.Errorf("scan subscription: %w", err)
+		}
+		s.InitiativeID = derefString(initiativeID)
+		s.OrganizationID = derefString(organizationID)
+		s.Category = derefString(category)
+		s.Frequency = derefString(frequency)
+		s.Status = derefString(status)
+		s.StripeSubscriptionID = derefString(stripeSubscriptionID)
+		s.StripeSubscriptionItemID = derefString(stripeSubscriptionItemID)
+		s.StripePriceID = derefString(stripePriceID)
+		if createdOn != nil {
+			s.CreatedOn = *createdOn
+		}
+		if updatedOn != nil {
+			s.UpdatedOn = *updatedOn
+		}
+		subs = append(subs, *s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterate subscriptions: %w", err)
+	}
+	return subs, &models.PaginationMeta{Total: total, Limit: limit, Offset: offset}, nil
 }
 
 func (r *SubscriptionRepository) listSubs(ctx context.Context, col, val string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
