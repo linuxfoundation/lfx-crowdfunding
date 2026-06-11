@@ -1515,3 +1515,12 @@ func TestGetOwnerEmailBySlug_UnexpectedError(t *testing.T) {
 		t.Fatalf("expected wrapped db error, got %v", err)
 	}
 }
+
+func TestGetOwnerEmailBySlug_NullEmail(t *testing.T) {
+	repo := &mockInitiativeRepo{ownerEmailErr: domain.ErrProfileNotSynced}
+	svc := newCreateSvc(repo)
+	_, err := svc.GetOwnerEmailBySlug(context.Background(), "some-project")
+	if !errors.Is(err, domain.ErrProfileNotSynced) {
+		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
+	}
+}

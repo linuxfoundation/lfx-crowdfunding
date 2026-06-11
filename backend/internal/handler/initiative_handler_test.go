@@ -34,6 +34,8 @@ type initiativeRepo struct {
 	deleteErr      error
 	lastUpdated    *models.Initiative
 	deletedID      string
+	ownerEmail     string
+	ownerEmailErr  error
 }
 
 func (r *initiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -92,7 +94,7 @@ func (r *initiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[strin
 	return nil, nil
 }
 func (r *initiativeRepo) GetOwnerEmailBySlug(_ context.Context, _ string) (string, error) {
-	return "", nil
+	return r.ownerEmail, r.ownerEmailErr
 }
 func (r *initiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil

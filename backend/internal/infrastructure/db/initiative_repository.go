@@ -152,7 +152,7 @@ func (r *InitiativeRepository) GetOwnerEmailBySlug(ctx context.Context, slug str
 	defer span.End()
 	span.SetAttributes(attribute.String("db.initiative_slug", slug))
 
-	var email string
+	var email *string
 	err := r.pool.QueryRow(ctx, `
 		SELECT u.email
 		FROM initiatives i
@@ -165,7 +165,10 @@ func (r *InitiativeRepository) GetOwnerEmailBySlug(ctx context.Context, slug str
 		span.RecordError(err)
 		return "", fmt.Errorf("get owner email by slug: %w", err)
 	}
-	return email, nil
+	if email == nil {
+		return "", fmt.Errorf("get owner email by slug: %w", domain.ErrProfileNotSynced)
+	}
+	return *email, nil
 }
 
 // List retrieves initiatives matching the filter with pagination.

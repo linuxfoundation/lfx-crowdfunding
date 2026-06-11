@@ -190,7 +190,7 @@ func (s *InitiativeService) GetOwnerEmailBySlug(ctx context.Context, slug string
 		if !errors.Is(err, domain.ErrInitiativeNotFound) {
 			span.RecordError(err)
 		}
-		return "", err
+		return "", fmt.Errorf("get owner email by slug: %w", err)
 	}
 	return email, nil
 }
