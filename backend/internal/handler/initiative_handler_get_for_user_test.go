@@ -73,6 +73,9 @@ func (r *stubRepoForGetForUser) Delete(_ context.Context, _ string) error { retu
 func (r *stubRepoForGetForUser) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
+func (r *stubRepoForGetForUser) GetOwnerEmailBySlug(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
 func (r *stubRepoForGetForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }

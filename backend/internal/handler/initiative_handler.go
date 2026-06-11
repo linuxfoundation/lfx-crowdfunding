@@ -381,6 +381,19 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetOwnerEmail handles GET /v1/initiatives/{slug}/owner-email.
+// Requires a valid bearer token with the access:manage scope (M2M only).
+// Returns the email address of the owner of the initiative with the given slug.
+func (h *InitiativeHandler) GetOwnerEmail(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	email, err := h.svc.GetOwnerEmailBySlug(r.Context(), slug)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"email": email})
+}
+
 // isApprover reports whether the principal is in the allowed approvers list.
 // Identity is matched solely against Principal.Username — the LF SSO username
 // claim.

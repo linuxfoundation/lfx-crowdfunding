@@ -91,6 +91,9 @@ func (r *initiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) e
 func (r *initiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
+func (r *initiativeRepo) GetOwnerEmailBySlug(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
 func (r *initiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }

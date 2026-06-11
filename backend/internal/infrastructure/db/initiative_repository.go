@@ -145,6 +145,29 @@ func (r *InitiativeRepository) ResolveSlug(ctx context.Context, slug string) (st
 	return id, nil
 }
 
+// GetOwnerEmailBySlug returns the email of the initiative owner in a single JOIN query.
+// It matches any initiative status, making it suitable for M2M service-to-service callers.
+func (r *InitiativeRepository) GetOwnerEmailBySlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.GetOwnerEmailBySlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.initiative_slug", slug))
+
+	var email string
+	err := r.pool.QueryRow(ctx, `
+		SELECT u.email
+		FROM initiatives i
+		JOIN users u ON u.id = i.owner_id
+		WHERE i.slug = $1`, slug).Scan(&email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrInitiativeNotFound
+		}
+		span.RecordError(err)
+		return "", fmt.Errorf("get owner email by slug: %w", err)
+	}
+	return email, nil
+}
+
 // List retrieves initiatives matching the filter with pagination.
 func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")

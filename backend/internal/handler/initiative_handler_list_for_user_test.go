@@ -60,6 +60,9 @@ func (r *stubInitiativeRepoForListForUser) Delete(_ context.Context, _ string) e
 func (r *stubInitiativeRepoForListForUser) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
+func (r *stubInitiativeRepoForListForUser) GetOwnerEmailBySlug(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
 func (r *stubInitiativeRepoForListForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }

@@ -35,6 +35,10 @@ type InitiativeRepository interface {
 	// GetOrganizationsByIDs returns a map of org UUID → Organization for the given IDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
 	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
+
+	// GetOwnerEmailBySlug returns the email address of the owner of the initiative
+	// with the given slug, regardless of initiative status. Used by M2M callers.
+	GetOwnerEmailBySlug(ctx context.Context, slug string) (string, error)
 }
 
 // DonationRepository defines persistence operations for donations.

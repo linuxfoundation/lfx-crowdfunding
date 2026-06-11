@@ -176,6 +176,24 @@ func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models
 	return initiative, nil
 }
 
+// GetOwnerEmailBySlug returns the email address of the owner of the initiative
+// identified by slug. It uses a single JOIN query — no status filter is applied,
+// so it works for initiatives in any status. Intended for M2M callers only.
+func (s *InitiativeService) GetOwnerEmailBySlug(ctx context.Context, slug string) (string, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetOwnerEmailBySlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.slug", slug))
+
+	email, err := s.repo.GetOwnerEmailBySlug(ctx, slug)
+	if err != nil {
+		if !errors.Is(err, domain.ErrInitiativeNotFound) {
+			span.RecordError(err)
+		}
+		return "", err
+	}
+	return email, nil
+}
+
 // GetForUser retrieves an initiative owned by the authenticated caller, by slug or
 // UUID, regardless of its status. The public GetByID/GetBySlug path only exposes
 // published initiatives to non-approvers, so owners need this identity-scoped read

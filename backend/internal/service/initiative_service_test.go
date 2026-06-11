@@ -75,6 +75,9 @@ func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[s
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
 }
+func (m *mockInitiativeRepo) GetOwnerEmailBySlug(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
 func (m *mockInitiativeRepo) UpdateStripeProductID(ctx context.Context, id, productID string) error {
 	if m.onUpdateStripeProductID != nil {
 		return m.onUpdateStripeProductID(ctx, id, productID)
@@ -402,6 +405,9 @@ func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative, _ mo
 }
 func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error { return nil }
 func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (m *mockRepoForEnrich) GetOwnerEmailBySlug(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
 
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 	repo := &mockRepoForEnrich{
