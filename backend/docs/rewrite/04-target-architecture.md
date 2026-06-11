@@ -244,6 +244,14 @@ When `EMAIL_DRY_RUN=true`:
 | GitHub stats | Lazy refresh (no CronJob) | On page load, TTL 6h | See decision in `02-decisions.md`. |
 | `ledger-stats-sync` | CronJob | Every hour | Calls Ledger HTTP API to sync pre-aggregated financial stats as cached columns on `crowdfunding.initiatives`. Required for correctness — the only mechanism that reflects Expensify debit-side disbursements. |
 
+Jobs removed from old system (not in new architecture):
+- `amountraised` / `amountraised-entities` → replaced by `ledger-stats-sync` CronJob
+- `export-projects`, `export-organizations`, `export-users`, `entities-sync` → OpenSearch dropped; search replaced by Postgres full-text search
+- `ledger-viewmodel` → no longer needed
+- `expensify-sync` → stays on old Lambda; not part of the new CF service
+- `cii-badge` → not in scope
+- `sqs-consumer` → dropped; replaced by `mentorship-sync` Snowflake CronJob
+
 ### Internal Endpoints (for Reimbursement Service)
 
 Three narrow read-only endpoints for RS to replace its OpenSearch reads of CF-owned data. Authenticated via Auth0 **`access:manage`** M2M token (`client_credentials` grant) — see `09-authentication-architecture.md` Flow 3. On the public HTTPS ingress — RS Lambda can reach them the same way it reaches any other public HTTPS service.
@@ -377,3 +385,8 @@ URLs:
 - `initiative` fund type — merged into `general fund` during migration
 - `travel_fund` / `other` entity types — stored as `initiative_type = 'other'`
 - `community` entity type — 3 rows from 2019 migrated as `initiative_type = 'community'`
+- Datadog RUM — not in scope
+- Intercom — not in scope
+- Stacks / security vulnerabilities — not in scope
+- Sponsor Tiers — not in scope
+- CII badge — not in scope
