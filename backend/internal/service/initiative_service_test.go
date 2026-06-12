@@ -75,6 +75,9 @@ func (m *mockInitiativeRepo) Delete(_ context.Context, _ string) error { return 
 func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return map[string]models.User{}, nil
 }
+func (m *mockInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	return map[string]models.User{}, nil
+}
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
 }
@@ -380,6 +383,12 @@ func (m *mockRepoForEnrich) GetUsersByIDs(_ context.Context, _ []string) (map[st
 	}
 	return m.users, nil
 }
+func (m *mockRepoForEnrich) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.users, nil
+}
 func (m *mockRepoForEnrich) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	if m.err != nil {
 		return nil, m.err
@@ -409,7 +418,7 @@ func (m *mockRepoForEnrich) Create(_ context.Context, i *models.Initiative, _ mo
 func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative, _ models.InitiativeUpdateInput) (*models.Initiative, error) {
 	return i, nil
 }
-func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error { return nil }
+func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error                   { return nil }
 func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 func (m *mockRepoForEnrich) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
@@ -475,6 +484,26 @@ func TestEnrichTransactionsFromDB_GeneratesAvatarWhenNoDBMatch(t *testing.T) {
 
 	if txns[0].DonorLogoURL == "" {
 		t.Error("expected generated avatar URL when no DB match found")
+	}
+}
+
+func TestEnrichTransactionsFromDB_OrgMissingFromDB_FallsBackToAnonymous(t *testing.T) {
+	repo := &mockRepoForEnrich{
+		users: map[string]models.User{},
+		orgs:  map[string]models.Organization{}, // org-1 not in DB
+	}
+
+	txns := []models.Transaction{
+		{ID: "t1", LedgerOrgID: "org-unknown"},
+	}
+
+	enrichTransactionsFromDB(context.Background(), repo, txns)
+
+	if txns[0].DonorName != "Anonymous" {
+		t.Errorf("expected Anonymous fallback for missing org, got %q", txns[0].DonorName)
+	}
+	if txns[0].DonorLogoURL == "" {
+		t.Error("expected generated avatar URL for missing org")
 	}
 }
 
@@ -1487,6 +1516,7 @@ func TestCreate_NilChildFieldsWhenNotProvided(t *testing.T) {
 		t.Error("expected nil EntityDetails")
 	}
 }
+
 // --- GetOwnerInfoBySlug ---
 
 func TestGetOwnerInfoBySlug_Success(t *testing.T) {
