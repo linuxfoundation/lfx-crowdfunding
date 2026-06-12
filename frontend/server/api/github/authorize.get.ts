@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { randomBytes } from 'node:crypto';
+import { getGithubCallbackUrl } from '../../utils/github';
 import { getSafeRedirectUrl } from '../../utils/redirect';
 
 export default defineEventHandler(async (event) => {
@@ -26,7 +27,7 @@ export default defineEventHandler(async (event) => {
 
   const params = new URLSearchParams({
     client_id: config.public.githubOauthClientId,
-    redirect_uri: config.public.githubOauthRedirectUri,
+    redirect_uri: getGithubCallbackUrl(event),
     scope: 'public_repo',
     state,
   });

@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+import { getGithubCallbackUrl } from '../../utils/github';
 import { getSafeRedirectUrl } from '../../utils/redirect';
 
 export default defineEventHandler(async (event) => {
@@ -37,7 +38,7 @@ export default defineEventHandler(async (event) => {
         client_id: config.public.githubOauthClientId,
         client_secret: config.githubOauthClientSecret,
         code: query.code,
-        redirect_uri: config.public.githubOauthRedirectUri,
+        redirect_uri: getGithubCallbackUrl(event),
       },
     },
   );
