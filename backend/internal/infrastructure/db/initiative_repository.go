@@ -1360,6 +1360,58 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 	return result, nil
 }
 
+// GetUsersByLegacyIDs returns a map of legacy_user_id → User for all IDs provided.
+// The Ledger service identifies users by their Auth0 subject (legacy_user_id),
+// so this method queries by that column rather than the internal UUID primary key.
+// Missing IDs are absent from the map.
+func (r *InitiativeRepository) GetUsersByLegacyIDs(ctx context.Context, legacyIDs []string) (map[string]models.User, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetUsersByLegacyIDs")
+	defer span.End()
+
+	result := make(map[string]models.User, len(legacyIDs))
+	if len(legacyIDs) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT legacy_user_id, name, avatar_url FROM users WHERE legacy_user_id = ANY($1)`
+	rows, err := r.pool.Query(ctx, q, legacyIDs)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get users by legacy IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var (
+			u         models.User
+			legacyID  *string
+			name      *string
+			avatarURL *string
+		)
+		if err := rows.Scan(&legacyID, &name, &avatarURL); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		if legacyID != nil {
+			u.LegacyUserID = *legacyID
+		}
+		if name != nil {
+			u.Name = *name
+		}
+		if avatarURL != nil {
+			u.AvatarURL = *avatarURL
+		}
+		if u.LegacyUserID != "" {
+			result[u.LegacyUserID] = u
+		}
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return result, fmt.Errorf("iterate users by legacy IDs: %w", err)
+	}
+	return result, nil
+}
+
 // GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs provided.
 // Missing IDs are absent from the map.
 func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {

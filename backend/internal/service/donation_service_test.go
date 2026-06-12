@@ -49,7 +49,12 @@ func (r *summaryInitiativeRepo) GetUsersByIDs(ctx context.Context, ids []string)
 	}
 	return map[string]models.User{}, nil
 }
-func (r *summaryInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (r *summaryInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	return map[string]models.User{}, nil
+}
+func (r *summaryInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error {
+	return nil
+}
 func (r *summaryInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
