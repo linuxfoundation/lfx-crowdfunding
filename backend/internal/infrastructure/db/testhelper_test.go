@@ -58,7 +58,7 @@ func TestMain(m *testing.M) {
 func truncate(t *testing.T, ctx context.Context, tables ...string) { //nolint:revive // t first is Go test convention
 	t.Helper()
 	for _, table := range tables {
-		if _, err := testPool.Exec(ctx, "TRUNCATE "+table+" RESTART IDENTITY CASCADE"); err != nil {
+		if _, err := testPool.Exec(ctx, "TRUNCATE "+table+" RESTART IDENTITY CASCADE"); err != nil { //nolint:gosec // table names are test-internal constants, not user input
 			t.Fatalf("truncate %s: %v", table, err)
 		}
 	}
