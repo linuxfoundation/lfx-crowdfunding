@@ -91,7 +91,7 @@ SPDX-License-Identifier: MIT
 
             <!-- Funding disabled notice -->
             <p
-              v-if="!initiative.acceptFunding && !isScrolled"
+              v-if="initiative.acceptFunding === false && !isScrolled"
               class="text-sm text-neutral-500 mt-2"
             >
               This initiative is not currently accepting donations.
@@ -120,7 +120,7 @@ SPDX-License-Identifier: MIT
           />
           <lfx-tooltip
             content="This initiative is not currently accepting donations"
-            :disabled="initiative.acceptFunding"
+            :disabled="initiative.acceptFunding !== false"
           >
             <span>
               <lfx-button
@@ -130,7 +130,7 @@ SPDX-License-Identifier: MIT
                 icon-position="left"
                 class="!text-accent-500"
                 button-style="pill"
-                :disabled="!initiative.acceptFunding"
+                :disabled="initiative.acceptFunding === false"
                 @click="handleFundInitiative()"
               />
             </span>
