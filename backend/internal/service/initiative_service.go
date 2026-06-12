@@ -794,6 +794,9 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 				t.DonorName = org.Name
 				t.DonorLogoURL = org.AvatarURL
 			}
+			if t.DonorName == "" {
+				t.DonorName = "Anonymous"
+			}
 			if t.DonorLogoURL == "" {
 				t.DonorLogoURL = generatedAvatarURL(t.LedgerOrgID, t.DonorName)
 			}

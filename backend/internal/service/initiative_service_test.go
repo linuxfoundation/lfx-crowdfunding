@@ -487,6 +487,26 @@ func TestEnrichTransactionsFromDB_GeneratesAvatarWhenNoDBMatch(t *testing.T) {
 	}
 }
 
+func TestEnrichTransactionsFromDB_OrgMissingFromDB_FallsBackToAnonymous(t *testing.T) {
+	repo := &mockRepoForEnrich{
+		users: map[string]models.User{},
+		orgs:  map[string]models.Organization{}, // org-1 not in DB
+	}
+
+	txns := []models.Transaction{
+		{ID: "t1", LedgerOrgID: "org-unknown"},
+	}
+
+	enrichTransactionsFromDB(context.Background(), repo, txns)
+
+	if txns[0].DonorName != "Anonymous" {
+		t.Errorf("expected Anonymous fallback for missing org, got %q", txns[0].DonorName)
+	}
+	if txns[0].DonorLogoURL == "" {
+		t.Error("expected generated avatar URL for missing org")
+	}
+}
+
 func TestEnrichTransactionsFromDB_DBErrorStillGeneratesAvatar(t *testing.T) {
 	repo := &mockRepoForEnrich{err: errors.New("db down")}
 
