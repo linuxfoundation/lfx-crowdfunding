@@ -6,7 +6,7 @@ This document describes the architecture of the rewritten LFX Crowdfunding platf
 
 ## System Overview
 
-![Architecture Diagram](new_architecture.png)
+![Architecture Diagram](architecture.png)
 
 
 ```mermaid
