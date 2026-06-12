@@ -50,7 +50,7 @@ SPDX-License-Identifier: MIT
 
       <!-- CTA -->
       <a
-        :href="selfServeUrl"
+        :href="selfServeLinks"
         target="_blank"
         rel="noopener noreferrer"
         @click="emit('done')"
@@ -89,6 +89,8 @@ const config = computed(() => (props.initiativeType ? INITIATIVE_TYPE_CONFIG[pro
 const {
   public: { selfServeUrl },
 } = useRuntimeConfig();
+
+const selfServeLinks = computed(() => `${selfServeUrl}/crowdfunding/initiatives`);
 </script>
 
 <script lang="ts">
