@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
   <div class="bg-white">
     <div class="container">
       <!-- Hero header -->
-      <div class="md:pt-21 pt-10 md:px-35 px-0">
+      <div class="md:pt-21 pt-10">
         <statistics-header
           :overview="overviewData"
           :is-loading="overviewLoading"
@@ -14,7 +14,7 @@ SPDX-License-Identifier: MIT
       </div>
 
       <!-- Body -->
-      <div class="md:pb-30 pb-20 md:px-35 px-0">
+      <div class="md:pb-30 pb-20">
         <div class="flex flex-col lg:flex-row gap-8 items-start">
           <!-- Left column -->
           <div class="flex-1 min-w-0 flex flex-col md:gap-6 gap-8 w-full">
