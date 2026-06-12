@@ -37,6 +37,7 @@ export interface InitiativeBase {
   applicationURL?: string;
   eventStartDate?: string;
   eventEndDate?: string;
+  acceptFunding: boolean;
   initiativeStats?: InitiativeStats;
   fundingStatus?: FundingStatus;
 }

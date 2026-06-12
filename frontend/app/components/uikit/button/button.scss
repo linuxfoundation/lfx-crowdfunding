@@ -80,7 +80,7 @@
     }
 
     &:disabled {
-      @apply text-neutral-400;
+      @apply bg-transparent text-neutral-400;
     }
   }
   &-outline {
