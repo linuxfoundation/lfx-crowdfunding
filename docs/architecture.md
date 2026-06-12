@@ -6,7 +6,7 @@ This document describes the architecture of the rewritten LFX Crowdfunding platf
 
 ## System Overview
 
-![Architecture Diagram](new_architecture.png)
+![Architecture Diagram](architecture.png)
 
 
 ```mermaid
@@ -34,6 +34,7 @@ graph TB
         MENTORSHIP["Mentorship Service"]
         MANDRILL[Mandrill]
         GITHUB[GitHub API]
+        SS["LFX Self Serve"]
     end
 
     U --> FE
@@ -49,6 +50,7 @@ graph TB
     MENTORSHIP --> API
     API -- "transactional email" --> MANDRILL
     API -- "repo stats" --> GITHUB
+    SS -- "user token (access:me)" --> API
 ```
 
 ---
@@ -141,28 +143,31 @@ backend/
 
 **API surface:**
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/initiatives` | List initiatives (filterable, paginated) |
-| `POST` | `/v1/initiatives` | Create initiative |
-| `GET` | `/v1/initiatives/{id}` | Get initiative by UUID or slug |
-| `PUT` | `/v1/initiatives/{id}` | Update initiative |
-| `DELETE` | `/v1/initiatives/{id}` | Delete initiative |
-| `GET` | `/v1/initiatives/{id}/transactions` | Donations and expenses |
-| `POST` | `/v1/initiatives/{id}/donations` | Create one-time donation |
-| `POST` | `/v1/initiatives/{id}/subscriptions` | Create recurring subscription |
-| `DELETE` | `/v1/subscriptions/{id}` | Cancel subscription |
-| `POST` | `/v1/stripe/webhook` | Stripe webhook receiver |
-
-**Mentorship compatibility endpoints** (called directly by the Mentorship service):
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/v1/projects/{id}/{slug}/sync` | Slug sync after rename |
-| `GET` | `/v1/projects/{id}/funding` | Funding status |
-| `POST` | `/v1/projects/title-check` | Title uniqueness validation |
-| `POST` | `/v1/entities/{id}/addbeneficiary` | Add beneficiary |
-| `POST` | `/v1/entities/{id}/removebeneficiary` | Remove beneficiary |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/v1/statistics*` | None | Platform-wide funding statistics |
+| `GET` | `/v1/initiatives` | None | List initiatives (filterable, paginated) |
+| `GET` | `/v1/initiatives/{id}` | Optional | Initiative detail (optional auth lets approvers view unpublished) |
+| `GET` | `/v1/initiatives/{id}/transactions` | None | Public donation/expense history |
+| `PATCH` | `/v1/me` | `access:me` | Profile sync (login trigger) |
+| `GET` | `/v1/me/initiatives` | `access:me` | Caller's own initiatives |
+| `POST` | `/v1/me/initiatives` | `access:me` | Create initiative |
+| `GET` | `/v1/me/initiatives/{id}` | `access:me` + owner | Get own initiative |
+| `PATCH` | `/v1/me/initiatives/{id}` | `access:me` + owner | Update own initiative |
+| `DELETE` | `/v1/me/initiatives/{id}` | `access:me` + owner | Delete own initiative |
+| `GET` | `/v1/me/donations` | `access:me` | Caller's donation history |
+| `GET` | `/v1/me/subscriptions` | `access:me` | Caller's active subscriptions |
+| `DELETE` | `/v1/me/subscriptions/{id}` | `access:me` + owner | Cancel subscription |
+| `GET` | `/v1/me/payment-account` | `access:me` | Saved payment method |
+| `POST` | `/v1/me/setup-intent` | `access:me` | Create Stripe SetupIntent |
+| `POST` | `/v1/me/payment-method` | `access:me` | Attach payment method |
+| `DELETE` | `/v1/me/payment-method` | `access:me` | Remove payment method |
+| `POST` | `/v1/me/presigned-url` | `access:me` | S3 presigned URL for logo upload |
+| `POST` | `/v1/me/initiatives/{id}/donations` | `access:me` | Create one-time donation |
+| `POST` | `/v1/me/initiatives/{id}/subscriptions` | `access:me` | Create recurring subscription |
+| `POST` | `/v1/initiatives/{id}/process-approval/{action}` | `access:me` (approver list) | Approve or decline initiative |
+| `POST` | `/v1/stripe/webhook` | Stripe HMAC | Stripe event receiver |
+| `GET` | `/v1/initiatives/{slug}/owner-info` | `access:manage` | Reimbursement Service: initiative owner info |
 
 ---
 
@@ -188,7 +193,7 @@ backend/
 | `initiative_beneficiaries` | Beneficiaries linked to an initiative |
 | `initiative_contributors` | Contributors (project type only) |
 | `initiative_mentors` | Mentors (mentorship type only) |
-| `users` | LFX user identity; Auth0 subject as primary key |
+| `users` | LFX user identity; `username` (LFID) is the join key; `legacy_user_id` stores the Auth0 `sub` — set on every profile sync and used for Ledger user lookups |
 | `organizations` | Donor organizations |
 | `donations` | One-time donation records |
 | `subscriptions` | Recurring subscription records |
@@ -201,7 +206,7 @@ backend/
 | `mentorship` | Mentorship program (managed by Mentorship service) |
 | `event` | Conference or community event |
 | `general_fund` | General-purpose fundraising fund |
-| `security_audit` | OSTIF security audit |
+| `security_audit` | Security audit fund |
 | `ostif` | Legacy OSTIF type (migrated rows only) |
 | `other` | Legacy general type (migrated rows only) |
 
@@ -388,31 +393,52 @@ sequenceDiagram
 
 ### Mentorship Program Sync
 
-Mentorship programs in LFX are created and managed by the Mentorship service (jobspring). CF mirrors them as `mentorship`-type initiatives so they appear in the Crowdfunding UI and can receive donations.
+Mentorship programs in LFX are created and managed by the Mentorship service (jobspring). CF mirrors them as `mentorship`-type initiatives via the `mentorship-sync` K8s CronJob, which pulls data from Snowflake. There are no direct HTTP calls from the Mentorship service to CF.
+
+> **Note:** The `mentorship-sync` CronJob (`cmd/mentorship-sync/`) is not yet implemented in this repo — only `cmd/ledger-stats-sync/` currently exists. The Snowflake-pull design is the target; the CronJob is planned work.
 
 ```mermaid
 sequenceDiagram
     participant MS as Mentorship Service
-    participant SNS as AWS SNS
-    participant SQS as AWS SQS
-    participant CF as CF Go API
+    participant SF as Snowflake
+    participant Cron as mentorship-sync CronJob
     participant DB as PostgreSQL
 
-    MS->>SNS: Publish projectCreated / projectUpdated / projectUpdateStatus
-    SNS->>SQS: Fan-out to CF queue
-    CF->>SQS: Poll — long-running SQS consumer
-    SQS-->>CF: Event message
+    MS->>SF: Publish program + beneficiary data
+    Cron->>SF: Query mentorship programs + beneficiaries
+    SF-->>Cron: Program rows
 
-    alt projectCreated
-        CF->>DB: INSERT INTO initiatives — type=mentorship, jobspring_project_id
-    else projectUpdated
-        CF->>DB: UPDATE initiatives — Mentorship-owned fields only
-    else projectUpdateStatus
-        CF->>DB: UPDATE initiatives SET status = ?
+    alt new program
+        Cron->>DB: INSERT INTO initiatives — type=mentorship, jobspring_project_id
+    else existing program
+        Cron->>DB: UPDATE initiatives — Mentorship-owned fields only
     end
-
-    Note over MS,CF: Mentorship also calls CF directly for slug sync, funding status, title checks, and beneficiary management.
 ```
+
+---
+
+## LFX Self Serve Integration
+
+[LFX Self Serve](https://github.com/linuxfoundation/lfx-v2-ui) surfaces CF data ("My Donations", "My Initiatives") inside the LFX platform shell. It calls the CF Go API directly on behalf of the logged-in user.
+
+### Authentication
+
+Self Serve is a multi-audience BFF — its primary login audience is the LFX V2 cluster. To call CF, it runs a **silent second `authorization_code` flow** (`prompt=none`) for the CF audience on the user's first `/crowdfunding/*` page load. The resulting user-issued access token (`access:me` scope) is cached in the server session and forwarded as `Authorization: Bearer` on every CF API call.
+
+This means CF always sees a normal user token — no M2M credential, no identity header. The user's identity is carried in the `https://sso.linuxfoundation.org/claims/username` JWT claim, same as when the user is in the CF frontend directly.
+
+See [`docs/authentication-architecture.md`](authentication-architecture.md) Flow 2 and [`backend/docs/rewrite/08-self-serve-auth.md`](../backend/docs/rewrite/08-self-serve-auth.md) for the full details.
+
+### Endpoints Used
+
+Self Serve calls only `access:me` user endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `PATCH /v1/me` | Profile sync on first login |
+| `GET /v1/me/donations` | "My Donations" widget |
+| `GET /v1/me/initiatives` | "My Initiatives" widget |
+| `GET /v1/me/subscriptions` | Active subscriptions |
 
 ---
 
@@ -420,13 +446,13 @@ sequenceDiagram
 
 | Service | Direction | Purpose |
 |---|---|---|
+| LFX Self Serve | SS → CF | User-facing CF data in LFX platform shell (user token, `access:me`) |
 | Auth0 | CF → Auth0 | JWT validation; user identity |
 | Stripe | CF → Stripe | Charges, subscriptions, Stripe Connect |
 | Stripe webhook | Stripe → CF | `customer.subscription.deleted` → cancel in DB |
 | Ledger Service | CF → Ledger (read-only) | Balance, per-goal subtotals, transaction history |
-
 | Reimbursement Service | Bidirectional | Expense policy, beneficiary lifecycle |
-| Mentorship Service | Bidirectional | Program sync via SNS/SQS + direct HTTP calls |
+| Mentorship Service | Snowflake → CF | Program sync via `mentorship-sync` CronJob (Snowflake pull); no direct HTTP calls |
 | Mandrill | CF → Mandrill | Transactional email |
 | GitHub | CF → GitHub | Repo stats; OAuth for project creation |
 
@@ -448,8 +474,9 @@ All application components run in Kubernetes, deployed via ArgoCD from `linuxfou
 
 | Environment | URL |
 |---|---|
-| Dev | `https://funding.dev.platform.linuxfoundation.org/` |
-| Prod | `https://crowdfunding.lfx.linuxfoundation.org/` |
+| Dev | `https://crowdfunding.dev.lfx.dev/` |
+| Staging | `https://crowdfunding.staging.lfx.dev/` |
+| Prod | `https://crowdfunding.linuxfoundation.org/` |
 
 ---
 
