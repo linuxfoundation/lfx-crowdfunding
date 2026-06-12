@@ -243,6 +243,7 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			Date:         time.Unix(raw.TxnDate, 0).UTC(),
 			Category:     raw.TxnCategory,
 			DonorType:    donorType,
+			DonorName:    raw.SubmitterName,
 			LedgerUserID: raw.UserID,
 			LedgerOrgID:  raw.OrganizationID,
 		})
