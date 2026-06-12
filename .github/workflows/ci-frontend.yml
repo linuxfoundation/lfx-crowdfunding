@@ -143,7 +143,7 @@ jobs:
         run: ./bin/initiatives-api &
         env:
           PORT: "8080"
-          DATABASE_URL: "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding&sslmode=disable" # yamllint disable-line rule:line-length
+          DATABASE_URL: "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding&sslmode=disable"  # yamllint disable-line rule:line-length
           ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS: "true"
           DISABLED_MOCK_LOCAL_PRINCIPAL: "e2e-test-user"
           STRIPE_SECRET_KEY: "e2e-stripe-secret-key-placeholder"
@@ -168,6 +168,8 @@ jobs:
           NUXT_PUBLIC_AUTH0_CLIENT_ID: "placeholder"
           NUXT_AUTH0_CLIENT_SECRET: "placeholder"
           NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "e2e-stripe-publishable-key-placeholder"
+          NUXT_E2E_TEST_MODE: "true"
+          NUXT_E2E_TEST_USERNAME: "e2e-test-user"
 
       - name: Wait for backend
         run: |
@@ -190,6 +192,7 @@ jobs:
         run: pnpm test:e2e
         env:
           E2E_BASE_URL: "http://localhost:3000"
+          NUXT_E2E_TEST_MODE: "true"
 
       - name: Upload Playwright report
         if: failure()
