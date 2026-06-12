@@ -9,6 +9,8 @@ LFX Crowdfunding enables open source projects to raise funds for development, se
 
 > ### Not the Self Serve integration
 > This repo is the **standalone Crowdfunding UI and API** — it is separate from [LFX Self Serve](https://github.com/linuxfoundation/lfx-v2-ui). Crowdfunding data ("My Donations", "My Initiatives") that appears in Self Serve originates from this application.
+>
+> Self Serve authenticates to the CF Go API using a user-issued access token obtained via a silent second `authorization_code` flow for the CF audience — the same `access:me` token the CF frontend uses. See [`docs/authentication-architecture.md`](docs/authentication-architecture.md) for the full auth design.
 
 ---
 
@@ -52,11 +54,14 @@ See [`docs/architecture.md`](docs/architecture.md) for the full system diagram a
 
 | Document | Contents |
 |---|---|
-| [`backend/docs/rewrite/01-current-system.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
-| [`backend/docs/rewrite/02-decisions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
-| [`backend/docs/rewrite/03-open-questions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
-| [`backend/docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
-| [`backend/docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
+| [`docs/architecture.md`](docs/architecture.md) | System overview, component breakdown, data flows, integrations |
+| [`docs/authentication-architecture.md`](docs/authentication-architecture.md) | Auth design — scopes, flows (CF frontend, Self Serve, RS M2M), Auth0 config |
+| [`backend/docs/go-live-checklist.md`](backend/docs/go-live-checklist.md) | Pre-launch checklist |
+| [`backend/docs/rewrite/01-current-system.md`](backend/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
+| [`backend/docs/rewrite/02-decisions.md`](backend/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
+| [`backend/docs/rewrite/03-open-questions.md`](backend/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
+| [`backend/docs/rewrite/04-target-architecture.md`](backend/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
+| [`backend/docs/rewrite/05-migration-plan.md`](backend/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
 
 ## Tech Stack
 
@@ -153,13 +158,18 @@ make db-seed
 | Var | Notes |
 |-----|-------|
 | `DATABASE_URL` | `postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding` (matches docker-compose) |
-| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Set to any non-empty string to skip JWT validation locally |
+| `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Must be set to `true` to enable `DISABLED_MOCK_LOCAL_PRINCIPAL` |
+| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Set to any non-empty string to skip JWT validation locally (requires `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true`) |
 | `STRIPE_SECRET_KEY` | Stripe test key |
 | `STRIPE_WEBHOOK_SECRET` | Stripe test webhook secret |
+| `STRIPE_RETURN_URL` | Frontend URL Stripe redirects to after 3DS (e.g. `http://localhost:3000/payment/complete`) |
 | `LEDGER_BASE_URL` | Ledger service URL |
 | `LEDGER_API_KEY` | Ledger API key |
+| `FRONTEND_BASE_URL` | Frontend base URL for email links (e.g. `http://localhost:3000`) |
+| `S3_UPLOAD_BUCKET` | S3 bucket name for logo uploads |
+| `S3_REGION` | AWS region for S3 bucket (optional — falls back to `AWS_REGION` env var or SDK default region resolution if unset) |
 
-`JWKS_URL` and `DISABLED_MOCK_LOCAL_PRINCIPAL` are mutually exclusive — the server rejects startup if both are set. When using the mock principal locally, leave `JWKS_URL` unset or empty.
+`JWKS_URL` and `DISABLED_MOCK_LOCAL_PRINCIPAL` are mutually exclusive — the server rejects startup if both are set. When using the mock principal locally, leave `JWKS_URL` unset or empty. Both `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true` and `DISABLED_MOCK_LOCAL_PRINCIPAL` must be set together to enable the bypass.
 
 ### 3. Frontend
 

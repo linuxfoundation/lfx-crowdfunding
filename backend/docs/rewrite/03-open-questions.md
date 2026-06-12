@@ -9,62 +9,9 @@ Questions that must be answered before or during implementation. Update status a
 
 ## Open
 
-### OQ-23: Auth0 sub → LFID username migration
-
-**Status:** Decisions locked — implementation tracked in Jira ([LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025))
-**Owner:** Michal
-**Source:** Architecture call with Eric Searcy, May 28 2026
-
-**Context:** The LFX v2 platform is migrating from Auth0 `sub` identifiers (e.g. `auth0|elim`) to LFID usernames across all services. The motivation: Auth0 `sub` is an internal Auth0 identifier, not a stable LFID identity. Applications should never expose it externally or use it as a join key — the trailing part after `auth0|` looks like a username but is not guaranteed to be one (it can also be a SHA-based sub).
-
-**Scope decision: new CF uses LFID username everywhere; LFF stays on Auth0 sub.** LFF is the retiring Lambda — we do not touch it. The new CF backend uses LFID username as the user identifier from day one. The conversion happens at the data migration boundary; there is no in-place rewrite of LFF.
-
-#### Locked-in decisions
-
-| Topic | Decision |
-|---|---|
-| Migration strategy | Convert at migration time (DynamoDB → Postgres). Bulk-resolve every Auth0 sub to its LFID username via Auth0 Management API during the one-time migration script. |
-| Postgres storage shape | Keep both `users.user_id` (Auth0 sub) and `users.username` (LFID username). `username` is the join key for all new code; `user_id` is retained for migrated rows only as an audit/legacy reference. **For users created after migration, `user_id` is NULL** — only migrated rows have a sub. |
-| Direction of conversion | One-directional at migration time only. Going *from* username *to* sub is supported by Auth0 for users that exist today; going *from* sub *to* username is what the migration does (sub stored in DynamoDB → look up username via Auth0 → store username in Postgres). After migration, CF never needs to resolve sub ↔ username again. |
-| Frontend scope | **Both the CF frontend (user JWT) and SS → CF (M2M) use username.** CF handlers read `principal.Username` for every user identity check; `principal.UserID` (which holds the Auth0 sub) is no longer used as a join key or for ownership checks. The CF frontend's existing JWT already carries the `https://sso.linuxfoundation.org/claims/username` claim — no frontend change required beyond switching which field handlers read. |
-| SS → CF M2M | `X-Username` header carries LFID username. See `08-self-serve-auth.md`. |
-| Stripe customer metadata | Update at migration. One-time pass through every existing Stripe customer to set metadata.lfid_username; the Postgres `users.stripe_customer_id` mapping is keyed by username going forward. |
-| LFF coexistence | LFF keeps Auth0 sub forever (it's retiring). No dual-format support needed in new CF. |
-
-#### What this affects in CF Postgres
-
-The following columns currently store Auth0 sub and must switch to LFID username as the canonical user identifier:
-
-- `donations.user_id` → join by `username` going forward
-- `subscriptions.user_id` → join by `username` going forward
-- `users.stripe_customer_id` — Stripe customer mapping is keyed by username going forward (no `stripe_payment_accounts` table exists; Stripe customer data lives on `users`)
-- `organizations.owner_id` — ownership column references `users(user_id)` today; must switch to username-based lookup
-- `initiatives.owner_id` — same as above
-- Any other per-user table created during the rewrite
-
-The `users` table gains a `username` column (NOT NULL going forward; NOT NULL after backfill for migrated rows) and keeps `user_id` (nullable for new users).
-
-#### What this affects in CF backend code
-
-- M2M middleware: reads `X-Username` → `Principal.Username` (already documented in `08-self-serve-auth.md`).
-- User JWT middleware: already extracts `Username` from the JWT custom claim (`jwt.go`) — no change needed.
-- All handlers on protected routes: switch from `principal.UserID` → `principal.Username` for user identity. Affected handlers: `donation_handler.go`, `subscription_handler.go`, `payment_handler.go`, `initiative_handler.go`. Note: `upload_handler.go` only verifies that a principal is present — it performs no per-user ownership check via `UserID` and does not need to change.
-- Services and repositories: parameter names and query columns change from `userID`/`user_id` to `username`.
-
-#### Open sub-items
-
-- **EasyCLA impact** — David Deal raised this on the call. Tracked separately; not in CF scope.
-- **New users post-migration: confirm `user_id` NULL is acceptable** — every code path that today reads `user_id` must be audited to confirm it's not load-bearing for new users.
-
-**Blocking:** DynamoDB → Postgres data migration script; M2M middleware implementation in CF backend; handler refactor across all me-routes and protected routes.
-
-**Tracking:** [LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025) (child of Epic [LFXV2-1690](https://linuxfoundation.atlassian.net/browse/LFXV2-1690)) — see ticket for full implementation breakdown.
-
----
-
 ### OQ-20: GitHub URL storage — where does it live?
 
-**Status:** Open
+**Status:** Open — awaiting PM/Lewis input.
 **Owner:** Michal / PM
 
 **Question:** The initiative overview header shows a "GitHub" button linking to the project's GitHub org/repo. Currently the GitHub URL is stored in `initiative_custom_websites` (name = 'GitHub'), which is a freeform table not surfaced by the API. The `initiatives` table has no dedicated `github_url` column.
@@ -72,67 +19,42 @@ The `users` table gains a `username` column (NOT NULL going forward; NOT NULL af
 Options:
 1. **Add `github_url` column to `initiatives`** — clean, typed, indexed, matches the prominence of the field in the UI.
 2. **Query `initiative_custom_websites` by name = 'GitHub'** — no schema change, but fragile (case-sensitive name match, no uniqueness constraint).
-3. **Keep it in `initiative_custom_websites` and add a unique partial index** — compromise; still requires a JOIN on every initiative detail fetch.
 
-The old DynamoDB model stored it under `projectDetails.GithubURL` (projects) and had no equivalent on entities. A dedicated column likely makes the most sense for a field this prominent, but needs PM confirmation on whether entities (events, mentorship programs) also have GitHub URLs.
-
-**Action:** PM to confirm whether GitHub URL applies to all initiative types or projects only. Then decide schema approach.
+The old DynamoDB model stored it under `projectDetails.GithubURL` (projects) and had no equivalent on entities.
 
 **Blocking:** GitHub button in the initiative header is always hidden.
 
----
+**Draft message for Lewis:**
 
-### OQ-21: Ledger txnCategory ↔ CF goal name — case and spelling mismatch
-
-**Status:** Open
-**Owner:** Michal / Lewis
-
-**Question:** The Ledger `/balance/{id}` response returns `subTotals` keyed by PascalCase category names (`"Mentorship"`, `"Development"`, `"BugBounty"`, `"Uncategorised"`). The Ledger `/transactions/` response returns `txnCategory` in lowercase (`"mentorship"`, `"other"`). Our `initiative_goals` table uses the `name` column to identify goals (e.g. `"mentorship"`, `"development"`, `"travel"`).
-
-The matching logic needed to populate per-goal `donated_cents`/`spent_cents` from Ledger `subTotals` must normalise casing. This is implemented with a case-insensitive match (lowercasing both sides) — but there are still potential mismatches:
-
-- Ledger uses `"BugBounty"` (no space); CF uses `"bug_bounty"` or `"bugbounty"` depending on how goals were created
-- Ledger uses `"Uncategorised"` for transactions with no category set; these cannot map to any CF goal
-- Ledger uses `"Mentee"` in some contexts, CF uses `"mentee"` as goal name — needs verification
-- Future goal names added via the UI must match exactly one Ledger category or their subTotal will always be zero
-
-**Action:** Lewis to confirm the canonical list of Ledger `txnCategory` values and whether they are stable. CF to document the mapping table and enforce it at goal creation time.
-
-**Blocking:** Per-goal donated/spent donut charts on the initiative overview screen.
+> Hi Lewis — for the initiative overview page, there's a "GitHub" button in the header that links to the project's GitHub repo. In the old DynamoDB model this was `projectDetails.GithubURL` on project-type initiatives.
+>
+> In the new schema, `initiatives` has no `github_url` column — it would need to come from `initiative_custom_websites` (name = 'GitHub') or a new dedicated column.
+>
+> Two questions:
+> 1. Do you know if GitHub URL applies to project-type initiatives only, or also to funds/events?
+> 2. Any preference on schema approach — dedicated `github_url` column on `initiatives`, or keep it in `initiative_custom_websites`?
+>
+> Happy to just add a `github_url` column if that's the simplest path.
 
 ---
+
 
 ### OQ-7: Reimbursement Service OpenSearch dependency — long-term plan
 
-**Status:** Partially resolved — Phase 1 plan confirmed; Phase 2 blocked on RS moving to K8s.
+**Status:** Partially resolved — RS continues on OpenSearch after initial CF release; migration deferred to when RS moves to K8s.
 **Owner:** Michal
 
-**Phase 1 — on CF release day:**
-RS switches Category 1 reads (CF-owned data) from OpenSearch to three narrow internal HTTP endpoints on the CF Go API:
+**Decision for initial CF release:** RS continues reading CF-owned data from OpenSearch as it does today. The old LFF Lambda keeps the `projects`/`entities`/`lff-users` OpenSearch indices populated during the parallel-run window. No Phase 1 internal endpoints are required for the initial release.
 
-| OpenSearch index replaced | CF internal endpoint | Used by RS for |
-|---|---|---|
-| `projects` + `entities` (per-slug) | `GET /internal/v1/initiatives?slug={slug}` | Project/entity owner lookup (`getEmailBySlug`) |
-| `projects` + `entities` (bulk) | `GET /internal/v1/initiatives?status=published` | Bulk tag rebuild (`RefreshTags` cron, runs every 3h) |
-| `lff-users` | `GET /internal/v1/users/{owner_id}` | Owner email lookup |
+CF → RS auth uses a static API token (`X-API-KEY` header, `REIMBURSEMENTS_API_KEY` env var). This is the implemented pattern in `internal/infrastructure/clients/reimbursement*.go`.
 
-**Why the bulk endpoint is required:** Once CF DNS cuts over, the new CF service writes exclusively to
-Postgres — OpenSearch receives no new writes and becomes a stale snapshot. `RefreshTags()` runs every
-3 hours and bulk-reads all published initiatives to rebuild Expensify GL code tags. If it keeps reading
-from stale OpenSearch, new projects created after cutover will never appear as Expensify tags and
-beneficiaries cannot submit expenses against them — silent failure with real financial impact.
-
-These endpoints are on the CF public HTTPS ingress, authenticated via a shared secret (`X-Internal-Token` header). RS Lambda can reach them over public HTTPS (OQ-1/OQ-2 confirmed reachable). No direct Postgres access from RS Lambda — the shared LFX v2 RDS is `publicly_accessible = false` and unreachable from the RS Lambda VPC.
-
-**Phase 2 — when RS moves to Kubernetes (timeline TBD):**
-- RS gets its own database on the shared RDS via the `lfx-v2-opentofu` pattern
-- RS migrates its three OpenSearch indices (`lfx-expense-log` → `reimbursement.expense_log`, `beneficiary-actions` → `reimbursement.beneficiary_actions`, `travel-funds-tickets` → `reimbursement.travel_fund_tickets`) to its own Postgres DB
-- RS switches CF data reads from Phase 1 HTTP endpoints to a read-only Postgres role on `crowdfunding` schema
+**When RS moves to Kubernetes (timeline TBD):**
+- RS migrates its three OpenSearch indices (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) to its own Postgres DB on the shared RDS
+- RS switches CF data reads to the CF HTTP API (already available: `GET /v1/initiatives/{slug}/owner-info` with Auth0 M2M `access:manage`)
 - OpenSearch decommissions at this point
 
 **Notes:**
-- OpenSearch must NOT be decommissioned before Phase 2 — RS still owns three live indices there
-- The old CF Lambda keeps `projects`/`entities` OpenSearch indices populated during the parallel-run window only. Phase 1 HTTP endpoints must be live before the old Lambda is shut down
+- OpenSearch must NOT be decommissioned before RS moves to K8s — RS still owns three live indices there
 - Existing `lfx-expense-log` data must be migrated to Postgres before OpenSearch cutover to preserve email deduplication history
 
 ---
@@ -150,20 +72,24 @@ These endpoints are on the CF public HTTPS ingress, authenticated via a shared s
 
 ### OQ-14: Ledger Expensify fallback — OpenSearch dependency
 
-**Status:** Open
+**Status:** Open — awaiting Lewis input.
 **Owner:** Lewis
 
 **Question:** Ledger's Expensify webhook handler (`expensify/main.go`) has a fallback path: when an incoming Expensify expense has no `projectID` field, it calls `getProjectIDByReport()` which queries four OpenSearch indices to resolve the project ID via slug lookup (`lfx-expense-log`, `projects`, `entities`, `spring-projects`).
 
 The `spring-projects` index is owned and written by the Mentorship service (jobspring), not CF. When OpenSearch is decommissioned, this fallback breaks for all three populations. OpenSearch decommission is therefore gated on Mentorship's K8s migration, independent of CF's timeline.
 
-**Questions for Lewis:**
-- How frequently does this fallback trigger? Is `expense.ProjectID` reliably populated by Expensify, or does it regularly fall back to the OpenSearch lookup?
-- If it triggers regularly: (a) confirm Expensify always includes projectID, (b) update Ledger fallback to call CF internal endpoint + Mentorship endpoint, or (c) accept data loss as low-frequency and monitor.
-
 **Blocking:** OpenSearch decommission.
 
-**Action:** Lewis to check Ledger logs/metrics for how often `getProjectIDByReport()` is called in production.
+**Draft message for Lewis:**
+
+> Hi Lewis — quick question about the Expensify webhook in the Ledger service. There's a fallback path in `expensify/main.go`: when an incoming expense has no `projectID`, `getProjectIDByReport()` falls back to querying OpenSearch (`lfx-expense-log`, `projects`, `entities`, `spring-projects`) to resolve the project ID by slug.
+>
+> Two questions:
+> 1. How often does this fallback actually trigger in production? Is `expense.ProjectID` reliably set by Expensify, or does it regularly fall back to the OpenSearch lookup?
+> 2. If it does trigger regularly — what's your preferred fix when OpenSearch is eventually decommissioned? Options: (a) confirm Expensify always sends projectID so the fallback is dead code, (b) update the fallback to call the CF API + Mentorship API instead, or (c) accept it as low-frequency and add a Slack alert.
+>
+> Not blocking anything right now since OpenSearch decommission is gated on RS moving to K8s, but want to understand the scope before we get there.
 
 ---
 
@@ -219,6 +145,12 @@ Key decisions:
 
 | # | Question | Resolution |
 |---|---|---|
+| OQ-21 | Ledger txnCategory ↔ CF goal name mismatch | Not a release blocker. Deferred post-release pending finance team conversation on canonical category mapping. Tracked in [LFXV2-2202](https://linuxfoundation.atlassian.net/browse/LFXV2-2202). |
+| OQ-23 | Auth0 sub → LFID username migration | Complete. New CF uses LFID username everywhere from day one. Migration script bulk-resolves Auth0 subs to LFID usernames via Auth0 Management API. `users.legacy_user_id` stores the Auth0 `sub` — set on every profile sync (`PATCH /v1/me`) and used for Ledger user lookups; not migration-only. Tracked in [LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025). |
+| OQ-19 | Ledger API shape for stats-sync | Resolved. `ledger-stats-sync` is fully implemented: uses bulk `GET /balance` (single HTTP call for all projects), fields confirmed (`totalCredit`, `totalDebit`, `totalBalance`, `availableBalance`, `feeBalance`, `backers`, `sponsors`). See `cmd/ledger-stats-sync/` and `internal/infrastructure/clients/ledger.go`. |
+| OQ-15 | Ledger balance lookup for post-cutover initiatives | Resolved. Ledger's `project_id` validation regex (`^[0-9a-zA-Z\_\-]+$`) accepts UUIDs. CF already passes `initiative.ID` (Postgres UUID) directly to Ledger API calls. No Ledger code changes required. |
+| OQ-11 | Full scope of CF data in LFX Self Serve | Resolved. LFX Self Serve calls the CF Go API directly using a user-issued access token (`access:me`). No Fivetran CF→Snowflake sync required for SS integration. See `docs/authentication-architecture.md` Flow 2. |
+| OQ-22 | Feature-branch deployment pattern | Not needed at this time. |
 | OQ-18 | Cross-account DB mirroring — architect decision | Rejected by Eric (May 2026): coupling services via shared DB schema is wrong; API is the correct contract. Confirmed approach: stats-sync via Ledger HTTP API. See `02-decisions.md` and OQ-19. |
 | OQ-1 | Can K8s cluster reach Lambda API Gateway endpoints? | Yes — both Ledger and RS APIs are reachable over public HTTPS from K8s. |
 | OQ-2 | Is the Ledger API URL public HTTPS or private VPC? | Public HTTPS — CF K8s can call Ledger API directly. |

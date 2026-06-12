@@ -17,9 +17,9 @@ and data flows are out of scope.
 These rules, set at the architecture review, constrain every decision in this document:
 
 1. **Two scopes, one resource server.** `access:me` for user-issued tokens; `access:manage` for
-   M2M tokens. Both validate against the single `lfx_crowdfunding_api` resource server (`/api/`).
+   M2M tokens. Both validate against the single `lfx_crowdfunding_api` resource server.
 2. **A route serves exactly one scope — never both.** If an operation is needed by both a user and
-   a machine, it is split into two distinct routes (one under `/me/*`, one under `/internal/*`).
+   a machine, it is split into two distinct routes (one under `/v1/me/*`, one under `/v1/internal/*`).
    No single endpoint accepts both `access:me` and `access:manage`.
 3. **User-facing routes carry identity in the token.** No identity header. The acting user is the
    **custom** `username` claim (`https://sso.linuxfoundation.org/claims/username`, added via an
@@ -36,15 +36,14 @@ These rules, set at the architecture review, constrain every decision in this do
 | **Browser** | Untrusted client | Receives the access token only as an HTTP-only cookie — never exposed to client-side JavaScript |
 | **CF Nuxt BFF** | Trusted server | Holds tokens in HTTP-only cookies; proxies requests to CF API |
 | **CF Go API** (`initiatives-api`) | Trusted server | Validates JWTs; the protected resource server |
-| **Auth0** (`linuxfoundation-{dev,staging}.auth0.com`) | Identity provider | Issues all tokens; hosts JWKS endpoint |
+| **Auth0** | Identity provider | Issues all tokens; hosts JWKS endpoint. Tenant: `linuxfoundation-{dev,staging}.auth0.com` (dev/staging), `sso.linuxfoundation.org` (prod) |
 | **LFX Self Serve Express BFF** | Trusted server | Proxies user-issued access tokens on behalf of the logged-in user |
 | **Reimbursement Service** | Trusted server | M2M caller; uses `access:manage` scope for privileged routes |
 
 **Key principle:** the access token is never exposed to client-side JavaScript. In CF it is stored
 as an HTTP-only cookie (`auth_oidc_token`) the browser cannot read; in Self Serve it is held in the
 server-side session. Both BFFs attach it on the server when making upstream API calls, so it is
-never readable by page scripts or third parties. **Target requirement:** the token cookies should
-additionally be **encrypted at rest** (sealed), not stored as the raw token — not yet implemented.
+never readable by page scripts or third parties.
 
 ---
 
@@ -57,7 +56,7 @@ graph TD
     CFAPI["CF Go API\n(initiatives-api)"]
     SSBFF["Self Serve\nExpress BFF\n(server)"]
     Reimburse["Reimbursement\nService"]
-    Auth0(["Auth0\nlinuxfoundation-*.auth0.com"])
+    Auth0(["Auth0\n(tenant varies by env)"])
 
     Browser -->|"PKCE auth code flow\n(redirect)"| Auth0
     Auth0 -->|"auth code"| Browser
@@ -70,9 +69,9 @@ graph TD
 
     SSBFF -->|"Bearer user-issued access token\n(access:me scope)"| CFAPI
 
-    Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF /api/\naccess:manage scope"| Auth0
+    Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF API audience\naccess:manage scope"| Auth0
     Auth0 -->|"M2M access token\n(access:manage scope, cached ~24h)"| Reimburse
-    Reimburse -->|"Bearer M2M token\nGET /v1/internal/*\n(access:manage scope)"| CFAPI
+    Reimburse -->|"Bearer M2M token\nGET /v1/initiatives/{slug}/owner-info\n(access:manage scope)"| CFAPI
 
     Auth0 -->|"JWKS (RS256)"| CFAPI
 ```
@@ -81,18 +80,25 @@ graph TD
 
 ## Two Scopes, One Resource Server
 
-The CF API uses a single Auth0 resource server (`lfx_crowdfunding_api`, audience `/api/`) with two
-scopes that gate access to different route classes.
+The CF API uses a single Auth0 resource server (`lfx_crowdfunding_api`) with two scopes that gate
+access to different route classes.
 
-> Throughout this doc, **`/api/` is shorthand** for the full per-environment audience URL
-> (`https://crowdfunding.{env}.lfx.dev/api/`, prod `https://crowdfunding.linuxfoundation.org/api/`).
-> The exact value Auth0 issues and the API validates is the `JWT_AUDIENCE` in the
-> [Configuration Reference](#cf-backend-initiatives-api) — not a bare path.
+The audience is environment-specific:
+
+| Environment | Audience |
+|---|---|
+| dev | `https://crowdfunding-api.dev.lfx.dev` |
+| staging | `https://crowdfunding-api.staging.lfx.dev` |
+| prod | `https://crowdfunding-api.linuxfoundation.org` |
+
+The exact value Auth0 issues and the API validates is the `JWT_AUDIENCE` env var (see
+[Configuration Reference](#cf-backend-initiatives-api)). Diagrams in this doc use
+`{CF audience}` as shorthand.
 
 | Scope | Issued to | Route class | Identity source |
 |---|---|---|---|
 | `access:me` | Users (via interactive login) | `/v1/me/*` — everything a user does on their own data (initiatives, donations, subscriptions, payment methods) | `https://sso.linuxfoundation.org/claims/username` JWT claim |
-| `access:manage` | M2M clients (client_credentials) | `/v1/internal/*` — machine-to-machine, no user context (Reimbursement Service) | `sub` claim (Auth0 M2M client subject; no user identity) |
+| `access:manage` | M2M clients (client_credentials) | M2M endpoints (e.g. `GET /v1/initiatives/{slug}/owner-info`) — machine-to-machine, no user context (Reimbursement Service) | `sub` claim (Auth0 M2M client subject; no user identity) |
 
 The scope itself is the access control gate; no client ID allowlist is needed.
 
@@ -104,7 +110,7 @@ The scope itself is the access control gate; no client ID allowlist is needed.
 > **Note on user-facing writes.** Creating, editing, donating to, and subscribing to initiatives
 > are **user** actions and live under `access:me`, not `access:manage`. `access:manage` is reserved
 > for genuine machine-to-machine traffic with no logged-in user — the Reimbursement Service
-> (see Flow 3). The `/internal/` path prefix signals this at a glance.
+> (see Flow 3).
 
 ---
 
@@ -123,7 +129,7 @@ sequenceDiagram
 
     User->>BFF: GET /api/auth/login
     BFF->>BFF: generate state + PKCE verifier/challenge (S256)
-    BFF->>User: Set-Cookie: auth_pkce (HTTP-only, 15 min)<br/>Redirect → Auth0 /authorize<br/>scope: openid profile email offline_access access:me<br/>audience: /api/<br/>code_challenge, code_challenge_method=S256
+    BFF->>User: Set-Cookie: auth_pkce (HTTP-only, 15 min)<br/>Redirect → Auth0 /authorize<br/>scope: openid profile email offline_access access:me<br/>audience: {CF audience}<br/>code_challenge, code_challenge_method=S256
     User->>Auth0: follow redirect (login UI)
     Auth0->>User: auth code + state (redirect to /auth/callback)
 ```
@@ -167,7 +173,7 @@ sequenceDiagram
     BFF->>BFF: backend-fetch.ts reads auth_oidc_token cookie
     BFF->>API: HTTP request<br/>Authorization: Bearer {access token}
     API->>Auth0: fetch JWKS (cached 5 min)
-    API->>API: validate: RS256 sig · issuer · audience /api/ · expiry
+    API->>API: validate: RS256 sig · issuer · audience · expiry
     API->>API: check access:me scope present → proceed
     API->>API: build Principal<br/>Username ← https://sso.linuxfoundation.org/claims/username
     API->>BFF: 200 response
@@ -189,10 +195,16 @@ Self Serve forwards a **user-issued access token scoped to the CF audience** to 
 is no M2M credential and no identity header — the token carries the user's identity via the
 `https://sso.linuxfoundation.org/claims/username` claim, same as the CF frontend.
 
-Because SS's primary login audience is the LFX V2 cluster (not CF), SS performs a silent
-cross-audience refresh token exchange to obtain a CF-scoped token before each call. The exchange
-is cached in the server session. See [`08-self-serve-auth.md`](08-self-serve-auth.md) for details
-on why this mechanism is used and the auth0-terraform grant it requires.
+Because SS's primary login audience is the LFX V2 cluster (not CF), SS runs a **silent second
+`authorization_code` flow** for the CF audience. This happens on the first top-level navigation to
+a `/crowdfunding/*` page; the resulting token is cached in the server session. The redirect uses
+`prompt=none` so it is invisible to the user when an Auth0 session already exists.
+
+> **Why not a refresh-token exchange?** Auth0 ignores the `audience` parameter on a
+> `grant_type=refresh_token` request and returns the primary LFX V2 cluster token, which CF
+> rejects with 401. The second auth-code flow is the confirmed approach (validated with the LFX
+> platform team, lfx-self-serve PR #901). No auth0-terraform client grant is required — Auth0's
+> `allow_all` policy covers `authorization_code` flows without an explicit grant.
 
 All SS→CF calls are me-style endpoints: `/v1/me/donations`, `/v1/me/subscriptions`,
 `/v1/me/payment-account`, etc. Impersonation is handled entirely on the Self Serve side — CF
@@ -205,20 +217,33 @@ sequenceDiagram
     participant API as CF Go API
     participant Auth0
 
-    User->>SSBFF: Request + OIDC session cookie
-    SSBFF->>SSBFF: check session cache for CF-audience token
-    SSBFF->>Auth0: POST /oauth/token<br/>grant_type: refresh_token<br/>audience: /api/<br/>scope: access:me
-    Note over SSBFF,Auth0: silent exchange — no user interaction
+    Note over User,SSBFF: First /crowdfunding/* page load — no CF token in session
+    User->>SSBFF: GET /crowdfunding/... + OIDC session cookie
+    SSBFF->>User: Redirect → Auth0 /authorize<br/>audience: {CF audience}<br/>scope: openid profile access:me<br/>state={nonce}, redirect_uri={absolute callback URL}<br/>prompt=none (silent)
+    User->>Auth0: follow redirect (existing Auth0 session — no UI shown)
+    Auth0->>User: auth code + state → /crowdfunding/callback
+    User->>SSBFF: GET /crowdfunding/callback?code=…&state=…
+    SSBFF->>SSBFF: validate state matches stored nonce (CSRF check)
+    SSBFF->>Auth0: POST /oauth/token<br/>grant_type: authorization_code<br/>code + redirect_uri + client_id/secret
     Auth0->>SSBFF: CF-audience access token (access:me scope, username claim)
     SSBFF->>SSBFF: cache token in session (5 min expiry buffer)
+    SSBFF->>User: redirect back to original page
+
+    Note over User,SSBFF: Subsequent XHRs — CF token already in session
+    User->>SSBFF: XHR /api/crowdfunding/... + OIDC session cookie
     SSBFF->>API: GET /v1/me/…<br/>Authorization: Bearer {CF-audience access token}
     API->>Auth0: fetch JWKS (cached)
-    API->>API: validate JWT: RS256 · issuer · audience /api/ · expiry
+    API->>API: validate JWT: RS256 · issuer · audience · expiry
     API->>API: check access:me scope present
     API->>API: Principal.Username ← username JWT claim
     API->>SSBFF: 200 response
     SSBFF->>User: response
 ```
+
+> **Scope note.** The SS authorization request uses `openid profile access:me` — no `email` or
+> `offline_access`. `email` is omitted because CF fetches profile data from Auth0 `/userinfo` at
+> login sync (not from the token). `offline_access` is omitted because SS does not use a refresh
+> token for CF — token renewal re-runs the silent auth-code flow instead.
 
 ---
 
@@ -231,33 +256,24 @@ reimbursement requests.
 
 There is no logged-in user in this flow, so the user-token pattern does not apply. Reimbursement
 authenticates as itself via the **Auth0 client credentials grant** (`client_id` / `client_secret`)
-with the `access:manage` scope, and calls a dedicated **`/v1/internal/*`** route. The access is
-**read-only**.
+with the `access:manage` scope, and calls a dedicated M2M endpoint on the CF API. The access is **read-only**.
 
-### 3.1 Suggested Endpoint
+### 3.1 Implemented Endpoint
 
 ```
-GET /v1/internal/initiatives/{id}
+GET /v1/initiatives/{slug}/owner-info
   Authorization: Bearer {M2M token, access:manage}
 
   200 →
   {
-    "id":             "…",
-    "initiative_type": "mentorship",
-    "owner": {
-      "username":   "…",          // from initiatives.owner_id → users
-      "email":      "…",
-      "given_name": "…",
-      "family_name":"…"
-    },
-    "beneficiaries": [             // from initiative_beneficiaries
-      { "name": "…", "email": "…" }
-    ]
+    "email": "…",
+    "name":  "…"
   }
 ```
 
-A list variant (`GET /v1/internal/initiatives?type=mentorship&project={id}`) can be added if
-Reimbursement needs to enumerate rather than look up by ID. Both are read-only.
+Returns the email address and display name of the initiative owner. No status filter is applied —
+the endpoint works for initiatives in any status. Used by the Reimbursement Service to resolve
+the owner contact for expense and beneficiary notifications.
 
 ### 3.2 Token Acquisition
 
@@ -267,7 +283,7 @@ sequenceDiagram
     participant Auth0
 
     Note over RS: On first CF call (or after token expiry)
-    RS->>Auth0: POST /oauth/token<br/>grant_type: client_credentials<br/>client_id: M2M_CLIENT_ID<br/>client_secret: M2M_CLIENT_SECRET<br/>audience: https://crowdfunding.{env}.lfx.dev/api/<br/>scope: access:manage
+    RS->>Auth0: POST /oauth/token<br/>grant_type: client_credentials<br/>client_id: M2M_CLIENT_ID<br/>client_secret: M2M_CLIENT_SECRET<br/>audience: {CF audience}<br/>scope: access:manage
     Auth0->>RS: M2M access token (~24h TTL, access:manage scope)
     RS->>RS: cache token (refresh 5 min before expiry)
 ```
@@ -280,12 +296,12 @@ sequenceDiagram
     participant API as CF Go API
     participant Auth0
 
-    RS->>API: GET /v1/internal/initiatives/{id}<br/>Authorization: Bearer {M2M token}
+    RS->>API: GET /v1/initiatives/{slug}/owner-info<br/>Authorization: Bearer {M2M token}
     API->>Auth0: fetch JWKS (cached)
-    API->>API: validate JWT: RS256 · issuer · audience /api/ · expiry
+    API->>API: validate JWT: RS256 · issuer · audience · expiry
     API->>API: check access:manage scope present → proceed
-    API->>API: no owner check (no user context on internal routes)
-    API->>RS: 200 — initiative owner + beneficiaries
+    API->>API: no owner check (no user context on M2M routes)
+    API->>RS: 200 — {email, name} of initiative owner
 ```
 
 ---
@@ -321,7 +337,7 @@ flowchart TD
 
     D{"local dev bypass?"}
     D -- yes --> E["inject mock Principal<br/>(satisfies the route's scope,<br/>mock username)"]
-    D -- no --> F{"validate Bearer token<br/>RS256 · issuer · aud /api/ · expiry"}
+    D -- no --> F{"validate Bearer token<br/>RS256 · issuer · audience · expiry"}
     F -- "invalid or missing" --> G[401]
     F -- valid --> H{"route class"}
 
@@ -332,7 +348,7 @@ flowchart TD
     L -- no --> M[403]
     L -- yes --> N[handle]
 
-    H -- "/v1/internal/*" --> O{"access:manage scope present?"}
+    H -- "M2M route\n(/v1/initiatives/{slug}/owner-info)" --> O{"access:manage scope present?"}
     O -- no --> P[403]
     O -- yes --> Q["handle — no owner check<br/>(no user context)"]
 ```
@@ -341,7 +357,7 @@ flowchart TD
 
 ## Route Authentication Tiers
 
-User-scoped operations live under `/v1/me/*` and machine operations under `/v1/internal/*`, so each
+User-scoped operations live under `/v1/me/*` and machine operations are M2M-scoped endpoints, so each
 route belongs to exactly one scope (Design Rule 2).
 
 The two `access:me` rows below are the **same scope** — they differ only in whether an additional
@@ -355,7 +371,7 @@ owner check runs after the scope is validated.
 | **Optional auth** | `GET /v1/initiatives/{id}` | `OptionalMiddleware` — attaches Principal if a valid Bearer is present; never rejects. Lets approvers view unpublished initiatives. |
 | **`access:me`** (caller-scoped) | `PATCH /v1/me` (profile sync), `GET /v1/me/initiatives` (caller's own), `GET /v1/me/donations`, `GET /v1/me/subscriptions`, `GET /v1/me/payment-account`, `POST /v1/me/setup-intent`, `POST /v1/me/payment-method`, `DELETE /v1/me/payment-method`, `POST /v1/me/initiatives` (create — owner is always the caller), `POST /v1/me/initiatives/{id}/donations`, `POST /v1/me/initiatives/{id}/subscriptions`, `GET /v1/me/initiatives/{id}/donations`, `GET /v1/me/initiatives/{id}/subscriptions`, `POST /v1/me/presigned-url` | `Middleware` — 401 on missing/invalid token; 403 if `access:me` absent. The operation is keyed to the caller's `username` (collections filtered to the caller; donations/subscriptions recorded under the caller). No initiative-ownership check. |
 | **`access:me` + owner check** | `GET /v1/me/initiatives/{id}`, `PATCH /v1/me/initiatives/{id}`, `DELETE /v1/me/initiatives/{id}`, `DELETE /v1/me/subscriptions/{id}` | As above, plus a DB lookup that the caller owns the resource (`initiative.owner_id == users.id` for the token's `username`). 403 if not owned. |
-| **`access:manage`** | `GET /v1/internal/initiatives/{id}` (Reimbursement: mentorship owner + beneficiaries); future `/v1/internal/*` | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
+| **`access:manage`** | `GET /v1/initiatives/{slug}/owner-info` (Reimbursement Service: initiative owner email + name) | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
 
 > **Approval routes.** Initiative approval (`process-approval`) is gated by the `ALLOWED_APPROVERS`
 > username list at the handler level. Approvers are real users, so this stays under `access:me`;
@@ -380,7 +396,7 @@ resource "auth0_resource_server_scopes" "lfx_crowdfunding_api" {
 
   scopes {
     name        = "access:manage"
-    description = "Privileged access to LFX Crowdfunding API (M2M, /v1/internal/* routes)"
+    description = "Privileged access to LFX Crowdfunding API (M2M, service-to-service)"
   }
 }
 ```
@@ -393,26 +409,10 @@ need **no** client grant — `access:me` is consented when the user logs in inte
 **CF frontend (Nuxt BFF)** — no client grant. Logs in with the CF audience as its primary
 `audience` parameter and forwards `req.bearerToken` directly to CF.
 
-**Self Serve** — requires a client grant. Unlike the CF Nuxt BFF, SS is a multi-audience BFF: its
-primary login audience is the LFX V2 cluster (`lfx-api.{env}.v2.cluster.linuxfound.info`), which
-it needs for committees, meetings, and other LFX v2 services. To call CF it performs a silent
-cross-audience refresh token exchange (`grant_type=refresh_token` + `audience=/api/`). Auth0's
-`allow_all` policy covers interactive `authorization_code` flows but **not** cross-audience refresh
-token exchanges — for those, the client must have a registered grant for the target audience. This
-is the same mechanism SS uses for the legacy API Gateway (see `grants_lfx.tf`).
-
-```hcl
-resource "auth0_client_grant" "lfxone_crowdfunding_user" {
-  client_id    = auth0_client.lfx_one.id
-  audience     = auth0_resource_server.lfx_crowdfunding_api.identifier
-  subject_type = "user"
-  scopes       = ["access:me"]
-  depends_on   = [auth0_resource_server_scopes.lfx_crowdfunding_api]
-}
-```
-
-The resulting token is user-scoped — it carries the user's identity (`access:me` scope, username
-claim) and is not an M2M token. No client secret is used or needed.
+**Self Serve** — no client grant needed. SS uses a silent second `authorization_code` flow for the
+CF audience (see Flow 2). Auth0's `allow_all` policy covers `authorization_code` flows without an
+explicit client grant, so no terraform change is required. The resulting token is user-scoped —
+it carries the user's identity (`access:me` scope, username claim).
 
 **Reimbursement Service** — the only M2M client grant, for `access:manage` access:
 
@@ -437,11 +437,11 @@ rather than the LFX secrets-distribution pipeline.
 
 ### CF Backend (`initiatives-api`)
 
-| Env var | Purpose | Dev value |
+| Env var | Purpose | Example values |
 |---|---|---|
-| `JWKS_URL` | Auth0 JWKS endpoint | `https://linuxfoundation-dev.auth0.com/.well-known/jwks.json` |
-| `JWT_ISSUER` | Expected `iss` claim | `https://linuxfoundation-dev.auth0.com/` |
-| `JWT_AUDIENCE` | Expected `aud` claim | `https://crowdfunding.dev.lfx.dev/api/` |
+| `JWKS_URL` | Auth0 JWKS endpoint | dev/staging: `https://linuxfoundation-{dev,staging}.auth0.com/.well-known/jwks.json`<br/>prod: `https://sso.linuxfoundation.org/.well-known/jwks.json` |
+| `JWT_ISSUER` | Expected `iss` claim | dev/staging: `https://linuxfoundation-{dev,staging}.auth0.com/`<br/>prod: `https://sso.linuxfoundation.org/` |
+| `JWT_AUDIENCE` | Expected `aud` claim | `https://crowdfunding-api.{dev,staging}.lfx.dev` / `https://crowdfunding-api.linuxfoundation.org` |
 | `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Local-dev safety gate — must be `true` to permit `DISABLED_MOCK_LOCAL_PRINCIPAL`. Does nothing on its own. | not set in deployed envs |
 | `DISABLED_MOCK_LOCAL_PRINCIPAL` | Local-dev only: when set (and the gate above is `true`), skips JWKS and injects this static mock Principal. Mutually exclusive with `JWKS_URL`. | not set in deployed envs |
 
@@ -449,10 +449,10 @@ rather than the LFX secrets-distribution pipeline.
 
 | Env var | Purpose |
 |---|---|
-| `NUXT_PUBLIC_AUTH0_DOMAIN` | Auth0 tenant (`https://linuxfoundation-dev.auth0.com`) |
+| `NUXT_PUBLIC_AUTH0_DOMAIN` | Auth0 tenant (e.g. `https://linuxfoundation-staging.auth0.com`, `https://sso.linuxfoundation.org`) |
 | `NUXT_PUBLIC_AUTH0_CLIENT_ID` | SPA / BFF client ID |
 | `NUXT_AUTH0_CLIENT_SECRET` | Client secret (server-only; confidential client) |
-| `NUXT_PUBLIC_AUTH0_AUDIENCE` | Token audience (`https://crowdfunding.dev.lfx.dev/api/`) |
+| `NUXT_PUBLIC_AUTH0_AUDIENCE` | Token audience (e.g. `https://crowdfunding-api.staging.lfx.dev`) |
 | `NUXT_PUBLIC_AUTH0_REDIRECT_URI` | OAuth2 callback URL |
 | `NUXT_API_BASE_URL` | CF Go API base URL (server-internal, default `http://localhost:8080`) |
 | `NUXT_AUTH0_COOKIE_DOMAIN` | Cookie domain scope for the auth cookies (required in production) |
@@ -460,12 +460,15 @@ rather than the LFX secrets-distribution pipeline.
 ### LFX Self Serve (Express BFF)
 
 No M2M credentials needed for CF. The token forwarded is a user-issued access token obtained via
-a silent refresh token exchange for the CF audience — not a service credential.
+a silent second `authorization_code` flow for the CF audience — not a service credential.
+The LFX One app client (`PCC_AUTH0_CLIENT_ID` / `PCC_AUTH0_CLIENT_SECRET`) is reused; no
+dedicated CF client credentials are needed.
 
-| Env var | Purpose | Dev value |
+| Env var | Purpose | Example value (staging) |
 |---|---|---|
-| `CROWDFUNDING_API_BASE_URL` | CF API base URL | `https://crowdfunding-api.dev.lfx.dev` |
-| `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the refresh token exchange | `https://crowdfunding.dev.lfx.dev/api/` |
+| `CROWDFUNDING_API_BASE_URL` | CF API base URL | `https://crowdfunding-api.staging.lfx.dev` |
+| `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the auth-code flow | `https://crowdfunding-api.staging.lfx.dev` |
+| `CROWDFUNDING_REDIRECT_URI` | Auth0 callback URL for the second auth-code flow — defaults to `{PCC_BASE_URL}/crowdfunding/callback` if unset | not set in ArgoCD (default used) |
 
 ### Reimbursement Service
 
@@ -478,9 +481,9 @@ secrets-distribution pipeline. Exact env-var names are owned by that repo.
 |---|---|
 | Auth0 M2M client ID | the `Reimbursement Service` Auth0 client (auth0-terraform) |
 | Auth0 M2M client secret | the client's secret (`client_id` / `client_secret` auth) |
-| Auth0 token endpoint | `https://linuxfoundation-{env}.auth0.com/oauth/token` |
-| CF API audience | `https://crowdfunding.{env}.lfx.dev/api/` (scope `access:manage`) |
-| CF API base URL | e.g. `https://crowdfunding-api.dev.lfx.dev` |
+| Auth0 token endpoint | dev/staging: `https://linuxfoundation-{dev,staging}.auth0.com/oauth/token`<br/>prod: `https://sso.linuxfoundation.org/oauth/token` |
+| CF API audience | `https://crowdfunding-api.{dev,staging}.lfx.dev` / `https://crowdfunding-api.linuxfoundation.org` (scope `access:manage`) |
+| CF API base URL | same as audience (e.g. `https://crowdfunding-api.staging.lfx.dev`) |
 
 ---
 
@@ -506,5 +509,5 @@ in scope now.
 
 ## Related Documents
 
-- [`08-self-serve-auth.md`](08-self-serve-auth.md) — Self Serve integration rationale
-- [`04-target-architecture.md`](04-target-architecture.md) — overall target architecture including Auth0 tenant topology
+- [`08-self-serve-auth.md`](../backend/docs/rewrite/08-self-serve-auth.md) — Self Serve integration rationale
+- [`04-target-architecture.md`](../backend/docs/rewrite/04-target-architecture.md) — overall target architecture including Auth0 tenant topology
