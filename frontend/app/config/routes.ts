@@ -9,6 +9,4 @@ export enum AppRoute {
   ForCompanies = '/for-companies',
   About = '/about',
   Contact = '/contact',
-  MyDonations = '/my-donations',
-  MyInitiatives = '/my-initiatives',
 }
