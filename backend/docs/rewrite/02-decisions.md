@@ -547,14 +547,20 @@ if initiative.OwnerID != currentUser.ID {
 ```
 
 **2. CF admin / initiative approver — `ALLOWED_APPROVERS` env var**
-The person who approves or rejects initiative submissions is identified by their LFID, stored in a `ALLOWED_APPROVERS` environment variable (comma- or pipe-separated). This is not an Auth0 role — it is a config value injected at deploy time.
+The person who approves or rejects initiative submissions is identified by their LFID, stored in a `ALLOWED_APPROVERS` environment variable (comma-separated). This is not an Auth0 role — it is a config value injected at deploy time.
 
 Production value: `shubhrakar` (Sriji). Confirmed as the approver for the new system.
 Dev/staging value: `*` (any authenticated user can approve — allows testing).
 
-Stored in AWS Secrets Manager, injected via ESO. The approval check at the API layer:
+Stored in AWS Secrets Manager, injected via ESO. The env var is parsed into a list at startup and the approval check does a case-insensitive exact match:
 ```go
-authorized := strings.Contains(os.Getenv("ALLOWED_APPROVERS"), user.LFID)
+// parsed at startup: parseCommaList(getEnv("ALLOWED_APPROVERS", ""))
+// check in handler:
+for _, a := range h.allowedApprovers {
+    if strings.EqualFold(a, principal.Username) {
+        return true
+    }
+}
 ```
 
 **3. Email approval links — HMAC-signed token, no Auth0**

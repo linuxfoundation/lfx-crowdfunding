@@ -193,7 +193,7 @@ backend/
 | `initiative_beneficiaries` | Beneficiaries linked to an initiative |
 | `initiative_contributors` | Contributors (project type only) |
 | `initiative_mentors` | Mentors (mentorship type only) |
-| `users` | LFX user identity; `username` (LFID) is the join key; `legacy_user_id` (Auth0 sub) retained for migrated rows only |
+| `users` | LFX user identity; `username` (LFID) is the join key; `legacy_user_id` stores the Auth0 `sub` — set on every profile sync and used for Ledger user lookups |
 | `organizations` | Donor organizations |
 | `donations` | One-time donation records |
 | `subscriptions` | Recurring subscription records |

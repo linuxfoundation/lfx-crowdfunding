@@ -167,7 +167,7 @@ make db-seed
 | `LEDGER_API_KEY` | Ledger API key |
 | `FRONTEND_BASE_URL` | Frontend base URL for email links (e.g. `http://localhost:3000`) |
 | `S3_UPLOAD_BUCKET` | S3 bucket name for logo uploads |
-| `S3_REGION` | AWS region for S3 bucket |
+| `S3_REGION` | AWS region for S3 bucket (optional — falls back to `AWS_REGION` env var or SDK default region resolution if unset) |
 
 `JWKS_URL` and `DISABLED_MOCK_LOCAL_PRINCIPAL` are mutually exclusive — the server rejects startup if both are set. When using the mock principal locally, leave `JWKS_URL` unset or empty. Both `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true` and `DISABLED_MOCK_LOCAL_PRINCIPAL` must be set together to enable the bypass.
 
