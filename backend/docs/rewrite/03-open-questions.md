@@ -38,23 +38,6 @@ The old DynamoDB model stored it under `projectDetails.GithubURL` (projects) and
 
 ---
 
-### OQ-21: Ledger txnCategory ↔ CF goal name — case and spelling mismatch
-
-**Status:** Open — not a release blocker; cleanup deferred post-initial-release.
-**Owner:** Michal / Lewis / Finance team
-
-**Question:** The Ledger `/balance/{id}` response returns `subTotals` keyed by PascalCase category names (`"Mentorship"`, `"Development"`, `"BugBounty"`, `"Uncategorised"`). The Ledger `/transactions/` response returns `txnCategory` in lowercase (`"mentorship"`, `"other"`). Our `initiative_goals` table uses the `name` column to identify goals (e.g. `"mentorship"`, `"development"`, `"travel"`).
-
-Known mismatches:
-- Ledger uses `"BugBounty"` (no space); CF uses `"bug_bounty"` or `"bugbounty"` depending on how goals were created
-- Ledger uses `"Uncategorised"` for transactions with no category set; these cannot map to any CF goal
-- Ledger uses `"Mentee"` in some contexts, CF uses `"mentee"` as goal name — needs verification
-
-**Decision:** The canonical category mapping requires a conversation with the finance team to confirm which categories are still active, how Ledger names them, and what cleanup is needed. This is deferred post-initial-release and is not blocking launch.
-
-Per-goal donated/spent donut charts may show zero for mismatched categories until this is resolved — acceptable for initial release.
-
----
 
 ### OQ-7: Reimbursement Service OpenSearch dependency — long-term plan
 
@@ -162,6 +145,7 @@ Key decisions:
 
 | # | Question | Resolution |
 |---|---|---|
+| OQ-21 | Ledger txnCategory ↔ CF goal name mismatch | Not a release blocker. Deferred post-release pending finance team conversation on canonical category mapping. Tracked in [LFXV2-2202](https://linuxfoundation.atlassian.net/browse/LFXV2-2202). |
 | OQ-23 | Auth0 sub → LFID username migration | Complete. New CF uses LFID username everywhere from day one. Migration script bulk-resolves Auth0 subs to LFID usernames via Auth0 Management API. `users.legacy_user_id` retains the sub for migrated rows; NULL for post-migration users. Tracked in [LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025). |
 | OQ-19 | Ledger API shape for stats-sync | Resolved. `ledger-stats-sync` is fully implemented: uses bulk `GET /balance` (single HTTP call for all projects), fields confirmed (`totalCredit`, `totalDebit`, `totalBalance`, `availableBalance`, `feeBalance`, `backers`, `sponsors`). See `cmd/ledger-stats-sync/` and `internal/infrastructure/clients/ledger.go`. |
 | OQ-15 | Ledger balance lookup for post-cutover initiatives | Resolved. Ledger's `project_id` validation regex (`^[0-9a-zA-Z\_\-]+$`) accepts UUIDs. CF already passes `initiative.ID` (Postgres UUID) directly to Ledger API calls. No Ledger code changes required. |
