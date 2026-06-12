@@ -54,14 +54,14 @@ See [`docs/architecture.md`](docs/architecture.md) for the full system diagram a
 
 | Document | Contents |
 |---|---|
-| [`docs/architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/architecture.md) | System overview, component breakdown, data flows, integrations |
-| [`docs/authentication-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/authentication-architecture.md) | Auth design — scopes, flows (CF frontend, Self Serve, RS M2M), Auth0 config |
-| [`backend/docs/go-live-checklist.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/go-live-checklist.md) | Pre-launch checklist |
-| [`backend/docs/rewrite/01-current-system.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
-| [`backend/docs/rewrite/02-decisions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
-| [`backend/docs/rewrite/03-open-questions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
-| [`backend/docs/rewrite/04-target-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
-| [`backend/docs/rewrite/05-migration-plan.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
+| [`docs/architecture.md`](docs/architecture.md) | System overview, component breakdown, data flows, integrations |
+| [`docs/authentication-architecture.md`](docs/authentication-architecture.md) | Auth design — scopes, flows (CF frontend, Self Serve, RS M2M), Auth0 config |
+| [`backend/docs/go-live-checklist.md`](backend/docs/go-live-checklist.md) | Pre-launch checklist |
+| [`backend/docs/rewrite/01-current-system.md`](backend/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
+| [`backend/docs/rewrite/02-decisions.md`](backend/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
+| [`backend/docs/rewrite/03-open-questions.md`](backend/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
+| [`backend/docs/rewrite/04-target-architecture.md`](backend/docs/rewrite/04-target-architecture.md) | Target system design — tech stack, repo layout, API surface, K8s resources |
+| [`backend/docs/rewrite/05-migration-plan.md`](backend/docs/rewrite/05-migration-plan.md) | Step-by-step migration and cutover plan |
 
 ## Tech Stack
 
