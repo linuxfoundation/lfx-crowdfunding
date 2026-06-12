@@ -1,0 +1,26 @@
+[
+  {
+    "jobspring_project_id": "jobspring-active-001",
+    "name": "Linux Kernel Mentorship",
+    "status": "published",
+    "mentee_goal_cents": 500000,
+    "beneficiaries": [
+      {"name": "Alice Mentee", "email": "alice@example.com"},
+      {"name": "Bob Mentee", "email": "bob@example.com"}
+    ]
+  },
+  {
+    "jobspring_project_id": "jobspring-pending-002",
+    "name": "Cloud Native Mentorship",
+    "status": "pending",
+    "mentee_goal_cents": 0,
+    "beneficiaries": []
+  },
+  {
+    "jobspring_project_id": "jobspring-hidden-003",
+    "name": "Hidden Program",
+    "status": "hide",
+    "mentee_goal_cents": 100000,
+    "beneficiaries": []
+  }
+]
