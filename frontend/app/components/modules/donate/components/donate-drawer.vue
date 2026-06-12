@@ -43,7 +43,7 @@ SPDX-License-Identifier: MIT
                 v-if="initiative.logoUrl"
                 :src="initiative.logoUrl"
                 :alt="initiative.name"
-                class="size-full object-cover"
+                class="size-full object-contain"
               />
               <div
                 v-else

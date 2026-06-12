@@ -32,6 +32,11 @@ type InitiativeRepository interface {
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
 
+	// GetUsersByLegacyIDs returns a map of legacy_user_id → User for the given
+	// Auth0 subjects. Missing IDs are absent from the map.
+	// Used to enrich Ledger transactions where UserID is an Auth0 subject.
+	GetUsersByLegacyIDs(ctx context.Context, legacyIDs []string) (map[string]models.User, error)
+
 	// GetOrganizationsByIDs returns a map of org UUID → Organization for the given IDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
 	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
