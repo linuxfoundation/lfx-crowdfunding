@@ -254,7 +254,7 @@ Jobs removed from old system (not in new architecture):
 
 ### Internal Endpoints (for Reimbursement Service)
 
-A narrow read-only M2M endpoint for RS to replace its OpenSearch reads of CF-owned owner data. Authenticated via Auth0 **`access:manage`** M2M token (`client_credentials` grant) — see `09-authentication-architecture.md` Flow 3. On the public HTTPS ingress — RS Lambda can reach it the same way it reaches any other public HTTPS service.
+A narrow read-only M2M endpoint for RS to replace its OpenSearch reads of CF-owned owner data. Authenticated via Auth0 **`access:manage`** M2M token (`client_credentials` grant) — see `../../../docs/authentication-architecture.md` Flow 3. On the public HTTPS ingress — RS Lambda can reach it the same way it reaches any other public HTTPS service.
 
 | Method | Path | Returns | Used by |
 |---|---|---|---|

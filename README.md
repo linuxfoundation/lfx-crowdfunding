@@ -9,6 +9,8 @@ LFX Crowdfunding enables open source projects to raise funds for development, se
 
 > ### Not the Self Serve integration
 > This repo is the **standalone Crowdfunding UI and API** — it is separate from [LFX Self Serve](https://github.com/linuxfoundation/lfx-v2-ui). Crowdfunding data ("My Donations", "My Initiatives") that appears in Self Serve originates from this application.
+>
+> Self Serve authenticates to the CF Go API using a user-issued access token obtained via a silent second `authorization_code` flow for the CF audience — the same `access:me` token the CF frontend uses. See [`docs/authentication-architecture.md`](docs/authentication-architecture.md) for the full auth design.
 
 ---
 
@@ -52,6 +54,9 @@ See [`docs/architecture.md`](docs/architecture.md) for the full system diagram a
 
 | Document | Contents |
 |---|---|
+| [`docs/architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/architecture.md) | System overview, component breakdown, data flows, integrations |
+| [`docs/authentication-architecture.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/docs/authentication-architecture.md) | Auth design — scopes, flows (CF frontend, Self Serve, RS M2M), Auth0 config |
+| [`backend/docs/go-live-checklist.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/go-live-checklist.md) | Pre-launch checklist |
 | [`backend/docs/rewrite/01-current-system.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
 | [`backend/docs/rewrite/02-decisions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
 | [`backend/docs/rewrite/03-open-questions.md`](https://github.com/linuxfoundation/lfx-crowdfunding/blob/main/backend/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |

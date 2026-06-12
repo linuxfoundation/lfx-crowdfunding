@@ -34,6 +34,7 @@ graph TB
         MENTORSHIP["Mentorship Service"]
         MANDRILL[Mandrill]
         GITHUB[GitHub API]
+        SS["LFX Self Serve"]
     end
 
     U --> FE
@@ -49,6 +50,7 @@ graph TB
     MENTORSHIP --> API
     API -- "transactional email" --> MANDRILL
     API -- "repo stats" --> GITHUB
+    SS -- "user token (access:me)" --> API
 ```
 
 ---
@@ -415,10 +417,36 @@ sequenceDiagram
 
 ---
 
+## LFX Self Serve Integration
+
+[LFX Self Serve](https://github.com/linuxfoundation/lfx-v2-ui) surfaces CF data ("My Donations", "My Initiatives") inside the LFX platform shell. It calls the CF Go API directly on behalf of the logged-in user.
+
+### Authentication
+
+Self Serve is a multi-audience BFF — its primary login audience is the LFX V2 cluster. To call CF, it runs a **silent second `authorization_code` flow** (`prompt=none`) for the CF audience on the user's first `/crowdfunding/*` page load. The resulting user-issued access token (`access:me` scope) is cached in the server session and forwarded as `Authorization: Bearer` on every CF API call.
+
+This means CF always sees a normal user token — no M2M credential, no identity header. The user's identity is carried in the `https://sso.linuxfoundation.org/claims/username` JWT claim, same as when the user is in the CF frontend directly.
+
+See [`docs/authentication-architecture.md`](authentication-architecture.md) Flow 2 and [`backend/docs/rewrite/08-self-serve-auth.md`](../backend/docs/rewrite/08-self-serve-auth.md) for the full details.
+
+### Endpoints Used
+
+Self Serve calls only `access:me` user endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `PATCH /v1/me` | Profile sync on first login |
+| `GET /v1/me/donations` | "My Donations" widget |
+| `GET /v1/me/initiatives` | "My Initiatives" widget |
+| `GET /v1/me/subscriptions` | Active subscriptions |
+
+---
+
 ## External Integrations
 
 | Service | Direction | Purpose |
 |---|---|---|
+| LFX Self Serve | SS → CF | User-facing CF data in LFX platform shell (user token, `access:me`) |
 | Auth0 | CF → Auth0 | JWT validation; user identity |
 | Stripe | CF → Stripe | Charges, subscriptions, Stripe Connect |
 | Stripe webhook | Stripe → CF | `customer.subscription.deleted` → cancel in DB |

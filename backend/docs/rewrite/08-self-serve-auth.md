@@ -8,7 +8,7 @@
 This document covers the **Self Serve (SS) side** of calling the Crowdfunding (CF) backend.
 The canonical authentication model — scopes, route classes, token validation, the Go API decision
 tree, and Auth0/infra configuration — lives in
-[`09-authentication-architecture.md`](09-authentication-architecture.md). Read that first; this
+[`../../../docs/authentication-architecture.md`](../../../docs/authentication-architecture.md). Read that first; this
 document only adds the SS-specific integration details.
 
 ---
@@ -18,7 +18,7 @@ document only adds the SS-specific integration details.
 SS obtains a **user-issued access token scoped to the CF audience** and forwards it to CF. There is
 no M2M token and no identity header — all SS→CF calls are me-style endpoints (`/v1/me/*`), and the
 access token carries the acting user's identity via the LF SSO username — a custom claim (per
-Design Rule 3 in [`09`](09-authentication-architecture.md#design-rules)).
+Design Rule 3 in [`09`](../../../docs/authentication-architecture.md#design-rules)).
 
 ```
 User action in SS that needs CF data
@@ -136,13 +136,13 @@ check and `Principal.Username` resolve correctly with no CF-side special handlin
 
 - **Identity migration (OQ-23).** New CF treats the LF SSO username as the canonical user
   identifier; CF handlers key on `Principal.Username`, not the Auth0 `sub`. See
-  [`09`](09-authentication-architecture.md) for how the username claim is sourced.
+  [`09`](../../../docs/authentication-architecture.md) for how the username claim is sourced.
 - **Heimdall.** CF sits outside the platform API gateway, so SS calls CF directly. The
   token-forwarding pattern here does not block a future move behind Heimdall. See the Known
-  Deviations section in [`09`](09-authentication-architecture.md#known-deviations--future-direction).
+  Deviations section in [`09`](../../../docs/authentication-architecture.md#known-deviations--future-direction).
 
 ---
 
 ## Related Documents
 
-- [`09-authentication-architecture.md`](09-authentication-architecture.md) — canonical CF authentication design (scopes, routes, validation, Auth0/infra)
+- [`../../../docs/authentication-architecture.md`](../../../docs/authentication-architecture.md) — canonical CF authentication design (scopes, routes, validation, Auth0/infra)

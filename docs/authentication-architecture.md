@@ -509,5 +509,5 @@ in scope now.
 
 ## Related Documents
 
-- [`08-self-serve-auth.md`](08-self-serve-auth.md) — Self Serve integration rationale
-- [`04-target-architecture.md`](04-target-architecture.md) — overall target architecture including Auth0 tenant topology
+- [`08-self-serve-auth.md`](../backend/docs/rewrite/08-self-serve-auth.md) — Self Serve integration rationale
+- [`04-target-architecture.md`](../backend/docs/rewrite/04-target-architecture.md) — overall target architecture including Auth0 tenant topology
