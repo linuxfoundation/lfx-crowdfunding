@@ -101,6 +101,11 @@ func (c *Client) Close() error {
 }
 
 // FetchPrograms runs the Snowflake query and returns all Mentorship programs.
+// Beneficiaries are NOT included in this query — the Snowflake gold model does not yet
+// expose them as columns. Until the query is updated, each returned MentorshipProgram
+// has an empty Beneficiaries slice, which causes UpsertBeneficiaries to delete any
+// existing beneficiary rows for that initiative. Do not run against production until
+// the Snowflake schema is confirmed and this query is updated.
 func (c *Client) FetchPrograms(ctx context.Context) ([]models.MentorshipProgram, error) {
 	rows, err := c.db.QueryContext(ctx, fetchProgramsQuery)
 	if err != nil {
