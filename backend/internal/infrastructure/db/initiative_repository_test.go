@@ -13,7 +13,7 @@ import (
 )
 
 // seedUser upserts a user with the given username and returns it.
-func seedUser(t *testing.T, ctx context.Context, username string) *models.User {
+func seedUser(t *testing.T, ctx context.Context, username string) *models.User { //nolint:revive // t first is Go test convention
 	t.Helper()
 	userRepo := NewUserRepository(testPool)
 	user, err := userRepo.Upsert(ctx, &models.User{
@@ -29,7 +29,7 @@ func seedUser(t *testing.T, ctx context.Context, username string) *models.User {
 }
 
 // seedInitiative creates a published "project" initiative and returns it.
-func seedInitiative(t *testing.T, ctx context.Context, ownerID, name, slug string) *models.Initiative {
+func seedInitiative(t *testing.T, ctx context.Context, ownerID, name, slug string) *models.Initiative { //nolint:revive // t first is Go test convention
 	t.Helper()
 	initRepo := NewInitiativeRepository(testPool)
 

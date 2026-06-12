@@ -12,7 +12,7 @@ import (
 )
 
 // seedDonation creates a minimal pending donation and returns it.
-func seedDonation(t *testing.T, ctx context.Context, userID, initiativeID string) *models.Donation {
+func seedDonation(t *testing.T, ctx context.Context, userID, initiativeID string) *models.Donation { //nolint:revive // t first is Go test convention
 	t.Helper()
 	donationRepo := NewDonationRepository(testPool)
 	donation := &models.Donation{

@@ -253,7 +253,10 @@ func TestWebhookIntegration_PaymentIntentSucceeded(t *testing.T) {
 			"object": piObjectJSON,
 		},
 	}
-	payloadBytes, _ := json.Marshal(eventPayload)
+	payloadBytes, err := json.Marshal(eventPayload)
+	if err != nil {
+		t.Fatalf("marshal event payload: %v", err)
+	}
 
 	// Create webhook handler and post the signed event
 	sc := &intStripeClient{}
@@ -354,7 +357,10 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 			"object": invoiceObjectJSON,
 		},
 	}
-	payloadBytes, _ := json.Marshal(eventPayload)
+	payloadBytes, err := json.Marshal(eventPayload)
+	if err != nil {
+		t.Fatalf("marshal event payload: %v", err)
+	}
 
 	// Create webhook handler and post the signed event
 	sc := &intStripeClient{}

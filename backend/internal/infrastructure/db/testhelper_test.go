@@ -26,9 +26,14 @@ func TestMain(m *testing.M) {
 		os.Exit(m.Run())
 	}
 
+	// Require an explicit TEST_DATABASE_URL so integration tests never
+	// accidentally connect to a developer's local database.
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding,public"
+		// Exit cleanly with skip-like output rather than panicking.
+		// go test prints "ok" when no tests ran; the intent is communicated by the message.
+		_, _ = os.Stderr.WriteString("testhelper: TEST_DATABASE_URL is not set — skipping DB integration tests\n")
+		os.Exit(0)
 	}
 
 	ctx := context.Background()
@@ -50,7 +55,7 @@ func TestMain(m *testing.M) {
 // truncate clears the named tables (schema-qualified, e.g. "crowdfunding.users")
 // in order, using RESTART IDENTITY CASCADE. Call at the start of each test that
 // inserts rows — this guarantees a clean state regardless of prior test runs.
-func truncate(t *testing.T, ctx context.Context, tables ...string) {
+func truncate(t *testing.T, ctx context.Context, tables ...string) { //nolint:revive // t first is Go test convention
 	t.Helper()
 	for _, table := range tables {
 		if _, err := testPool.Exec(ctx, "TRUNCATE "+table+" RESTART IDENTITY CASCADE"); err != nil {

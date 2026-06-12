@@ -12,7 +12,7 @@ import (
 )
 
 // seedSubscription creates a subscription for a user and initiative, returning it.
-func seedSubscription(t *testing.T, ctx context.Context, userID, initiativeID, status, stripeSubID string) *models.Subscription {
+func seedSubscription(t *testing.T, ctx context.Context, userID, initiativeID, status, stripeSubID string) *models.Subscription { //nolint:revive // t first is Go test convention
 	t.Helper()
 	subRepo := NewSubscriptionRepository(testPool)
 
