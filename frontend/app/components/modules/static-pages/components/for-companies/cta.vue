@@ -8,7 +8,9 @@ SPDX-License-Identifier: MIT
       class="bg-gradient-to-b from-white to-accent-100 rounded-xl md:p-16 p-6 flex md:items-end items-start justify-between gap-10 md:flex-row flex-col"
     >
       <div class="flex-1 flex flex-col gap-3 min-w-0">
-        <h2 class="text-3xl font-light leading-11 text-neutral-900">Ready to invest in open source?</h2>
+        <h2 class="text-3xl font-secondary font-light leading-11 text-neutral-900 md:whitespace-nowrap">
+          Ready to invest in open source?
+        </h2>
         <p class="text-base font-normal leading-6 text-neutral-900">
           Our team will help you design a giving strategy that aligns with your business priorities and maximizes your
           impact.
