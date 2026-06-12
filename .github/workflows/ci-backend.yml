@@ -3,7 +3,7 @@
 ---
 name: CI — Backend
 
-on:
+"on":
   push:
     branches: [main]
     paths:
@@ -62,7 +62,7 @@ jobs:
       - name: Run tests
         working-directory: backend
         env:
-          TEST_DATABASE_URL: postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding,public
+          TEST_DATABASE_URL: postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?search_path=crowdfunding
         run: go test -race -count=1 ./...
 
   build:
