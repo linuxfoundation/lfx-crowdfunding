@@ -64,12 +64,21 @@ SPDX-License-Identifier: MIT
                 </h1>
 
                 <!-- Description -->
-                <p
-                  class="text-sm text-neutral-600 leading-5"
-                  :class="{ hidden: isScrolled }"
-                >
-                  {{ plainDescription }}
-                </p>
+                <div :class="{ hidden: isScrolled }">
+                  <p
+                    ref="descRef"
+                    class="text-sm text-neutral-600 leading-5 line-clamp-2"
+                  >
+                    {{ plainDescription }}
+                  </p>
+                  <lfx-button
+                    v-if="isTruncated"
+                    label="Show more"
+                    type="transparent"
+                    size="small"
+                    @click="$emit('update:activeTab', 'about')"
+                  />
+                </div>
               </div>
             </div>
 
@@ -150,7 +159,8 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, nextTick } from 'vue';
+import { useResizeObserver } from '@vueuse/core';
 import {
   initiativeTypeConfigMap,
   defaultInitiativeTypeConfig,
@@ -176,6 +186,16 @@ const props = defineProps<{
 
 const { stripHtml } = useSanitize();
 const plainDescription = computed(() => stripHtml(props.initiative.description ?? ''));
+
+const descRef = ref<HTMLElement | null>(null);
+const isTruncated = ref(false);
+
+useResizeObserver(descRef, async () => {
+  await nextTick();
+  if (descRef.value) {
+    isTruncated.value = descRef.value.scrollHeight > descRef.value.clientHeight;
+  }
+});
 
 const { openDonateDrawer } = useDonateDrawerStore();
 const { openShareModal } = useShareModalStore();
