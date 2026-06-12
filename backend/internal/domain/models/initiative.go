@@ -144,11 +144,13 @@ type Initiative struct {
 	CreatedOn time.Time `json:"created_on"`
 	UpdatedOn time.Time `json:"updated_on"`
 
+	// Project-only fields
+	CiiProjectID string `json:"cii_project_id,omitempty"` // CII Best Practices badge project ID (project type only)
+
 	// Internal fields — never serialised
 	SourceDynamoTable  string            `json:"-"`
 	StripePlanID       string            `json:"-"`
 	StripeProductID    string            `json:"-"`
-	CiiProjectID       string            `json:"-"`
 	JobspringProjectID string            `json:"-"`
 	StacksIdentifier   string            `json:"-"`
 	RawSponsors        LedgerSponsorList `json:"-"` // set by DB layer; flattened into Sponsors by service layer
@@ -167,6 +169,9 @@ type InitiativeCreateInput struct {
 	WebsiteURL     string `json:"website_url,omitempty"`
 	CocURL         string `json:"coc_url,omitempty"`
 	AcceptFunding  bool   `json:"accept_funding"`
+
+	// Project-only field — CII Best Practices badge project ID.
+	CiiProjectID string `json:"cii_project_id,omitempty"`
 
 	// Entity-only fields — null for non-entity initiative types.
 	EventbriteURL  string     `json:"eventbrite_url,omitempty"`
@@ -204,6 +209,9 @@ type InitiativeUpdateInput struct {
 	WebsiteURL    *string           `json:"website_url,omitempty"`
 	CocURL        *string           `json:"coc_url,omitempty"`
 	AcceptFunding *bool             `json:"accept_funding,omitempty"`
+
+	// Project-only field — nil means "leave unchanged".
+	CiiProjectID *string `json:"cii_project_id,omitempty"`
 
 	// Entity-only fields — nil means "leave unchanged".
 	EventbriteURL  *string    `json:"eventbrite_url,omitempty"`

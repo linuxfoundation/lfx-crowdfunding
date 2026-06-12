@@ -28,12 +28,18 @@ SPDX-License-Identifier: MIT
           <label class="text-xs font-medium text-neutral-900">
             Elevator Pitch <span class="text-negative-500">*</span>
           </label>
-          <span class="text-xs text-neutral-500">{{ modelValue.elevatorPitch.length }}/500</span>
+          <span
+            class="text-xs"
+            :class="modelValue.elevatorPitch.length >= 1500 ? 'text-negative-500' : 'text-neutral-500'"
+          >
+            {{ modelValue.elevatorPitch.length }}/1500
+          </span>
         </div>
         <lfx-textarea
           :model-value="modelValue.elevatorPitch"
           placeholder="Briefly introduce your project..."
           class="h-[72px]"
+          :maxlength="1500"
           @update:model-value="update('elevatorPitch', $event as string)"
         />
       </div>

@@ -60,8 +60,14 @@ func (r *stubInitiativeRepoForListForUser) Delete(_ context.Context, _ string) e
 func (r *stubInitiativeRepoForListForUser) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
+func (r *stubInitiativeRepoForListForUser) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
+	return models.OwnerInfo{}, nil
+}
 func (r *stubInitiativeRepoForListForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
+}
+func (r *stubInitiativeRepoForListForUser) UpdateStripeProductID(_ context.Context, _, _ string) error {
+	return nil
 }
 
 // stubUserRepoForListForUser implements domain.UserRepository for ListForUser tests.
@@ -102,7 +108,7 @@ func TestListForUser_ReturnsOwnedInitiatives(t *testing.T) {
 		},
 	}
 
-	svc := service.NewInitiativeService(initiativeRepo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(initiativeRepo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives", nil)
@@ -138,7 +144,7 @@ func TestListForUser_ReturnsOwnedInitiatives(t *testing.T) {
 }
 
 func TestListForUser_NoPrincipal_Returns401(t *testing.T) {
-	svc := service.NewInitiativeService(&stubInitiativeRepoForListForUser{}, &stubUserRepoForListForUser{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(&stubInitiativeRepoForListForUser{}, &stubUserRepoForListForUser{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives", nil)
@@ -153,7 +159,7 @@ func TestListForUser_NoPrincipal_Returns401(t *testing.T) {
 
 func TestListForUser_UserNotFound_ReturnsEmptyList(t *testing.T) {
 	userRepo := &stubUserRepoForListForUser{err: domain.ErrUserNotFound}
-	svc := service.NewInitiativeService(&stubInitiativeRepoForListForUser{}, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(&stubInitiativeRepoForListForUser{}, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives?limit=10&offset=5", nil)

@@ -80,8 +80,25 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	})
 	emailSvc := clients.NewEmailService(mandrillClient, cfg.Mandrill.FrontendBase, cfg.Mandrill.NotificationEmails)
 
+	// Reimbursement Service client — nil when REIMBURSEMENTS_API_URL is unset
+	// (integration disabled; no sync calls are made).
+	// Fail fast when URL is set but KEY is missing — the service would otherwise
+	// silently fail every sync with 401/403.
+	if err := validateReimbursementConfig(cfg.Reimbursement); err != nil {
+		return nil, fmt.Errorf("reimbursement config: %w", err)
+	}
+	reimbursementClient := clients.NewReimbursementClient(clients.ReimbursementConfig{
+		APIURL:       cfg.Reimbursement.APIURL,
+		APIKey:       cfg.Reimbursement.APIKey,
+		FrontendBase: cfg.Mandrill.FrontendBase,
+		Timeout:      cfg.Reimbursement.Timeout,
+	})
+	if reimbursementClient == nil {
+		logger.Warn("REIMBURSEMENTS_API_URL is not set — Reimbursement Service sync is disabled")
+	}
+
 	// Services
-	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, logger)
+	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
@@ -209,6 +226,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// For now all callers hold user tokens with access:me, so that scope is used.
 	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).
 		Post("/v1/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
+
+	// M2M routes — require a valid bearer token with access:manage scope.
+	// These endpoints are for service-to-service callers, not end users.
+	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
+		Get("/v1/initiatives/{slug}/owner-info", initiativeH.GetOwnerInfo)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{

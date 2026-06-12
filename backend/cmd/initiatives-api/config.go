@@ -16,16 +16,17 @@ import (
 
 // Config holds all runtime configuration for the service.
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	S3       S3Config
-	Stripe   StripeConfig
-	Ledger   LedgerConfig
-	Mandrill MandrillConfig
-	OTel     OTelConfig
-	Local    LocalConfig
-	Approval ApprovalConfig
+	Server         ServerConfig
+	Database       DatabaseConfig
+	JWT            JWTConfig
+	S3             S3Config
+	Stripe         StripeConfig
+	Ledger         LedgerConfig
+	Mandrill       MandrillConfig
+	OTel           OTelConfig
+	Local          LocalConfig
+	Approval       ApprovalConfig
+	Reimbursement  ReimbursementConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -108,6 +109,21 @@ type ApprovalConfig struct {
 	// AllowedApprovers is the list of usernames permitted to approve or decline
 	// initiatives. Sourced from the ALLOWED_APPROVERS env var (comma-separated).
 	AllowedApprovers []string
+}
+
+// ReimbursementConfig holds settings for the Expensify-backed Reimbursement Service.
+// All fields are optional — when REIMBURSEMENTS_API_URL is unset the integration
+// is disabled and no sync calls are made.
+type ReimbursementConfig struct {
+	// APIURL is the base URL of the Reimbursement Service.
+	// Set via REIMBURSEMENTS_API_URL.
+	APIURL string
+	// APIKey is the static pre-shared key sent in the X-API-KEY header.
+	// Corresponds to the RS_API_KEY environment variable on the service side.
+	// Set via REIMBURSEMENTS_API_KEY.
+	APIKey string
+	// Timeout caps individual outbound HTTP calls.
+	Timeout time.Duration
 }
 
 // MandrillConfig holds Mandrill transactional email settings.
@@ -287,7 +303,23 @@ func LoadConfig() (*Config, error) {
 			NotificationEmails: parseCommaList(getEnv("MANDRILL_NOTIFICATION_EMAIL", "")),
 			Timeout:            10 * time.Second,
 		},
+		Reimbursement: ReimbursementConfig{
+			APIURL:  getEnv("REIMBURSEMENTS_API_URL", ""),
+			APIKey:  getEnv("REIMBURSEMENTS_API_KEY", ""),
+			Timeout: 10 * time.Second,
+		},
 	}, nil
+}
+
+// validateReimbursementConfig returns an error when REIMBURSEMENTS_API_URL is
+// set but REIMBURSEMENTS_API_KEY is empty — the integration would silently fail
+// every sync with 401/403 and there would be no startup signal for the
+// misconfiguration. Callers should check this before server startup.
+func validateReimbursementConfig(cfg ReimbursementConfig) error {
+	if cfg.APIURL != "" && cfg.APIKey == "" {
+		return fmt.Errorf("REIMBURSEMENTS_API_KEY is required when REIMBURSEMENTS_API_URL is set")
+	}
+	return nil
 }
 
 // parseCommaList splits a comma-separated string into trimmed, non-empty tokens.

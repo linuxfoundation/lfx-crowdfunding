@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/gosimple/slug"
@@ -37,12 +38,13 @@ var allowedContactTypes = map[string]struct{}{
 // Cached financials come from initiative_ledger_stats (CronJob); per-goal
 // donated/spent is enriched live from Ledger GetBalance on each detail request.
 type InitiativeService struct {
-	repo         domain.InitiativeRepository
-	userRepo     domain.UserRepository
-	ledger       clients.LedgerClient
-	stripe       clients.StripeClient
-	emailService domain.EmailService
-	logger       *slog.Logger
+	repo          domain.InitiativeRepository
+	userRepo      domain.UserRepository
+	ledger        clients.LedgerClient
+	stripe        clients.StripeClient
+	emailService  domain.EmailService
+	reimbursement clients.ReimbursementClient // nil when RS integration is disabled
+	logger        *slog.Logger
 }
 
 // NewInitiativeService returns an InitiativeService.
@@ -52,15 +54,17 @@ func NewInitiativeService(
 	ledger clients.LedgerClient,
 	stripe clients.StripeClient,
 	emailService domain.EmailService,
+	reimbursement clients.ReimbursementClient,
 	logger *slog.Logger,
 ) *InitiativeService {
 	return &InitiativeService{
-		repo:         repo,
-		userRepo:     userRepo,
-		ledger:       ledger,
-		stripe:       stripe,
-		emailService: emailService,
-		logger:       logger,
+		repo:          repo,
+		userRepo:      userRepo,
+		ledger:        ledger,
+		stripe:        stripe,
+		emailService:  emailService,
+		reimbursement: reimbursement,
+		logger:        logger,
 	}
 }
 
@@ -171,6 +175,27 @@ func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models
 	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
 	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
+}
+
+// GetOwnerInfoBySlug returns the email and display name of the owner of the initiative
+// identified by slug. It uses a single JOIN query — no status filter is applied,
+// so it works for initiatives in any status. Intended for M2M callers only.
+func (s *InitiativeService) GetOwnerInfoBySlug(ctx context.Context, slug string) (models.OwnerInfo, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetOwnerInfoBySlug")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.slug", slug))
+
+	info, err := s.repo.GetOwnerInfoBySlug(ctx, slug)
+	if err != nil {
+		if !errors.Is(err, domain.ErrInitiativeNotFound) {
+			span.RecordError(err)
+		}
+		if errors.Is(err, domain.ErrProfileNotSynced) {
+			return models.OwnerInfo{}, fmt.Errorf("%w: initiative owner has no email address set", domain.ErrProfileNotSynced)
+		}
+		return models.OwnerInfo{}, fmt.Errorf("get owner info by slug: %w", err)
+	}
+	return info, nil
 }
 
 // GetForUser retrieves an initiative owned by the authenticated caller, by slug or
@@ -348,6 +373,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	if input.Name == "" {
 		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}
+	if utf8.RuneCountInString(input.Description) > 1500 {
+		return nil, fmt.Errorf("%w: description must be 1500 characters or fewer", domain.ErrInvalidInput)
+	}
 	if input.Slug == "" {
 		input.Slug = slug.Make(input.Name)
 	}
@@ -425,6 +453,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		AcceptFunding:   input.AcceptFunding,
 		Status:          models.StatusSubmitted,
 		StripeProductID: productID,
+		CiiProjectID:    input.CiiProjectID,
 
 		// Entity-only display fields
 		EventbriteURL:  input.EventbriteURL,
@@ -509,6 +538,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		existing.Status = *input.Status
 	}
 	if input.Description != nil {
+		if utf8.RuneCountInString(*input.Description) > 1500 {
+			return nil, fmt.Errorf("%w: description must be 1500 characters or fewer", domain.ErrInvalidInput)
+		}
 		existing.Description = *input.Description
 	}
 	if input.Industry != nil {
@@ -528,6 +560,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	}
 	if input.AcceptFunding != nil {
 		existing.AcceptFunding = *input.AcceptFunding
+	}
+	if input.CiiProjectID != nil {
+		existing.CiiProjectID = *input.CiiProjectID
 	}
 
 	if input.EventbriteURL != nil {
@@ -584,6 +619,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		span.RecordError(err)
 		return nil, fmt.Errorf("update initiative: %w", err)
 	}
+	// Sync beneficiaries and policy with the Reimbursement Service.
+	// Non-fatal; only takes effect when the initiative is published.
+	s.syncReimbursementPolicy(ctx, updated)
 	return updated, nil
 }
 
@@ -651,6 +689,13 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 		}
 	}
 
+	// On approval the initiative is now published — sync to the Reimbursement
+	// Service so beneficiaries are added to the Expensify policy immediately.
+	// Not called on decline: syncReimbursementPolicy's published guard would be a
+	// no-op, but calling it is misleading at the call site.
+	if action == models.ApprovalActionApprove {
+		s.syncReimbursementPolicy(ctx, processed)
+	}
 	return processed, nil
 }
 
@@ -673,6 +718,39 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
 	return list, nil
+}
+
+// syncReimbursementPolicy upserts the initiative's policy in the Reimbursement
+// Service. It is a no-op when the RS client is disabled or the initiative is not
+// published. The sync runs in a background goroutine so RS latency (or
+// unavailability) never blocks the user-facing update/approval response. The RS
+// client's own timeout (10 s) bounds how long the goroutine can run.
+func (s *InitiativeService) syncReimbursementPolicy(ctx context.Context, initiative *models.Initiative) {
+	if s.reimbursement == nil {
+		return
+	}
+	// Guard before the DB lookup — unpublished initiatives are never synced.
+	if !initiative.Status.EqualFold(models.StatusPublished) {
+		return
+	}
+	// Snapshot the initiative before launching the goroutine to avoid data races
+	// if the caller or another goroutine mutates the struct after this returns.
+	snap := *initiative
+	// Use a detached context so the goroutine is not cancelled when the HTTP
+	// request that triggered this call completes.
+	detached := context.WithoutCancel(ctx)
+	go func() {
+		owner, err := s.userRepo.GetByID(detached, snap.OwnerID)
+		if err != nil {
+			s.logger.WarnContext(detached, "reimbursement sync: could not fetch owner",
+				"initiative_id", snap.ID, "owner_id", snap.OwnerID, "error", err)
+			return
+		}
+		if syncErr := s.reimbursement.SyncPolicy(detached, &snap, owner); syncErr != nil {
+			s.logger.WarnContext(detached, "reimbursement sync: failed to sync policy",
+				"initiative_id", snap.ID, "error", syncErr)
+		}
+	}()
 }
 
 // enrichTransactionsFromDB batch-looks up users and organizations from the CF DB

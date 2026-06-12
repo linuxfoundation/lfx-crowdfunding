@@ -90,6 +90,36 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id string) (*model
 	return sub, nil
 }
 
+// GetActiveByUserAndInitiative returns any non-terminal subscription for the
+// given user + initiative pair (statuses: active, incomplete, past_due).
+// Returns ErrSubscriptionNotFound when no such subscription exists.
+func (r *SubscriptionRepository) GetActiveByUserAndInitiative(ctx context.Context, userID, initiativeID string) (*models.Subscription, error) {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.GetActiveByUserAndInitiative")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.user_id", userID),
+		attribute.String("db.initiative_id", initiativeID),
+	)
+
+	const q = "SELECT " + subscriptionColumns + `
+		FROM subscriptions
+		WHERE user_id = $1
+		  AND initiative_id = $2
+		  AND status IN ('active', 'incomplete', 'past_due')
+		LIMIT 1`
+
+	row := r.pool.QueryRow(ctx, q, userID, initiativeID)
+	sub, err := scanSubscription(row)
+	if err != nil {
+		if errors.Is(err, domain.ErrSubscriptionNotFound) {
+			return nil, domain.ErrSubscriptionNotFound
+		}
+		span.RecordError(err)
+		return nil, err
+	}
+	return sub, nil
+}
+
 // ListByInitiative returns paginated subscriptions for an initiative.
 func (r *SubscriptionRepository) ListByInitiative(ctx context.Context, initiativeID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.ListByInitiative")

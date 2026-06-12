@@ -30,6 +30,7 @@ export interface ProjectFundraisePayload {
   description: string;
   industry?: string;
   websiteUrl?: string;
+  ciiProjectId?: string;
   cocUrl?: string;
   repositoryUrl?: string;
   logoUrl?: string;
@@ -44,8 +45,12 @@ export interface SecurityAuditFundraisePayload {
   description: string;
   industry?: string;
   websiteUrl?: string;
+  ciiProjectId?: string;
+  cocUrl?: string;
   repositoryUrl?: string;
   logoUrl?: string;
+  licenseType?: string;
+  currentSecurityStrategy?: string;
   fundingGoalCents?: number;
   primaryContact?: FundraiseContactInput;
   secondaryContact?: FundraiseContactInput;

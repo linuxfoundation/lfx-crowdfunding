@@ -43,6 +43,9 @@ func (c *wbStripeClient) CreateSubscription(_ context.Context, _ models.StripeSu
 	return nil, nil
 }
 func (c *wbStripeClient) CancelSubscription(_ context.Context, _ string) error { return nil }
+func (c *wbStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
 func (c *wbStripeClient) ConstructWebhookEvent(payload []byte, sig, secret string) (stripe.Event, error) {
 	if c.onConstruct != nil {
 		return c.onConstruct(payload, sig, secret)
@@ -169,6 +172,9 @@ type wbSubscriptionRepo struct {
 
 func (r *wbSubscriptionRepo) GetByID(_ context.Context, _ string) (*models.Subscription, error) {
 	return nil, nil
+}
+func (r *wbSubscriptionRepo) GetActiveByUserAndInitiative(_ context.Context, _, _ string) (*models.Subscription, error) {
+	return nil, domain.ErrSubscriptionNotFound
 }
 func (r *wbSubscriptionRepo) ListByInitiative(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	return nil, nil, nil

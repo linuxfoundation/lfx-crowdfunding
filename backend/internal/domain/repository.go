@@ -24,6 +24,9 @@ type InitiativeRepository interface {
 	Create(ctx context.Context, initiative *models.Initiative, input models.InitiativeCreateInput) (*models.Initiative, error)
 	Update(ctx context.Context, initiative *models.Initiative, input models.InitiativeUpdateInput) (*models.Initiative, error)
 	Delete(ctx context.Context, id string) error
+	// UpdateStripeProductID patches only the stripe_product_id column for the given
+	// initiative. Used to auto-heal initiatives with stale/missing Stripe products.
+	UpdateStripeProductID(ctx context.Context, id, productID string) error
 
 	// GetUsersByIDs returns a map of user UUID → User for the given UUIDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
@@ -32,6 +35,10 @@ type InitiativeRepository interface {
 	// GetOrganizationsByIDs returns a map of org UUID → Organization for the given IDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
 	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
+
+	// GetOwnerInfoBySlug returns the email and display name of the owner of the
+	// initiative with the given slug, regardless of initiative status. Used by M2M callers.
+	GetOwnerInfoBySlug(ctx context.Context, slug string) (models.OwnerInfo, error)
 }
 
 // DonationRepository defines persistence operations for donations.
@@ -47,6 +54,10 @@ type DonationRepository interface {
 // SubscriptionRepository defines persistence operations for subscriptions.
 type SubscriptionRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Subscription, error)
+	// GetActiveByUserAndInitiative returns any subscription for the given user+initiative
+	// that is not in a terminal state (i.e. status is active, incomplete, or past_due).
+	// Returns ErrSubscriptionNotFound when no such subscription exists.
+	GetActiveByUserAndInitiative(ctx context.Context, userID, initiativeID string) (*models.Subscription, error)
 	ListByInitiative(ctx context.Context, initiativeID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error)
 	ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error)
 	Create(ctx context.Context, sub *models.Subscription) (*models.Subscription, error)

@@ -73,9 +73,13 @@ func (r *stubRepoForGetForUser) Delete(_ context.Context, _ string) error { retu
 func (r *stubRepoForGetForUser) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
+func (r *stubRepoForGetForUser) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
+	return models.OwnerInfo{}, nil
+}
 func (r *stubRepoForGetForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
+func (r *stubRepoForGetForUser) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 
 // getForUserRouter mounts only the GetForUser route on a fresh Chi router so
 // chi.URLParam("id") resolves the slug from the path.
@@ -101,7 +105,7 @@ func TestGetForUser_OwnerSeesOwnDraft(t *testing.T) {
 	repo := &stubRepoForGetForUser{
 		initiative: &models.Initiative{ID: "init-1", Slug: "general-fund-4", OwnerID: ownerID, Status: models.StatusSubmitted},
 	}
-	svc := service.NewInitiativeService(repo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(repo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	w := httptest.NewRecorder()
@@ -124,7 +128,7 @@ func TestGetForUser_NonOwnerGets404(t *testing.T) {
 	repo := &stubRepoForGetForUser{
 		initiative: &models.Initiative{ID: "init-1", Slug: "general-fund-4", OwnerID: "owner-uuid-1", Status: models.StatusSubmitted},
 	}
-	svc := service.NewInitiativeService(repo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(repo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	w := httptest.NewRecorder()
@@ -136,7 +140,7 @@ func TestGetForUser_NonOwnerGets404(t *testing.T) {
 }
 
 func TestGetForUser_NoPrincipalReturns401(t *testing.T) {
-	svc := service.NewInitiativeService(&stubRepoForGetForUser{}, &stubUserRepoForListForUser{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(&stubRepoForGetForUser{}, &stubUserRepoForListForUser{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	w := httptest.NewRecorder()
@@ -150,7 +154,7 @@ func TestGetForUser_NoPrincipalReturns401(t *testing.T) {
 func TestGetForUser_NotFoundReturns404(t *testing.T) {
 	userRepo := &stubUserRepoForListForUser{user: &models.User{ID: "owner-uuid-1", Username: "owner"}}
 	repo := &stubRepoForGetForUser{err: domain.ErrInitiativeNotFound}
-	svc := service.NewInitiativeService(repo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(repo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	w := httptest.NewRecorder()
@@ -184,7 +188,7 @@ func TestGetTransactionsForUser_OwnerSeesOwnDraft(t *testing.T) {
 	repo := &stubRepoForGetForUser{
 		initiative: &models.Initiative{ID: "init-1", Slug: "general-fund-4", OwnerID: ownerID, Status: models.StatusSubmitted},
 	}
-	svc := service.NewInitiativeService(repo, userRepo, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(repo, userRepo, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	w := httptest.NewRecorder()
@@ -207,7 +211,7 @@ func TestGetTransactionsForUser_NonOwnerGets404(t *testing.T) {
 	repo := &stubRepoForGetForUser{
 		initiative: &models.Initiative{ID: "init-1", Slug: "general-fund-4", OwnerID: "owner-uuid-1", Status: models.StatusSubmitted},
 	}
-	svc := service.NewInitiativeService(repo, userRepo, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(repo, userRepo, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	w := httptest.NewRecorder()
@@ -219,7 +223,7 @@ func TestGetTransactionsForUser_NonOwnerGets404(t *testing.T) {
 }
 
 func TestGetTransactionsForUser_NoPrincipalReturns401(t *testing.T) {
-	svc := service.NewInitiativeService(&stubRepoForGetForUser{}, &stubUserRepoForListForUser{}, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(&stubRepoForGetForUser{}, &stubUserRepoForListForUser{}, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	w := httptest.NewRecorder()
@@ -233,7 +237,7 @@ func TestGetTransactionsForUser_NoPrincipalReturns401(t *testing.T) {
 func TestGetTransactionsForUser_NotFoundReturns404(t *testing.T) {
 	userRepo := &stubUserRepoForListForUser{user: &models.User{ID: "owner-uuid-1", Username: "owner"}}
 	repo := &stubRepoForGetForUser{err: domain.ErrInitiativeNotFound}
-	svc := service.NewInitiativeService(repo, userRepo, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, slog.Default())
+	svc := service.NewInitiativeService(repo, userRepo, &txnLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	w := httptest.NewRecorder()
