@@ -130,7 +130,7 @@ SPDX-License-Identifier: MIT
                 icon-position="left"
                 button-style="pill"
                 :disabled="initiative.acceptFunding === false"
-                @click="handleFundInitiative()"
+                @click="handleDonate()"
               />
             </span>
           </lfx-tooltip>
@@ -187,7 +187,7 @@ function handleShare() {
   });
 }
 
-function handleFundInitiative() {
+function handleDonate() {
   if (!isAuthenticated.value) {
     login();
   } else {
