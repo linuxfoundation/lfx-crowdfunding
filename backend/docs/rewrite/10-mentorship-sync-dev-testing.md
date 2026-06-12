@@ -20,14 +20,18 @@ The fixture file is committed to the repository under `cmd/mentorship-sync/testd
 
 ## Rationale
 
-**Why not a DEV Snowflake schema?**
-Snowflake does not have a DEV namespace for Mentorship data. Fivetran mirrors the `jobspring` production database into Snowflake — setting up a separate DEV connector would require Mentorship team involvement, an additional Fivetran connector (cost), and ongoing maintenance as the schema evolves. The payoff is low because the CronJob's Snowflake query is simple and separately unit-tested.
+**Why not `ANALYTICS_DEV` right now?**
+`ANALYTICS_DEV` exists in Snowflake and is supported by the Data Lake team (confirmed June 2026). However it is currently missing ~8 of the ~10 raw source tables required to build the gold model. Only two DEV tables exist today:
+- `FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST1_DEV.JOBSPRING_DEV_PROJECTS`
+- `FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST1_DEV.JOBSPRING_DEV_TASKS`
+
+The gold model cannot be built until the remaining tables are added by the Data Lake team. The fixture source unblocks implementation without waiting on that timeline.
 
 **Why an env var rather than `APP_ENV`?**
 `MENTORSHIP_SYNC_FIXTURE_FILE` is an explicit, self-describing opt-in. Setting it to a path makes the intent unambiguous in the ArgoCD values file. It also allows the fixture source to be used locally without changing the global `APP_ENV`, and it can be applied to staging temporarily if needed (e.g. to test a schema change before Fivetran is updated).
 
 **What this does not test**
-The fixture source bypasses the Snowflake driver and SQL query entirely. That gap is covered by a unit test in `internal/infrastructure/snowflake/client_test.go` that asserts the expected SQL query string against a mock driver. The sync logic itself (upsert algorithm, field mapping, beneficiary handling) runs identically regardless of source — the fixture source exercises it fully.
+The fixture source bypasses the Snowflake driver and SQL query entirely. That gap is covered by a unit test in `internal/infrastructure/snowflake/client_test.go` that asserts the expected SQL query string and field mapping against a mock driver. A manual smoke test against `ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS` (read-only, prod credentials) must be run by the deploying developer before the first DEV and staging deployments — documented in `docs/go-live-checklist.md`.
 
 ## Implementation
 
@@ -93,16 +97,39 @@ env:
   # MENTORSHIP_SYNC_FIXTURE_FILE is not set in prod
 ```
 
+## Follow-on: `ANALYTICS_DEV` Path
+
+When the missing raw DEV tables are added by the Data Lake team, CF will build bronze/silver/gold dbt models in `lf-dbt` so that `ANALYTICS_DEV.GOLD_FACT.MENTORSHIP_PROGRAMS` mirrors production. The DEV ArgoCD values are then updated: remove `MENTORSHIP_SYNC_FIXTURE_FILE`, set `SNOWFLAKE_DATABASE=ANALYTICS_DEV`. No code change needed — the `mentorshipSource` interface already supports it.
+
+Steps in order:
+
+| Step | Owner | Blocked on |
+|---|---|---|
+| 1. Add remaining ~8 raw DEV tables to `FIVETRAN_INGEST.DYNAMODB_PRODUCT_US_EAST1_DEV` | Data Lake (Shane/David) | Jira ticket to file |
+| 2. Build bronze/silver/gold dbt models in `lf-dbt` | CF | Step 1 |
+| 3. Provision DEV Snowflake service account (read-only to `ANALYTICS_DEV`) | Data Lake | Step 2 |
+| 4. Update DEV ArgoCD values | CF | Step 3 |
+
+The fixture source stays available for local development indefinitely — `MENTORSHIP_SYNC_FIXTURE_FILE` can always be set locally even after `ANALYTICS_DEV` is ready.
+
+A `TODO(analytics-dev)` comment in `values/dev/lfx-crowdfunding-mentorship-sync.yaml` marks the swap point.
+
 ## File Inventory
 
 | File | Purpose |
 |---|---|
 | `internal/domain/models/mentorship_sync.go` | `MentorshipProgram`, `MentorshipBeneficiary` domain types |
-| `internal/infrastructure/snowflake/client.go` | Real Snowflake client; queries and maps rows |
-| `internal/infrastructure/snowflake/client_test.go` | Unit test asserting the SQL query against a mock driver |
+| `internal/domain/repository.go` | `MentorshipRepository` interface (added) |
+| `internal/infrastructure/snowflake/client.go` | Real Snowflake client; queries `ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS` |
+| `internal/infrastructure/snowflake/client_test.go` | Unit test: SQL query string + struct field mapping via mock driver |
 | `internal/infrastructure/snowflake/fixture_source.go` | JSON-file-backed source for DEV |
+| `internal/infrastructure/snowflake/fixture_source_test.go` | Unit tests for fixture source |
+| `internal/infrastructure/db/mentorship_repository.go` | `MentorshipRepository` implementation |
+| `internal/infrastructure/db/mentorship_repository_test.go` | Compile-time interface check |
 | `cmd/mentorship-sync/main.go` | Entry point; wires source based on `MENTORSHIP_SYNC_FIXTURE_FILE` |
-| `cmd/mentorship-sync/syncer.go` | Sync algorithm; works identically against either source |
-| `cmd/mentorship-sync/testdata/programs.json` | Fixture data committed to the repository |
+| `cmd/mentorship-sync/syncer.go` | Sync algorithm; `mentorshipSource` interface |
+| `cmd/mentorship-sync/syncer_test.go` | Table-driven tests for syncer algorithm |
+| `cmd/mentorship-sync/helpers_test.go` | `discardLogger` test helper |
+| `cmd/mentorship-sync/testdata/programs.json` | Fixture data (3 records) committed to repo |
 | `Dockerfile.mentorship-sync` | Container image build |
 | `lfx-v2-argocd` values (dev/staging/prod) | Environment-specific source selection |
