@@ -75,6 +75,9 @@ func (m *mockInitiativeRepo) Delete(_ context.Context, _ string) error { return 
 func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return map[string]models.User{}, nil
 }
+func (m *mockInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	return map[string]models.User{}, nil
+}
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
 }
@@ -380,6 +383,12 @@ func (m *mockRepoForEnrich) GetUsersByIDs(_ context.Context, _ []string) (map[st
 	}
 	return m.users, nil
 }
+func (m *mockRepoForEnrich) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.users, nil
+}
 func (m *mockRepoForEnrich) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	if m.err != nil {
 		return nil, m.err
@@ -409,7 +418,7 @@ func (m *mockRepoForEnrich) Create(_ context.Context, i *models.Initiative, _ mo
 func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative, _ models.InitiativeUpdateInput) (*models.Initiative, error) {
 	return i, nil
 }
-func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error { return nil }
+func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error                   { return nil }
 func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 func (m *mockRepoForEnrich) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
@@ -1487,6 +1496,7 @@ func TestCreate_NilChildFieldsWhenNotProvided(t *testing.T) {
 		t.Error("expected nil EntityDetails")
 	}
 }
+
 // --- GetOwnerInfoBySlug ---
 
 func TestGetOwnerInfoBySlug_Success(t *testing.T) {

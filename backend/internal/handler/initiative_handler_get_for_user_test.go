@@ -73,13 +73,18 @@ func (r *stubRepoForGetForUser) Delete(_ context.Context, _ string) error { retu
 func (r *stubRepoForGetForUser) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
+func (r *stubRepoForGetForUser) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	return nil, nil
+}
 func (r *stubRepoForGetForUser) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
 func (r *stubRepoForGetForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
-func (r *stubRepoForGetForUser) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (r *stubRepoForGetForUser) UpdateStripeProductID(_ context.Context, _, _ string) error {
+	return nil
+}
 
 // getForUserRouter mounts only the GetForUser route on a fresh Chi router so
 // chi.URLParam("id") resolves the slug from the path.

@@ -232,12 +232,6 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 		if raw.TxnType == "debit" {
 			txnType = "reimbursement"
 		}
-		// Best-effort display name from Ledger data; will be overwritten by CF DB lookup in service.
-		// Avoid exposing accountEmail — it is PII and this is a public endpoint.
-		donorName := raw.SubmitterName
-		if donorName == "" {
-			donorName = "Anonymous"
-		}
 		donorType := "individual"
 		if raw.OrganizationID != "" {
 			donorType = "organization"
@@ -248,7 +242,6 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			AmountCents:  raw.Amount,
 			Date:         time.Unix(raw.TxnDate, 0).UTC(),
 			Category:     raw.TxnCategory,
-			DonorName:    donorName,
 			DonorType:    donorType,
 			LedgerUserID: raw.UserID,
 			LedgerOrgID:  raw.OrganizationID,

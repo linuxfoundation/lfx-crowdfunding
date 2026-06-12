@@ -24,16 +24,16 @@ import (
 
 // donationRepo is a configurable DonationRepository stub for donation handler tests.
 type donationRepo struct {
-	getByIDResult        *models.Donation
-	getByIDErr           error
-	listByInitiative     []models.Donation
-	listByInitiativeErr  error
-	listByUserResult     []models.Donation
-	listByUserErr        error
-	createResult         *models.Donation
-	createErr            error
-	lastCreated          *models.Donation
-	updateByPIIDErr      error
+	getByIDResult       *models.Donation
+	getByIDErr          error
+	listByInitiative    []models.Donation
+	listByInitiativeErr error
+	listByUserResult    []models.Donation
+	listByUserErr       error
+	createResult        *models.Donation
+	createErr           error
+	lastCreated         *models.Donation
+	updateByPIIDErr     error
 }
 
 func (r *donationRepo) GetByID(_ context.Context, _ string) (*models.Donation, error) {
@@ -69,10 +69,10 @@ func (r *donationRepo) UpdateByPaymentIntentID(_ context.Context, _, _, _ string
 
 // donationInitiativeRepo is a minimal InitiativeRepository stub for donation tests.
 type donationInitiativeRepo struct {
-	initiative      *models.Initiative
-	getErr          error
-	usersByIDs      map[string]models.User
-	orgsByIDs       map[string]models.Organization
+	initiative *models.Initiative
+	getErr     error
+	usersByIDs map[string]models.User
+	orgsByIDs  map[string]models.Organization
 }
 
 func (r *donationInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -101,6 +101,9 @@ func (r *donationInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (m
 	if r.usersByIDs != nil {
 		return r.usersByIDs, nil
 	}
+	return make(map[string]models.User), nil
+}
+func (r *donationInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return make(map[string]models.User), nil
 }
 func (r *donationInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error {

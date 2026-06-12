@@ -776,7 +776,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 		}
 	}
 
-	users, err := repo.GetUsersByIDs(ctx, userIDs)
+	users, err := repo.GetUsersByLegacyIDs(ctx, userIDs)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
 		users = map[string]models.User{}
@@ -803,6 +803,9 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 					t.DonorName = user.Name
 				}
 				t.DonorLogoURL = user.AvatarURL
+			}
+			if t.DonorName == "" {
+				t.DonorName = "Anonymous"
 			}
 			if t.DonorLogoURL == "" {
 				t.DonorLogoURL = generatedAvatarURL(t.LedgerUserID, t.DonorName)
