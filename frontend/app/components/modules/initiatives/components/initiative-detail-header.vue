@@ -88,6 +88,14 @@ SPDX-License-Identifier: MIT
                 {{ tag }}
               </lfx-chip>
             </div>
+
+            <!-- Funding disabled notice -->
+            <p
+              v-if="!initiative.acceptFunding && !isScrolled"
+              class="text-sm text-neutral-500 mt-2"
+            >
+              This initiative is not currently accepting donations.
+            </p>
           </div>
         </div>
 
@@ -110,15 +118,23 @@ SPDX-License-Identifier: MIT
             icon-position="left"
             button-style="pill"
           />
-          <lfx-button
-            label="Fund this initiative"
-            type="ghost"
-            icon="hand-heart"
-            icon-position="left"
-            class="!text-accent-500"
-            button-style="pill"
-            @click="handleFundInitiative()"
-          />
+          <lfx-tooltip
+            content="This initiative is not currently accepting donations"
+            :disabled="initiative.acceptFunding"
+          >
+            <span>
+              <lfx-button
+                label="Fund this initiative"
+                type="ghost"
+                icon="hand-heart"
+                icon-position="left"
+                class="!text-accent-500"
+                button-style="pill"
+                :disabled="!initiative.acceptFunding"
+                @click="handleFundInitiative()"
+              />
+            </span>
+          </lfx-tooltip>
         </div>
       </div>
 
@@ -147,6 +163,7 @@ import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxTabs from '~/components/uikit/tabs/tabs.vue';
+import LfxTooltip from '~/components/uikit/tooltip/tooltip.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
 import { useShareModalStore } from '~/components/shared/components/share/store/share-modal.store';
 import { useAuth } from '~/composables/useAuth';

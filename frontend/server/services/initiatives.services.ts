@@ -24,6 +24,7 @@ export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
     applicationURL: b.application_url,
     eventStartDate: b.event_start_date,
     eventEndDate: b.event_end_date,
+    acceptFunding: b.accept_funding,
     fundingStatus: b.financials
       ? {
           goalsTotalCents: b.financials.goals_total_cents,
