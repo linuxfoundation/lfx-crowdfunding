@@ -19,12 +19,11 @@ import (
 
 const fetchProgramsQuery = `
 SELECT
-	p.jobspring_project_id,
-	p.name,
-	p.status,
-	COALESCE(p.mentee_goal_cents, 0) AS mentee_goal_cents
+	p.PROGRAM_ID,
+	p.PROGRAM_NAME,
+	p.PROGRAM_STATUS
 FROM ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS p
-WHERE p.jobspring_project_id IS NOT NULL
+WHERE p.PROGRAM_ID IS NOT NULL
 `
 
 // ClientConfig holds credentials for connecting to Snowflake via key-pair auth.
@@ -101,11 +100,8 @@ func (c *Client) Close() error {
 }
 
 // FetchPrograms runs the Snowflake query and returns all Mentorship programs.
-// Beneficiaries are NOT included in this query — the Snowflake gold model does not yet
-// expose them as columns. Until the query is updated, each returned MentorshipProgram
-// has an empty Beneficiaries slice, which causes UpsertBeneficiaries to delete any
-// existing beneficiary rows for that initiative. Do not run against production until
-// the Snowflake schema is confirmed and this query is updated.
+// Beneficiaries are not included — use the fixture source or extend this query
+// once SELECTED_MENTEES parsing is implemented.
 func (c *Client) FetchPrograms(ctx context.Context) ([]models.MentorshipProgram, error) {
 	rows, err := c.db.QueryContext(ctx, fetchProgramsQuery)
 	if err != nil {
@@ -120,7 +116,6 @@ func (c *Client) FetchPrograms(ctx context.Context) ([]models.MentorshipProgram,
 			&p.JobspringProjectID,
 			&p.Name,
 			&p.Status,
-			&p.MenteeGoalCents,
 		); err != nil {
 			return nil, fmt.Errorf("scan mentorship program row: %w", err)
 		}

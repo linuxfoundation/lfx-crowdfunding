@@ -1,26 +1,23 @@
 [
   {
-    "jobspring_project_id": "jobspring-active-001",
-    "name": "Linux Kernel Mentorship",
-    "status": "published",
-    "mentee_goal_cents": 500000,
-    "beneficiaries": [
-      {"name": "Alice Mentee", "email": "alice@example.com"},
-      {"name": "Bob Mentee", "email": "bob@example.com"}
-    ]
-  },
-  {
-    "jobspring_project_id": "jobspring-pending-002",
-    "name": "Cloud Native Mentorship",
-    "status": "pending",
-    "mentee_goal_cents": 0,
+    "jobspring_project_id": "fe38c553-a066-44b0-8192-f5a5bee5074b",
+    "name": "CNCF - OpenKruise: Lightweight and Continuous Load Testing for Agents Using Kwok (2026 Term 2)",
+    "status": "Hidden",
     "beneficiaries": []
   },
   {
-    "jobspring_project_id": "jobspring-hidden-003",
-    "name": "Hidden Program",
-    "status": "hide",
-    "mentee_goal_cents": 100000,
+    "jobspring_project_id": "60410ceb-37ca-4ecf-9233-f907d1adf439",
+    "name": "Open Mainframe Project - COBOL Programming Course",
+    "status": "Published",
+    "beneficiaries": [
+      {"name": "Rituraj Mahato", "email": "mahatorituraj150@gmail.com"},
+      {"name": "Ali Mohamed", "email": "atm17871@gmail.com"}
+    ]
+  },
+  {
+    "jobspring_project_id": "0d6fd362-04a1-4086-a6e7-ec753ed4a60b",
+    "name": "Meshery",
+    "status": "Published",
     "beneficiaries": []
   }
 ]

@@ -17,26 +17,23 @@ func TestFixtureSource_FetchPrograms_readsAllFields(t *testing.T) {
 
 	fixture := `[
 		{
-			"jobspring_project_id": "proj-1",
-			"name": "Linux Kernel",
-			"status": "published",
-			"mentee_goal_cents": 500000,
+			"jobspring_project_id": "fe38c553-a066-44b0-8192-f5a5bee5074b",
+			"name": "Linux Kernel Mentorship",
+			"status": "Published",
 			"beneficiaries": [
-				{"name": "Alice", "email": "alice@example.com"}
+				{"name": "Alice Mentee", "email": "alice@example.com"}
 			]
 		},
 		{
-			"jobspring_project_id": "proj-2",
-			"name": "Pending Program",
-			"status": "pending",
-			"mentee_goal_cents": 0,
+			"jobspring_project_id": "60410ceb-37ca-4ecf-9233-f907d1adf439",
+			"name": "COBOL Programming Course",
+			"status": "Published",
 			"beneficiaries": []
 		},
 		{
-			"jobspring_project_id": "proj-3",
+			"jobspring_project_id": "92df3acf-9c1e-4a27-b9a4-cb5ed4293435",
 			"name": "Hidden Program",
-			"status": "hide",
-			"mentee_goal_cents": 100000,
+			"status": "Hidden",
 			"beneficiaries": []
 		}
 	]`
@@ -57,23 +54,20 @@ func TestFixtureSource_FetchPrograms_readsAllFields(t *testing.T) {
 	}
 
 	p := programs[0]
-	if p.JobspringProjectID != "proj-1" {
-		t.Errorf("JobspringProjectID: got %q, want proj-1", p.JobspringProjectID)
+	if p.JobspringProjectID != "fe38c553-a066-44b0-8192-f5a5bee5074b" {
+		t.Errorf("JobspringProjectID: got %q, want fe38c553-a066-44b0-8192-f5a5bee5074b", p.JobspringProjectID)
 	}
-	if p.Name != "Linux Kernel" {
-		t.Errorf("Name: got %q, want Linux Kernel", p.Name)
+	if p.Name != "Linux Kernel Mentorship" {
+		t.Errorf("Name: got %q, want Linux Kernel Mentorship", p.Name)
 	}
-	if p.Status != "published" {
-		t.Errorf("Status: got %q, want published", p.Status)
-	}
-	if p.MenteeGoalCents != 500000 {
-		t.Errorf("MenteeGoalCents: got %d, want 500000", p.MenteeGoalCents)
+	if p.Status != "Published" {
+		t.Errorf("Status: got %q, want Published", p.Status)
 	}
 	if len(p.Beneficiaries) != 1 {
 		t.Fatalf("Beneficiaries: got %d, want 1", len(p.Beneficiaries))
 	}
-	if p.Beneficiaries[0].Name != "Alice" {
-		t.Errorf("Beneficiaries[0].Name: got %q, want Alice", p.Beneficiaries[0].Name)
+	if p.Beneficiaries[0].Name != "Alice Mentee" {
+		t.Errorf("Beneficiaries[0].Name: got %q, want Alice Mentee", p.Beneficiaries[0].Name)
 	}
 	if p.Beneficiaries[0].Email != "alice@example.com" {
 		t.Errorf("Beneficiaries[0].Email: got %q, want alice@example.com", p.Beneficiaries[0].Email)

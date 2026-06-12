@@ -47,7 +47,7 @@ type mockRows struct {
 }
 
 func (r *mockRows) Columns() []string {
-	return []string{"jobspring_project_id", "name", "status", "mentee_goal_cents"}
+	return []string{"PROGRAM_ID", "PROGRAM_NAME", "PROGRAM_STATUS"}
 }
 func (r *mockRows) Close() error { return nil }
 func (r *mockRows) Next(dest []driver.Value) error {
@@ -64,7 +64,7 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 
 	mock := &mockSnowflakeDriver{
 		rows: [][]driver.Value{
-			{"proj-1", "Linux Kernel", "published", int64(500000)},
+			{"fe38c553-a066-44b0-8192-f5a5bee5074b", "Linux Kernel Mentorship", "Published"},
 		},
 	}
 	driverName := "snowflake_mock_" + t.Name()
@@ -96,17 +96,14 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 		t.Fatalf("got %d programs, want 1", len(programs))
 	}
 	p := programs[0]
-	if p.JobspringProjectID != "proj-1" {
-		t.Errorf("JobspringProjectID: got %q, want proj-1", p.JobspringProjectID)
+	if p.JobspringProjectID != "fe38c553-a066-44b0-8192-f5a5bee5074b" {
+		t.Errorf("JobspringProjectID: got %q, want fe38c553-a066-44b0-8192-f5a5bee5074b", p.JobspringProjectID)
 	}
-	if p.Name != "Linux Kernel" {
-		t.Errorf("Name: got %q, want Linux Kernel", p.Name)
+	if p.Name != "Linux Kernel Mentorship" {
+		t.Errorf("Name: got %q, want Linux Kernel Mentorship", p.Name)
 	}
-	if p.Status != "published" {
-		t.Errorf("Status: got %q, want published", p.Status)
-	}
-	if p.MenteeGoalCents != 500000 {
-		t.Errorf("MenteeGoalCents: got %d, want 500000", p.MenteeGoalCents)
+	if p.Status != "Published" {
+		t.Errorf("Status: got %q, want Published", p.Status)
 	}
 }
 

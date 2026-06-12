@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -53,9 +54,7 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 	result := syncResult{total: len(programs)}
 
 	for _, p := range programs {
-		if p.Status == "hide" {
-			p.Status = "hidden"
-		}
+		p.Status = strings.ToLower(p.Status)
 
 		initiativeID, err := s.repo.UpsertProgram(ctx, p)
 		if err != nil {

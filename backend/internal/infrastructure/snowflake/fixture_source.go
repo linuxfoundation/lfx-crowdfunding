@@ -17,7 +17,6 @@ type fixtureProgram struct {
 	JobspringProjectID string               `json:"jobspring_project_id"`
 	Name               string               `json:"name"`
 	Status             string               `json:"status"`
-	MenteeGoalCents    int64                `json:"mentee_goal_cents"`
 	Beneficiaries      []fixtureBeneficiary `json:"beneficiaries"`
 }
 
@@ -59,7 +58,6 @@ func (f *FixtureSource) FetchPrograms(_ context.Context) ([]models.MentorshipPro
 			JobspringProjectID: r.JobspringProjectID,
 			Name:               r.Name,
 			Status:             r.Status,
-			MenteeGoalCents:    r.MenteeGoalCents,
 			Beneficiaries:      beneficiaries,
 		}
 	}

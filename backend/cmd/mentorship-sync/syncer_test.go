@@ -84,26 +84,37 @@ func TestSyncer_Run_upsertsAllPrograms(t *testing.T) {
 	}
 }
 
-func TestSyncer_Run_normalisesHideStatus(t *testing.T) {
+func TestSyncer_Run_normalisesStatusToLowercase(t *testing.T) {
 	t.Parallel()
 
-	src := &mockMentorshipSource{
-		programs: []models.MentorshipProgram{
-			{JobspringProjectID: "js-1", Name: "Hidden", Status: "hide"},
-		},
-	}
-	repo := &mockMentorshipRepo{}
-
-	s := newSyncer(repo, src, discardLogger())
-	if _, err := s.Run(context.Background()); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"Published", "published"},
+		{"Pending", "pending"},
+		{"Hidden", "hidden"},
+		{"Rejected", "rejected"},
 	}
 
-	if len(repo.upsertedPrograms) != 1 {
-		t.Fatalf("expected 1 upsert, got %d", len(repo.upsertedPrograms))
-	}
-	if got := repo.upsertedPrograms[0].Status; got != "hidden" {
-		t.Errorf("status: got %q, want hidden", got)
+	for _, tc := range cases {
+		src := &mockMentorshipSource{
+			programs: []models.MentorshipProgram{
+				{JobspringProjectID: "js-1", Name: "Test", Status: tc.input},
+			},
+		}
+		repo := &mockMentorshipRepo{}
+
+		s := newSyncer(repo, src, discardLogger())
+		if _, err := s.Run(context.Background()); err != nil {
+			t.Fatalf("input %q: unexpected error: %v", tc.input, err)
+		}
+		if len(repo.upsertedPrograms) != 1 {
+			t.Fatalf("input %q: expected 1 upsert, got %d", tc.input, len(repo.upsertedPrograms))
+		}
+		if got := repo.upsertedPrograms[0].Status; got != tc.want {
+			t.Errorf("input %q: status got %q, want %q", tc.input, got, tc.want)
+		}
 	}
 }
 

@@ -7,10 +7,9 @@ package models
 // reads from Snowflake and writes into CF Postgres.
 // Field names mirror the ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS columns.
 type MentorshipProgram struct {
-	JobspringProjectID string // upsert key — matches initiatives.jobspring_project_id
-	Name               string
-	Status             string // Snowflake value; 'hide' is normalised → 'hidden' in syncer
-	MenteeGoalCents    int64  // mentee budget goal in cents
+	JobspringProjectID string // upsert key — PROGRAM_ID from Snowflake
+	Name               string // PROGRAM_NAME
+	Status             string // PROGRAM_STATUS; normalised to lowercase in syncer
 	Beneficiaries      []MentorshipBeneficiary
 }
 
