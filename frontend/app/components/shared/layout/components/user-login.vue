@@ -17,8 +17,10 @@ SPDX-License-Identifier: MIT
 
     <template #content>
       <div class="c-dropdown w-60">
-        <NuxtLink
-          :to="AppRoute.MyDonations"
+        <a
+          :href="`${selfServeUrl}/crowdfunding/donations`"
+          target="_blank"
+          rel="noopener noreferrer"
           class="c-dropdown__item"
         >
           <lfx-icon
@@ -27,9 +29,11 @@ SPDX-License-Identifier: MIT
             :size="16"
           />
           My donations
-        </NuxtLink>
-        <NuxtLink
-          :to="AppRoute.MyInitiatives"
+        </a>
+        <a
+          :href="`${selfServeUrl}/crowdfunding/initiatives`"
+          target="_blank"
+          rel="noopener noreferrer"
           class="c-dropdown__item"
         >
           <lfx-icon
@@ -38,7 +42,7 @@ SPDX-License-Identifier: MIT
             :size="16"
           />
           My initiatives
-        </NuxtLink>
+        </a>
         <div class="c-dropdown__separator" />
         <button
           class="c-dropdown__item w-full text-left"
@@ -71,10 +75,13 @@ import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxPopover from '~/components/uikit/popover/popover.vue';
-import { AppRoute } from '~/config/routes';
 import { useAuth } from '~/composables/useAuth';
 
 const { isAuthenticated, user, isLoading, login, logout } = useAuth();
+
+const {
+  public: { selfServeUrl },
+} = useRuntimeConfig();
 </script>
 
 <script lang="ts">
