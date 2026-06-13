@@ -2,49 +2,27 @@
 // SPDX-License-Identifier: MIT
 
 import { test, expect } from '../fixtures/auth';
+import { E2E_INITIATIVE_SLUG } from '../fixtures/seed';
 
 test.describe('One-time donation flow (authenticated)', () => {
-  test('donate button visible on published initiative with accept_funding=true', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/initiatives');
-    await authenticatedPage.waitForLoadState('networkidle');
-
-    const firstCard = authenticatedPage.locator('a[href^="/initiatives/"]').first();
-    if (await firstCard.count() === 0) {
-      test.skip();
-      return;
-    }
-    await firstCard.click();
+  test('donate button visible on published initiative with accept_funding=true', async ({
+    authenticatedPage,
+  }) => {
+    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`);
     await authenticatedPage.waitForLoadState('networkidle');
 
     const donateBtn = authenticatedPage
       .getByRole('button', { name: /donate/i })
       .or(authenticatedPage.getByRole('link', { name: /donate/i }));
 
-    if (await donateBtn.count() === 0) {
-      test.skip();
-      return;
-    }
     await expect(donateBtn.first()).toBeVisible();
   });
 
   test('donation form opens when donate button clicked', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/initiatives');
-    await authenticatedPage.waitForLoadState('networkidle');
-
-    const firstCard = authenticatedPage.locator('a[href^="/initiatives/"]').first();
-    if (await firstCard.count() === 0) {
-      test.skip();
-      return;
-    }
-    await firstCard.click();
+    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`);
     await authenticatedPage.waitForLoadState('networkidle');
 
     const donateBtn = authenticatedPage.getByRole('button', { name: /donate/i }).first();
-    if (await donateBtn.count() === 0) {
-      test.skip();
-      return;
-    }
-
     await donateBtn.click();
 
     const amountInput = authenticatedPage

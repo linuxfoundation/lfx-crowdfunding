@@ -2,28 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 import { test, expect } from '../fixtures/auth';
+import { E2E_INITIATIVE_SLUG } from '../fixtures/seed';
 
 test.describe('Subscription flow (authenticated)', () => {
-  test('subscription option visible on initiative that accepts funding', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/initiatives');
-    await authenticatedPage.waitForLoadState('networkidle');
-
-    const firstCard = authenticatedPage.locator('a[href^="/initiatives/"]').first();
-    if (await firstCard.count() === 0) {
-      test.skip();
-      return;
-    }
-    await firstCard.click();
+  test('subscription option visible on initiative that accepts funding', async ({
+    authenticatedPage,
+  }) => {
+    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`);
     await authenticatedPage.waitForLoadState('networkidle');
 
     const subscribeBtn = authenticatedPage
       .getByRole('button', { name: /subscribe|monthly|recurring/i })
       .or(authenticatedPage.getByRole('link', { name: /subscribe/i }));
 
-    if (await subscribeBtn.count() === 0) {
-      test.skip();
-      return;
-    }
     await expect(subscribeBtn.first()).toBeVisible();
   });
 
