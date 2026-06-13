@@ -67,7 +67,8 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		return nil, fmt.Errorf("get platform balance: %w", err)
 	}
 
-	// Collect IDs for enrichment, skipping empty strings that would fail uuid[] cast.
+	// Collect IDs for enrichment. Org IDs are UUIDs; individual IDs from Ledger
+	// are Auth0 subjects (legacy_user_id), not internal UUIDs.
 	orgIDs := make([]string, 0, len(raw.TopOrganizations))
 	for _, o := range raw.TopOrganizations {
 		if o.ID != "" {
@@ -86,7 +87,7 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich sponsor organizations: %w", err)
 	}
-	users, err := s.repo.GetUsersByIDs(ctx, userIDs)
+	users, err := s.repo.GetUsersByLegacyIDs(ctx, userIDs)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich sponsor users: %w", err)
@@ -193,7 +194,7 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich donor organizations: %w", err)
 	}
-	users, err := s.repo.GetUsersByIDs(ctx, userIDs)
+	users, err := s.repo.GetUsersByLegacyIDs(ctx, userIDs)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich donor users: %w", err)

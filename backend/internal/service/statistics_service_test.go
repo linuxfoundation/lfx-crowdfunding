@@ -59,6 +59,19 @@ func (r *testStatisticsRepo) GetUsersByIDs(_ context.Context, ids []string) (map
 	return result, nil
 }
 
+func (r *testStatisticsRepo) GetUsersByLegacyIDs(_ context.Context, ids []string) (map[string]models.User, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	result := make(map[string]models.User)
+	for _, id := range ids {
+		if u, ok := r.users[id]; ok {
+			result[id] = u
+		}
+	}
+	return result, nil
+}
+
 func (r *testStatisticsRepo) GetInitiativeNamesByIDs(_ context.Context, ids []string) (map[string]string, error) {
 	if r.err != nil {
 		return nil, r.err
