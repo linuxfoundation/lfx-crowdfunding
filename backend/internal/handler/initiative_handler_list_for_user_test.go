@@ -20,9 +20,9 @@ import (
 // stubInitiativeRepoForListForUser implements domain.InitiativeRepository for ListForUser tests.
 // It captures the filter passed to List so tests can assert that OwnerID was resolved correctly.
 type stubInitiativeRepoForListForUser struct {
-	initiatives  []*models.Initiative
-	meta         *models.PaginationMeta
-	err          error
+	initiatives    []*models.Initiative
+	meta           *models.PaginationMeta
+	err            error
 	capturedFilter models.InitiativeFilter
 }
 
@@ -58,6 +58,9 @@ func (r *stubInitiativeRepoForListForUser) Update(_ context.Context, _ *models.I
 }
 func (r *stubInitiativeRepoForListForUser) Delete(_ context.Context, _ string) error { return nil }
 func (r *stubInitiativeRepoForListForUser) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	return nil, nil
+}
+func (r *stubInitiativeRepoForListForUser) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
 func (r *stubInitiativeRepoForListForUser) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {

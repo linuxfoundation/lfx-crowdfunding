@@ -24,18 +24,18 @@ import (
 
 // initiativeRepo is a configurable InitiativeRepository stub.
 type initiativeRepo struct {
-	initiative     *models.Initiative
-	initiatives    []*models.Initiative
-	meta           *models.PaginationMeta
-	getErr         error
-	listErr        error
-	createErr      error
-	updateErr      error
-	deleteErr      error
-	lastUpdated    *models.Initiative
-	deletedID      string
-	ownerEmail     string
-	ownerEmailErr  error
+	initiative    *models.Initiative
+	initiatives   []*models.Initiative
+	meta          *models.PaginationMeta
+	getErr        error
+	listErr       error
+	createErr     error
+	updateErr     error
+	deleteErr     error
+	lastUpdated   *models.Initiative
+	deletedID     string
+	ownerEmail    string
+	ownerEmailErr error
 }
 
 func (r *initiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -91,6 +91,9 @@ func (r *initiativeRepo) Delete(_ context.Context, id string) error {
 }
 func (r *initiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 func (r *initiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	return nil, nil
+}
+func (r *initiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
 func (r *initiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {

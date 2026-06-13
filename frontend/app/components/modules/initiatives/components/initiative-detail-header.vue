@@ -133,14 +133,13 @@ SPDX-License-Identifier: MIT
           >
             <span>
               <lfx-button
-                label="Fund this initiative"
-                type="ghost"
+                label="Donate"
+                type="primary"
                 icon="hand-heart"
                 icon-position="left"
-                class="!text-accent-500"
                 button-style="pill"
                 :disabled="initiative.acceptFunding === false"
-                @click="handleFundInitiative()"
+                @click="handleDonate()"
               />
             </span>
           </lfx-tooltip>
@@ -208,7 +207,7 @@ function handleShare() {
   });
 }
 
-function handleFundInitiative() {
+function handleDonate() {
   if (!isAuthenticated.value) {
     login();
   } else {

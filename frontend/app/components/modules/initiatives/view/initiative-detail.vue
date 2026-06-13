@@ -125,7 +125,7 @@ const expenseRecords = computed<ExpenseRecord[]>(() =>
     id: t.id,
     date: formatShortDate(t.date),
     category: t.category ?? 'Other',
-    description: t.category ?? 'Other',
+    description: t.donorName ?? t.category ?? 'Other',
     amountCents: t.amountCents,
   })),
 );

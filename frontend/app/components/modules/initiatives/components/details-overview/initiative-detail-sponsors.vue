@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT
 
     <div class="flex flex-wrap gap-4">
       <div
-        v-for="sponsor in sponsors"
+        v-for="sponsor in displayedSponsors"
         :key="sponsor.name"
         class="flex flex-col items-center gap-1.5"
       >
@@ -26,13 +26,16 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { SponsorEntry } from '#shared/types/initiative-detail.types';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 
-defineProps<{
+const props = defineProps<{
   sponsors: SponsorEntry[];
   initiativeId: string;
 }>();
+
+const displayedSponsors = computed(() => props.sponsors.slice(0, 25));
 </script>
 
 <script lang="ts">
