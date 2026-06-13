@@ -205,10 +205,20 @@ func (c *reimbursementHTTPClient) m2mToken(ctx context.Context) (string, error) 
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
 		return "", fmt.Errorf("m2m: decode token response: %w", err)
 	}
-	// Cache with a 60-second safety buffer so we never hand a near-expired token
-	// to the downstream gateway.
+	if tr.AccessToken == "" {
+		return "", fmt.Errorf("m2m: auth0 returned empty access_token")
+	}
+	// Cache with a safety buffer so we never hand a near-expired token to the
+	// downstream gateway. Clamp to half the TTL so short-lived tokens (≤120s)
+	// don't produce a negative or zero duration.
+	const bufferSec = 60
+	ttl := time.Duration(tr.ExpiresIn) * time.Second
+	buffer := time.Duration(bufferSec) * time.Second
+	if ttl <= 2*buffer {
+		buffer = ttl / 2
+	}
 	c.tokenVal = tr.AccessToken
-	c.tokenExpiry = time.Now().Add(time.Duration(tr.ExpiresIn)*time.Second - 60*time.Second)
+	c.tokenExpiry = time.Now().Add(ttl - buffer)
 	return c.tokenVal, nil
 }
 

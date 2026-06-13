@@ -175,3 +175,53 @@ func TestProcessExpenseAction_M2M_TokenFetchFails_mapsToUpstreamUnavailable(t *t
 		t.Errorf("expected ErrUpstreamUnavailable, got: %v", err)
 	}
 }
+
+func TestProcessExpenseAction_M2M_EmptyAccessToken_errors(t *testing.T) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token":"","expires_in":86400}`))
+	}))
+	defer tokenSrv.Close()
+
+	rsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer rsSrv.Close()
+
+	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	if err == nil {
+		t.Fatal("expected error when access_token is empty")
+	}
+	if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("expected ErrUpstreamUnavailable, got: %v", err)
+	}
+}
+
+func TestProcessExpenseAction_M2M_ShortTTL_doesNotCacheExpired(t *testing.T) {
+	// expires_in=1 — buffer must be clamped (ttl/2 = 500ms), expiry stays in the future.
+	fetchCount := 0
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fetchCount++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token":"short-tok","expires_in":1}`))
+	}))
+	defer tokenSrv.Close()
+
+	rsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer rsSrv.Close()
+
+	c := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL)
+	// Two back-to-back calls — token should be cached (expiry is in the future).
+	for i := range 2 {
+		if err := c.ProcessExpenseAction(context.Background(), "approve", "R-001"); err != nil {
+			t.Fatalf("call %d: unexpected error: %v", i, err)
+		}
+	}
+	if fetchCount != 1 {
+		t.Errorf("expected 1 token fetch for short TTL, got %d (expiry was immediately in the past)", fetchCount)
+	}
+}
