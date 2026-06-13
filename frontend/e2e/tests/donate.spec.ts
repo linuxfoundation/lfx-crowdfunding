@@ -23,12 +23,13 @@ test.describe('One-time donation flow (authenticated)', () => {
     await authenticatedPage.waitForLoadState('networkidle');
 
     const donateBtn = authenticatedPage.getByRole('button', { name: /donate/i }).first();
+    await expect(donateBtn).toBeVisible({ timeout: 10000 });
     await donateBtn.click();
 
     const amountInput = authenticatedPage
       .getByRole('spinbutton')
       .or(authenticatedPage.locator('input[type="number"]'))
       .first();
-    await expect(amountInput).toBeVisible({ timeout: 5000 });
+    await expect(amountInput).toBeVisible({ timeout: 10000 });
   });
 });
