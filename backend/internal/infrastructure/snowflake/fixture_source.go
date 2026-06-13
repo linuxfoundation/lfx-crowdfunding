@@ -50,9 +50,14 @@ func (f *FixtureSource) FetchPrograms(_ context.Context) ([]models.MentorshipPro
 
 	programs := make([]models.MentorshipProgram, len(raw))
 	for i, r := range raw {
-		beneficiaries := make([]models.MentorshipBeneficiary, len(r.Beneficiaries))
-		for j, b := range r.Beneficiaries {
-			beneficiaries[j] = models.MentorshipBeneficiary{Name: b.Name, Email: b.Email}
+		// Preserve nil when the JSON field was absent — nil means "source did not
+		// provide beneficiary data" and causes the syncer to skip UpsertBeneficiaries.
+		var beneficiaries []models.MentorshipBeneficiary
+		if r.Beneficiaries != nil {
+			beneficiaries = make([]models.MentorshipBeneficiary, len(r.Beneficiaries))
+			for j, b := range r.Beneficiaries {
+				beneficiaries[j] = models.MentorshipBeneficiary{Name: b.Name, Email: b.Email}
+			}
 		}
 		programs[i] = models.MentorshipProgram{
 			JobspringProjectID: r.JobspringProjectID,

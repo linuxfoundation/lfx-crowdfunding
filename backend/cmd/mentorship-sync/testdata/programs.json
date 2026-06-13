@@ -1,23 +1,23 @@
 [
   {
     "jobspring_project_id": "fe38c553-a066-44b0-8192-f5a5bee5074b",
-    "name": "CNCF - OpenKruise: Lightweight and Continuous Load Testing for Agents Using Kwok (2026 Term 2)",
+    "name": "CNCF - Example Program (Hidden)",
     "status": "Hidden",
     "beneficiaries": []
   },
   {
     "jobspring_project_id": "60410ceb-37ca-4ecf-9233-f907d1adf439",
-    "name": "Open Mainframe Project - COBOL Programming Course",
+    "name": "Open Mainframe Project - Example Program (Published)",
     "status": "Published",
     "beneficiaries": [
-      {"name": "Rituraj Mahato", "email": "mahatorituraj150@gmail.com"},
-      {"name": "Ali Mohamed", "email": "atm17871@gmail.com"}
+      {"name": "Alice Mentee", "email": "alice.mentee@example.com"},
+      {"name": "Bob Mentee", "email": "bob.mentee@example.com"}
     ]
   },
   {
     "jobspring_project_id": "0d6fd362-04a1-4086-a6e7-ec753ed4a60b",
-    "name": "Meshery",
-    "status": "Published",
+    "name": "Example Program (legacy hide status)",
+    "status": "hide",
     "beneficiaries": []
   }
 ]

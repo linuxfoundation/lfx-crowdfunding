@@ -74,6 +74,28 @@ func TestFixtureSource_FetchPrograms_readsAllFields(t *testing.T) {
 	}
 }
 
+func TestFixtureSource_FetchPrograms_absentFieldProducesNilBeneficiaries(t *testing.T) {
+	t.Parallel()
+
+	// When "beneficiaries" key is absent from JSON, Beneficiaries must be nil
+	// (not a non-nil empty slice) so the syncer skips UpsertBeneficiaries.
+	fixture := `[{"jobspring_project_id": "abc", "name": "Test", "status": "Published"}]`
+
+	path := filepath.Join(t.TempDir(), "programs.json")
+	if err := os.WriteFile(path, []byte(fixture), 0600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	src := snowflake.NewFixtureSource(path)
+	programs, err := src.FetchPrograms(context.Background())
+	if err != nil {
+		t.Fatalf("FetchPrograms: %v", err)
+	}
+	if programs[0].Beneficiaries != nil {
+		t.Errorf("expected nil Beneficiaries when field absent, got %v", programs[0].Beneficiaries)
+	}
+}
+
 func TestFixtureSource_FetchPrograms_missingFileReturnsError(t *testing.T) {
 	t.Parallel()
 

@@ -55,6 +55,10 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 
 	for _, p := range programs {
 		p.Status = strings.ToLower(p.Status)
+		// Jobspring legacy value — normalise to match CF Postgres expected value.
+		if p.Status == "hide" {
+			p.Status = "hidden"
+		}
 
 		initiativeID, err := s.repo.UpsertProgram(ctx, p)
 		if err != nil {

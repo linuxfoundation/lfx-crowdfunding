@@ -95,6 +95,7 @@ func TestSyncer_Run_normalisesStatusToLowercase(t *testing.T) {
 		{"Pending", "pending"},
 		{"Hidden", "hidden"},
 		{"Rejected", "rejected"},
+		{"hide", "hidden"}, // Jobspring legacy value
 	}
 
 	for _, tc := range cases {
