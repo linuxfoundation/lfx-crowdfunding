@@ -131,6 +131,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, ledgerClient, donationRepo, subscriptionRepo, emailSvc, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 	uploadH := handler.NewUploadHandler(s3Client)
+	expenseH := handler.NewExpenseHandler(reimbursementClient)
 
 	// UserInfo client — fetches full profile from Auth0 on login sync.
 	// In bypass mode (local dev) there is no real Auth0, so use a mock fetcher.
@@ -231,6 +232,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// These endpoints are for service-to-service callers, not end users.
 	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
 		Get("/v1/initiatives/{slug}/owner-info", initiativeH.GetOwnerInfo)
+
+	// Expense action — proxies action to the Reimbursement Service.
+	// Requires a valid bearer token (any scope); called by the CF frontend.
+	r.With(jwtAuth.Middleware).
+		Post("/v1/expense/{action}/{reportId}", expenseH.ProcessAction)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{
