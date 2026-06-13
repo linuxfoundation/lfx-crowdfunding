@@ -25,7 +25,7 @@ new CF — spot-check initiatives, donation amounts, subscription statuses, and 
 | F-M1 | Enable CF Stripe webhook in prod Dashboard (already registered at `https://crowdfunding-api.linuxfoundation.org/v1/stripe/webhook`, secret already in SM — just needs to be enabled) | 15 min | ❌ Pending |
 | F-M2 | Stripe Dashboard: confirm subscription retry → "Cancel the subscription" (not "Mark as unpaid") under Settings → Billing → Subscriptions and emails | 15 min | ❓ Unverified |
 | F-M3 | Add `mentorship-sync-secrets` to AWS Secrets Manager prod (`snowflake-account`, `snowflake-user`, `snowflake-warehouse`, `snowflake-role`, `snowflake-private-key`) and create the K8s Secret in prod namespace from SM. Then PR to `lfx-v2-argocd`: add `lfx-crowdfunding-mentorship-sync` to `apps/prod/lfx-v2-applications.yaml` (values file already exists at `values/prod/lfx-crowdfunding-mentorship-sync.yaml`) | 1 h | ❌ Pending |
-| F-M4 | Confirm prod pods are running (`kubectl get pods -n crowdfunding-backend` and `-n crowdfunding-frontend`) | 10 min | ❓ Self-verify |
+| F-M4 | Confirm prod pods are running (`kubectl get pods -n crowdfunding-backend` and `kubectl get pods -n crowdfunding-frontend`) | 10 min | ❓ Self-verify |
 | F-M5 | Write migration validation script `backend/db/scripts/validate_migration.py` — scans each DynamoDB source table, counts items, queries Postgres row counts, prints comparison table, exits non-zero if counts are off. Reuses existing `boto3` + `psycopg2` setup. Expected counts in [`backend/docs/rewrite/05-migration-plan.md`](../backend/docs/rewrite/05-migration-plan.md). | 1 h | ❌ Pending |
 | F-M6 | Add more e2e tests ([LFXV2-2073](https://linuxfoundation.atlassian.net/browse/LFXV2-2073)) — priority: initiative creation flow, search/filter, logged-out redirects, error states | 2 h | ❌ Pending |
 
@@ -65,7 +65,7 @@ Send one Slack message now so they can plan their Monday. Ask for:
 | GO9 | Ask DevOps to set URL forward from old CF to `https://crowdfunding.linuxfoundation.org` | Robert/Alan | 10 min |
 | GO10 | Flip LaunchDarkly flag `crowdfunding-enabled` → ON in LFX Self Serve prod. This activates the `/crowdfunding` route subtree and "My Initiatives" / "My Donations" nav items in SS. No code change needed. | Michal | 5 min |
 | GO11 | Run manual smoke test (see below) | Efren + Michal | 45 min |
-| GO12 | Watch logs for 1 hour: `kubectl logs -n crowdfunding-backend -l app=initiatives-api --since=1h -f` + Datadog | Michal | 1 h |
+| GO12 | Watch logs for 1 hour: `kubectl logs -n crowdfunding-backend -l app.kubernetes.io/name=lfx-crowdfunding-backend --since=1h -f` + Datadog | Michal | 1 h |
 | GO13 | **Rollback trigger:** if critical errors — ask DevOps to remove forward and restore old CF; flip `crowdfunding-enabled` back OFF in LaunchDarkly. Old DynamoDB untouched. | Robert/Alan + Michal | 5 min |
 
 ---
