@@ -1,4 +1,0 @@
-[MESSAGES CONTROL]
-# boto3 and psycopg2 are not installed in the linter environment; disable
-# import-error to avoid false positives on the migration scripts.
-disable=E0401

@@ -218,7 +218,7 @@ def _strip_provider_prefix(uid: str) -> str:
     """
     for prefix in ("auth0|", "github|"):
         if uid.startswith(prefix):
-            return uid[len(prefix) :]
+            return uid[len(prefix):]
     return uid
 
 
@@ -350,18 +350,7 @@ def migrate_users(cur, users: list, placeholder_ids: set) -> tuple:
             pg_uuid = _uuid5("user", uid)
             known.add(uid)
             user_id_to_uuid[uid] = pg_uuid
-            rows.append(
-                (
-                    pg_uuid,
-                    uid,
-                    _strip_provider_prefix(uid),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            )
+            rows.append((pg_uuid, uid, _strip_provider_prefix(uid), None, None, None, None, None))
 
     psycopg2.extras.execute_batch(cur, sql, rows, page_size=500)
     log.info("  → %d user rows upserted", len(rows))
@@ -373,9 +362,7 @@ def migrate_users(cur, users: list, placeholder_ids: set) -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def migrate_organizations(
-    cur, orgs: list, known_users: set, user_id_to_uuid: dict
-) -> set:
+def migrate_organizations(cur, orgs: list, known_users: set, user_id_to_uuid: dict) -> set:
     """
     Upsert organizations from lff-prod-organizations.
     Returns the set of postgres organization UUIDs inserted (for FK resolution).
@@ -438,9 +425,7 @@ _PROJECT_GOAL_CATEGORIES = [
 # ---------------------------------------------------------------------------
 
 
-def migrate_initiatives(
-    cur, entities: list, projects: list, known_users: set, user_id_to_uuid: dict
-) -> set:
+def migrate_initiatives(cur, entities: list, projects: list, known_users: set, user_id_to_uuid: dict) -> set:
     """
     Merge lff-prod-entities and lff-prod-projects into the initiatives table
     and all normalised child tables.
@@ -916,16 +901,14 @@ def migrate_initiatives(
     # ── Phase 3: Classify mentorship projects ────────────────────────────
     # Projects that have a 'mentee' goal with amount_in_cents > 0 are
     # mentorship programs; update initiative_type accordingly.
-    cur.execute(
-        """
+    cur.execute("""
         UPDATE initiatives i
         SET initiative_type = 'mentorship'
         FROM initiative_goals g
         WHERE g.initiative_id = i.id
           AND g.name = 'mentee'
           AND g.amount_in_cents > 0
-    """
-    )
+    """)
     log.info("    mentorship reclassification : %d row(s) updated", cur.rowcount)
 
     if skipped:
@@ -1551,9 +1534,7 @@ def main():
             conn.commit()
 
             # 2. organization — FK → user
-            known_org_ids = migrate_organizations(
-                cur, orgs, known_users, user_id_to_uuid
-            )
+            known_org_ids = migrate_organizations(cur, orgs, known_users, user_id_to_uuid)
             conn.commit()
 
             # 3. initiatives — FK → user  (merged entities + projects)

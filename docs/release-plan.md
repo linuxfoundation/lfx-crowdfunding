@@ -9,10 +9,7 @@
 
 **New CF:** `https://crowdfunding.linuxfoundation.org` (K8s + Postgres)
 
-**Weekend testing:** Michal, Lewis, and Efren test the new CF prod, file bugs under
-[LFXV2-2145](https://linuxfoundation.atlassian.net/browse/LFXV2-2145), and fix release
-blockers before Monday. All three also do a side-by-side data comparison between old CF and
-new CF — spot-check initiatives, donation amounts, subscription statuses, and mentorship data.
+**Weekend testing:** Michal, Lewis, and Efren test the new CF prod, file bugs under [LFXV2-2145](https://linuxfoundation.atlassian.net/browse/LFXV2-2145), and fix release blockers before Monday. All three also do a side-by-side data comparison between old CF (`https://crowdfunding.lfx.linuxfoundation.org`) and new CF — spot-check initiatives, donation amounts, subscription statuses, and mentorship data to confirm migration correctness.
 
 ---
 
