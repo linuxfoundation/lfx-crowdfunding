@@ -17,11 +17,9 @@ test.describe('Initiative CRUD (authenticated)', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
-  test('non-owner cannot see edit controls on an initiative', async ({ authenticatedPage }) => {
-    // e2e-test-user owns the seeded initiative, so navigate to one they do NOT own.
-    // The initiatives list may have other entries (legacy data); if empty, this
-    // test is vacuously safe — the owner-only edit button won't appear on their own
-    // initiative either (edit controls appear on the owner's dashboard, not the detail page).
+  test('edit controls are not shown on initiative detail page', async ({ authenticatedPage }) => {
+    // Edit controls (if any) live in the owner dashboard, not the public detail page.
+    // Verify no edit button is rendered on the detail view regardless of ownership.
     await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`);
     await authenticatedPage.waitForLoadState('networkidle');
 

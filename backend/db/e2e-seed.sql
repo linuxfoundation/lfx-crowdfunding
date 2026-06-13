@@ -38,4 +38,7 @@ SELECT
   'prod_e2e_placeholder'
 FROM users u
 WHERE u.username = 'e2e-test-user'
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  status        = EXCLUDED.status,
+  accept_funding = EXCLUDED.accept_funding,
+  description   = EXCLUDED.description;
