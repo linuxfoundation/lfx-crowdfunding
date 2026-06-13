@@ -29,6 +29,9 @@ func (r *statsRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[st
 func (r *statsRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return map[string]models.User{}, nil
 }
+func (r *statsRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+	return map[string]models.User{}, nil
+}
 func (r *statsRepo) GetInitiativeNamesByIDs(_ context.Context, _ []string) (map[string]string, error) {
 	return map[string]string{}, nil
 }
