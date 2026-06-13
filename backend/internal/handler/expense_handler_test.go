@@ -86,6 +86,22 @@ func TestExpenseHandler_ProcessAction_RejectAction(t *testing.T) {
 	}
 }
 
+func TestExpenseHandler_ProcessAction_InvalidAction(t *testing.T) {
+	stub := &stubRSClient{}
+	h := NewExpenseHandler(stub)
+	w := httptest.NewRecorder()
+
+	expenseRouter(h).ServeHTTP(w, expenseReq("delete", "R-001"))
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+	// Stub must not have been called.
+	if stub.capturedAction != "" {
+		t.Errorf("expected no RS call, got action=%q", stub.capturedAction)
+	}
+}
+
 func TestExpenseHandler_ProcessAction_ReportNotFound(t *testing.T) {
 	stub := &stubRSClient{err: domain.ErrExpenseReportNotFound}
 	h := NewExpenseHandler(stub)

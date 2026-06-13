@@ -4,6 +4,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -34,6 +35,11 @@ func (h *ExpenseHandler) ProcessAction(w http.ResponseWriter, r *http.Request) {
 
 	action := chi.URLParam(r, "action")
 	reportID := chi.URLParam(r, "reportId")
+
+	if action != "approve" && action != "reject" {
+		Error(w, fmt.Errorf("%w: expense action %q is not supported; use \"approve\" or \"reject\"", domain.ErrInvalidInput, action))
+		return
+	}
 
 	if err := h.rsClient.ProcessExpenseAction(r.Context(), action, reportID); err != nil {
 		Error(w, err)

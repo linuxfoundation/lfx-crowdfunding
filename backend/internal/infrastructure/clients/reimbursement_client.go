@@ -298,7 +298,7 @@ func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, acti
 	if err != nil {
 		var httpErr *rsHTTPError
 		if errors.As(err, &httpErr) {
-			return fmt.Errorf("reimbursement: expense action %q on %s: upstream returned %d", action, reportID, httpErr.code)
+			return fmt.Errorf("%w: expense action %q on %s returned %d", domain.ErrUpstreamUnavailable, action, reportID, httpErr.code)
 		}
 		return err
 	}

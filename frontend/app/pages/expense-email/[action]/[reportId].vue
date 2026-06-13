@@ -42,7 +42,7 @@ onMounted(async () => {
   }
 
   try {
-    await $fetch(`/api/expense/${encodeURIComponent(action)}/${encodeURIComponent(reportId)}`, {
+    await $fetch(`/api/expense-email/${encodeURIComponent(action)}/${encodeURIComponent(reportId)}`, {
       method: 'POST',
     });
     showToast(`The expense report has been ${label.past}.`, ToastTypesEnum.positive);
