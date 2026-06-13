@@ -300,7 +300,8 @@ func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, acti
 		if errors.As(err, &httpErr) {
 			return fmt.Errorf("%w: expense action %q on %s returned %d", domain.ErrUpstreamUnavailable, action, reportID, httpErr.code)
 		}
-		return err
+		// Network / request-build failures are also upstream outages.
+		return fmt.Errorf("%w: expense action %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
 	}
 	return nil
 }

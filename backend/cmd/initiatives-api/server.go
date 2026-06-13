@@ -234,8 +234,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		Get("/v1/initiatives/{slug}/owner-info", initiativeH.GetOwnerInfo)
 
 	// Expense action — proxies action to the Reimbursement Service.
-	// Requires a valid bearer token with access:me scope; called by the CF frontend.
-	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).
+	// Requires a valid bearer token (any scope); no specific scope is enforced
+	// because the caller arrives via an email link and may hold a minimal token.
+	r.With(jwtAuth.Middleware).
 		Post("/v1/expense/{action}/{reportId}", expenseH.ProcessAction)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
