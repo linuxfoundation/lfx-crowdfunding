@@ -104,3 +104,23 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Extract metadata (mentorship-sync)
+        id: meta-mentorship-sync
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/linuxfoundation/lfx-crowdfunding-mentorship-sync
+          tags: |
+            type=raw,value=development,enable={{is_default_branch}}
+            type=ref,event=pr
+
+      - name: Build and push (mentorship-sync)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/
+          file: backend/Dockerfile.mentorship-sync
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-mentorship-sync.outputs.tags }}
+          labels: ${{ steps.meta-mentorship-sync.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
