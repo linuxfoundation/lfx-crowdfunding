@@ -34,15 +34,23 @@ func NewMentorshipRepository(pool *pgxpool.Pool) *MentorshipRepositoryImpl {
 // filled in by the normal user-sync flow.
 func (r *MentorshipRepositoryImpl) UpsertProgram(ctx context.Context, p models.MentorshipProgram) (string, error) {
 	// Resolve owner: upsert a stub user row by LF username and get back the UUID.
-	const upsertOwner = `
+	// Insert a stub user row if one doesn't exist yet, then fetch the UUID.
+	// DO NOTHING avoids a no-op UPDATE that would fire the set_updated_on trigger
+	// on every sync run. The separate SELECT always returns the row regardless of
+	// whether the INSERT or the conflict path was taken.
+	const insertOwner = `
 INSERT INTO users (username, created_on, updated_on)
 VALUES ($1, NOW(), NOW())
-ON CONFLICT (username) DO UPDATE SET updated_on = users.updated_on
-RETURNING id
+ON CONFLICT (username) DO NOTHING
 `
+	const selectOwner = `SELECT id FROM users WHERE username = $1`
+
+	if _, err := r.pool.Exec(ctx, insertOwner, p.OwnerLFUsername); err != nil {
+		return "", fmt.Errorf("insert owner user %q: %w", p.OwnerLFUsername, err)
+	}
 	var ownerID string
-	if err := r.pool.QueryRow(ctx, upsertOwner, p.OwnerLFUsername).Scan(&ownerID); err != nil {
-		return "", fmt.Errorf("upsert owner user %q: %w", p.OwnerLFUsername, err)
+	if err := r.pool.QueryRow(ctx, selectOwner, p.OwnerLFUsername).Scan(&ownerID); err != nil {
+		return "", fmt.Errorf("get owner user %q: %w", p.OwnerLFUsername, err)
 	}
 
 	const q = `
