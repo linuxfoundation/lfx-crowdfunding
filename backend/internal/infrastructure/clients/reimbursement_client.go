@@ -92,11 +92,11 @@ type ReimbursementConfig struct {
 	Timeout time.Duration
 
 	// --- Optional Auth0 client-credentials (M2M) config -------------------
-	// Some RS routes (e.g. /expense/*) are behind an API gateway that requires
-	// a Bearer token in addition to X-API-KEY. When all four fields below are
-	// set, the client fetches a cached client_credentials token from Auth0 and
-	// attaches it as Authorization: Bearer on those calls.
-	// Leave empty to skip M2M auth (correct for most /reimbursement/* calls).
+	// The API gateway in front of the RS may require a Bearer token on some or
+	// all routes. When all four fields below are set, the client fetches a
+	// cached client_credentials token from Auth0 and attaches it as
+	// Authorization: Bearer on every RS call alongside X-API-KEY.
+	// Leave empty only if the gateway is configured to accept X-API-KEY alone.
 
 	// Auth0TokenURL is the token endpoint, e.g.
 	// https://linuxfoundation-dev.auth0.com/oauth/token
@@ -132,18 +132,16 @@ func NewReimbursementClient(cfg ReimbursementConfig) ReimbursementClient {
 	}
 }
 
-// authHeaders returns the X-API-KEY header required on every RS API call.
-// The Reimbursement Service validates requests via a static pre-shared key only
-// (see checkAuthFromHeader in the service's handlers.go).
+// authHeaders returns the base X-API-KEY header. Used internally by gatewayHeaders.
 func (c *reimbursementHTTPClient) authHeaders() map[string]string {
 	return map[string]string{
 		"X-API-KEY": c.cfg.APIKey,
 	}
 }
 
-// expenseAuthHeaders returns auth headers for /expense/* calls — X-API-KEY
-// plus a Bearer token when M2M config is present.
-func (c *reimbursementHTTPClient) expenseAuthHeaders(ctx context.Context) (map[string]string, error) {
+// gatewayHeaders returns auth headers for all RS API calls — X-API-KEY
+// plus a cached Auth0 Bearer token when M2M config is present.
+func (c *reimbursementHTTPClient) gatewayHeaders(ctx context.Context) (map[string]string, error) {
 	h := c.authHeaders()
 	tok, err := c.m2mToken(ctx)
 	if err != nil {
@@ -237,7 +235,10 @@ func (c *reimbursementHTTPClient) SyncPolicy(ctx context.Context, initiative *mo
 
 	update, create := c.buildPolicyPayload(initiative, ownerUser)
 
-	headers := c.authHeaders()
+	headers, err := c.gatewayHeaders(ctx)
+	if err != nil {
+		return fmt.Errorf("reimbursement: fetch auth headers: %w", err)
+	}
 	url := c.rsURL(initiative.ID)
 
 	// Attempt PATCH (update existing policy).
@@ -374,9 +375,8 @@ func categoryName(name string) string {
 
 // ProcessExpenseAction submits an action (e.g. "approve", "reject") for the
 // given expense report via POST /expense/{action}/{reportId} on the
-// Reimbursement Service. Authenticated with X-API-KEY only.
-// NOTE: REIMBURSEMENTS_API_URL must point directly at the RS (bypassing any
-// API gateway that enforces a separate Bearer audience on this route).
+// Reimbursement Service. Authenticated with X-API-KEY and a cached Auth0
+// client_credentials Bearer token (required by the API gateway).
 // A 404 response is translated to domain.ErrExpenseReportNotFound.
 func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID string) error {
 	ctx, span := reimbursementTracer.Start(ctx, "reimbursement.ProcessExpenseAction")
@@ -389,9 +389,9 @@ func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, acti
 	endpoint := strings.TrimRight(c.cfg.APIURL, "/") +
 		"/expense/" + url.PathEscape(action) + "/" + url.PathEscape(reportID)
 
-	headers, err := c.expenseAuthHeaders(ctx)
+	headers, err := c.gatewayHeaders(ctx)
 	if err != nil {
-		return fmt.Errorf("%w: fetch m2m token for %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
+		return fmt.Errorf("%w: fetch auth headers for %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
 	}
 
 	err = c.httpClient.PostJSON(ctx, endpoint, headers, struct{}{}, nil, func(r *http.Response) error {
