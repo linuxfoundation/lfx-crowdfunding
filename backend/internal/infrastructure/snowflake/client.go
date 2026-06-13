@@ -20,7 +20,8 @@ const fetchProgramsQuery = `
 SELECT
 	p.PROGRAM_ID,
 	p.PROGRAM_NAME,
-	p.PROGRAM_STATUS
+	p.PROGRAM_STATUS,
+	p.OWNER_LF_USERNAME
 FROM ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS p
 WHERE p.PROGRAM_ID IS NOT NULL
 `
@@ -116,6 +117,7 @@ func (c *Client) FetchPrograms(ctx context.Context) ([]models.MentorshipProgram,
 			&p.JobspringProjectID,
 			&p.Name,
 			&p.Status,
+			&p.OwnerLFUsername,
 		); err != nil {
 			return nil, fmt.Errorf("scan mentorship program row: %w", err)
 		}

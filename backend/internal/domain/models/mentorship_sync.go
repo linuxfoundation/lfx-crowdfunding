@@ -10,6 +10,7 @@ type MentorshipProgram struct {
 	JobspringProjectID string // upsert key — PROGRAM_ID from Snowflake
 	Name               string // PROGRAM_NAME
 	Status             string // PROGRAM_STATUS; normalised to lowercase in syncer
+	OwnerLFUsername    string // OWNER_LF_USERNAME — LF SSO username of the program owner
 	// Beneficiaries is nil when the source did not provide beneficiary data
 	// (e.g. the Snowflake query does not yet fetch SELECTED_MENTEES).
 	// A nil slice means "do not touch beneficiaries"; an empty non-nil slice

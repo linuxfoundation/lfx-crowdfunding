@@ -20,6 +20,7 @@ func TestFixtureSource_FetchPrograms_readsAllFields(t *testing.T) {
 			"jobspring_project_id": "fe38c553-a066-44b0-8192-f5a5bee5074b",
 			"name": "Linux Kernel Mentorship",
 			"status": "Published",
+			"owner_lf_username": "cncf-admin",
 			"beneficiaries": [
 				{"name": "Alice Mentee", "email": "alice@example.com"}
 			]
@@ -28,12 +29,14 @@ func TestFixtureSource_FetchPrograms_readsAllFields(t *testing.T) {
 			"jobspring_project_id": "60410ceb-37ca-4ecf-9233-f907d1adf439",
 			"name": "COBOL Programming Course",
 			"status": "Published",
+			"owner_lf_username": "omp-admin",
 			"beneficiaries": []
 		},
 		{
 			"jobspring_project_id": "92df3acf-9c1e-4a27-b9a4-cb5ed4293435",
 			"name": "Hidden Program",
 			"status": "Hidden",
+			"owner_lf_username": "omp-admin",
 			"beneficiaries": []
 		}
 	]`
@@ -71,6 +74,9 @@ func TestFixtureSource_FetchPrograms_readsAllFields(t *testing.T) {
 	}
 	if p.Beneficiaries[0].Email != "alice@example.com" {
 		t.Errorf("Beneficiaries[0].Email: got %q, want alice@example.com", p.Beneficiaries[0].Email)
+	}
+	if p.OwnerLFUsername != "cncf-admin" {
+		t.Errorf("OwnerLFUsername: got %q, want cncf-admin", p.OwnerLFUsername)
 	}
 }
 

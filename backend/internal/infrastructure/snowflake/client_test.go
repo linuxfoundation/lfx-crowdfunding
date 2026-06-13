@@ -47,7 +47,7 @@ type mockRows struct {
 }
 
 func (r *mockRows) Columns() []string {
-	return []string{"PROGRAM_ID", "PROGRAM_NAME", "PROGRAM_STATUS"}
+	return []string{"PROGRAM_ID", "PROGRAM_NAME", "PROGRAM_STATUS", "OWNER_LF_USERNAME"}
 }
 func (r *mockRows) Close() error { return nil }
 func (r *mockRows) Next(dest []driver.Value) error {
@@ -64,7 +64,7 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 
 	mock := &mockSnowflakeDriver{
 		rows: [][]driver.Value{
-			{"fe38c553-a066-44b0-8192-f5a5bee5074b", "Linux Kernel Mentorship", "Published"},
+			{"fe38c553-a066-44b0-8192-f5a5bee5074b", "Linux Kernel Mentorship", "Published", "cncf-admin"},
 		},
 	}
 	driverName := "snowflake_mock_" + t.Name()
@@ -104,6 +104,9 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 	}
 	if p.Status != "Published" {
 		t.Errorf("Status: got %q, want Published", p.Status)
+	}
+	if p.OwnerLFUsername != "cncf-admin" {
+		t.Errorf("OwnerLFUsername: got %q, want cncf-admin", p.OwnerLFUsername)
 	}
 }
 

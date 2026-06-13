@@ -25,12 +25,30 @@ func NewMentorshipRepository(pool *pgxpool.Pool) *MentorshipRepositoryImpl {
 
 // UpsertProgram inserts or updates the mentorship initiative row identified by
 // jobspring_project_id. Returns the initiative UUID.
+//
+// The program owner is resolved by upserting a minimal users row keyed on
+// OwnerLFUsername — this guarantees owner_id is satisfied without requiring
+// the user to have logged into CF first. Any additional profile fields will be
+// filled in by the normal user-sync flow.
 func (r *MentorshipRepositoryImpl) UpsertProgram(ctx context.Context, p models.MentorshipProgram) (string, error) {
+	// Resolve owner: upsert a stub user row by LF username and get back the UUID.
+	const upsertOwner = `
+INSERT INTO users (username, created_on, updated_on)
+VALUES ($1, NOW(), NOW())
+ON CONFLICT (username) DO UPDATE SET updated_on = users.updated_on
+RETURNING id
+`
+	var ownerID string
+	if err := r.pool.QueryRow(ctx, upsertOwner, p.OwnerLFUsername).Scan(&ownerID); err != nil {
+		return "", fmt.Errorf("upsert owner user %q: %w", p.OwnerLFUsername, err)
+	}
+
 	const q = `
 INSERT INTO initiatives (
 	id,
 	initiative_type,
 	jobspring_project_id,
+	owner_id,
 	name,
 	status,
 	created_on,
@@ -41,18 +59,19 @@ INSERT INTO initiatives (
 	$1,
 	$2,
 	$3,
+	$4,
 	NOW(),
 	NOW()
 )
 ON CONFLICT (jobspring_project_id) DO UPDATE SET
+	owner_id   = EXCLUDED.owner_id,
 	name       = EXCLUDED.name,
 	status     = EXCLUDED.status,
 	updated_on = NOW()
 RETURNING id
 `
 	var id string
-	err := r.pool.QueryRow(ctx, q, p.JobspringProjectID, p.Name, p.Status).Scan(&id)
-	if err != nil {
+	if err := r.pool.QueryRow(ctx, q, p.JobspringProjectID, ownerID, p.Name, p.Status).Scan(&id); err != nil {
 		return "", fmt.Errorf("upsert mentorship program %q: %w", p.JobspringProjectID, err)
 	}
 	return id, nil
