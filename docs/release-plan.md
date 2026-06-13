@@ -30,13 +30,9 @@
 |---|---|---|---|
 | F-E1 | Create `/payment/complete` page — reads `redirect_status` param from URL, shows success if `succeeded`, error + retry link otherwise. Required for the 3DS redirect fallback path (`STRIPE_RETURN_URL` points here). | 1–2 h | ❌ Missing |
 
-### Slack to Self Serve team — send today
+### Heads-up to Self Serve team — send today
 
-Coordinate the LaunchDarkly flag flip for Monday. Confirm:
-1. They are available Monday morning to flip `crowdfunding-enabled` → ON on our signal
-2. They are ready to flip it back OFF if we need to roll back
-
-(`CROWDFUNDING_API_BASE_URL` already confirmed set in SS prod ArgoCD values ✅)
+Let them know the `crowdfunding-enabled` LaunchDarkly flag will be flipped ON Monday morning and what to expect (new CF module live in SS).
 
 ### Slack to DevOps (Robert / Alan) — send today
 
@@ -62,10 +58,10 @@ Send one Slack message now so they can plan their Monday. Ask for:
 | GO7 | Run validation script (`validate_migration.py`) — confirm counts match | Lewis + Michal | 10 min |
 | GO8 | Manually trigger `ledger-stats-sync` CronJob, verify `amount_raised_in_cents` is populated for a sample of published initiatives | Michal | 15 min |
 | GO9 | Ask DevOps to set URL forward from old CF to `https://crowdfunding.linuxfoundation.org` | Robert/Alan | 10 min |
-| GO10 | Flip LaunchDarkly flag `crowdfunding-enabled` → ON in LFX Self Serve prod — coordinate with SS team. This gates the entire `/crowdfunding` route subtree and "My Initiatives" / "My Donations" nav items in SS. No code change needed, purely a flag flip. (`CROWDFUNDING_API_BASE_URL` already set correctly in SS prod ArgoCD values ✅) | Michal + SS team | 15 min |
+| GO10 | Flip LaunchDarkly flag `crowdfunding-enabled` → ON in LFX Self Serve prod. This activates the `/crowdfunding` route subtree and "My Initiatives" / "My Donations" nav items in SS. No code change needed. | Michal | 5 min |
 | GO11 | Run manual smoke test (see below) | Efren + Michal | 45 min |
 | GO12 | Watch logs for 1 hour: `kubectl logs -n crowdfunding-backend` + Datadog | Michal | 1 h |
-| GO13 | **Rollback trigger:** if critical errors — ask DevOps to remove forward and restore old CF; flip `crowdfunding-enabled` back OFF in LD. Old DynamoDB untouched. | Robert/Alan + Michal | 5 min |
+| GO13 | **Rollback trigger:** if critical errors — ask DevOps to remove forward and restore old CF; flip `crowdfunding-enabled` back OFF in LaunchDarkly. Old DynamoDB untouched. | Robert/Alan + Michal | 5 min |
 
 ---
 
