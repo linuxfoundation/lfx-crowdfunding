@@ -106,7 +106,9 @@ The existing Playwright e2e tests use a mock auth bypass which must never be ena
 
 ## Known Gaps at Launch
 
-- **OQ-20 (GitHub URL):** GitHub button in initiative header is permanently hidden. No `github_url` column in schema — data lives in `initiative_custom_websites`. Not a blocker — tracked in open questions.
+Bugs and gaps are tracked under [LFXV2-2145](https://linuxfoundation.atlassian.net/browse/LFXV2-2145).
+
+- **OQ-20 (GitHub URL):** GitHub button in initiative header is permanently hidden. No `github_url` column in schema — data lives in `initiative_custom_websites`.
 
 ---
 
