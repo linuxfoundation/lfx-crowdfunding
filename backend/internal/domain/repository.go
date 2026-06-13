@@ -107,6 +107,12 @@ type StatisticsRepository interface {
 	// Missing IDs are absent from the map. Used to enrich Ledger sponsor/donor data.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
 
+	// GetUsersByLegacyIDs returns a map of legacy_user_id → User for the given
+	// Auth0 subjects. Missing IDs are absent from the map.
+	// Used to enrich Ledger top-individuals and recent-donation data where the
+	// user identifier is an Auth0 subject, not an internal UUID.
+	GetUsersByLegacyIDs(ctx context.Context, legacyIDs []string) (map[string]models.User, error)
+
 	// GetInitiativeNamesByIDs returns a map of initiative UUID → name for the given IDs.
 	// Missing IDs are absent from the map. Used to enrich recent donation entries.
 	GetInitiativeNamesByIDs(ctx context.Context, ids []string) (map[string]string, error)
