@@ -47,16 +47,10 @@ func (r *testStatisticsRepo) GetOrganizationsByIDs(_ context.Context, ids []stri
 }
 
 func (r *testStatisticsRepo) GetUsersByIDs(_ context.Context, ids []string) (map[string]models.User, error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-	result := make(map[string]models.User)
-	for _, id := range ids {
-		if u, ok := r.users[id]; ok {
-			result[id] = u
-		}
-	}
-	return result, nil
+	// GetUsersByIDs should never be called by the statistics service — it uses GetUsersByLegacyIDs
+	// for all Ledger-sourced user enrichment because Ledger identifies users by Auth0 subject.
+	// If this panics in a test, the service has regressed to using UUID-based lookup.
+	panic("GetUsersByIDs called: statistics service must use GetUsersByLegacyIDs for Ledger user enrichment")
 }
 
 func (r *testStatisticsRepo) GetUsersByLegacyIDs(_ context.Context, ids []string) (map[string]models.User, error) {

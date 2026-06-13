@@ -174,18 +174,24 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		return nil, fmt.Errorf("get platform recent donations: %w", err)
 	}
 
-	// Collect IDs for enrichment
+	// Collect unique IDs for enrichment to avoid redundant DB work.
 	orgIDs := make([]string, 0, len(raw))
 	userIDs := make([]string, 0, len(raw))
 	projectIDs := make([]string, 0, len(raw))
+	seenOrgs := map[string]bool{}
+	seenUsers := map[string]bool{}
+	seenProjects := map[string]bool{}
 	for _, d := range raw {
-		if d.OrganizationID != "" {
+		if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
 			orgIDs = append(orgIDs, d.OrganizationID)
-		} else if d.UserID != "" {
+			seenOrgs[d.OrganizationID] = true
+		} else if d.UserID != "" && !seenUsers[d.UserID] {
 			userIDs = append(userIDs, d.UserID)
+			seenUsers[d.UserID] = true
 		}
-		if d.ProjectID != "" {
+		if d.ProjectID != "" && !seenProjects[d.ProjectID] {
 			projectIDs = append(projectIDs, d.ProjectID)
+			seenProjects[d.ProjectID] = true
 		}
 	}
 

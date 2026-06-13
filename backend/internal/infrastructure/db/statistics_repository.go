@@ -207,6 +207,7 @@ func (r *StatisticsRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 func (r *StatisticsRepository) GetUsersByLegacyIDs(ctx context.Context, legacyIDs []string) (map[string]models.User, error) {
 	ctx, span := statisticsTracer.Start(ctx, "db.statistics.GetUsersByLegacyIDs")
 	defer span.End()
+	span.SetAttributes(attribute.Int("db.id_count", len(legacyIDs)))
 
 	result := make(map[string]models.User, len(legacyIDs))
 	if len(legacyIDs) == 0 {
