@@ -44,7 +44,7 @@ Let them know the `crowdfunding-enabled` LaunchDarkly flag will be flipped ON Mo
 Send one Slack message now so they can plan their Monday. Ask for:
 
 1. **LFF maintenance mode on Monday morning** — put `crowdfunding.lfx.linuxfoundation.org` into maintenance mode (display maintenance page, block donations) while we run the data migration. Window: ~45–60 min.
-2. **URL forward on Monday** — once we confirm migration + smoke test pass, set a forward from `crowdfunding.lfx.linuxfoundation.org` to `https://crowdfunding.linuxfoundation.org`.
+2. **URL forward on Monday** — once smoke test passes (GO9), set a forward from `crowdfunding.lfx.linuxfoundation.org` to `https://crowdfunding.linuxfoundation.org` and exit LFF maintenance mode (GO10).
 
 ---
 
@@ -62,15 +62,15 @@ Send one Slack message now so they can plan their Monday. Ask for:
 | GO6 | Run data migration script (`backend/db/scripts/migrate_dynamo_to_postgres.py`) against prod DynamoDB → prod Postgres | Lewis | 30 min |
 | GO7 | Run validation script (`backend/db/scripts/validate_migration.py`) — confirm counts match | Lewis + Michal | 10 min |
 | GO8 | Manually trigger `ledger-stats-sync` CronJob, verify `amount_raised_in_cents` is populated for a sample of published initiatives | Michal | 15 min |
-| GO9 | Ask DevOps to set URL forward from old CF to `https://crowdfunding.linuxfoundation.org` | Robert/Alan | 10 min |
-| GO10 | Flip LaunchDarkly flag `crowdfunding-enabled` → ON in LFX Self Serve prod. This activates the `/crowdfunding` route subtree and "My Initiatives" / "My Donations" nav items in SS. No code change needed. | Michal | 5 min |
-| GO11 | Run manual smoke test (see below) | Efren + Michal | 45 min |
+| GO9 | Run manual smoke test against new CF directly (see below) — confirm new site is healthy before forwarding traffic | Efren + Michal | 45 min |
+| GO10 | Ask DevOps to set URL forward from old CF to `https://crowdfunding.linuxfoundation.org` and exit LFF maintenance mode | Robert/Alan | 10 min |
+| GO11 | Flip LaunchDarkly flag `crowdfunding-enabled` → ON in LFX Self Serve prod. This activates the `/crowdfunding` route subtree and "My Initiatives" / "My Donations" nav items in SS. No code change needed. | Michal | 5 min |
 | GO12 | Watch logs for 1 hour: `kubectl logs -n crowdfunding-backend -l app.kubernetes.io/name=lfx-crowdfunding-backend --since=1h -f` + Datadog | Michal | 1 h |
-| GO13 | **Rollback trigger:** if critical errors — ask DevOps to remove forward and restore old CF; flip `crowdfunding-enabled` back OFF in LaunchDarkly. Old DynamoDB untouched. | Robert/Alan + Michal | 5 min |
+| GO13 | **Rollback trigger:** if critical errors — ask DevOps to remove forward and put LFF back into maintenance mode (or restore LFF directly); flip `crowdfunding-enabled` back OFF in LaunchDarkly. Old DynamoDB untouched. Revert Ledger Service and Reimbursement Service to their previous prod versions. | Robert/Alan + Michal | 10 min |
 
 ---
 
-## Manual Smoke Test (run after GO9 — forward is live)
+## Manual Smoke Test (GO9 — run against new CF before forwarding traffic)
 
 The existing Playwright e2e tests use a mock auth bypass which must never be enabled in prod. The smoke test is a **manual checklist**.
 
@@ -113,4 +113,4 @@ The existing Playwright e2e tests use a mock auth bypass which must never be ena
 
 ## Rollback
 
-Remove the URL forward and revert Ledger Service and Reimbursement Service to their previous prod versions. Old DynamoDB is untouched (migration is read-only from DynamoDB). Once the URL forward is removed and Ledger + RS are reverted, old LFF Lambda resumes serving traffic as before.
+Remove the URL forward and revert Ledger Service and Reimbursement Service to their previous prod versions. Old DynamoDB is untouched (migration is read-only from DynamoDB). Once the URL forward is removed and Ledger + RS are reverted, old LFF Lambda resumes serving traffic as before. Also confirm LFF maintenance mode is cleared so the old site accepts donations again.
