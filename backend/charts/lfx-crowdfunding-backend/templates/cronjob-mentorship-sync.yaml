@@ -37,6 +37,7 @@ spec:
               image: "{{ .Values.mentorshipSyncCronJob.image.repository }}:{{ .Values.mentorshipSyncCronJob.image.tag | default (required "image.tag is required" .Values.image.tag) }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command: ["/app/mentorship-sync"]
+              {{- if or .Values.env .Values.mentorshipSyncCronJob.fixtureFile }}
               env:
                 {{- with .Values.env }}
                 {{- toYaml . | nindent 16 }}
@@ -45,6 +46,7 @@ spec:
                 - name: MENTORSHIP_SYNC_FIXTURE_FILE
                   value: {{ .Values.mentorshipSyncCronJob.fixtureFile | quote }}
                 {{- end }}
+              {{- end }}
               envFrom:
                 - configMapRef:
                     name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
