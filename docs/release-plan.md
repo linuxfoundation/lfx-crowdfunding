@@ -24,7 +24,7 @@
 | F-M3 | Add `mentorship-sync-secrets` to AWS Secrets Manager prod (`snowflake-account`, `snowflake-user`, `snowflake-warehouse`, `snowflake-role`, `snowflake-private-key`) and create the K8s Secret in prod namespace from SM. Then PR to `lfx-v2-argocd`: add `lfx-crowdfunding-mentorship-sync` to `apps/prod/lfx-v2-applications.yaml` (values file already exists at `values/prod/lfx-crowdfunding-mentorship-sync.yaml`) | 1 h | ❌ Pending |
 | F-M4 | Confirm prod pods are running (`kubectl get pods -n crowdfunding-backend` and `-n crowdfunding-frontend`) | 10 min | ❓ Self-verify |
 | F-M5 | Write migration validation script `db/scripts/validate_migration.py` — scans each DynamoDB source table, counts items, queries Postgres row counts, prints comparison table, exits non-zero if counts are off. Reuses existing `boto3` + `psycopg2` setup. Expected counts in [`backend/docs/rewrite/05-migration-plan.md`](../backend/docs/rewrite/05-migration-plan.md). | 1 h | ❌ Pending |
-| F-M6 | Add more e2e tests — priority: initiative creation flow, search/filter, logged-out redirects, error states | 2 h | ❌ Pending |
+| F-M6 | Add more e2e tests ([LFXV2-2073](https://linuxfoundation.atlassian.net/browse/LFXV2-2073)) — priority: initiative creation flow, search/filter, logged-out redirects, error states | 2 h | ❌ Pending |
 
 ### Efren
 
@@ -93,7 +93,7 @@ The existing Playwright e2e tests use a mock auth bypass which must never be ena
 |---|---|---|---|
 | PL1 | Intercom integration (stretch) | [LFXV2-2197](https://linuxfoundation.atlassian.net/browse/LFXV2-2197) | Not integrated yet. Needs `useIntercom` composable (Nuxt 4), Auth0 custom claim in `auth0-terraform`, Helm env vars. Use `/lfx-intercom` skill. ~1 day. |
 | PL2 | AI-generated in-app docs (stretch) | [LFXV2-2198](https://linuxfoundation.atlassian.net/browse/LFXV2-2198) | LFX AI service SSE streaming. Needs agent ID from AI platform team before scoping. Do not start without that conversation. |
-| PL3 | E2E test gaps | — | No tests for: actual payment submission, form validation, initiative creation flow, search/filter, logged-out redirects, subscription cancellation. Payment tests require a separate Stripe test-mode deployment. |
+| PL3 | E2E test gaps | [LFXV2-2073](https://linuxfoundation.atlassian.net/browse/LFXV2-2073) | No tests for: actual payment submission, form validation, initiative creation flow, search/filter, logged-out redirects, subscription cancellation. Payment tests require a separate Stripe test-mode deployment. |
 
 ---
 
