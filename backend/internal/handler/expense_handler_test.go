@@ -32,7 +32,7 @@ func (s *stubRSClient) SyncPolicy(_ context.Context, _ *models.Initiative, _ *mo
 // Ensure stubRSClient satisfies the interface at compile time.
 var _ clients.ReimbursementClient = (*stubRSClient)(nil)
 
-func (s *stubRSClient) ProcessExpenseAction(_ context.Context, action, reportID, _ string) error {
+func (s *stubRSClient) ProcessExpenseAction(_ context.Context, action, reportID string) error {
 	s.capturedAction = action
 	s.capturedReportID = reportID
 	return s.err

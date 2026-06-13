@@ -35,7 +35,7 @@ func TestProcessExpenseAction_404_mapsToNotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -50,7 +50,7 @@ func TestProcessExpenseAction_HTTPError_mapsToUpstreamUnavailable(t *testing.T) 
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -65,7 +65,7 @@ func TestProcessExpenseAction_NetworkError_mapsToUpstreamUnavailable(t *testing.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
 	srv.Close() // close before the request is made
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -80,25 +80,98 @@ func TestProcessExpenseAction_200_returnsNil(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
 	if err != nil {
 		t.Errorf("expected nil error on 200, got: %v", err)
 	}
 }
 
-func TestProcessExpenseAction_ForwardsActorToken(t *testing.T) {
+// newRSClientM2M creates a client with M2M config pointing at tokenURL for the
+// Auth0 token endpoint and rsURL for the RS API.
+func newRSClientM2M(t *testing.T, rsURL, tokenURL string) clients.ReimbursementClient {
+	t.Helper()
+	cfg := clients.ReimbursementConfig{
+		APIURL:            rsURL,
+		APIKey:            "test-key",
+		Timeout:           0,
+		Auth0TokenURL:     tokenURL,
+		Auth0ClientID:     "cid",
+		Auth0ClientSecret: "csecret",
+		Auth0Audience:     "https://rs.example.com",
+	}
+	c := clients.NewReimbursementClient(cfg)
+	if c == nil {
+		t.Fatal("expected non-nil client")
+	}
+	return c
+}
+
+func TestProcessExpenseAction_M2M_AddsBearer(t *testing.T) {
 	var gotAuth string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	rsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		w.WriteHeader(http.StatusOK)
 	}))
-	defer srv.Close()
+	defer rsSrv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "my-token")
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token":"my-m2m-token","expires_in":86400}`))
+	}))
+	defer tokenSrv.Close()
+
+	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotAuth != "Bearer my-token" {
-		t.Errorf("expected Authorization: Bearer my-token, got %q", gotAuth)
+	if gotAuth != "Bearer my-m2m-token" {
+		t.Errorf("expected Authorization: Bearer my-m2m-token, got %q", gotAuth)
+	}
+}
+
+func TestProcessExpenseAction_M2M_CachesToken(t *testing.T) {
+	tokenFetches := 0
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		tokenFetches++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":86400}`))
+	}))
+	defer tokenSrv.Close()
+
+	rsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer rsSrv.Close()
+
+	c := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL)
+	for i := range 3 {
+		if err := c.ProcessExpenseAction(context.Background(), "approve", "R-001"); err != nil {
+			t.Fatalf("call %d: unexpected error: %v", i, err)
+		}
+	}
+	if tokenFetches != 1 {
+		t.Errorf("expected 1 token fetch for 3 calls, got %d", tokenFetches)
+	}
+}
+
+func TestProcessExpenseAction_M2M_TokenFetchFails_mapsToUpstreamUnavailable(t *testing.T) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer tokenSrv.Close()
+
+	rsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer rsSrv.Close()
+
+	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	if err == nil {
+		t.Fatal("expected error when token fetch fails")
+	}
+	if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("expected ErrUpstreamUnavailable, got: %v", err)
 	}
 }

@@ -41,14 +41,7 @@ func (h *ExpenseHandler) ProcessAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract the raw token (without "Bearer " prefix) to forward to the RS.
-	// The RS API gateway requires the user's token alongside X-API-KEY.
-	actorToken := ""
-	if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
-		actorToken = auth[7:]
-	}
-
-	if err := h.rsClient.ProcessExpenseAction(r.Context(), action, reportID, actorToken); err != nil {
+	if err := h.rsClient.ProcessExpenseAction(r.Context(), action, reportID); err != nil {
 		Error(w, err)
 		return
 	}

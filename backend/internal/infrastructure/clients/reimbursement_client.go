@@ -5,12 +5,15 @@
 package clients
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -65,11 +68,9 @@ type ReimbursementClient interface {
 
 	// ProcessExpenseAction submits an action (e.g. "approve", "reject") against
 	// the given expense report in the Reimbursement Service.
-	// actorToken is the raw Bearer token from the original HTTP request; the RS
-	// API gateway requires it in the Authorization header alongside X-API-KEY.
 	// Maps upstream 404 → domain.ErrExpenseReportNotFound so callers can
 	// distinguish missing reports from other upstream errors.
-	ProcessExpenseAction(ctx context.Context, action, reportID, actorToken string) error
+	ProcessExpenseAction(ctx context.Context, action, reportID string) error
 }
 
 // ReimbursementConfig holds all connection settings for the Reimbursement Service.
@@ -89,11 +90,32 @@ type ReimbursementConfig struct {
 
 	// Timeout caps individual outbound HTTP calls.
 	Timeout time.Duration
+
+	// --- Optional Auth0 client-credentials (M2M) config -------------------
+	// Some RS routes (e.g. /expense/*) are behind an API gateway that requires
+	// a Bearer token in addition to X-API-KEY. When all four fields below are
+	// set, the client fetches a cached client_credentials token from Auth0 and
+	// attaches it as Authorization: Bearer on those calls.
+	// Leave empty to skip M2M auth (correct for most /reimbursement/* calls).
+
+	// Auth0TokenURL is the token endpoint, e.g.
+	// https://linuxfoundation-dev.auth0.com/oauth/token
+	Auth0TokenURL string
+	// Auth0ClientID is the M2M application client ID.
+	Auth0ClientID string
+	// Auth0ClientSecret is the M2M application client secret.
+	Auth0ClientSecret string
+	// Auth0Audience is the Auth0 API identifier the gateway validates against.
+	Auth0Audience string
 }
 
 type reimbursementHTTPClient struct {
-	cfg        ReimbursementConfig
-	httpClient *core.HTTPClient
+	cfg         ReimbursementConfig
+	httpClient  *core.HTTPClient
+	tokenClient *http.Client // used only for Auth0 token fetches
+	tokenMu     sync.Mutex
+	tokenVal    string
+	tokenExpiry time.Time
 }
 
 // NewReimbursementClient creates a ReimbursementClient from the given config.
@@ -104,8 +126,9 @@ func NewReimbursementClient(cfg ReimbursementConfig) ReimbursementClient {
 		return nil
 	}
 	return &reimbursementHTTPClient{
-		cfg:        cfg,
-		httpClient: core.NewHTTPClient(cfg.Timeout),
+		cfg:         cfg,
+		httpClient:  core.NewHTTPClient(cfg.Timeout),
+		tokenClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -116,6 +139,79 @@ func (c *reimbursementHTTPClient) authHeaders() map[string]string {
 	return map[string]string{
 		"X-API-KEY": c.cfg.APIKey,
 	}
+}
+
+// expenseAuthHeaders returns auth headers for /expense/* calls — X-API-KEY
+// plus a Bearer token when M2M config is present.
+func (c *reimbursementHTTPClient) expenseAuthHeaders(ctx context.Context) (map[string]string, error) {
+	h := c.authHeaders()
+	tok, err := c.m2mToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if tok != "" {
+		h["Authorization"] = "Bearer " + tok
+	}
+	return h, nil
+}
+
+// auth0TokenRequest is the JSON body sent to the Auth0 token endpoint.
+type auth0TokenRequest struct {
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	Audience     string `json:"audience"`
+	GrantType    string `json:"grant_type"`
+}
+
+// auth0TokenResponse is the JSON body returned by the Auth0 token endpoint.
+type auth0TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
+// m2mToken returns a cached-or-freshly-fetched Auth0 client_credentials Bearer
+// token. Returns "" (no error) when M2M config is not set — callers treat this
+// as "no Bearer needed" and fall back to X-API-KEY only.
+func (c *reimbursementHTTPClient) m2mToken(ctx context.Context) (string, error) {
+	if c.cfg.Auth0TokenURL == "" {
+		return "", nil
+	}
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	if c.tokenVal != "" && time.Now().Before(c.tokenExpiry) {
+		return c.tokenVal, nil
+	}
+	body, err := json.Marshal(auth0TokenRequest{
+		ClientID:     c.cfg.Auth0ClientID,
+		ClientSecret: c.cfg.Auth0ClientSecret,
+		Audience:     c.cfg.Auth0Audience,
+		GrantType:    "client_credentials",
+	})
+	if err != nil {
+		return "", fmt.Errorf("m2m: marshal token request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.Auth0TokenURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("m2m: build token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.tokenClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("m2m: token fetch: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("m2m: auth0 returned %d", resp.StatusCode)
+	}
+	var tr auth0TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		return "", fmt.Errorf("m2m: decode token response: %w", err)
+	}
+	// Cache with a 60-second safety buffer so we never hand a near-expired token
+	// to the downstream gateway.
+	c.tokenVal = tr.AccessToken
+	c.tokenExpiry = time.Now().Add(time.Duration(tr.ExpiresIn)*time.Second - 60*time.Second)
+	return c.tokenVal, nil
 }
 
 // rsURL builds the full endpoint URL for a given initiative ID.
@@ -278,10 +374,11 @@ func categoryName(name string) string {
 
 // ProcessExpenseAction submits an action (e.g. "approve", "reject") for the
 // given expense report via POST /expense/{action}/{reportId} on the
-// Reimbursement Service. The call is authenticated with both X-API-KEY and
-// the caller's Bearer token (actorToken), which the RS API gateway requires.
+// Reimbursement Service. Authenticated with X-API-KEY only.
+// NOTE: REIMBURSEMENTS_API_URL must point directly at the RS (bypassing any
+// API gateway that enforces a separate Bearer audience on this route).
 // A 404 response is translated to domain.ErrExpenseReportNotFound.
-func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID, actorToken string) error {
+func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID string) error {
 	ctx, span := reimbursementTracer.Start(ctx, "reimbursement.ProcessExpenseAction")
 	defer span.End()
 	span.SetAttributes(
@@ -292,12 +389,12 @@ func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, acti
 	endpoint := strings.TrimRight(c.cfg.APIURL, "/") +
 		"/expense/" + url.PathEscape(action) + "/" + url.PathEscape(reportID)
 
-	headers := c.authHeaders()
-	if actorToken != "" {
-		headers["Authorization"] = "Bearer " + actorToken
+	headers, err := c.expenseAuthHeaders(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: fetch m2m token for %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
 	}
 
-	err := c.httpClient.PostJSON(ctx, endpoint, headers, struct{}{}, nil, func(r *http.Response) error {
+	err = c.httpClient.PostJSON(ctx, endpoint, headers, struct{}{}, nil, func(r *http.Response) error {
 		if r.StatusCode == http.StatusNotFound {
 			return fmt.Errorf("%w: %s", domain.ErrExpenseReportNotFound, reportID)
 		}
