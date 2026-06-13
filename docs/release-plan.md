@@ -110,4 +110,4 @@ The existing Playwright e2e tests use a mock auth bypass which must never be ena
 
 ## Rollback
 
-Remove the URL forward and revert Ledger Service and Reimbursement Service to their previous prod versions. Old DynamoDB is untouched (migration is read-only from DynamoDB). Note: new CF depends on Ledger Service and Reimbursement Service — rolling back those services means new CF cannot serve traffic either.
+Remove the URL forward and revert Ledger Service and Reimbursement Service to their previous prod versions. Old DynamoDB is untouched (migration is read-only from DynamoDB). Once the URL forward is removed and Ledger + RS are reverted, old LFF Lambda resumes serving traffic as before.
