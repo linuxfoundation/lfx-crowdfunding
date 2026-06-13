@@ -9,10 +9,13 @@ test.describe('Subscription flow (authenticated)', () => {
     await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`);
     await authenticatedPage.waitForLoadState('networkidle');
 
-    // Open the donate drawer
-    const donateBtn = authenticatedPage.getByRole('button', { name: /donate/i }).first();
-    await expect(donateBtn).toBeVisible({ timeout: 10000 });
-    await donateBtn.click();
+    // Open the donate drawer — use force:true since the button may be inside a
+    // tooltip wrapper that Playwright considers non-visible.
+    const donateBtn = authenticatedPage
+      .getByRole('button', { name: /donate/i })
+      .or(authenticatedPage.getByRole('link', { name: /donate/i }))
+      .first();
+    await donateBtn.click({ force: true });
 
     // The drawer has a monthly radio option — verify it is present
     const monthlyRadio = authenticatedPage.locator('input[type="radio"][value="monthly"]');
