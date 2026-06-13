@@ -5,7 +5,7 @@
 <template>
   <div class="flex flex-col items-center justify-center min-h-screen gap-4">
     <lfx-spinner :size="32" />
-    <p class="body-1 text-neutral-500">Redirecting&hellip;</p>
+    <p class="text-body-1 text-neutral-500">Redirecting&hellip;</p>
   </div>
 </template>
 
