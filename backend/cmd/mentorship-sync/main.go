@@ -85,6 +85,9 @@ func run(logger *slog.Logger) error {
 		"upserted", result.upserted,
 		"errors", result.errors,
 	)
+	if result.errors > 0 {
+		return fmt.Errorf("sync completed with %d error(s) out of %d programs", result.errors, result.total)
+	}
 	return nil
 }
 

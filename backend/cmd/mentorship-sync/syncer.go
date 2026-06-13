@@ -13,6 +13,12 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
+const (
+	// legacyStatusHide is the Jobspring legacy status value that maps to hidden.
+	legacyStatusHide       = "hide"
+	normalizedStatusHidden = "hidden"
+)
+
 // mentorshipSource is the interface Syncer needs from its data source.
 // Defined at the point of consumption — both snowflake.Client and
 // snowflake.FixtureSource satisfy this interface.
@@ -56,8 +62,8 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 	for _, p := range programs {
 		p.Status = strings.ToLower(p.Status)
 		// Jobspring legacy value — normalise to match CF Postgres expected value.
-		if p.Status == "hide" {
-			p.Status = "hidden"
+		if p.Status == legacyStatusHide {
+			p.Status = normalizedStatusHidden
 		}
 
 		initiativeID, err := s.repo.UpsertProgram(ctx, p)

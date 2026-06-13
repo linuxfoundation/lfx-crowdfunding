@@ -13,6 +13,8 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
+const initiativeTypeMentorship = "mentorship"
+
 // MentorshipRepositoryImpl implements domain.MentorshipRepository against CF Postgres.
 type MentorshipRepositoryImpl struct {
 	pool *pgxpool.Pool
@@ -55,11 +57,11 @@ INSERT INTO initiatives (
 	updated_on
 ) VALUES (
 	gen_random_uuid(),
-	'mentorship',
 	$1,
 	$2,
 	$3,
 	$4,
+	$5,
 	NOW(),
 	NOW()
 )
@@ -71,7 +73,7 @@ ON CONFLICT (jobspring_project_id) DO UPDATE SET
 RETURNING id
 `
 	var id string
-	if err := r.pool.QueryRow(ctx, q, p.JobspringProjectID, ownerID, p.Name, p.Status).Scan(&id); err != nil {
+	if err := r.pool.QueryRow(ctx, q, initiativeTypeMentorship, p.JobspringProjectID, ownerID, p.Name, p.Status).Scan(&id); err != nil {
 		return "", fmt.Errorf("upsert mentorship program %q: %w", p.JobspringProjectID, err)
 	}
 	return id, nil
@@ -113,10 +115,10 @@ func (r *MentorshipRepositoryImpl) ListJobspringIDs(ctx context.Context) ([]stri
 	const q = `
 SELECT jobspring_project_id
 FROM initiatives
-WHERE initiative_type = 'mentorship'
+WHERE initiative_type = $1
   AND jobspring_project_id IS NOT NULL
 `
-	rows, err := r.pool.Query(ctx, q)
+	rows, err := r.pool.Query(ctx, q, initiativeTypeMentorship)
 	if err != nil {
 		return nil, fmt.Errorf("list jobspring IDs: %w", err)
 	}

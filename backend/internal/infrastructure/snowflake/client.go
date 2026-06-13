@@ -64,7 +64,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}
 
 	// Build Snowflake connection config.
-	cfg_snowflake := &gosnowflake.Config{
+	sfCfg := &gosnowflake.Config{
 		Account:       cfg.Account,
 		User:          cfg.User,
 		Warehouse:     cfg.Warehouse,
@@ -75,7 +75,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}
 
 	// Construct DSN.
-	dsn, err := gosnowflake.DSN(cfg_snowflake)
+	dsn, err := gosnowflake.DSN(sfCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct DSN: %w", err)
 	}
