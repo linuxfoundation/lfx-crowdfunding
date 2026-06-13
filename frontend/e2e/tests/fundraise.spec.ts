@@ -52,21 +52,26 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
       .locator('textarea[placeholder="Briefly introduce your project..."]')
       .fill('An initiative created by the Playwright e2e suite.');
 
-    // Select a topic from the custom dropdown
-    await authenticatedPage.getByRole('button', { name: 'Select topic(s)' }).click();
+    // Select a topic from the custom dropdown (multi-select — clicking an option keeps it open)
+    const topicTrigger = authenticatedPage.getByRole('button', { name: 'Select topic(s)' });
+    await topicTrigger.click();
     await authenticatedPage.getByRole('button', { name: '3D' }).click();
-    // Close dropdown by clicking outside
-    await authenticatedPage.keyboard.press('Escape');
+    // Close by clicking the trigger again (toggle) — the component has no keyboard close handler
+    await topicTrigger.click();
 
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
-    // Step 1b: compliance
+    // Step 1b: compliance — scope checkboxes to each section to avoid matching unrelated inputs
     await expect(authenticatedPage.getByText('Compliance Confirmation')).toBeVisible();
 
-    // Check both required checkboxes — they are real <input type="checkbox"> inside <label>
-    const checkboxes = authenticatedPage.locator('input[type="checkbox"]');
-    await checkboxes.nth(0).check({ force: true }); // OFAC
-    await checkboxes.nth(1).check({ force: true }); // Terms
+    const ofacSection = authenticatedPage
+      .locator('.border')
+      .filter({ hasText: 'Compliance Confirmation' });
+    const termsSection = authenticatedPage
+      .locator('.border')
+      .filter({ hasText: 'Terms and Conditions' });
+    await ofacSection.locator('input[type="checkbox"]').check({ force: true });
+    await termsSection.locator('input[type="checkbox"]').check({ force: true });
 
     // Submit
     await authenticatedPage.getByRole('button', { name: 'Submit initiative' }).click();
@@ -107,11 +112,16 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
     const submitBtn = authenticatedPage.getByRole('button', { name: 'Submit initiative' });
     await expect(submitBtn).toBeDisabled();
 
-    const checkboxes = authenticatedPage.locator('input[type="checkbox"]');
-    await checkboxes.nth(0).check({ force: true });
+    const ofacSection = authenticatedPage
+      .locator('.border')
+      .filter({ hasText: 'Compliance Confirmation' });
+    const termsSection = authenticatedPage
+      .locator('.border')
+      .filter({ hasText: 'Terms and Conditions' });
+    await ofacSection.locator('input[type="checkbox"]').check({ force: true });
     await expect(submitBtn).toBeDisabled(); // still disabled — need both
 
-    await checkboxes.nth(1).check({ force: true });
+    await termsSection.locator('input[type="checkbox"]').check({ force: true });
     await expect(submitBtn).toBeEnabled();
   });
 
