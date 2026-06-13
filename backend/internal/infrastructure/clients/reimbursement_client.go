@@ -88,7 +88,8 @@ type ReimbursementConfig struct {
 	// Used to construct the initiative's public URL in the policy payload.
 	FrontendBase string
 
-	// Timeout caps individual outbound HTTP calls.
+	// Timeout caps individual outbound HTTP calls, including Auth0 token
+	// fetches and Reimbursement Service API requests.
 	Timeout time.Duration
 
 	// --- Optional Auth0 client-credentials (M2M) config -------------------
@@ -128,7 +129,7 @@ func NewReimbursementClient(cfg ReimbursementConfig) ReimbursementClient {
 	return &reimbursementHTTPClient{
 		cfg:         cfg,
 		httpClient:  core.NewHTTPClient(cfg.Timeout),
-		tokenClient: &http.Client{Timeout: 10 * time.Second},
+		tokenClient: &http.Client{Timeout: cfg.Timeout},
 	}
 }
 
