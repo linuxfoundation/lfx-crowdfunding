@@ -12,7 +12,6 @@ import (
 	"fmt"
 
 	"github.com/snowflakedb/gosnowflake"
-	_ "github.com/snowflakedb/gosnowflake"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
@@ -65,12 +64,13 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 
 	// Build Snowflake connection config.
 	cfg_snowflake := &gosnowflake.Config{
-		Account:    cfg.Account,
-		User:       cfg.User,
-		Warehouse:  cfg.Warehouse,
-		Database:   cfg.Database,
-		Role:       cfg.Role,
-		PrivateKey: privateKey,
+		Account:       cfg.Account,
+		User:          cfg.User,
+		Warehouse:     cfg.Warehouse,
+		Database:      cfg.Database,
+		Role:          cfg.Role,
+		Authenticator: gosnowflake.AuthTypeJwt,
+		PrivateKey:    privateKey,
 	}
 
 	// Construct DSN.

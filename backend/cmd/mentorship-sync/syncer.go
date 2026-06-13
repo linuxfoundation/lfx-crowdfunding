@@ -66,14 +66,19 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 			continue
 		}
 
-		if err := s.repo.UpsertBeneficiaries(ctx, initiativeID, p.Beneficiaries); err != nil {
-			s.logger.ErrorContext(ctx, "upsert beneficiaries failed",
-				"initiative_id", initiativeID,
-				"jobspring_project_id", p.JobspringProjectID,
-				"error", err,
-			)
-			result.errors++
-			continue
+		// Skip beneficiary upsert when the source did not provide beneficiary
+		// data (nil slice). This avoids silently deleting existing rows when
+		// the Snowflake query does not yet fetch SELECTED_MENTEES.
+		if p.Beneficiaries != nil {
+			if err := s.repo.UpsertBeneficiaries(ctx, initiativeID, p.Beneficiaries); err != nil {
+				s.logger.ErrorContext(ctx, "upsert beneficiaries failed",
+					"initiative_id", initiativeID,
+					"jobspring_project_id", p.JobspringProjectID,
+					"error", err,
+				)
+				result.errors++
+				continue
+			}
 		}
 
 		result.upserted++

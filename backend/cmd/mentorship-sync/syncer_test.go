@@ -150,6 +150,52 @@ func TestSyncer_Run_beneficiariesUpsertedForInitiative(t *testing.T) {
 	}
 }
 
+func TestSyncer_Run_nilBeneficiariesSkipsUpsert(t *testing.T) {
+	t.Parallel()
+
+	// nil Beneficiaries = source did not provide beneficiary data (e.g. Snowflake client)
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Beneficiaries: nil},
+		},
+	}
+	repo := &mockMentorshipRepo{}
+
+	s := newSyncer(repo, src, discardLogger())
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, called := repo.upsertedBeneficiaries["initiative-uuid-js-1"]; called {
+		t.Error("UpsertBeneficiaries should not be called when Beneficiaries is nil")
+	}
+}
+
+func TestSyncer_Run_emptyBeneficiariesDeletesExisting(t *testing.T) {
+	t.Parallel()
+
+	// non-nil empty slice = source explicitly returned zero beneficiaries
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Beneficiaries: []models.MentorshipBeneficiary{}},
+		},
+	}
+	repo := &mockMentorshipRepo{}
+
+	s := newSyncer(repo, src, discardLogger())
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	bens, called := repo.upsertedBeneficiaries["initiative-uuid-js-1"]
+	if !called {
+		t.Fatal("UpsertBeneficiaries should be called when Beneficiaries is non-nil empty")
+	}
+	if len(bens) != 0 {
+		t.Errorf("expected empty beneficiaries slice, got %+v", bens)
+	}
+}
+
 func TestSyncer_Run_emptySourceReturnsZeroResult(t *testing.T) {
 	t.Parallel()
 
