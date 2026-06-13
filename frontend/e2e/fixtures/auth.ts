@@ -13,6 +13,12 @@ export async function loginAsTestUser(page: Page): Promise<void> {
     );
   }
   await page.goto('/');
+  // Dismiss the Osano cookie consent banner if present — it sits at the bottom of the
+  // viewport and intercepts pointer events on footer-area buttons (e.g. Continue/Submit).
+  const acceptBtn = page.locator('[aria-label="Cookie Consent Banner"] button').first();
+  if (await acceptBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await acceptBtn.click();
+  }
 }
 
 // test fixture that provides an authenticated page
