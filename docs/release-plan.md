@@ -103,21 +103,11 @@ The existing Playwright e2e tests use a mock auth bypass which must never be ena
 - ✅ DNS — `crowdfunding.linuxfoundation.org` + `crowdfunding-api.linuxfoundation.org` verified
 - ✅ `DISABLED_MOCK_LOCAL_PRINCIPAL` — not set in any CF ArgoCD values
 - ✅ CF Stripe webhook endpoint registered in prod Dashboard (needs enabling — F-M1)
-- ✅ `STRIPE_RETURN_URL` set to `https://crowdfunding.linuxfoundation.org/payment/complete` in prod values
-- ✅ ArgoCD values files exist for mentorship-sync in dev and prod
-- ✅ Ledger auth fix deployed
-- ✅ Ledger balance lookup for post-cutover initiatives confirmed (OQ-15 resolved)
-
----
-
-## Known Gaps at Launch
-
-Bugs and gaps are tracked under [LFXV2-2145](https://linuxfoundation.atlassian.net/browse/LFXV2-2145).
-
-- **OQ-20 (GitHub URL):** GitHub button in initiative header is permanently hidden. No `github_url` column in schema — data lives in `initiative_custom_websites`.
+- ✅ ArgoCD Helm values exist for all environments (backend, frontend, mentorship-sync, dev/prod)
+- ✅ Ledger Service and Reimbursement Service updated for new CF (auth headers, API contract) — updated code will be deployed to prod on release day (GO4, GO5)
 
 ---
 
 ## Rollback
 
-Remove the URL forward — old LFF Lambda is still running. Old DynamoDB is untouched (migration is read-only from DynamoDB). Safe at any point. Keep old Lambda running for minimum 2 weeks before decommission.
+Remove the URL forward — old LFF Lambda is still running. Old DynamoDB is untouched (migration is read-only from DynamoDB). Also revert Ledger Service and Reimbursement Service to their previous prod versions. Keep old Lambda running for minimum 2 weeks before decommission.
