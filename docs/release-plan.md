@@ -30,6 +30,13 @@
 |---|---|---|---|
 | F-E1 | Create `/payment/complete` page — reads `redirect_status` param from URL, shows success if `succeeded`, error + retry link otherwise. Required for the 3DS redirect fallback path (`STRIPE_RETURN_URL` points here). | 1–2 h | ❌ Missing |
 
+### Slack to Self Serve team — send today
+
+Coordinate the LaunchDarkly flag flip for Monday. Confirm:
+1. `CROWDFUNDING_API_BASE_URL` is set correctly in SS prod (should point to `https://crowdfunding-api.linuxfoundation.org`)
+2. They are available Monday morning to flip `crowdfunding-enabled` → ON on our signal
+3. They are ready to flip it back OFF if we need to roll back
+
 ### Slack to DevOps (Robert / Alan) — send today
 
 Send one Slack message now so they can plan their Monday. Ask for:
@@ -54,9 +61,10 @@ Send one Slack message now so they can plan their Monday. Ask for:
 | GO7 | Run validation script (`validate_migration.py`) — confirm counts match | Lewis + Michal | 10 min |
 | GO8 | Manually trigger `ledger-stats-sync` CronJob, verify `amount_raised_in_cents` is populated for a sample of published initiatives | Michal | 15 min |
 | GO9 | Ask DevOps to set URL forward from old CF to `https://crowdfunding.linuxfoundation.org` | Robert/Alan | 10 min |
-| GO10 | Run manual smoke test (see below) | Efren + Michal | 45 min |
-| GO11 | Watch logs for 1 hour: `kubectl logs -n crowdfunding-backend` + Datadog | Michal | 1 h |
-| GO12 | **Rollback trigger:** if critical errors — ask DevOps to remove forward and restore old CF. Old DynamoDB untouched. | Robert/Alan | 5 min |
+| GO10 | Flip LaunchDarkly flag `crowdfunding-enabled` → ON in LFX Self Serve prod — coordinate with SS team. This gates the entire `/crowdfunding` route subtree and "My Initiatives" / "My Donations" nav items in SS. No code change needed, purely a flag flip. Verify `CROWDFUNDING_API_BASE_URL` is set in SS prod before flipping. | Michal + SS team | 15 min |
+| GO11 | Run manual smoke test (see below) | Efren + Michal | 45 min |
+| GO12 | Watch logs for 1 hour: `kubectl logs -n crowdfunding-backend` + Datadog | Michal | 1 h |
+| GO13 | **Rollback trigger:** if critical errors — ask DevOps to remove forward and restore old CF; flip `crowdfunding-enabled` back OFF in LD. Old DynamoDB untouched. | Robert/Alan + Michal | 5 min |
 
 ---
 
