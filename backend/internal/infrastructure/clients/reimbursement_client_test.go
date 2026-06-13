@@ -35,7 +35,7 @@ func TestProcessExpenseAction_404_mapsToNotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -50,7 +50,7 @@ func TestProcessExpenseAction_HTTPError_mapsToUpstreamUnavailable(t *testing.T) 
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -65,7 +65,7 @@ func TestProcessExpenseAction_NetworkError_mapsToUpstreamUnavailable(t *testing.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
 	srv.Close() // close before the request is made
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -80,8 +80,25 @@ func TestProcessExpenseAction_200_returnsNil(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "")
 	if err != nil {
 		t.Errorf("expected nil error on 200, got: %v", err)
+	}
+}
+
+func TestProcessExpenseAction_ForwardsActorToken(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "my-token")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAuth != "Bearer my-token" {
+		t.Errorf("expected Authorization: Bearer my-token, got %q", gotAuth)
 	}
 }

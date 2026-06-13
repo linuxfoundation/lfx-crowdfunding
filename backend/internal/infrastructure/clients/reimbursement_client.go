@@ -65,9 +65,11 @@ type ReimbursementClient interface {
 
 	// ProcessExpenseAction submits an action (e.g. "approve", "reject") against
 	// the given expense report in the Reimbursement Service.
+	// actorToken is the raw Bearer token from the original HTTP request; the RS
+	// API gateway requires it in the Authorization header alongside X-API-KEY.
 	// Maps upstream 404 → domain.ErrExpenseReportNotFound so callers can
 	// distinguish missing reports from other upstream errors.
-	ProcessExpenseAction(ctx context.Context, action, reportID string) error
+	ProcessExpenseAction(ctx context.Context, action, reportID, actorToken string) error
 }
 
 // ReimbursementConfig holds all connection settings for the Reimbursement Service.
@@ -276,9 +278,10 @@ func categoryName(name string) string {
 
 // ProcessExpenseAction submits an action (e.g. "approve", "reject") for the
 // given expense report via POST /expense/{action}/{reportId} on the
-// Reimbursement Service. The call is authenticated with X-API-KEY.
+// Reimbursement Service. The call is authenticated with both X-API-KEY and
+// the caller's Bearer token (actorToken), which the RS API gateway requires.
 // A 404 response is translated to domain.ErrExpenseReportNotFound.
-func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID string) error {
+func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID, actorToken string) error {
 	ctx, span := reimbursementTracer.Start(ctx, "reimbursement.ProcessExpenseAction")
 	defer span.End()
 	span.SetAttributes(
@@ -289,7 +292,12 @@ func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, acti
 	endpoint := strings.TrimRight(c.cfg.APIURL, "/") +
 		"/expense/" + url.PathEscape(action) + "/" + url.PathEscape(reportID)
 
-	err := c.httpClient.PostJSON(ctx, endpoint, c.authHeaders(), struct{}{}, nil, func(r *http.Response) error {
+	headers := c.authHeaders()
+	if actorToken != "" {
+		headers["Authorization"] = "Bearer " + actorToken
+	}
+
+	err := c.httpClient.PostJSON(ctx, endpoint, headers, struct{}{}, nil, func(r *http.Response) error {
 		if r.StatusCode == http.StatusNotFound {
 			return fmt.Errorf("%w: %s", domain.ErrExpenseReportNotFound, reportID)
 		}
