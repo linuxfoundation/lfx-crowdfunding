@@ -265,7 +265,6 @@ WHERE i.slug = 'test-html-text';
 |---|---|---|---|
 | 1 | Corporate donation | `organization_id` is NULL — company name not persisted to `organizations` table | Medium |
 | 2 | Donations | `payment_method` column is NULL on all rows — not set by service | Low |
-| 3 | OSTIF contacts | Field mapping bug: entering data in certain order causes last_name/email columns to receive wrong values | Medium |
-| 4 | OSTIF detail | No `initiative_ostif_detail` row created when optional fields left blank | Low (expected) |
-| 5 | Balance widget | Does not refresh after donation without page reload (by design — cron-driven) | Info |
-| 6 | Self Serve | My Initiatives page was initially empty — needed fresh page load to show Pending count | Low |
+| 3 | OSTIF detail | No `initiative_ostif_detail` row created when optional fields left blank | Low (expected) |
+| 4 | Balance widget | Does not refresh after donation without page reload (by design — cron-driven) | Info |
+| 5 | Self Serve | My Initiatives page was initially empty — needed fresh page load to show Pending count | Low |
