@@ -88,10 +88,14 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		return nil, fmt.Errorf("reimbursement config: %w", err)
 	}
 	reimbursementClient := clients.NewReimbursementClient(clients.ReimbursementConfig{
-		APIURL:       cfg.Reimbursement.APIURL,
-		APIKey:       cfg.Reimbursement.APIKey,
-		FrontendBase: cfg.Mandrill.FrontendBase,
-		Timeout:      cfg.Reimbursement.Timeout,
+		APIURL:            cfg.Reimbursement.APIURL,
+		APIKey:            cfg.Reimbursement.APIKey,
+		FrontendBase:      cfg.Mandrill.FrontendBase,
+		Timeout:           cfg.Reimbursement.Timeout,
+		Auth0TokenURL:     cfg.Reimbursement.Auth0TokenURL,
+		Auth0ClientID:     cfg.Reimbursement.Auth0ClientID,
+		Auth0ClientSecret: cfg.Reimbursement.Auth0ClientSecret,
+		Auth0Audience:     cfg.Reimbursement.Auth0Audience,
 	})
 	if reimbursementClient == nil {
 		logger.Warn("REIMBURSEMENTS_API_URL is not set — Reimbursement Service sync is disabled")

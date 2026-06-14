@@ -16,17 +16,17 @@ import (
 
 // Config holds all runtime configuration for the service.
 type Config struct {
-	Server         ServerConfig
-	Database       DatabaseConfig
-	JWT            JWTConfig
-	S3             S3Config
-	Stripe         StripeConfig
-	Ledger         LedgerConfig
-	Mandrill       MandrillConfig
-	OTel           OTelConfig
-	Local          LocalConfig
-	Approval       ApprovalConfig
-	Reimbursement  ReimbursementConfig
+	Server        ServerConfig
+	Database      DatabaseConfig
+	JWT           JWTConfig
+	S3            S3Config
+	Stripe        StripeConfig
+	Ledger        LedgerConfig
+	Mandrill      MandrillConfig
+	OTel          OTelConfig
+	Local         LocalConfig
+	Approval      ApprovalConfig
+	Reimbursement ReimbursementConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -124,6 +124,23 @@ type ReimbursementConfig struct {
 	APIKey string
 	// Timeout caps individual outbound HTTP calls.
 	Timeout time.Duration
+
+	// --- Optional Auth0 M2M config -----------------------------------------
+	// Required only for RS routes that the API gateway enforces Bearer auth on
+	// (e.g. /expense/*). All four fields must be set together or all omitted.
+
+	// Auth0TokenURL is the token endpoint.
+	// Set via RS_M2M_TOKEN_URL.
+	Auth0TokenURL string
+	// Auth0ClientID is the M2M application client ID.
+	// Set via RS_M2M_CLIENT_ID.
+	Auth0ClientID string
+	// Auth0ClientSecret is the M2M application client secret.
+	// Set via RS_M2M_CLIENT_SECRET.
+	Auth0ClientSecret string
+	// Auth0Audience is the Auth0 API identifier the gateway validates against.
+	// Set via RS_M2M_AUDIENCE.
+	Auth0Audience string
 }
 
 // MandrillConfig holds Mandrill transactional email settings.
@@ -304,9 +321,13 @@ func LoadConfig() (*Config, error) {
 			Timeout:            10 * time.Second,
 		},
 		Reimbursement: ReimbursementConfig{
-			APIURL:  getEnv("REIMBURSEMENTS_API_URL", ""),
-			APIKey:  getEnv("REIMBURSEMENTS_API_KEY", ""),
-			Timeout: 10 * time.Second,
+			APIURL:            getEnv("REIMBURSEMENTS_API_URL", ""),
+			APIKey:            getEnv("REIMBURSEMENTS_API_KEY", ""),
+			Auth0TokenURL:     getEnv("RS_M2M_TOKEN_URL", ""),
+			Auth0ClientID:     getEnv("RS_M2M_CLIENT_ID", ""),
+			Auth0ClientSecret: getEnv("RS_M2M_CLIENT_SECRET", ""),
+			Auth0Audience:     getEnv("RS_M2M_AUDIENCE", ""),
+			Timeout:           10 * time.Second,
 		},
 	}, nil
 }
@@ -318,6 +339,17 @@ func LoadConfig() (*Config, error) {
 func validateReimbursementConfig(cfg ReimbursementConfig) error {
 	if cfg.APIURL != "" && cfg.APIKey == "" {
 		return fmt.Errorf("REIMBURSEMENTS_API_KEY is required when REIMBURSEMENTS_API_URL is set")
+	}
+	// Auth0 M2M config is all-or-nothing.
+	m2mFields := []string{cfg.Auth0TokenURL, cfg.Auth0ClientID, cfg.Auth0ClientSecret, cfg.Auth0Audience}
+	setCount := 0
+	for _, f := range m2mFields {
+		if f != "" {
+			setCount++
+		}
+	}
+	if setCount > 0 && setCount < len(m2mFields) {
+		return fmt.Errorf("RS_M2M_TOKEN_URL, RS_M2M_CLIENT_ID, RS_M2M_CLIENT_SECRET, and RS_M2M_AUDIENCE must all be set or all be empty")
 	}
 	return nil
 }
