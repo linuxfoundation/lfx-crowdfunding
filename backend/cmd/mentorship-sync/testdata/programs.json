@@ -1,0 +1,26 @@
+[
+  {
+    "jobspring_project_id": "fe38c553-a066-44b0-8192-f5a5bee5074b",
+    "name": "CNCF - Example Program (Hidden)",
+    "status": "Hidden",
+    "owner_lf_username": "cncf-admin",
+    "beneficiaries": []
+  },
+  {
+    "jobspring_project_id": "60410ceb-37ca-4ecf-9233-f907d1adf439",
+    "name": "Open Mainframe Project - Example Program (Published)",
+    "status": "Published",
+    "owner_lf_username": "omp-admin",
+    "beneficiaries": [
+      {"name": "Alice Mentee", "email": "alice.mentee@example.com"},
+      {"name": "Bob Mentee", "email": "bob.mentee@example.com"}
+    ]
+  },
+  {
+    "jobspring_project_id": "0d6fd362-04a1-4086-a6e7-ec753ed4a60b",
+    "name": "Example Program (legacy hide status)",
+    "status": "hide",
+    "owner_lf_username": "meshery-admin",
+    "beneficiaries": []
+  }
+]
