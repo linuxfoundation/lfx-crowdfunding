@@ -3,22 +3,16 @@
 
 import { test as base, type Page } from '@playwright/test';
 
-// Suppress the Osano cookie consent banner by setting its localStorage consent record.
-// The banner reads this key on every page load; pre-setting it prevents the overlay
-// from appearing and intercepting pointer events on footer-area buttons.
-async function dismissCookieBanner(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem(
-      'osano_consentmanager',
-      JSON.stringify({ analytics: 'ACCEPT', marketing: 'ACCEPT', essential: 'ACCEPT' }),
-    );
-  });
-}
-
 // loginAsTestUser calls the e2e-auth endpoint to set auth cookies,
 // then navigates home to establish the session.
 export async function loginAsTestUser(page: Page): Promise<void> {
-  await dismissCookieBanner(page);
+  // Block the Osano cookie consent script entirely so the banner never renders.
+  // The banner sits at the bottom of the viewport and intercepts pointer events on
+  // footer-area buttons (Continue, Submit initiative). Blocking via route interception
+  // is the only reliable approach — localStorage/cookie tricks don't work because
+  // Osano fetches its config from its own CDN and ignores pre-set local state.
+  await page.route('**osano.com**', (route) => route.abort());
+
   const response = await page.request.post('/api/e2e-auth');
   if (!response.ok()) {
     throw new Error(
