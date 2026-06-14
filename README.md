@@ -56,7 +56,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full system diagram a
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | System overview, component breakdown, data flows, integrations |
 | [`docs/authentication-architecture.md`](docs/authentication-architecture.md) | Auth design — scopes, flows (CF frontend, Self Serve, RS M2M), Auth0 config |
-| [`backend/docs/go-live-checklist.md`](backend/docs/go-live-checklist.md) | Pre-launch checklist |
+| [`docs/release-plan.md`](docs/release-plan.md) | Go-live release plan and smoke test checklist |
 | [`backend/docs/rewrite/01-current-system.md`](backend/docs/rewrite/01-current-system.md) | Inventory of the current Lambda system — endpoints, DynamoDB tables, integrations |
 | [`backend/docs/rewrite/02-decisions.md`](backend/docs/rewrite/02-decisions.md) | All architectural decisions with rationale |
 | [`backend/docs/rewrite/03-open-questions.md`](backend/docs/rewrite/03-open-questions.md) | Open questions with owners and blocking status |
