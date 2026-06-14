@@ -8,7 +8,9 @@ test.describe('One-time donation flow (authenticated)', () => {
   test('donate button visible on published initiative with accept_funding=true', async ({
     authenticatedPage,
   }) => {
-    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`);
+    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`, {
+      waitUntil: 'domcontentloaded',
+    });
     await authenticatedPage.waitForLoadState('networkidle');
 
     const donateBtn = authenticatedPage
@@ -19,7 +21,9 @@ test.describe('One-time donation flow (authenticated)', () => {
   });
 
   test('donation form opens when donate button clicked', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`);
+    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`, {
+      waitUntil: 'domcontentloaded',
+    });
     await authenticatedPage.waitForLoadState('networkidle');
 
     // Use the same locator as the visibility test — the button may be inside a

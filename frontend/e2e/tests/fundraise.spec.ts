@@ -52,12 +52,15 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
       .locator('textarea[placeholder="Briefly introduce your project..."]')
       .fill('An initiative created by the Playwright e2e suite.');
 
-    // Select a topic from the custom dropdown (multi-select — clicking an option keeps it open)
-    const topicTrigger = authenticatedPage.getByRole('button', { name: 'Select topic(s)' });
-    await topicTrigger.click();
+    // Select a topic from the custom dropdown (multi-select — clicking an option keeps it open).
+    // After a topic is selected the trigger label changes to the chip text, so locate it by
+    // the container's relative position rather than by accessible name.
+    const topicContainer = authenticatedPage.locator('[class*="relative"]').filter({
+      has: authenticatedPage.getByText('Select topic(s)'),
+    });
+    await topicContainer.getByRole('button').first().click(); // open
     await authenticatedPage.getByRole('button', { name: '3D' }).click();
-    // Close by clicking the trigger again (toggle) — the component has no keyboard close handler
-    await topicTrigger.click();
+    await topicContainer.getByRole('button').first().click(); // close (toggle)
 
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
