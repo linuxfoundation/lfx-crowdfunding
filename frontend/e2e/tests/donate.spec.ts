@@ -114,7 +114,9 @@ test.describe('Donate — UI flows (CI)', () => {
   test('Continue to Payment is disabled until name and email are filled', async ({
     authenticatedPage,
   }) => {
-    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`);
+    await authenticatedPage.goto(`/initiatives/${E2E_INITIATIVE_SLUG}`, {
+      waitUntil: 'domcontentloaded',
+    });
     await authenticatedPage.waitForLoadState('networkidle');
 
     await authenticatedPage.evaluate(() => {
@@ -210,9 +212,9 @@ test.describe('Donate — payment flows @dev', () => {
     await fillStripeCard(authenticatedPage, STRIPE_CARDS.declined);
     await clickDrawerDonate(authenticatedPage);
 
-    await expect(
-      authenticatedPage.getByText(/card.*declined|declined|do not honor/i),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(authenticatedPage.getByText(/card.*declined|declined|do not honor/i)).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test('3DS card — approve — completes donation @dev', async ({ authenticatedPage }) => {
