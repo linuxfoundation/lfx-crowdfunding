@@ -42,8 +42,9 @@ Key notes
   _as_uuid(projectId / entityId) so FK lookups from donations/subscriptions
   remain stable across re-runs.
 - DynamoDB entity type quirk: SaveEntity rewrites 'general fund' → 'initiative'
-  before every PutItem. Migration reverses this:
-    if entityType == 'initiative' → restore to 'general fund'
+  before every PutItem. Migration reverses this and normalises to the canonical
+  underscore form used by the new backend:
+    if entityType == 'initiative' → 'general_fund'
 - Budget.AmountInCents is serialised with json tag "amount" — access as
   budget.get("amount"), NOT budget.get("amountInCents").
 - Excluded from schema (no DynamoDB write path / computed at read-time):
@@ -723,10 +724,11 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set, u
         known_initiative_ids.add(pg_id)
 
         # entityType quirk: SaveEntity rewrites 'general fund' → 'initiative'
-        # before every PutItem. Reverse it here.
+        # before every PutItem. Reverse it here and normalise to the canonical
+        # underscore form used by ValidInitiativeTypes in the new backend.
         entity_type: str = e.get("entityType") or ""
         if entity_type == "initiative":
-            entity_type = "general fund"
+            entity_type = "general_fund"
 
         # ── Core initiative row ──────────────────────────────────────────
         initiative_rows.append(

@@ -4,10 +4,14 @@
 -- Migration: Normalize legacy initiative_type values
 -- Created: 2026-06-14
 --
--- Legacy DynamoDB rows imported with initiative_type = 'general fund'
--- (space-separated display string). The canonical value used by all new
--- code is 'general_fund' (underscore). Normalize the 2 legacy rows so
--- that the General Funds filter tab and type validation work correctly.
+-- migrate_dynamo_to_postgres.py previously restored DynamoDB's entityType
+-- quirk as 'general fund' (space) instead of the canonical 'general_fund'
+-- (underscore) used by all new backend code. The script has been fixed, but
+-- any environment that ran the old script (e.g. DEV) still has the wrong value.
+-- This migration normalises those rows so the General Funds filter tab and
+-- type validation work correctly.
+--
+-- Safe to re-run: WHERE clause is a no-op if already normalised.
 -- ============================================
 
 BEGIN;
