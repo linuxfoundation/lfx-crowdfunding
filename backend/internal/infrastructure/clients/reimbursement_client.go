@@ -9,9 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/core"
 	"go.opentelemetry.io/otel"
@@ -60,6 +62,12 @@ type ReimbursementClient interface {
 	// It is a no-op when the initiative is not published.
 	// Errors are non-fatal by convention — callers log at warn and continue.
 	SyncPolicy(ctx context.Context, initiative *models.Initiative, ownerUser *models.User) error
+
+	// ProcessExpenseAction submits an action (e.g. "approve", "reject") against
+	// the given expense report in the Reimbursement Service.
+	// Maps upstream 404 → domain.ErrExpenseReportNotFound so callers can
+	// distinguish missing reports from other upstream errors.
+	ProcessExpenseAction(ctx context.Context, action, reportID string) error
 }
 
 // ReimbursementConfig holds all connection settings for the Reimbursement Service.
@@ -264,4 +272,36 @@ func categoryName(name string) string {
 		}
 	}
 	return strings.Join(words, "")
+}
+
+// ProcessExpenseAction submits an action (e.g. "approve", "reject") for the
+// given expense report via POST /expense/{action}/{reportId} on the
+// Reimbursement Service. The call is authenticated with X-API-KEY.
+// A 404 response is translated to domain.ErrExpenseReportNotFound.
+func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID string) error {
+	ctx, span := reimbursementTracer.Start(ctx, "reimbursement.ProcessExpenseAction")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("expense.action", action),
+		attribute.String("expense.report_id", reportID),
+	)
+
+	endpoint := strings.TrimRight(c.cfg.APIURL, "/") +
+		"/expense/" + url.PathEscape(action) + "/" + url.PathEscape(reportID)
+
+	err := c.httpClient.PostJSON(ctx, endpoint, c.authHeaders(), struct{}{}, nil, func(r *http.Response) error {
+		if r.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("%w: %s", domain.ErrExpenseReportNotFound, reportID)
+		}
+		return &rsHTTPError{code: r.StatusCode}
+	})
+	if err != nil {
+		var httpErr *rsHTTPError
+		if errors.As(err, &httpErr) {
+			return fmt.Errorf("%w: expense action %q on %s returned %d", domain.ErrUpstreamUnavailable, action, reportID, httpErr.code)
+		}
+		// Network / request-build failures are also upstream outages.
+		return fmt.Errorf("%w: expense action %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
+	}
+	return nil
 }
