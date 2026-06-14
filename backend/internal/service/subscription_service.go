@@ -325,10 +325,7 @@ func isStripeProductMissing(err error) bool {
 func isStripeSubscriptionMissing(err error) bool {
 	var se *stripe.Error
 	if errors.As(err, &se) {
-		return se.HTTPStatusCode == 404 &&
-			se.Code == stripe.ErrorCodeResourceMissing &&
-			strings.Contains(se.Msg, "No such subscription")
+		return se.HTTPStatusCode == 404 && se.Code == stripe.ErrorCodeResourceMissing
 	}
-	return strings.Contains(err.Error(), "resource_missing") &&
-		strings.Contains(err.Error(), "No such subscription")
+	return strings.Contains(err.Error(), "resource_missing")
 }
