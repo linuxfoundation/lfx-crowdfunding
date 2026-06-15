@@ -199,8 +199,14 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		argN++
 	}
 	if filter.InitiativeType != "" {
-		where += fmt.Sprintf(" AND i.initiative_type = $%d", argN)
-		args = append(args, filter.InitiativeType)
+		if filter.InitiativeType == "general_fund" {
+			// 'other' and 'community' are legacy types that surface under the General Fund tab.
+			where += fmt.Sprintf(" AND i.initiative_type = ANY($%d)", argN)
+			args = append(args, []string{"general_fund", "other", "community"})
+		} else {
+			where += fmt.Sprintf(" AND i.initiative_type = $%d", argN)
+			args = append(args, filter.InitiativeType)
+		}
 		argN++
 	}
 	if filter.Status != "" {
