@@ -81,13 +81,8 @@ SPDX-License-Identifier: MIT
             v-model="amountForm"
             :funding-goals="initiative.fundingGoals"
           />
-          <donate-step-contact
-            v-else-if="step === 1"
-            ref="contactStepRef"
-            v-model="contactForm"
-          />
           <donate-step-payment
-            v-else-if="step === 2"
+            v-else-if="step === 1"
             ref="paymentStepRef"
             :amount-cents="amountForm.amountCents"
             :tier-name="amountForm.tierName"
@@ -98,7 +93,7 @@ SPDX-License-Identifier: MIT
 
         <!-- Footer -->
         <lfx-field-message
-          v-if="donationError && step === 2"
+          v-if="donationError && step === 1"
           class="px-8 pb-2"
         >
           {{ donationError }}
@@ -142,10 +137,9 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import DonateStepAmount from './donate-step-amount.vue';
-import DonateStepContact from './donate-step-contact.vue';
 import DonateStepPayment from './donate-step-payment.vue';
 import DonateStepSuccess from './donate-step-success.vue';
-import type { DonateAmountForm, DonateContactForm } from '#shared/types/donate.types';
+import type { DonateAmountForm } from '#shared/types/donate.types';
 import type { FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
@@ -153,7 +147,7 @@ import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxFieldMessage from '~/components/uikit/field/field-message.vue';
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 2;
 
 const { card, saveCard } = usePaymentAccount();
 const { donate, loading: donating, error: donationError } = useDonate();
@@ -185,7 +179,6 @@ const submitting = ref(false);
 const submitted = ref(false);
 const paymentComplete = ref(false);
 
-const contactStepRef = ref<InstanceType<typeof DonateStepContact> | null>(null);
 const paymentStepRef = ref<InstanceType<typeof DonateStepPayment> | null>(null);
 
 const amountForm = ref<DonateAmountForm>({
@@ -197,32 +190,16 @@ const amountForm = ref<DonateAmountForm>({
   category: null,
 });
 
-const contactForm = ref<DonateContactForm>({
-  donorType: 'individual',
-  fullName: '',
-  companyName: '',
-  contactName: '',
-  email: '',
-  needsInvoice: false,
-  poNumber: '',
-});
-
 const hasSelection = computed(() => amountForm.value.amountCents > 0);
 
 const isCurrentStepValid = computed(() => {
   if (step.value === 0) return hasSelection.value;
-  if (step.value === 1) {
-    const f = contactForm.value;
-    if (f.donorType === 'individual') return f.fullName.trim().length > 0 && f.email.trim().length > 0;
-    return f.companyName.trim().length > 0 && f.contactName.trim().length > 0 && f.email.trim().length > 0;
-  }
   return paymentComplete.value;
 });
 
 const continueLabel = computed(() => {
-  if (step.value === 2) return amountForm.value.donationType === 'monthly' ? 'Subscribe' : 'Donate';
-  if (step.value === 1) return 'Continue to Payment';
-  return 'Continue';
+  if (step.value === 1) return amountForm.value.donationType === 'monthly' ? 'Subscribe' : 'Donate';
+  return 'Continue to Payment';
 });
 
 const amountSummary = computed(() => {
@@ -250,19 +227,10 @@ const close = () => {
     donationType: 'one-time',
     category: null,
   };
-  contactForm.value = {
-    donorType: 'individual',
-    fullName: '',
-    companyName: '',
-    contactName: '',
-    email: '',
-    needsInvoice: false,
-    poNumber: '',
-  };
 };
 
 const previousStep = () => {
-  if (step.value === 2) paymentComplete.value = false;
+  if (step.value === 1) paymentComplete.value = false;
   if (step.value > 0) step.value--;
 };
 
@@ -270,10 +238,6 @@ const handleContinue = async () => {
   if (!hasSelection.value) return;
 
   if (!isLastStep.value) {
-    if (step.value === 1 && contactStepRef.value?.$v) {
-      contactStepRef.value.$v.$touch();
-      if (contactStepRef.value.$v.$invalid) return;
-    }
     step.value++;
     return;
   }
