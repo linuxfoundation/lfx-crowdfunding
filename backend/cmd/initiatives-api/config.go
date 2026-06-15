@@ -16,17 +16,17 @@ import (
 
 // Config holds all runtime configuration for the service.
 type Config struct {
-	Server         ServerConfig
-	Database       DatabaseConfig
-	JWT            JWTConfig
-	S3             S3Config
-	Stripe         StripeConfig
-	Ledger         LedgerConfig
-	Mandrill       MandrillConfig
-	OTel           OTelConfig
-	Local          LocalConfig
-	Approval       ApprovalConfig
-	Reimbursement  ReimbursementConfig
+	Server        ServerConfig
+	Database      DatabaseConfig
+	JWT           JWTConfig
+	S3            S3Config
+	Stripe        StripeConfig
+	Ledger        LedgerConfig
+	Mandrill      MandrillConfig
+	OTel          OTelConfig
+	Local         LocalConfig
+	Approval      ApprovalConfig
+	Reimbursement ReimbursementConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -124,6 +124,25 @@ type ReimbursementConfig struct {
 	APIKey string
 	// Timeout caps individual outbound HTTP calls.
 	Timeout time.Duration
+
+	// --- Optional Auth0 private-key JWT (M2M) config ----------------------
+	// The API gateway requires a Bearer token on all RS routes. All four fields
+	// must be set together or all omitted.
+
+	// Auth0TokenURL is the token endpoint.
+	// Set via API_GW_AUTH0_TOKEN_URL.
+	Auth0TokenURL string
+	// Auth0ClientID is the M2M application client ID.
+	// Set via API_GW_AUTH0_CLIENT_ID.
+	Auth0ClientID string
+	// Auth0ClientPrivateKey is the PEM-encoded RSA private key used to sign
+	// the JWT client assertion (private-key JWT grant).
+	// Set via API_GW_AUTH0_CLIENT_PRIVATE_KEY.
+	Auth0ClientPrivateKey string
+	// Auth0Audience is the resource server audience the gateway validates against,
+	// e.g. https://api-gw.dev.platform.linuxfoundation.org/
+	// Set via API_GW_AUTH0_AUDIENCE.
+	Auth0Audience string
 }
 
 // MandrillConfig holds Mandrill transactional email settings.
@@ -304,9 +323,13 @@ func LoadConfig() (*Config, error) {
 			Timeout:            10 * time.Second,
 		},
 		Reimbursement: ReimbursementConfig{
-			APIURL:  getEnv("REIMBURSEMENTS_API_URL", ""),
-			APIKey:  getEnv("REIMBURSEMENTS_API_KEY", ""),
-			Timeout: 10 * time.Second,
+			APIURL:                getEnv("REIMBURSEMENTS_API_URL", ""),
+			APIKey:                getEnv("REIMBURSEMENTS_API_KEY", ""),
+			Auth0TokenURL:         getEnv("API_GW_AUTH0_TOKEN_URL", ""),
+			Auth0ClientID:         getEnv("API_GW_AUTH0_CLIENT_ID", ""),
+			Auth0ClientPrivateKey: getEnv("API_GW_AUTH0_CLIENT_PRIVATE_KEY", ""),
+			Auth0Audience:         getEnv("API_GW_AUTH0_AUDIENCE", ""),
+			Timeout:               10 * time.Second,
 		},
 	}, nil
 }
@@ -318,6 +341,17 @@ func LoadConfig() (*Config, error) {
 func validateReimbursementConfig(cfg ReimbursementConfig) error {
 	if cfg.APIURL != "" && cfg.APIKey == "" {
 		return fmt.Errorf("REIMBURSEMENTS_API_KEY is required when REIMBURSEMENTS_API_URL is set")
+	}
+	// Auth0 private-key JWT config is all-or-nothing.
+	m2mFields := []string{cfg.Auth0TokenURL, cfg.Auth0ClientID, cfg.Auth0ClientPrivateKey, cfg.Auth0Audience}
+	setCount := 0
+	for _, f := range m2mFields {
+		if f != "" {
+			setCount++
+		}
+	}
+	if setCount > 0 && setCount < len(m2mFields) {
+		return fmt.Errorf("API_GW_AUTH0_TOKEN_URL, API_GW_AUTH0_CLIENT_ID, API_GW_AUTH0_CLIENT_PRIVATE_KEY, and API_GW_AUTH0_AUDIENCE must all be set or all be empty")
 	}
 	return nil
 }
