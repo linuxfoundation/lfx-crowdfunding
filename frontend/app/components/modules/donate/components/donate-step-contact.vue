@@ -35,12 +35,12 @@ SPDX-License-Identifier: MIT
           class="!w-full"
           placement="top-start"
           :content="AUTH_FIELD_TOOLTIP"
-          :disabled="!user"
+          :disabled="!user?.name"
         >
           <lfx-input
             v-model="form.fullName"
             placeholder=""
-            :disabled="!!user"
+            :disabled="!!user?.name"
             :invalid="$v.fullName.$error"
             @blur="$v.fullName.$touch()"
           />
@@ -56,13 +56,13 @@ SPDX-License-Identifier: MIT
           class="!w-full"
           placement="top-start"
           :content="AUTH_FIELD_TOOLTIP"
-          :disabled="!user"
+          :disabled="!user?.email"
         >
           <lfx-input
             v-model="form.email"
             type="email"
             placeholder=""
-            :disabled="!!user"
+            :disabled="!!user?.email"
             :invalid="$v.email.$error"
             @blur="$v.email.$touch()"
           />
@@ -95,12 +95,12 @@ SPDX-License-Identifier: MIT
             class="!w-full"
             placement="top-start"
             :content="AUTH_FIELD_TOOLTIP"
-            :disabled="!user"
+            :disabled="!user?.name"
           >
             <lfx-input
               v-model="form.contactName"
               placeholder=""
-              :disabled="!!user"
+              :disabled="!!user?.name"
               :invalid="$v.contactName.$error"
               @blur="$v.contactName.$touch()"
             />
@@ -117,13 +117,13 @@ SPDX-License-Identifier: MIT
           class="!w-full"
           placement="top-start"
           :content="AUTH_FIELD_TOOLTIP"
-          :disabled="!user"
+          :disabled="!user?.email"
         >
           <lfx-input
             v-model="form.email"
             type="email"
             placeholder=""
-            :disabled="!!user"
+            :disabled="!!user?.email"
             :invalid="$v.email.$error"
             @blur="$v.email.$touch()"
           />
