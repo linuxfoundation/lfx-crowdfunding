@@ -3,14 +3,26 @@
     "jobspring_project_id": "fe38c553-a066-44b0-8192-f5a5bee5074b",
     "name": "CNCF - Example Program (Hidden)",
     "status": "Hidden",
+    "description": "A sample hidden mentorship program for testing.",
+    "slug": "cncf-example-hidden",
+    "industry": "Cloud Computing, Containers",
     "owner_lf_username": "cncf-admin",
+    "skills": ["Golang", "Kubernetes", "kubeadm"],
+    "mentors": [
+      {"name": "Jane Mentor", "email": "jane.mentor@example.com", "avatar_url": "https://example.com/jane.png"}
+    ],
     "beneficiaries": []
   },
   {
     "jobspring_project_id": "60410ceb-37ca-4ecf-9233-f907d1adf439",
     "name": "Open Mainframe Project - Example Program (Published)",
     "status": "Published",
+    "description": "An active mentorship program under the Open Mainframe Project.",
+    "slug": "omp-example-published",
+    "industry": "Mainframe, Enterprise Computing",
     "owner_lf_username": "omp-admin",
+    "skills": ["COBOL", "z/OS"],
+    "mentors": [],
     "beneficiaries": [
       {"name": "Alice Mentee", "email": "alice.mentee@example.com"},
       {"name": "Bob Mentee", "email": "bob.mentee@example.com"}
@@ -20,6 +32,9 @@
     "jobspring_project_id": "0d6fd362-04a1-4086-a6e7-ec753ed4a60b",
     "name": "Example Program (legacy hide status)",
     "status": "hide",
+    "description": "",
+    "slug": "",
+    "industry": "",
     "owner_lf_username": "meshery-admin",
     "beneficiaries": []
   }

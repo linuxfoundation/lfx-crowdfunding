@@ -17,13 +17,24 @@ type fixtureProgram struct {
 	JobspringProjectID string               `json:"jobspring_project_id"`
 	Name               string               `json:"name"`
 	Status             string               `json:"status"`
+	Description        string               `json:"description"`
+	Slug               string               `json:"slug"`
+	Industry           string               `json:"industry"`
 	OwnerLFUsername    string               `json:"owner_lf_username"`
+	Skills             []string             `json:"skills"`
+	Mentors            []fixtureMentor      `json:"mentors"`
 	Beneficiaries      []fixtureBeneficiary `json:"beneficiaries"`
 }
 
 type fixtureBeneficiary struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+}
+
+type fixtureMentor struct {
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"`
 }
 
 // FixtureSource implements mentorshipSource by reading a JSON file from disk.
@@ -52,7 +63,7 @@ func (f *FixtureSource) FetchPrograms(_ context.Context) ([]models.MentorshipPro
 	programs := make([]models.MentorshipProgram, len(raw))
 	for i, r := range raw {
 		// Preserve nil when the JSON field was absent — nil means "source did not
-		// provide beneficiary data" and causes the syncer to skip UpsertBeneficiaries.
+		// provide data" and causes the syncer to skip the corresponding upsert.
 		var beneficiaries []models.MentorshipBeneficiary
 		if r.Beneficiaries != nil {
 			beneficiaries = make([]models.MentorshipBeneficiary, len(r.Beneficiaries))
@@ -60,11 +71,25 @@ func (f *FixtureSource) FetchPrograms(_ context.Context) ([]models.MentorshipPro
 				beneficiaries[j] = models.MentorshipBeneficiary{Name: b.Name, Email: b.Email}
 			}
 		}
+
+		var mentors []models.MentorshipMentor
+		if r.Mentors != nil {
+			mentors = make([]models.MentorshipMentor, len(r.Mentors))
+			for j, m := range r.Mentors {
+				mentors[j] = models.MentorshipMentor{Name: m.Name, Email: m.Email, AvatarURL: m.AvatarURL}
+			}
+		}
+
 		programs[i] = models.MentorshipProgram{
 			JobspringProjectID: r.JobspringProjectID,
 			Name:               r.Name,
 			Status:             r.Status,
+			Description:        r.Description,
+			Slug:               r.Slug,
+			Industry:           r.Industry,
 			OwnerLFUsername:    r.OwnerLFUsername,
+			Skills:             r.Skills,
+			Mentors:            mentors,
 			Beneficiaries:      beneficiaries,
 		}
 	}

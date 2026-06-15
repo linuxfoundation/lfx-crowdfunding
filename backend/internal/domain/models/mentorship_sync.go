@@ -10,16 +10,34 @@ type MentorshipProgram struct {
 	JobspringProjectID string // upsert key — PROGRAM_ID from Snowflake
 	Name               string // PROGRAM_NAME
 	Status             string // PROGRAM_STATUS; normalised to lowercase in syncer
+	Description        string // PROGRAM_DESCRIPTION
+	Slug               string // program_slug
+	Industry           string // PROGRAM_TECHNOLOGY (comma-separated list)
 	OwnerLFUsername    string // OWNER_LF_USERNAME — LF SSO username of the program owner
-	// Beneficiaries is nil when the source did not provide beneficiary data
-	// (e.g. the Snowflake query does not yet fetch SELECTED_MENTEES).
+
+	// Skills is nil when the source did not provide skills data.
+	// A nil slice means "do not touch skills"; non-nil (even empty) replaces all existing rows.
+	Skills []string
+
+	// Mentors is nil when the source did not provide mentor data.
+	// A nil slice means "do not touch mentors"; non-nil (even empty) replaces all existing rows.
+	Mentors []MentorshipMentor
+
+	// Beneficiaries is nil when the source did not provide beneficiary data.
 	// A nil slice means "do not touch beneficiaries"; an empty non-nil slice
 	// means "source returned zero beneficiaries — delete all existing rows".
 	Beneficiaries []MentorshipBeneficiary
 }
 
-// MentorshipBeneficiary is one approved beneficiary on a program.
+// MentorshipBeneficiary is one approved beneficiary (selected mentee) on a program.
 type MentorshipBeneficiary struct {
-	Name  string
+	Name  string // derived: first_name + " " + last_name
 	Email string
+}
+
+// MentorshipMentor is one mentor on a program.
+type MentorshipMentor struct {
+	Name      string // derived: first_name + " " + last_name
+	Email     string
+	AvatarURL string
 }

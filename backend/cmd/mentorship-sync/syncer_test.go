@@ -23,12 +23,10 @@ func (m *mockMentorshipSource) FetchPrograms(_ context.Context) ([]models.Mentor
 }
 
 type mockMentorshipRepo struct {
-	upsertedPrograms      []models.MentorshipProgram
-	upsertedBeneficiaries map[string][]models.MentorshipBeneficiary
-	programErr            error
-	beneficiaryErr        error
-	jobspringIDs          []string
-	listErr               error
+	upsertedPrograms []models.MentorshipProgram
+	programErr       error
+	jobspringIDs     []string
+	listErr          error
 }
 
 func (m *mockMentorshipRepo) UpsertProgram(_ context.Context, p models.MentorshipProgram) (string, error) {
@@ -37,17 +35,6 @@ func (m *mockMentorshipRepo) UpsertProgram(_ context.Context, p models.Mentorshi
 	}
 	m.upsertedPrograms = append(m.upsertedPrograms, p)
 	return "initiative-uuid-" + p.JobspringProjectID, nil
-}
-
-func (m *mockMentorshipRepo) UpsertBeneficiaries(_ context.Context, initiativeID string, beneficiaries []models.MentorshipBeneficiary) error {
-	if m.beneficiaryErr != nil {
-		return m.beneficiaryErr
-	}
-	if m.upsertedBeneficiaries == nil {
-		m.upsertedBeneficiaries = make(map[string][]models.MentorshipBeneficiary)
-	}
-	m.upsertedBeneficiaries[initiativeID] = beneficiaries
-	return nil
 }
 
 func (m *mockMentorshipRepo) ListJobspringIDs(_ context.Context) ([]string, error) {
@@ -141,11 +128,10 @@ func TestSyncer_Run_beneficiariesUpsertedForInitiative(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	initiativeID := "initiative-uuid-js-1"
-	bens, ok := repo.upsertedBeneficiaries[initiativeID]
-	if !ok {
-		t.Fatalf("no beneficiaries upserted for initiative %q", initiativeID)
+	if len(repo.upsertedPrograms) != 1 {
+		t.Fatalf("expected 1 upserted program, got %d", len(repo.upsertedPrograms))
 	}
+	bens := repo.upsertedPrograms[0].Beneficiaries
 	if len(bens) != 1 || bens[0].Email != "alice@x.com" {
 		t.Errorf("beneficiaries: got %+v", bens)
 	}
@@ -167,8 +153,11 @@ func TestSyncer_Run_nilBeneficiariesSkipsUpsert(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if _, called := repo.upsertedBeneficiaries["initiative-uuid-js-1"]; called {
-		t.Error("UpsertBeneficiaries should not be called when Beneficiaries is nil")
+	if len(repo.upsertedPrograms) != 1 {
+		t.Fatalf("expected 1 upserted program, got %d", len(repo.upsertedPrograms))
+	}
+	if repo.upsertedPrograms[0].Beneficiaries != nil {
+		t.Error("Beneficiaries should be nil when not provided by source")
 	}
 }
 
@@ -188,9 +177,12 @@ func TestSyncer_Run_emptyBeneficiariesDeletesExisting(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	bens, called := repo.upsertedBeneficiaries["initiative-uuid-js-1"]
-	if !called {
-		t.Fatal("UpsertBeneficiaries should be called when Beneficiaries is non-nil empty")
+	if len(repo.upsertedPrograms) != 1 {
+		t.Fatalf("expected 1 upserted program, got %d", len(repo.upsertedPrograms))
+	}
+	bens := repo.upsertedPrograms[0].Beneficiaries
+	if bens == nil {
+		t.Fatal("Beneficiaries should be non-nil empty slice to signal delete-all")
 	}
 	if len(bens) != 0 {
 		t.Errorf("expected empty beneficiaries slice, got %+v", bens)
@@ -269,10 +261,112 @@ func (r *failOnSecondRepo) UpsertProgram(ctx context.Context, p models.Mentorshi
 	return r.base.UpsertProgram(ctx, p)
 }
 
-func (r *failOnSecondRepo) UpsertBeneficiaries(ctx context.Context, id string, b []models.MentorshipBeneficiary) error {
-	return r.base.UpsertBeneficiaries(ctx, id, b)
-}
-
 func (r *failOnSecondRepo) ListJobspringIDs(ctx context.Context) ([]string, error) {
 	return r.base.ListJobspringIDs(ctx)
+}
+
+func TestSyncer_Run_skillsUpsertedForInitiative(t *testing.T) {
+	t.Parallel()
+
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{
+				JobspringProjectID: "js-1",
+				Name:               "Prog A",
+				Status:             "published",
+				Skills:             []string{"Golang", "Kubernetes"},
+			},
+		},
+	}
+	repo := &mockMentorshipRepo{}
+
+	s := newSyncer(repo, src, discardLogger())
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(repo.upsertedPrograms) != 1 {
+		t.Fatalf("expected 1 upserted program, got %d", len(repo.upsertedPrograms))
+	}
+	skills := repo.upsertedPrograms[0].Skills
+	if len(skills) != 2 || skills[0] != "Golang" || skills[1] != "Kubernetes" {
+		t.Errorf("skills: got %v", skills)
+	}
+}
+
+func TestSyncer_Run_nilSkillsSkipsUpsert(t *testing.T) {
+	t.Parallel()
+
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Skills: nil},
+		},
+	}
+	repo := &mockMentorshipRepo{}
+
+	s := newSyncer(repo, src, discardLogger())
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(repo.upsertedPrograms) != 1 {
+		t.Fatalf("expected 1 upserted program, got %d", len(repo.upsertedPrograms))
+	}
+	if repo.upsertedPrograms[0].Skills != nil {
+		t.Errorf("Skills should be nil when not provided, got %v", repo.upsertedPrograms[0].Skills)
+	}
+}
+
+func TestSyncer_Run_mentorsUpsertedForInitiative(t *testing.T) {
+	t.Parallel()
+
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{
+				JobspringProjectID: "js-1",
+				Name:               "Prog A",
+				Status:             "published",
+				Mentors: []models.MentorshipMentor{
+					{Name: "Jane Smith", Email: "jane@example.com", AvatarURL: "https://example.com/jane.png"},
+				},
+			},
+		},
+	}
+	repo := &mockMentorshipRepo{}
+
+	s := newSyncer(repo, src, discardLogger())
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(repo.upsertedPrograms) != 1 {
+		t.Fatalf("expected 1 upserted program, got %d", len(repo.upsertedPrograms))
+	}
+	mentors := repo.upsertedPrograms[0].Mentors
+	if len(mentors) != 1 || mentors[0].Email != "jane@example.com" {
+		t.Errorf("mentors: got %+v", mentors)
+	}
+}
+
+func TestSyncer_Run_nilMentorsSkipsUpsert(t *testing.T) {
+	t.Parallel()
+
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Mentors: nil},
+		},
+	}
+	repo := &mockMentorshipRepo{}
+
+	s := newSyncer(repo, src, discardLogger())
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(repo.upsertedPrograms) != 1 {
+		t.Fatalf("expected 1 upserted program, got %d", len(repo.upsertedPrograms))
+	}
+	if repo.upsertedPrograms[0].Mentors != nil {
+		t.Errorf("Mentors should be nil when not provided, got %v", repo.upsertedPrograms[0].Mentors)
+	}
 }

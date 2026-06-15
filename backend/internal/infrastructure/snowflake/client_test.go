@@ -9,6 +9,7 @@ import (
 	"database/sql/driver"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/snowflake"
 )
@@ -47,7 +48,19 @@ type mockRows struct {
 }
 
 func (r *mockRows) Columns() []string {
-	return []string{"PROGRAM_ID", "PROGRAM_NAME", "PROGRAM_STATUS", "OWNER_LF_USERNAME"}
+	return []string{
+		"PROGRAM_ID",
+		"PROGRAM_NAME",
+		"PROGRAM_STATUS",
+		"PROGRAM_DESCRIPTION",
+		"program_slug",
+		"OWNER_LF_USERNAME",
+		"PROGRAM_TECHNOLOGY",
+		"SELECTED_MENTEES",
+		"mentors",
+		"program_skills",
+		"UPDATED_AT",
+	}
 }
 func (r *mockRows) Close() error { return nil }
 func (r *mockRows) Next(dest []driver.Value) error {
@@ -62,9 +75,25 @@ func (r *mockRows) Next(dest []driver.Value) error {
 func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 	t.Parallel()
 
+	menteesJSON := `[{"first_name":"Alice","last_name":"Mentee","email":"alice@example.com","avatar_url":""}]`
+	mentorsJSON := `[{"first_name":"Jane","last_name":"Smith","email":"jane@example.com","avatar_url":"https://example.com/jane.png"}]`
+	skillsJSON := `["Golang","Kubernetes"]`
+
 	mock := &mockSnowflakeDriver{
 		rows: [][]driver.Value{
-			{"fe38c553-a066-44b0-8192-f5a5bee5074b", "Linux Kernel Mentorship", "Published", "cncf-admin"},
+			{
+				"fe38c553-a066-44b0-8192-f5a5bee5074b",
+				"Linux Kernel Mentorship",
+				"Published",
+				"A great program",
+				"linux-kernel-mentorship",
+				"cncf-admin",
+				"Cloud Native",
+				menteesJSON,
+				mentorsJSON,
+				skillsJSON,
+				time.Now(),
+			},
 		},
 	}
 	driverName := "snowflake_mock_" + t.Name()
@@ -97,7 +126,7 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 	}
 	p := programs[0]
 	if p.JobspringProjectID != "fe38c553-a066-44b0-8192-f5a5bee5074b" {
-		t.Errorf("JobspringProjectID: got %q, want fe38c553-a066-44b0-8192-f5a5bee5074b", p.JobspringProjectID)
+		t.Errorf("JobspringProjectID: got %q", p.JobspringProjectID)
 	}
 	if p.Name != "Linux Kernel Mentorship" {
 		t.Errorf("Name: got %q, want Linux Kernel Mentorship", p.Name)
@@ -107,6 +136,39 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 	}
 	if p.OwnerLFUsername != "cncf-admin" {
 		t.Errorf("OwnerLFUsername: got %q, want cncf-admin", p.OwnerLFUsername)
+	}
+	if p.Description != "A great program" {
+		t.Errorf("Description: got %q, want A great program", p.Description)
+	}
+	if p.Slug != "linux-kernel-mentorship" {
+		t.Errorf("Slug: got %q, want linux-kernel-mentorship", p.Slug)
+	}
+	if p.Industry != "Cloud Native" {
+		t.Errorf("Industry: got %q, want Cloud Native", p.Industry)
+	}
+
+	// Beneficiaries (SELECTED_MENTEES).
+	if len(p.Beneficiaries) != 1 || p.Beneficiaries[0].Email != "alice@example.com" {
+		t.Errorf("Beneficiaries: got %+v", p.Beneficiaries)
+	}
+	if p.Beneficiaries[0].Name != "Alice Mentee" {
+		t.Errorf("Beneficiaries[0].Name: got %q, want Alice Mentee", p.Beneficiaries[0].Name)
+	}
+
+	// Mentors.
+	if len(p.Mentors) != 1 || p.Mentors[0].Email != "jane@example.com" {
+		t.Errorf("Mentors: got %+v", p.Mentors)
+	}
+	if p.Mentors[0].Name != "Jane Smith" {
+		t.Errorf("Mentors[0].Name: got %q, want Jane Smith", p.Mentors[0].Name)
+	}
+	if p.Mentors[0].AvatarURL != "https://example.com/jane.png" {
+		t.Errorf("Mentors[0].AvatarURL: got %q", p.Mentors[0].AvatarURL)
+	}
+
+	// Skills.
+	if len(p.Skills) != 2 || p.Skills[0] != "Golang" || p.Skills[1] != "Kubernetes" {
+		t.Errorf("Skills: got %v", p.Skills)
 	}
 }
 

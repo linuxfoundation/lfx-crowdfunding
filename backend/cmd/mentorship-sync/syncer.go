@@ -47,10 +47,10 @@ func newSyncer(repo domain.MentorshipRepository, source mentorshipSource, logger
 
 // Run executes the full sync algorithm:
 //
-//	1. Fetch all programs from source (Snowflake or fixture).
-//	2. For each program: normalise status, upsert initiative row, upsert beneficiaries.
-//	3. Log per-program errors without halting the run.
-//	4. Return per-run counters for summary logging.
+//  1. Fetch all programs from source (Snowflake or fixture).
+//  2. For each program: normalise status, upsert initiative row, upsert beneficiaries.
+//  3. Log per-program errors without halting the run.
+//  4. Return per-run counters for summary logging.
 func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 	programs, err := s.source.FetchPrograms(ctx)
 	if err != nil {
@@ -66,29 +66,13 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 			p.Status = normalizedStatusHidden
 		}
 
-		initiativeID, err := s.repo.UpsertProgram(ctx, p)
-		if err != nil {
+		if _, err := s.repo.UpsertProgram(ctx, p); err != nil {
 			s.logger.ErrorContext(ctx, "upsert program failed",
 				"jobspring_project_id", p.JobspringProjectID,
 				"error", err,
 			)
 			result.errors++
 			continue
-		}
-
-		// Skip beneficiary upsert when the source did not provide beneficiary
-		// data (nil slice). This avoids silently deleting existing rows when
-		// the Snowflake query does not yet fetch SELECTED_MENTEES.
-		if p.Beneficiaries != nil {
-			if err := s.repo.UpsertBeneficiaries(ctx, initiativeID, p.Beneficiaries); err != nil {
-				s.logger.ErrorContext(ctx, "upsert beneficiaries failed",
-					"initiative_id", initiativeID,
-					"jobspring_project_id", p.JobspringProjectID,
-					"error", err,
-				)
-				result.errors++
-				continue
-			}
 		}
 
 		result.upserted++

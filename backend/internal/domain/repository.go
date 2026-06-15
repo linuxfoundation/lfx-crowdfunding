@@ -143,13 +143,12 @@ type LedgerStatsRepository interface {
 // MentorshipRepository defines persistence operations used by mentorship-sync.
 // All methods are scoped to the batch upsert pattern of that CronJob.
 type MentorshipRepository interface {
-	// UpsertProgram creates or updates the initiative row for a mentorship program.
-	// The upsert key is jobspring_project_id. Returns the initiative UUID.
+	// UpsertProgram creates or updates the initiative row for a mentorship program,
+	// ensures the fixed mentee funding goal exists, and replaces beneficiaries,
+	// skills, and mentors — all in a single transaction.
+	// nil slice fields are skipped; non-nil (including empty) replace the existing rows.
+	// The upsert key is the program's UUID (initiatives.id). Returns the initiative UUID.
 	UpsertProgram(ctx context.Context, p models.MentorshipProgram) (string, error)
-
-	// UpsertBeneficiaries replaces the beneficiary list for the given initiative.
-	// All existing rows for initiativeID are deleted then re-inserted.
-	UpsertBeneficiaries(ctx context.Context, initiativeID string, beneficiaries []models.MentorshipBeneficiary) error
 
 	// ListJobspringIDs returns the jobspring_project_id values for all existing
 	// mentorship initiatives. Used to detect programs that have been removed from

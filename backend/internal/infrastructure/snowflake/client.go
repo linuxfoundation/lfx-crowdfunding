@@ -8,8 +8,11 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/snowflakedb/gosnowflake"
 
@@ -21,10 +24,27 @@ SELECT
 	p.PROGRAM_ID,
 	p.PROGRAM_NAME,
 	p.PROGRAM_STATUS,
-	p.OWNER_LF_USERNAME
+	p.PROGRAM_DESCRIPTION,
+	p.program_slug,
+	p.OWNER_LF_USERNAME,
+	p.PROGRAM_TECHNOLOGY,
+	p.SELECTED_MENTEES,
+	p.mentors,
+	p.program_skills,
+	p.UPDATED_AT
 FROM ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS p
 WHERE p.PROGRAM_ID IS NOT NULL
+  AND p.UPDATED_AT >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
 `
+
+// snowflakePerson is the shared JSON structure for entries in the
+// SELECTED_MENTEES and mentors VARIANT array columns.
+type snowflakePerson struct {
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"`
+}
 
 // ClientConfig holds credentials for connecting to Snowflake via key-pair auth.
 type ClientConfig struct {
@@ -101,8 +121,9 @@ func (c *Client) Close() error {
 }
 
 // FetchPrograms runs the Snowflake query and returns all Mentorship programs.
-// Beneficiaries are not included — use the fixture source or extend this query
-// once SELECTED_MENTEES parsing is implemented.
+// VARIANT columns (SELECTED_MENTEES, mentors, program_skills) are parsed from
+// their JSON string representation. A NULL VARIANT column means the field is
+// absent and the corresponding slice on the model is left nil (skip upsert).
 func (c *Client) FetchPrograms(ctx context.Context) ([]models.MentorshipProgram, error) {
 	rows, err := c.db.QueryContext(ctx, fetchProgramsQuery)
 	if err != nil {
@@ -112,19 +133,111 @@ func (c *Client) FetchPrograms(ctx context.Context) ([]models.MentorshipProgram,
 
 	var programs []models.MentorshipProgram
 	for rows.Next() {
-		var p models.MentorshipProgram
+		var (
+			programID       string
+			name            string
+			status          string
+			description     sql.NullString
+			slug            sql.NullString
+			ownerLFUsername string
+			industry        sql.NullString
+			menteesJSON     sql.NullString
+			mentorsJSON     sql.NullString
+			skillsJSON      sql.NullString
+			_updatedAt      time.Time // only used in the WHERE clause; not persisted
+		)
 		if err := rows.Scan(
-			&p.JobspringProjectID,
-			&p.Name,
-			&p.Status,
-			&p.OwnerLFUsername,
+			&programID,
+			&name,
+			&status,
+			&description,
+			&slug,
+			&ownerLFUsername,
+			&industry,
+			&menteesJSON,
+			&mentorsJSON,
+			&skillsJSON,
+			&_updatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan mentorship program row: %w", err)
 		}
+
+		p := models.MentorshipProgram{
+			JobspringProjectID: programID,
+			Name:               name,
+			Status:             status,
+			Description:        description.String,
+			Slug:               slug.String,
+			OwnerLFUsername:    ownerLFUsername,
+			Industry:           industry.String,
+		}
+
+		// Parse VARIANT JSON columns. A NULL column → nil slice (skip upsert).
+		if menteesJSON.Valid && menteesJSON.String != "" {
+			var err error
+			if p.Beneficiaries, err = parseMentees(menteesJSON.String); err != nil {
+				return nil, fmt.Errorf("parse SELECTED_MENTEES for %q: %w", programID, err)
+			}
+		}
+		if mentorsJSON.Valid && mentorsJSON.String != "" {
+			var err error
+			if p.Mentors, err = parseMentors(mentorsJSON.String); err != nil {
+				return nil, fmt.Errorf("parse mentors for %q: %w", programID, err)
+			}
+		}
+		if skillsJSON.Valid && skillsJSON.String != "" {
+			var err error
+			if p.Skills, err = parseSkills(skillsJSON.String); err != nil {
+				return nil, fmt.Errorf("parse program_skills for %q: %w", programID, err)
+			}
+		}
+
 		programs = append(programs, p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate mentorship program rows: %w", err)
 	}
 	return programs, nil
+}
+
+// parseMentees decodes the SELECTED_MENTEES VARIANT JSON array into beneficiary models.
+func parseMentees(js string) ([]models.MentorshipBeneficiary, error) {
+	var raw []snowflakePerson
+	if err := json.Unmarshal([]byte(js), &raw); err != nil {
+		return nil, err
+	}
+	out := make([]models.MentorshipBeneficiary, 0, len(raw))
+	for _, p := range raw {
+		out = append(out, models.MentorshipBeneficiary{
+			Name:  strings.TrimSpace(p.FirstName + " " + p.LastName),
+			Email: p.Email,
+		})
+	}
+	return out, nil
+}
+
+// parseMentors decodes the mentors VARIANT JSON array into mentor models.
+func parseMentors(js string) ([]models.MentorshipMentor, error) {
+	var raw []snowflakePerson
+	if err := json.Unmarshal([]byte(js), &raw); err != nil {
+		return nil, err
+	}
+	out := make([]models.MentorshipMentor, 0, len(raw))
+	for _, p := range raw {
+		out = append(out, models.MentorshipMentor{
+			Name:      strings.TrimSpace(p.FirstName + " " + p.LastName),
+			Email:     p.Email,
+			AvatarURL: p.AvatarURL,
+		})
+	}
+	return out, nil
+}
+
+// parseSkills decodes the program_skills VARIANT JSON array into a string slice.
+func parseSkills(js string) ([]string, error) {
+	var raw []string
+	if err := json.Unmarshal([]byte(js), &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
 }
