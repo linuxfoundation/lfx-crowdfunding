@@ -6,6 +6,7 @@ package clients
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -198,6 +199,10 @@ func (c *reimbursementHTTPClient) m2mToken(ctx context.Context) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("m2m: derive assertion audience: %w", err)
 	}
+	jtiBytes := make([]byte, 16)
+	if _, err := rand.Read(jtiBytes); err != nil {
+		return "", fmt.Errorf("m2m: generate jti: %w", err)
+	}
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"iss": c.cfg.Auth0ClientID,
@@ -205,6 +210,7 @@ func (c *reimbursementHTTPClient) m2mToken(ctx context.Context) (string, error) 
 		"aud": assertionAud,
 		"exp": now.Add(60 * time.Second).Unix(),
 		"iat": now.Unix(),
+		"jti": fmt.Sprintf("%x", jtiBytes),
 	}
 	signedAssertion, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(c.privateKey)
 	if err != nil {
