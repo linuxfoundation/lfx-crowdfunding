@@ -78,6 +78,37 @@ func (s *SubscriptionService) ListByUser(ctx context.Context, username string, f
 	return subs, meta, nil
 }
 
+// GetByIDForUser returns a single subscription by ID that belongs to the authenticated
+// user, enriched with initiative name and logo. Returns ErrSubscriptionNotFound (→ 404)
+// when the subscription does not exist or belongs to a different user.
+func (s *SubscriptionService) GetByIDForUser(ctx context.Context, id, username string) (*models.Subscription, error) {
+	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.GetByIDForUser")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("subscription.id", id),
+		attribute.String("user.username", username),
+	)
+
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrSubscriptionNotFound
+		}
+		span.RecordError(err)
+		return nil, fmt.Errorf("resolve user: %w", err)
+	}
+
+	sub, err := s.repo.GetByIDForUser(ctx, id, user.ID)
+	if err != nil {
+		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+			span.RecordError(err)
+			return nil, fmt.Errorf("get subscription: %w", err)
+		}
+		return nil, err
+	}
+	return sub, nil
+}
+
 // Create creates a Stripe subscription with 3DS support and records it in the database.
 // When the first invoice requires an authentication challenge, the returned Subscription
 // has Status == "incomplete" and ClientSecret set — the frontend must call

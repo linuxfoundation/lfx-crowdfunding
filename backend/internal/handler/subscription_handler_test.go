@@ -26,6 +26,8 @@ import (
 type subscriptionRepo struct {
 	getByIDResult          *models.Subscription
 	getByIDErr             error
+	getByIDForUserResult   *models.Subscription
+	getByIDForUserErr      error
 	getActiveByUserAndInit *models.Subscription
 	getActiveErr           error
 	listByInitiative       []models.Subscription
@@ -41,6 +43,9 @@ type subscriptionRepo struct {
 
 func (r *subscriptionRepo) GetByID(_ context.Context, _ string) (*models.Subscription, error) {
 	return r.getByIDResult, r.getByIDErr
+}
+func (r *subscriptionRepo) GetByIDForUser(_ context.Context, _, _ string) (*models.Subscription, error) {
+	return r.getByIDForUserResult, r.getByIDForUserErr
 }
 func (r *subscriptionRepo) GetActiveByUserAndInitiative(_ context.Context, _, _ string) (*models.Subscription, error) {
 	if r.getActiveErr != nil {
@@ -569,5 +574,117 @@ func TestSubscriptionCancel_Success_Returns204(t *testing.T) {
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("expected 204, got %d", w.Code)
+	}
+}
+
+// ── GetForUser tests ──────────────────────────────────────────────────────────
+
+// subscriptionGetForUserReq builds a GET request to /v1/me/subscriptions/{id}.
+func subscriptionGetForUserReq(subscriptionID string, principal *models.Principal) *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/v1/me/subscriptions/"+subscriptionID, nil)
+	if principal != nil {
+		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
+	}
+	return r
+}
+
+func TestSubscriptionGetForUser_NoPrincipal_Returns401(t *testing.T) {
+	h := newSubscriptionHandler(&subscriptionRepo{}, &subscriptionInitiativeRepo{}, &subscriptionUserRepo{}, &subscriptionStripeClient{})
+
+	req := subscriptionGetForUserReq("sub-123", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "sub-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestSubscriptionGetForUser_NotFound_Returns404(t *testing.T) {
+	username := "testuser"
+	userID := "user-123"
+	subscriptionID := "sub-999"
+
+	userRepo := &subscriptionUserRepo{user: &models.User{ID: userID, Username: username}}
+	subRepo := &subscriptionRepo{getByIDForUserErr: domain.ErrSubscriptionNotFound}
+	h := newSubscriptionHandler(subRepo, &subscriptionInitiativeRepo{}, userRepo, &subscriptionStripeClient{})
+
+	req := subscriptionGetForUserReq(subscriptionID, &models.Principal{Username: username})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", subscriptionID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestSubscriptionGetForUser_Success_Returns200(t *testing.T) {
+	username := "testuser"
+	userID := "user-123"
+	subscriptionID := "sub-123"
+
+	userRepo := &subscriptionUserRepo{user: &models.User{ID: userID, Username: username}}
+	subRepo := &subscriptionRepo{
+		getByIDForUserResult: &models.Subscription{
+			ID:                 subscriptionID,
+			UserID:             userID,
+			InitiativeID:       "init-456",
+			CurrentAmountCents: 2000,
+			Status:             "active",
+			InitiativeName:     "Test Initiative",
+			InitiativeLogoURL:  "https://example.com/logo.png",
+		},
+	}
+	h := newSubscriptionHandler(subRepo, &subscriptionInitiativeRepo{}, userRepo, &subscriptionStripeClient{})
+
+	req := subscriptionGetForUserReq(subscriptionID, &models.Principal{Username: username})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", subscriptionID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var body models.Subscription
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ID != subscriptionID {
+		t.Errorf("expected ID %s, got %s", subscriptionID, body.ID)
+	}
+	if body.InitiativeName != "Test Initiative" {
+		t.Errorf("expected initiative_name 'Test Initiative', got %q", body.InitiativeName)
+	}
+}
+
+func TestSubscriptionGetForUser_UserNotFound_Returns404(t *testing.T) {
+	username := "ghost"
+	subscriptionID := "sub-123"
+
+	userRepo := &subscriptionUserRepo{err: domain.ErrUserNotFound}
+	h := newSubscriptionHandler(&subscriptionRepo{}, &subscriptionInitiativeRepo{}, userRepo, &subscriptionStripeClient{})
+
+	req := subscriptionGetForUserReq(subscriptionID, &models.Principal{Username: username})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", subscriptionID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for unknown user, got %d", w.Code)
 	}
 }

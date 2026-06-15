@@ -197,6 +197,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Get("/initiatives", initiativeH.ListForUser)
 		r.Get("/donations", donationH.ListForUser)
 		r.Get("/subscriptions", subscriptionH.ListForUser)
+		r.Get("/subscriptions/{id}", subscriptionH.GetForUser)
 
 		// Payment account (saved card for 3DS flows).
 		r.Post("/setup-intent", paymentH.CreateSetupIntent)

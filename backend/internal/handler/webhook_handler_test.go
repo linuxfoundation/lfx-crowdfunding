@@ -173,6 +173,9 @@ type wbSubscriptionRepo struct {
 func (r *wbSubscriptionRepo) GetByID(_ context.Context, _ string) (*models.Subscription, error) {
 	return nil, nil
 }
+func (r *wbSubscriptionRepo) GetByIDForUser(_ context.Context, _, _ string) (*models.Subscription, error) {
+	return nil, domain.ErrSubscriptionNotFound
+}
 func (r *wbSubscriptionRepo) GetActiveByUserAndInitiative(_ context.Context, _, _ string) (*models.Subscription, error) {
 	return nil, domain.ErrSubscriptionNotFound
 }
