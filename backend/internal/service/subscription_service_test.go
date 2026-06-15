@@ -341,6 +341,54 @@ func TestSubscriptionService_Cancel_Success(t *testing.T) {
 	}
 }
 
+func TestSubscriptionService_Cancel_StripeAlreadyDeleted(t *testing.T) {
+	// If Stripe returns 404 resource_missing for the subscription, the service
+	// should treat it as idempotent and still mark the DB row as canceled.
+	const subID = "sub-local-2"
+	const stripeSubID = "sub_stripe_gone"
+
+	var updatedStatus string
+
+	subRepo := &testSubscriptionRepo{
+		onGetByID: func(_ context.Context, _ string) (*models.Subscription, error) {
+			return &models.Subscription{
+				ID:                   subID,
+				UserID:               "00000000-0000-0000-0000-000000000001",
+				StripeSubscriptionID: stripeSubID,
+				Status:               "active",
+			}, nil
+		},
+		onUpdate: func(_ context.Context, s *models.Subscription) (*models.Subscription, error) {
+			updatedStatus = s.Status
+			return s, nil
+		},
+	}
+
+	stripeNotFound := &stripe.Error{
+		Code:           stripe.ErrorCodeResourceMissing,
+		Msg:            "No such subscription: 'sub_stripe_gone'",
+		HTTPStatusCode: 404,
+	}
+
+	svc := newSubscriptionSvc(
+		subRepo,
+		acceptingInitiative(),
+		&testUserRepo{},
+		&configStripeClient{
+			onCancelSubscription: func(_ context.Context, _ string) error {
+				return fmt.Errorf("stripe cancel subscription: %w", stripeNotFound)
+			},
+		},
+	)
+
+	if err := svc.Cancel(context.Background(), subID, "u1"); err != nil {
+		t.Fatalf("expected nil error for already-deleted subscription, got %v", err)
+	}
+	if updatedStatus != "canceled" {
+		t.Errorf("updated status = %q, want canceled", updatedStatus)
+	}
+}
+
 func TestSubscriptionService_Create_UserNotFound_DescriptiveError(t *testing.T) {
 	// When the user has not yet synced their profile, GetByUsername returns
 	// ErrUserNotFound. The service converts this to ErrProfileNotSynced with
