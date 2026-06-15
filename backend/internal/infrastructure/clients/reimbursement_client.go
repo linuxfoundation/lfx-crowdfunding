@@ -5,17 +5,21 @@
 package clients
 
 import (
-	"bytes"
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/core"
@@ -92,10 +96,11 @@ type ReimbursementConfig struct {
 	// fetches and Reimbursement Service API requests.
 	Timeout time.Duration
 
-	// --- Optional Auth0 client-credentials (M2M) config -------------------
-	// The API gateway in front of the RS may require a Bearer token on some or
-	// all routes. When all four fields below are set, the client fetches a
-	// cached client_credentials token from Auth0 and attaches it as
+	// --- Optional Auth0 private-key JWT (M2M) config ----------------------
+	// The API gateway in front of the RS requires a Bearer token on all routes.
+	// When all four fields below are set the client signs a JWT assertion with
+	// the RSA private key, exchanges it for an access token via the Auth0
+	// client_credentials grant, caches it, and attaches it as
 	// Authorization: Bearer on every RS call alongside X-API-KEY.
 	// Leave empty only if the gateway is configured to accept X-API-KEY alone.
 
@@ -104,9 +109,11 @@ type ReimbursementConfig struct {
 	Auth0TokenURL string
 	// Auth0ClientID is the M2M application client ID.
 	Auth0ClientID string
-	// Auth0ClientSecret is the M2M application client secret.
-	Auth0ClientSecret string
-	// Auth0Audience is the Auth0 API identifier the gateway validates against.
+	// Auth0ClientPrivateKey is the PEM-encoded RSA private key used to sign
+	// the JWT assertion. Must be PKCS8 or PKCS1 PEM.
+	Auth0ClientPrivateKey string
+	// Auth0Audience is the resource server audience the gateway validates against,
+	// e.g. https://api-gw.dev.platform.linuxfoundation.org/
 	Auth0Audience string
 }
 
@@ -117,6 +124,10 @@ type reimbursementHTTPClient struct {
 	tokenMu     sync.Mutex
 	tokenVal    string
 	tokenExpiry time.Time
+	// private key is parsed once from Auth0ClientPrivateKey PEM on first use.
+	keyOnce    sync.Once
+	privateKey *rsa.PrivateKey
+	keyErr     error
 }
 
 // NewReimbursementClient creates a ReimbursementClient from the given config.
@@ -154,52 +165,73 @@ func (c *reimbursementHTTPClient) gatewayHeaders(ctx context.Context) (map[strin
 	return h, nil
 }
 
-// auth0TokenRequest is the JSON body sent to the Auth0 token endpoint.
-type auth0TokenRequest struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	Audience     string `json:"audience"`
-	GrantType    string `json:"grant_type"`
-}
-
 // auth0TokenResponse is the JSON body returned by the Auth0 token endpoint.
 type auth0TokenResponse struct {
 	AccessToken string `json:"access_token"`
 	ExpiresIn   int    `json:"expires_in"`
 }
 
-// m2mToken returns a cached-or-freshly-fetched Auth0 client_credentials Bearer
-// token. Returns "" (no error) when M2M config is not set — callers treat this
-// as "no Bearer needed" and fall back to X-API-KEY only.
+// m2mToken returns a cached-or-freshly-fetched Auth0 Bearer token obtained via
+// the private-key JWT client_credentials grant. Returns "" (no error) when M2M
+// config is not set — callers treat this as "no Bearer needed".
 func (c *reimbursementHTTPClient) m2mToken(ctx context.Context) (string, error) {
 	if c.cfg.Auth0TokenURL == "" {
 		return "", nil
 	}
+	// Parse the private key once; subsequent calls reuse the cached result.
+	c.keyOnce.Do(func() {
+		c.privateKey, c.keyErr = parseRSAPrivateKey(c.cfg.Auth0ClientPrivateKey)
+	})
+	if c.keyErr != nil {
+		return "", fmt.Errorf("m2m: parse private key: %w", c.keyErr)
+	}
+
 	c.tokenMu.Lock()
 	defer c.tokenMu.Unlock()
 	if c.tokenVal != "" && time.Now().Before(c.tokenExpiry) {
 		return c.tokenVal, nil
 	}
-	body, err := json.Marshal(auth0TokenRequest{
-		ClientID:     c.cfg.Auth0ClientID,
-		ClientSecret: c.cfg.Auth0ClientSecret,
-		Audience:     c.cfg.Auth0Audience,
-		GrantType:    "client_credentials",
-	})
+
+	// Build JWT assertion — aud is the Auth0 tenant root derived from the token URL.
+	// Per RFC 7521 the assertion aud must identify the authorisation server.
+	assertionAud, err := tokenURLTenantRoot(c.cfg.Auth0TokenURL)
 	if err != nil {
-		return "", fmt.Errorf("m2m: marshal token request: %w", err)
+		return "", fmt.Errorf("m2m: derive assertion audience: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.Auth0TokenURL, bytes.NewReader(body))
+	now := time.Now()
+	claims := jwt.MapClaims{
+		"iss": c.cfg.Auth0ClientID,
+		"sub": c.cfg.Auth0ClientID,
+		"aud": assertionAud,
+		"exp": now.Add(60 * time.Second).Unix(),
+		"iat": now.Unix(),
+	}
+	signedAssertion, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(c.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("m2m: sign assertion: %w", err)
+	}
+
+	// POST form-encoded token request using private-key JWT client assertion.
+	form := url.Values{
+		"grant_type":            {"client_credentials"},
+		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+		"client_assertion":      {signedAssertion},
+		"audience":              {c.cfg.Auth0Audience},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.Auth0TokenURL,
+		strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("m2m: build token request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
 	resp, err := c.tokenClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("m2m: token fetch: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body) // drain so the connection can be reused
 		return "", fmt.Errorf("m2m: auth0 returned %d", resp.StatusCode)
 	}
 	var tr auth0TokenResponse
@@ -221,6 +253,40 @@ func (c *reimbursementHTTPClient) m2mToken(ctx context.Context) (string, error) 
 	c.tokenVal = tr.AccessToken
 	c.tokenExpiry = time.Now().Add(ttl - buffer)
 	return c.tokenVal, nil
+}
+
+// parseRSAPrivateKey decodes a PEM block and parses either a PKCS8 or PKCS1
+// RSA private key, returning an error if the PEM is missing or the key is not RSA.
+func parseRSAPrivateKey(pemStr string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block found in private key")
+	}
+	// Try PKCS8 first (the standard modern format), then fall back to PKCS1.
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		rsaKey, pkcs1Err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if pkcs1Err != nil {
+			return nil, fmt.Errorf("parse private key: %w (PKCS8 err: %v)", pkcs1Err, err)
+		}
+		return rsaKey, nil
+	}
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("private key PEM is not an RSA key")
+	}
+	return rsaKey, nil
+}
+
+// tokenURLTenantRoot derives the Auth0 tenant root URL from the token endpoint URL,
+// e.g. https://linuxfoundation-dev.auth0.com/oauth/token → https://linuxfoundation-dev.auth0.com/
+// This is used as the `aud` claim in the JWT client assertion.
+func tokenURLTenantRoot(tokenURL string) (string, error) {
+	u, err := url.Parse(tokenURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid token URL %q: %w", tokenURL, err)
+	}
+	return u.Scheme + "://" + u.Host + "/", nil
 }
 
 // rsURL builds the full endpoint URL for a given initiative ID.

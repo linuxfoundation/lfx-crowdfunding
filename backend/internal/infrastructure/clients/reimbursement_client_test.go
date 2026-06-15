@@ -5,6 +5,10 @@ package clients_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +17,21 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 )
+
+// generateTestPrivateKeyPEM generates a 2048-bit RSA private key and returns
+// it PEM-encoded in PKCS8 format. Suitable for use as Auth0ClientPrivateKey in tests.
+func generateTestPrivateKeyPEM(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate test RSA key: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal test RSA key: %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
 
 // newRSClient creates a reimbursementHTTPClient pointed at the given test server.
 func newRSClient(t *testing.T, serverURL string) clients.ReimbursementClient {
@@ -91,13 +110,13 @@ func TestProcessExpenseAction_200_returnsNil(t *testing.T) {
 func newRSClientM2M(t *testing.T, rsURL, tokenURL string) clients.ReimbursementClient {
 	t.Helper()
 	cfg := clients.ReimbursementConfig{
-		APIURL:            rsURL,
-		APIKey:            "test-key",
-		Timeout:           0,
-		Auth0TokenURL:     tokenURL,
-		Auth0ClientID:     "cid",
-		Auth0ClientSecret: "csecret",
-		Auth0Audience:     "https://rs.example.com",
+		APIURL:                rsURL,
+		APIKey:                "test-key",
+		Timeout:               0,
+		Auth0TokenURL:         tokenURL,
+		Auth0ClientID:         "cid",
+		Auth0ClientPrivateKey: generateTestPrivateKeyPEM(t),
+		Auth0Audience:         "https://rs.example.com",
 	}
 	c := clients.NewReimbursementClient(cfg)
 	if c == nil {
