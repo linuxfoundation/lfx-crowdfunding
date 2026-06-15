@@ -12,7 +12,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/snowflakedb/gosnowflake"
 	"go.opentelemetry.io/otel"
@@ -34,8 +33,7 @@ SELECT
 	p.PROGRAM_TECHNOLOGY,
 	p.SELECTED_MENTEES,
 	p.mentors,
-	p.program_skills,
-	p.UPDATED_AT
+	p.program_skills
 FROM ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS p
 WHERE p.PROGRAM_ID IS NOT NULL
 `
@@ -156,7 +154,6 @@ func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgra
 			menteesJSON     sql.NullString
 			mentorsJSON     sql.NullString
 			skillsJSON      sql.NullString
-			_updatedAt      time.Time // only used in the WHERE clause; not persisted
 		)
 		if err := rows.Scan(
 			&programID,
@@ -169,7 +166,6 @@ func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgra
 			&menteesJSON,
 			&mentorsJSON,
 			&skillsJSON,
-			&_updatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan mentorship program row: %w", err)
 		}

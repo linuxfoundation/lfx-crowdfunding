@@ -9,7 +9,6 @@ import (
 	"database/sql/driver"
 	"io"
 	"testing"
-	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/snowflake"
 )
@@ -59,7 +58,6 @@ func (r *mockRows) Columns() []string {
 		"SELECTED_MENTEES",
 		"mentors",
 		"program_skills",
-		"UPDATED_AT",
 	}
 }
 func (r *mockRows) Close() error { return nil }
@@ -92,7 +90,6 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 				menteesJSON,
 				mentorsJSON,
 				skillsJSON,
-				time.Now(),
 			},
 		},
 	}
