@@ -31,12 +31,20 @@ SPDX-License-Identifier: MIT
         label="Full name"
         :required="true"
       >
-        <lfx-input
-          v-model="form.fullName"
-          placeholder=""
-          :invalid="$v.fullName.$error"
-          @blur="$v.fullName.$touch()"
-        />
+        <lfx-tooltip
+          class="!w-full"
+          placement="top-start"
+          :content="AUTH_FIELD_TOOLTIP"
+          :disabled="!user"
+        >
+          <lfx-input
+            v-model="form.fullName"
+            placeholder=""
+            :disabled="!!user"
+            :invalid="$v.fullName.$error"
+            @blur="$v.fullName.$touch()"
+          />
+        </lfx-tooltip>
         <lfx-field-messages :validation="$v.fullName" />
       </lfx-field>
 
@@ -44,13 +52,21 @@ SPDX-License-Identifier: MIT
         label="Email"
         :required="true"
       >
-        <lfx-input
-          v-model="form.email"
-          type="email"
-          placeholder=""
-          :invalid="$v.email.$error"
-          @blur="$v.email.$touch()"
-        />
+        <lfx-tooltip
+          class="!w-full"
+          placement="top-start"
+          :content="AUTH_FIELD_TOOLTIP"
+          :disabled="!user"
+        >
+          <lfx-input
+            v-model="form.email"
+            type="email"
+            placeholder=""
+            :disabled="!!user"
+            :invalid="$v.email.$error"
+            @blur="$v.email.$touch()"
+          />
+        </lfx-tooltip>
         <lfx-field-messages :validation="$v.email" />
       </lfx-field>
     </template>
@@ -75,12 +91,20 @@ SPDX-License-Identifier: MIT
           label="Contact name"
           :required="true"
         >
-          <lfx-input
-            v-model="form.contactName"
-            placeholder=""
-            :invalid="$v.contactName.$error"
-            @blur="$v.contactName.$touch()"
-          />
+          <lfx-tooltip
+            class="!w-full"
+            placement="top-start"
+            :content="AUTH_FIELD_TOOLTIP"
+            :disabled="!user"
+          >
+            <lfx-input
+              v-model="form.contactName"
+              placeholder=""
+              :disabled="!!user"
+              :invalid="$v.contactName.$error"
+              @blur="$v.contactName.$touch()"
+            />
+          </lfx-tooltip>
           <lfx-field-messages :validation="$v.contactName" />
         </lfx-field>
       </div>
@@ -89,17 +113,26 @@ SPDX-License-Identifier: MIT
         label="Email"
         :required="true"
       >
-        <lfx-input
-          v-model="form.email"
-          type="email"
-          placeholder=""
-          :invalid="$v.email.$error"
-          @blur="$v.email.$touch()"
-        />
+        <lfx-tooltip
+          class="!w-full"
+          placement="top-start"
+          :content="AUTH_FIELD_TOOLTIP"
+          :disabled="!user"
+        >
+          <lfx-input
+            v-model="form.email"
+            type="email"
+            placeholder=""
+            :disabled="!!user"
+            :invalid="$v.email.$error"
+            @blur="$v.email.$touch()"
+          />
+        </lfx-tooltip>
         <lfx-field-messages :validation="$v.email" />
       </lfx-field>
 
-      <lfx-checkbox v-model="form.needsInvoice"> I need an invoice for this donation </lfx-checkbox>
+      <!-- Hiding this for now until we can implement this -->
+      <!-- <lfx-checkbox v-model="form.needsInvoice"> I need an invoice for this donation </lfx-checkbox> -->
 
       <lfx-field
         v-if="form.needsInvoice"
@@ -123,7 +156,9 @@ import LfxButton from '~/components/uikit/button/button.vue';
 import LfxField from '~/components/uikit/field/field.vue';
 import LfxFieldMessages from '~/components/uikit/field/field-messages.vue';
 import LfxInput from '~/components/uikit/input/input.vue';
-import LfxCheckbox from '~/components/uikit/checkbox/checkbox.vue';
+import LfxTooltip from '~/components/uikit/tooltip/tooltip.vue';
+
+const AUTH_FIELD_TOOLTIP = 'Need to change something? Go to your LF ID';
 
 const props = defineProps<{
   modelValue: DonateContactForm;
@@ -133,12 +168,28 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: DonateContactForm): void;
 }>();
 
+const { user } = useAuth();
+
 const form = reactive<DonateContactForm>({ ...props.modelValue });
 
 watch(
   () => props.modelValue,
   (val) => Object.assign(form, val),
   { deep: true },
+);
+
+watch(
+  user,
+  (authUser) => {
+    if (authUser?.name) {
+      form.fullName = authUser.name;
+      form.contactName = authUser.name;
+    }
+    if (authUser?.email) {
+      form.email = authUser.email;
+    }
+  },
+  { immediate: true },
 );
 
 watch(form, (val) => emit('update:modelValue', { ...val }), { deep: true });
