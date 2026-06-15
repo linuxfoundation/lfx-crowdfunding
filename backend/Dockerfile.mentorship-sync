@@ -29,4 +29,8 @@ COPY cmd/mentorship-sync/testdata/ /app/testdata/
 
 USER appuser
 
+# This is a CronJob — it runs to completion and exits. Health checks are not
+# applicable; HEALTHCHECK NONE explicitly satisfies the Checkov CKV_DOCKER_2 check.
+HEALTHCHECK NONE
+
 ENTRYPOINT ["/app/mentorship-sync"]
