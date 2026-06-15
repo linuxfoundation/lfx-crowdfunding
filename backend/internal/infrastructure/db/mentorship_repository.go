@@ -86,6 +86,7 @@ INSERT INTO initiatives (
 	NOW()
 )
 ON CONFLICT (id) DO UPDATE SET
+	jobspring_project_id = EXCLUDED.jobspring_project_id,
 	owner_id    = EXCLUDED.owner_id,
 	name        = EXCLUDED.name,
 	status      = EXCLUDED.status,
