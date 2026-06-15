@@ -59,6 +59,10 @@ type DonationRepository interface {
 // SubscriptionRepository defines persistence operations for subscriptions.
 type SubscriptionRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Subscription, error)
+	// GetByIDForUser returns a single subscription by ID that belongs to the given user,
+	// enriched with initiative name and logo. Returns ErrSubscriptionNotFound when the
+	// subscription does not exist or belongs to a different user.
+	GetByIDForUser(ctx context.Context, id, userID string) (*models.Subscription, error)
 	// GetActiveByUserAndInitiative returns any subscription for the given user+initiative
 	// that is not in a terminal state (i.e. status is active, incomplete, or past_due).
 	// Returns ErrSubscriptionNotFound when no such subscription exists.
