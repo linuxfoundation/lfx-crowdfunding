@@ -66,7 +66,8 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 			p.Status = normalizedStatusHidden
 		}
 
-		if strings.TrimSpace(p.OwnerLFUsername) == "" {
+		p.OwnerLFUsername = strings.TrimSpace(p.OwnerLFUsername)
+		if p.OwnerLFUsername == "" {
 			s.logger.ErrorContext(ctx, "skipping program: missing owner_lf_username",
 				"jobspring_project_id", p.JobspringProjectID,
 			)
