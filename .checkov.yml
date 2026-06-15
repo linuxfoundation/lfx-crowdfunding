@@ -34,3 +34,9 @@ skip-check:
 skip-path:
   - frontend/charts/lfx-crowdfunding-frontend/templates/deployment.yaml
   - backend/charts/lfx-crowdfunding-backend/templates/validate.yaml
+
+# Provide required values for helm chart rendering so that validate.yaml guards
+# do not abort `helm template` during Checkov's static analysis pass.
+# The ci/checkov-values.yaml file supplies placeholder values that satisfy the
+# required guards; they are never used in real deployments.
+helm-values-file: backend/charts/lfx-crowdfunding-backend/ci/checkov-values.yaml
