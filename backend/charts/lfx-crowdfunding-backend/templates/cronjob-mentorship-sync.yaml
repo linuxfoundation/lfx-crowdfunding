@@ -34,7 +34,7 @@ spec:
             - name: mentorship-sync
               securityContext:
                 {{- toYaml .Values.securityContext | nindent 16 }}
-              image: "{{ .Values.mentorshipSyncCronJob.image.repository }}:{{ .Values.mentorshipSyncCronJob.image.tag | default (required "image.tag is required" .Values.image.tag) }}"
+              image: "{{ .Values.mentorshipSyncCronJob.image.repository }}:{{ .Values.mentorshipSyncCronJob.image.tag }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command: ["/app/mentorship-sync"]
               {{- if or .Values.env .Values.mentorshipSyncCronJob.fixtureFile }}
