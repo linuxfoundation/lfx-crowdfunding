@@ -94,12 +94,7 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	initiatives, meta, err := h.svc.ListForUser(r.Context(), principal.Username, models.InitiativeFilter{
-		Status: func() models.InitiativeStatus {
-			if s := models.InitiativeStatus(r.URL.Query().Get("status")); s != "" {
-				return s
-			}
-			return models.StatusPublished
-		}(),
+		Status: models.InitiativeStatus(r.URL.Query().Get("status")),
 		Limit:  limit,
 		Offset: offset,
 	})
