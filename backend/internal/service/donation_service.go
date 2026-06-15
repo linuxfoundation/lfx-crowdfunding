@@ -169,8 +169,10 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		return nil, fmt.Errorf("%w: idempotency_key is required", domain.ErrInvalidInput)
 	}
 	switch input.PaymentMethod {
-	case models.PaymentMethodStripe, models.PaymentMethodInvoice, "":
-		// valid (empty defaults to card on the client side)
+	case models.PaymentMethodStripe, "":
+		input.PaymentMethod = models.PaymentMethodStripe
+	case models.PaymentMethodInvoice:
+		// invoice billing — keep as-is
 	default:
 		return nil, fmt.Errorf("%w: unsupported payment_method %q; supported: %q, %q",
 			domain.ErrInvalidInput, input.PaymentMethod, models.PaymentMethodStripe, models.PaymentMethodInvoice)
