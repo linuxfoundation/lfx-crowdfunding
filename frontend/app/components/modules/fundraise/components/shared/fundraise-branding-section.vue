@@ -24,7 +24,7 @@ SPDX-License-Identifier: MIT
               v-if="previewSrc"
               :src="previewSrc"
               alt="Logo preview"
-              class="size-full object-cover opacity-50"
+              class="size-full object-contain opacity-50"
             />
             <lfx-icon
               v-else

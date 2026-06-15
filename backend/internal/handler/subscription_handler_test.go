@@ -24,19 +24,19 @@ import (
 
 // subscriptionRepo is a configurable SubscriptionRepository stub for subscription handler tests.
 type subscriptionRepo struct {
-	getByIDResult           *models.Subscription
-	getByIDErr              error
-	getActiveByUserAndInit  *models.Subscription
-	getActiveErr            error
-	listByInitiative        []models.Subscription
-	listByInitiativeErr     error
-	listByUserResult        []models.Subscription
-	listByUserErr           error
-	createResult            *models.Subscription
-	createErr               error
-	lastCreated             *models.Subscription
-	updateErr               error
-	lastUpdated             *models.Subscription
+	getByIDResult          *models.Subscription
+	getByIDErr             error
+	getActiveByUserAndInit *models.Subscription
+	getActiveErr           error
+	listByInitiative       []models.Subscription
+	listByInitiativeErr    error
+	listByUserResult       []models.Subscription
+	listByUserErr          error
+	createResult           *models.Subscription
+	createErr              error
+	lastCreated            *models.Subscription
+	updateErr              error
+	lastUpdated            *models.Subscription
 }
 
 func (r *subscriptionRepo) GetByID(_ context.Context, _ string) (*models.Subscription, error) {
@@ -85,10 +85,10 @@ func (r *subscriptionRepo) UpdateByStripeSubscriptionID(_ context.Context, _, _ 
 
 // subscriptionInitiativeRepo is a minimal InitiativeRepository stub for subscription tests.
 type subscriptionInitiativeRepo struct {
-	initiative      *models.Initiative
-	getErr          error
-	usersByIDs      map[string]models.User
-	orgsByIDs       map[string]models.Organization
+	initiative *models.Initiative
+	getErr     error
+	usersByIDs map[string]models.User
+	orgsByIDs  map[string]models.Organization
 }
 
 func (r *subscriptionInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -117,6 +117,9 @@ func (r *subscriptionInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string
 	if r.usersByIDs != nil {
 		return r.usersByIDs, nil
 	}
+	return make(map[string]models.User), nil
+}
+func (r *subscriptionInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return make(map[string]models.User), nil
 }
 func (r *subscriptionInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error {
@@ -159,9 +162,9 @@ func (r *subscriptionUserRepo) ClearStripePaymentMethod(_ context.Context, _ str
 
 // subscriptionStripeClient is a configurable StripeClient stub for subscription tests.
 type subscriptionStripeClient struct {
-	onGetOrCreatePrice    func(ctx context.Context, productID, initiativeID string, amount int64, frequency, idempotencyKey string) (string, error)
-	onCreateSubscription  func(ctx context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
-	onCancelSubscription  func(ctx context.Context, subscriptionID string) error
+	onGetOrCreatePrice   func(ctx context.Context, productID, initiativeID string, amount int64, frequency, idempotencyKey string) (string, error)
+	onCreateSubscription func(ctx context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
+	onCancelSubscription func(ctx context.Context, subscriptionID string) error
 }
 
 func (c *subscriptionStripeClient) GetProduct(_ context.Context, _ string) (*models.StripeProduct, error) {
@@ -292,7 +295,7 @@ func TestSubscriptionList_ReturnsOK(t *testing.T) {
 	}
 
 	var body struct {
-		Data []models.Subscription `json:"data"`
+		Data []models.Subscription  `json:"data"`
 		Meta *models.PaginationMeta `json:"meta"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {

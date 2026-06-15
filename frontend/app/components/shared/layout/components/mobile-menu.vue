@@ -72,13 +72,6 @@ SPDX-License-Identifier: MIT
         <!-- Bottom: CTAs -->
         <div class="flex flex-col gap-3.5">
           <start-fundraise-button class="w-full justify-center" />
-          <lfx-button
-            label="Donate"
-            type="primary"
-            button-style="pill"
-            icon="hand-heart"
-            class="w-full justify-center"
-          />
         </div>
       </div>
     </template>
@@ -87,7 +80,6 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import LfxButton from '~/components/uikit/button/button.vue';
 import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import StartFundraiseButton from '~/components/shared/components/start-fundraise-button.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';

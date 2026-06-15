@@ -16,7 +16,7 @@ SPDX-License-Identifier: MIT
         <span class="text-lg font-medium leading-7 text-accent-800">For Companies</span>
       </div>
 
-      <h1 class="md:text-5xl text-4xl font-light leading-tight text-black">
+      <h1 class="md:text-5xl text-4xl font-secondary font-light leading-tight text-black">
         Invest in the open source your business depends on
       </h1>
 
