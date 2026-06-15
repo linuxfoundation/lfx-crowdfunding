@@ -73,7 +73,7 @@ SPDX-License-Identifier: MIT
                   </p>
                   <lfx-button
                     v-if="isTruncated"
-                    label="Show more"
+                    label="Read more"
                     type="transparent"
                     size="small"
                     @click="$emit('update:activeTab', 'about')"
