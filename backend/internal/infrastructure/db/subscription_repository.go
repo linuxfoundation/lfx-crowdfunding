@@ -90,6 +90,39 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id string) (*model
 	return sub, nil
 }
 
+// GetByIDForUser returns a subscription by ID that belongs to the given user,
+// enriched with initiative name and logo via a LEFT JOIN. Returns
+// ErrSubscriptionNotFound when the subscription does not exist or belongs to a
+// different user (the caller should not be able to distinguish the two cases).
+func (r *SubscriptionRepository) GetByIDForUser(ctx context.Context, id, userID string) (*models.Subscription, error) {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.GetByIDForUser")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.subscription_id", id),
+		attribute.String("db.user_id", userID),
+	)
+
+	const q = `
+		SELECT s.id, s.user_id, s.initiative_id, s.organization_id, s.category,
+		       s.current_amount_in_cents, s.frequency, s.status,
+		       s.stripe_subscription_id, s.stripe_subscription_item_id, s.stripe_price_id,
+		       s.created_on, s.updated_on,
+		       COALESCE(i.name, ''), COALESCE(i.logo_url, '')
+		FROM subscriptions s
+		LEFT JOIN initiatives i ON i.id = s.initiative_id
+		WHERE s.id = $1 AND s.user_id = $2`
+
+	row := r.pool.QueryRow(ctx, q, id, userID)
+	sub, err := scanSubscriptionWithInitiative(row)
+	if err != nil {
+		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+			span.RecordError(err)
+		}
+		return nil, err
+	}
+	return sub, nil
+}
+
 // GetActiveByUserAndInitiative returns any non-terminal subscription for the
 // given user + initiative pair (statuses: active, incomplete, past_due).
 // Returns ErrSubscriptionNotFound when no such subscription exists.
