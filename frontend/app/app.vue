@@ -7,3 +7,59 @@ SPDX-License-Identifier: MIT
     <NuxtPage />
   </NuxtLayout>
 </template>
+
+<script setup lang="ts">
+import { onMounted, watch } from 'vue';
+import { authState, isAuthReady } from '~/composables/useAuth';
+import { useIntercom } from '~/composables/useIntercom';
+
+const { boot, shutdown } = useIntercom();
+
+// Guard against re-booting with identity on every auth state change.
+let intercomBootAttempted = false;
+
+function bootAnonymous() {
+  boot({}).catch((err) => {
+    console.warn('[App] Anonymous Intercom boot failed', err);
+  });
+}
+
+onMounted(() => {
+  // Boot anonymously so banners/popups are visible to all visitors before login.
+  bootAnonymous();
+});
+
+// Upgrade to identified session once auth is known, or shutdown on logout.
+watch(
+  [isAuthReady, () => authState.value.isAuthenticated, () => authState.value.user],
+  ([ready, isAuthenticated, user]) => {
+    if (!ready) return;
+
+    if (isAuthenticated && user && !intercomBootAttempted) {
+      const { username, intercomJwt, name, email } = user;
+      if (username && intercomJwt) {
+        intercomBootAttempted = true;
+        boot({
+          user_id: username,
+          intercom_user_jwt: intercomJwt,
+          name,
+          email,
+        }).catch((err) => {
+          console.error('[App] Identified Intercom boot failed', err);
+          intercomBootAttempted = false;
+        });
+      } else {
+        console.warn('[App] Intercom not booted — missing username or intercomJwt claim', {
+          hasUsername: !!username,
+          hasIntercomJwt: !!intercomJwt,
+        });
+      }
+    } else if (!isAuthenticated && intercomBootAttempted) {
+      shutdown();
+      intercomBootAttempted = false;
+      bootAnonymous();
+    }
+  },
+  { immediate: true },
+);
+</script>
