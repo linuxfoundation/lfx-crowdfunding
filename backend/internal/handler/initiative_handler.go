@@ -50,10 +50,15 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 
+	status := models.InitiativeStatus(q.Get("status"))
+	if status == "" {
+		status = models.StatusPublished
+	}
+
 	filter := models.InitiativeFilter{
 		OwnerID:        q.Get("owner_id"),
 		InitiativeType: q.Get("type"),
-		Status:         models.InitiativeStatus(q.Get("status")),
+		Status:         status,
 		Search:         q.Get("search"),
 		SortBy:         strings.ToLower(q.Get("sort_by")),
 		SortDir:        strings.ToLower(q.Get("sort_dir")),
@@ -89,6 +94,12 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	initiatives, meta, err := h.svc.ListForUser(r.Context(), principal.Username, models.InitiativeFilter{
+		Status: func() models.InitiativeStatus {
+			if s := models.InitiativeStatus(r.URL.Query().Get("status")); s != "" {
+				return s
+			}
+			return models.StatusPublished
+		}(),
 		Limit:  limit,
 		Offset: offset,
 	})
