@@ -91,11 +91,11 @@ export const useIntercom = () => {
   function boot(options: IntercomBootOptions): Promise<void> {
     return new Promise((resolve, reject) => {
       if (typeof window === 'undefined') {
-        reject(new Error('Window is undefined'));
+        reject(new Error('[useIntercom] Window is undefined'));
         return;
       }
       if (!appId) {
-        reject(new Error('No Intercom app ID configured'));
+        reject(new Error('[useIntercom] No Intercom app ID configured'));
         return;
       }
 
