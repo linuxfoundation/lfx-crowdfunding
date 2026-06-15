@@ -57,9 +57,10 @@ SPDX-License-Identifier: MIT
 
     <!-- Manage donations link -->
     <a
-      href="#"
+      :href="selfServeLinks"
+      target="_blank"
+      rel="noopener noreferrer"
       class="flex items-center gap-1.5 text-sm font-medium text-accent-600 hover:text-accent-700 transition-colors"
-      @click.prevent
     >
       Manage your Donations
       <lfx-icon
@@ -98,6 +99,12 @@ const tierBadgeClass = computed(() => {
   if (!props.tierName) return '';
   return TIER_BADGE_CLASSES[props.tierName.toLowerCase()] ?? 'bg-neutral-100 text-neutral-600';
 });
+
+const {
+  public: { selfServeUrl },
+} = useRuntimeConfig();
+
+const selfServeLinks = computed(() => `${selfServeUrl}/crowdfunding/donations`);
 
 const shareOnX = () => {
   const text = encodeURIComponent(`I just donated to ${props.initiativeName} on LFX Crowdfunding!`);
