@@ -16,20 +16,20 @@ import (
 // Any method whose function field is nil panics, making accidentally-called
 // paths immediately visible.
 type configStripeClient struct {
-	onGetProduct          func(context.Context, string) (*models.StripeProduct, error)
-	onCreateProduct       func(ctx context.Context, initiativeID, name string) (string, error)
-	onDeleteProduct       func(context.Context, string) error
-	onCreatePaymentIntent func(context.Context, models.PaymentIntentRequest) (*models.PaymentIntent, error)
-	onCreateSubscription  func(context.Context, models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
+	onGetProduct                  func(context.Context, string) (*models.StripeProduct, error)
+	onCreateProduct               func(ctx context.Context, initiativeID, name string) (string, error)
+	onDeleteProduct               func(context.Context, string) error
+	onCreatePaymentIntent         func(context.Context, models.PaymentIntentRequest) (*models.PaymentIntent, error)
+	onCreateSubscription          func(context.Context, models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
 	onCancelSubscription          func(context.Context, string) error
 	onUpdatePaymentIntentMetadata func(context.Context, string, map[string]string) error
-	onConstructWebhook    func([]byte, string, string) (stripe.Event, error)
-	onCreateCustomer      func(context.Context, string, string) (string, error)
-	onCreateSetupIntent   func(context.Context, string) (string, error)
-	onAttachPaymentMethod func(context.Context, string, string) (*models.CardDetails, error)
-	onGetPaymentMethod    func(context.Context, string) (*models.CardDetails, error)
-	onDetachPaymentMethod func(context.Context, string) error
-	onGetOrCreatePrice    func(context.Context, string, string, int64, string, string) (string, error)
+	onConstructWebhook            func([]byte, string, string) (stripe.Event, error)
+	onCreateCustomer              func(context.Context, string, string) (string, error)
+	onCreateSetupIntent           func(context.Context, string) (string, error)
+	onAttachPaymentMethod         func(context.Context, string, string) (*models.CardDetails, error)
+	onGetPaymentMethod            func(context.Context, string) (*models.CardDetails, error)
+	onDetachPaymentMethod         func(context.Context, string) error
+	onGetOrCreatePrice            func(context.Context, string, string, int64, string, string) (string, error)
 }
 
 func (c *configStripeClient) GetProduct(ctx context.Context, id string) (*models.StripeProduct, error) {
@@ -188,11 +188,11 @@ func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, st
 
 // testSubscriptionRepo is a configurable SubscriptionRepository.
 type testSubscriptionRepo struct {
-	onGetByID                       func(context.Context, string) (*models.Subscription, error)
-	onGetActiveByUserAndInitiative  func(context.Context, string, string) (*models.Subscription, error)
-	onCreate                        func(context.Context, *models.Subscription) (*models.Subscription, error)
-	onUpdate                        func(context.Context, *models.Subscription) (*models.Subscription, error)
-	onUpdateByStripeSubscriptionID  func(context.Context, string, string) error
+	onGetByID                      func(context.Context, string) (*models.Subscription, error)
+	onGetActiveByUserAndInitiative func(context.Context, string, string) (*models.Subscription, error)
+	onCreate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
+	onUpdate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
+	onUpdateByStripeSubscriptionID func(context.Context, string, string) error
 }
 
 func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.Subscription, error) {
