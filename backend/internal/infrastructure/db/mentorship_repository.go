@@ -75,7 +75,7 @@ INSERT INTO initiatives (
 ) VALUES (
 	$1::uuid,
 	$2,
-	$1,
+	$1::text,
 	$3,
 	$4,
 	$5,
