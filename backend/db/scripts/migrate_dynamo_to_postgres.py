@@ -41,10 +41,9 @@ Key notes
 - initiatives.id (UUID PK) is generated deterministically via
   _as_uuid(projectId / entityId) so FK lookups from donations/subscriptions
   remain stable across re-runs.
-- DynamoDB entity type quirk: SaveEntity rewrites 'general fund' → 'initiative'
-  before every PutItem. Migration reverses this and normalises to the canonical
-  underscore form used by the new backend:
-    if entityType == 'initiative' → 'general_fund'
+- DynamoDB entity type quirks — normalised to ValidInitiativeTypes canonical forms:
+    'initiative' → 'general_fund'  (SaveEntity rewrites 'general fund' before PutItem)
+    'ostif'      → 'security_audit'
 - Budget.AmountInCents is serialised with json tag "amount" — access as
   budget.get("amount"), NOT budget.get("amountInCents").
 - Excluded from schema (no DynamoDB write path / computed at read-time):
@@ -723,12 +722,15 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set, u
         )
         known_initiative_ids.add(pg_id)
 
-        # entityType quirk: SaveEntity rewrites 'general fund' → 'initiative'
-        # before every PutItem. Reverse it here and normalise to the canonical
-        # underscore form used by ValidInitiativeTypes in the new backend.
+        # Normalise DynamoDB entityType values to the canonical forms used by
+        # ValidInitiativeTypes in the new backend:
+        #   'initiative' → 'general_fund'  (SaveEntity quirk: rewrites 'general fund' before PutItem)
+        #   'ostif'      → 'security_audit' (OSTIF is a security-audit programme)
         entity_type: str = e.get("entityType") or ""
         if entity_type == "initiative":
             entity_type = "general_fund"
+        elif entity_type == "ostif":
+            entity_type = "security_audit"
 
         # ── Core initiative row ──────────────────────────────────────────
         initiative_rows.append(
@@ -845,7 +847,9 @@ def migrate_initiatives(cur, entities: list, projects: list, known_users: set, u
         # ── OSTIF-specific detail (ostif entity type only) ───────────────
         # entity.Detail interface{} is a domain.Detail struct when non-nil.
         # TypeDeserializer returns it as a plain dict.
-        if entity_type == "ostif":
+        # Use the raw DynamoDB entityType here — entity_type is already
+        # normalised to 'security_audit' by this point.
+        if e.get("entityType") == "ostif":
             raw_detail = e.get("detail")
             if isinstance(raw_detail, dict) and raw_detail:
                 ostif_detail_rows.append(
