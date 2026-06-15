@@ -36,6 +36,7 @@ SELECT
 	p.program_skills
 FROM ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS p
 WHERE p.PROGRAM_ID IS NOT NULL
+  AND p.UPDATED_AT >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
 `
 
 // snowflakePerson is the shared JSON structure for entries in the
