@@ -66,6 +66,14 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 			p.Status = normalizedStatusHidden
 		}
 
+		if strings.TrimSpace(p.OwnerLFUsername) == "" {
+			s.logger.ErrorContext(ctx, "skipping program: missing owner_lf_username",
+				"jobspring_project_id", p.JobspringProjectID,
+			)
+			result.errors++
+			continue
+		}
+
 		if _, err := s.repo.UpsertProgram(ctx, p); err != nil {
 			s.logger.ErrorContext(ctx, "upsert program failed",
 				"jobspring_project_id", p.JobspringProjectID,

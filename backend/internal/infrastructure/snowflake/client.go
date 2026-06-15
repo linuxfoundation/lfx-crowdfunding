@@ -15,9 +15,13 @@ import (
 	"time"
 
 	"github.com/snowflakedb/gosnowflake"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
+
+var snowflakeTracer = otel.Tracer("snowflake-client")
 
 const fetchProgramsQuery = `
 SELECT
@@ -34,7 +38,6 @@ SELECT
 	p.UPDATED_AT
 FROM ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS p
 WHERE p.PROGRAM_ID IS NOT NULL
-  AND p.UPDATED_AT >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
 `
 
 // snowflakePerson is the shared JSON structure for entries in the
@@ -124,7 +127,16 @@ func (c *Client) Close() error {
 // VARIANT columns (SELECTED_MENTEES, mentors, program_skills) are parsed from
 // their JSON string representation. A NULL VARIANT column means the field is
 // absent and the corresponding slice on the model is left nil (skip upsert).
-func (c *Client) FetchPrograms(ctx context.Context) ([]models.MentorshipProgram, error) {
+func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgram, retErr error) {
+	ctx, span := snowflakeTracer.Start(ctx, "FetchPrograms")
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	rows, err := c.db.QueryContext(ctx, fetchProgramsQuery)
 	if err != nil {
 		return nil, fmt.Errorf("query mentorship programs: %w", err)

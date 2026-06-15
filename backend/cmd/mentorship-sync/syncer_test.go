@@ -48,8 +48,8 @@ func TestSyncer_Run_upsertsAllPrograms(t *testing.T) {
 
 	src := &mockMentorshipSource{
 		programs: []models.MentorshipProgram{
-			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Beneficiaries: []models.MentorshipBeneficiary{{Name: "Alice", Email: "a@x.com"}}},
-			{JobspringProjectID: "js-2", Name: "Prog B", Status: "pending", Beneficiaries: nil},
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", OwnerLFUsername: "alice", Beneficiaries: []models.MentorshipBeneficiary{{Name: "Alice", Email: "a@x.com"}}},
+			{JobspringProjectID: "js-2", Name: "Prog B", Status: "pending", OwnerLFUsername: "bob", Beneficiaries: nil},
 		},
 	}
 	repo := &mockMentorshipRepo{}
@@ -88,7 +88,7 @@ func TestSyncer_Run_normalisesStatusToLowercase(t *testing.T) {
 	for _, tc := range cases {
 		src := &mockMentorshipSource{
 			programs: []models.MentorshipProgram{
-				{JobspringProjectID: "js-1", Name: "Test", Status: tc.input},
+				{JobspringProjectID: "js-1", Name: "Test", Status: tc.input, OwnerLFUsername: "testowner"},
 			},
 		}
 		repo := &mockMentorshipRepo{}
@@ -115,6 +115,7 @@ func TestSyncer_Run_beneficiariesUpsertedForInitiative(t *testing.T) {
 				JobspringProjectID: "js-1",
 				Name:               "Prog A",
 				Status:             "published",
+				OwnerLFUsername:    "alice",
 				Beneficiaries: []models.MentorshipBeneficiary{
 					{Name: "Alice", Email: "alice@x.com"},
 				},
@@ -143,7 +144,7 @@ func TestSyncer_Run_nilBeneficiariesSkipsUpsert(t *testing.T) {
 	// nil Beneficiaries = source did not provide beneficiary data (e.g. Snowflake client)
 	src := &mockMentorshipSource{
 		programs: []models.MentorshipProgram{
-			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Beneficiaries: nil},
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", OwnerLFUsername: "alice", Beneficiaries: nil},
 		},
 	}
 	repo := &mockMentorshipRepo{}
@@ -167,7 +168,7 @@ func TestSyncer_Run_emptyBeneficiariesDeletesExisting(t *testing.T) {
 	// non-nil empty slice = source explicitly returned zero beneficiaries
 	src := &mockMentorshipSource{
 		programs: []models.MentorshipProgram{
-			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Beneficiaries: []models.MentorshipBeneficiary{}},
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", OwnerLFUsername: "alice", Beneficiaries: []models.MentorshipBeneficiary{}},
 		},
 	}
 	repo := &mockMentorshipRepo{}
@@ -225,8 +226,8 @@ func TestSyncer_Run_countsUpsertErrorsWithoutHalting(t *testing.T) {
 
 	src := &mockMentorshipSource{
 		programs: []models.MentorshipProgram{
-			{JobspringProjectID: "js-1", Name: "Good"},
-			{JobspringProjectID: "js-2", Name: "Bad"},
+			{JobspringProjectID: "js-1", Name: "Good", OwnerLFUsername: "alice"},
+			{JobspringProjectID: "js-2", Name: "Bad", OwnerLFUsername: "bob"},
 		},
 	}
 	repo := &mockMentorshipRepo{}
@@ -274,6 +275,7 @@ func TestSyncer_Run_skillsUpsertedForInitiative(t *testing.T) {
 				JobspringProjectID: "js-1",
 				Name:               "Prog A",
 				Status:             "published",
+				OwnerLFUsername:    "alice",
 				Skills:             []string{"Golang", "Kubernetes"},
 			},
 		},
@@ -299,7 +301,7 @@ func TestSyncer_Run_nilSkillsSkipsUpsert(t *testing.T) {
 
 	src := &mockMentorshipSource{
 		programs: []models.MentorshipProgram{
-			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Skills: nil},
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", OwnerLFUsername: "alice", Skills: nil},
 		},
 	}
 	repo := &mockMentorshipRepo{}
@@ -326,6 +328,7 @@ func TestSyncer_Run_mentorsUpsertedForInitiative(t *testing.T) {
 				JobspringProjectID: "js-1",
 				Name:               "Prog A",
 				Status:             "published",
+				OwnerLFUsername:    "alice",
 				Mentors: []models.MentorshipMentor{
 					{Name: "Jane Smith", Email: "jane@example.com", AvatarURL: "https://example.com/jane.png"},
 				},
@@ -353,7 +356,7 @@ func TestSyncer_Run_nilMentorsSkipsUpsert(t *testing.T) {
 
 	src := &mockMentorshipSource{
 		programs: []models.MentorshipProgram{
-			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", Mentors: nil},
+			{JobspringProjectID: "js-1", Name: "Prog A", Status: "published", OwnerLFUsername: "alice", Mentors: nil},
 		},
 	}
 	repo := &mockMentorshipRepo{}
@@ -368,5 +371,33 @@ func TestSyncer_Run_nilMentorsSkipsUpsert(t *testing.T) {
 	}
 	if repo.upsertedPrograms[0].Mentors != nil {
 		t.Errorf("Mentors should be nil when not provided, got %v", repo.upsertedPrograms[0].Mentors)
+	}
+}
+
+func TestSyncer_Run_skipsAndCountsErrorForEmptyOwnerLFUsername(t *testing.T) {
+	t.Parallel()
+
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{JobspringProjectID: "js-1", Name: "No Owner", Status: "published", OwnerLFUsername: ""},
+			{JobspringProjectID: "js-2", Name: "Has Owner", Status: "published", OwnerLFUsername: "alice"},
+		},
+	}
+	repo := &mockMentorshipRepo{}
+
+	s := newSyncer(repo, src, discardLogger())
+	result, err := s.Run(context.Background())
+
+	if err != nil {
+		t.Fatalf("unexpected top-level error: %v", err)
+	}
+	if result.upserted != 1 {
+		t.Errorf("upserted: got %d, want 1", result.upserted)
+	}
+	if result.errors != 1 {
+		t.Errorf("errors: got %d, want 1 (missing OwnerLFUsername counts as error)", result.errors)
+	}
+	if len(repo.upsertedPrograms) != 1 || repo.upsertedPrograms[0].JobspringProjectID != "js-2" {
+		t.Errorf("only js-2 should be upserted, got %+v", repo.upsertedPrograms)
 	}
 }

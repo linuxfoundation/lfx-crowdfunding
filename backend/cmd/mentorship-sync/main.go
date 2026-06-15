@@ -40,9 +40,10 @@ func run(logger *slog.Logger) error {
 	}
 
 	pool, err := db.NewPool(ctx, db.PoolConfig{
-		DSN:      cfg.DatabaseURL,
-		MaxConns: 5,
-		MinConns: 1,
+		DSN:             cfg.DatabaseURL,
+		MaxConns:        5,
+		MinConns:        1,
+		ConnMaxLifetime: cfg.DBConnMaxLifetime,
 	})
 	if err != nil {
 		return fmt.Errorf("database pool: %w", err)
@@ -93,6 +94,7 @@ func run(logger *slog.Logger) error {
 
 type config struct {
 	DatabaseURL         string
+	DBConnMaxLifetime   time.Duration
 	FixtureFile         string
 	SnowflakeAccount    string
 	SnowflakeUser       string
@@ -109,8 +111,9 @@ func loadConfig() (*config, error) {
 	}
 
 	cfg := &config{
-		DatabaseURL: dbURL,
-		FixtureFile: os.Getenv("MENTORSHIP_SYNC_FIXTURE_FILE"),
+		DatabaseURL:       dbURL,
+		DBConnMaxLifetime: 5 * time.Minute,
+		FixtureFile:       os.Getenv("MENTORSHIP_SYNC_FIXTURE_FILE"),
 	}
 
 	if cfg.FixtureFile == "" {
