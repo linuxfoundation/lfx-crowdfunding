@@ -94,13 +94,11 @@ describe('POST /api/expense-email/:action/:reportId BFF handler', () => {
     it('throws 400 for an unknown action', async () => {
       setupParams('banana', 'R-001');
 
-      await expect(
-        (handler as (e: unknown) => Promise<void>)(mockEvent),
-      ).rejects.toMatchObject({ statusCode: 400 });
+      await expect((handler as (e: unknown) => Promise<void>)(mockEvent)).rejects.toMatchObject({
+        statusCode: 400,
+      });
 
-      expect(mockCreateError).toHaveBeenCalledWith(
-        expect.objectContaining({ statusCode: 400 }),
-      );
+      expect(mockCreateError).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
       expect(mockUseBackendFetch).not.toHaveBeenCalled();
     });
   });
@@ -111,9 +109,9 @@ describe('POST /api/expense-email/:action/:reportId BFF handler', () => {
       const upstreamError = Object.assign(new Error('Not Found'), { statusCode: 404 });
       mockUseBackendFetch.mockRejectedValue(upstreamError);
 
-      await expect(
-        (handler as (e: unknown) => Promise<void>)(mockEvent),
-      ).rejects.toMatchObject({ statusCode: 404 });
+      await expect((handler as (e: unknown) => Promise<void>)(mockEvent)).rejects.toMatchObject({
+        statusCode: 404,
+      });
     });
   });
 });
