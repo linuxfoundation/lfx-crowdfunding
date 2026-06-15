@@ -201,6 +201,9 @@ func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.
 	}
 	return nil, nil
 }
+func (r *testSubscriptionRepo) GetByIDForUser(_ context.Context, _, _ string) (*models.Subscription, error) {
+	return nil, domain.ErrSubscriptionNotFound
+}
 func (r *testSubscriptionRepo) GetActiveByUserAndInitiative(ctx context.Context, userID, initiativeID string) (*models.Subscription, error) {
 	if r.onGetActiveByUserAndInitiative != nil {
 		return r.onGetActiveByUserAndInitiative(ctx, userID, initiativeID)
