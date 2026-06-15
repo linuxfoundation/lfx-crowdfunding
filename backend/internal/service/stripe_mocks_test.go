@@ -189,6 +189,7 @@ func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, st
 // testSubscriptionRepo is a configurable SubscriptionRepository.
 type testSubscriptionRepo struct {
 	onGetByID                      func(context.Context, string) (*models.Subscription, error)
+	onGetByIDForUser               func(context.Context, string, string) (*models.Subscription, error)
 	onGetActiveByUserAndInitiative func(context.Context, string, string) (*models.Subscription, error)
 	onCreate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
 	onUpdate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
@@ -201,7 +202,10 @@ func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.
 	}
 	return nil, nil
 }
-func (r *testSubscriptionRepo) GetByIDForUser(_ context.Context, _, _ string) (*models.Subscription, error) {
+func (r *testSubscriptionRepo) GetByIDForUser(ctx context.Context, id, userID string) (*models.Subscription, error) {
+	if r.onGetByIDForUser != nil {
+		return r.onGetByIDForUser(ctx, id, userID)
+	}
 	return nil, domain.ErrSubscriptionNotFound
 }
 func (r *testSubscriptionRepo) GetActiveByUserAndInitiative(ctx context.Context, userID, initiativeID string) (*models.Subscription, error) {

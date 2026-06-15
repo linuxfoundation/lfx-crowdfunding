@@ -102,6 +102,7 @@ func (s *SubscriptionService) GetByIDForUser(ctx context.Context, id, username s
 	if err != nil {
 		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
 			span.RecordError(err)
+			return nil, fmt.Errorf("get subscription: %w", err)
 		}
 		return nil, err
 	}

@@ -583,3 +583,88 @@ func TestSubscriptionService_Create_StaleProductHealPersistFails(t *testing.T) {
 		t.Errorf("expected persistErr to be wrapped, got: %v", err)
 	}
 }
+
+// ── GetByIDForUser tests ───────────────────────────────────────────────────────
+
+func TestSubscriptionService_GetByIDForUser_Success(t *testing.T) {
+	const subID = "sub-local-1"
+	const userID = "00000000-0000-0000-0000-000000000001"
+	const username = "testuser"
+
+	subRepo := &testSubscriptionRepo{
+		onGetByIDForUser: func(_ context.Context, id, uid string) (*models.Subscription, error) {
+			if id != subID || uid != userID {
+				return nil, domain.ErrSubscriptionNotFound
+			}
+			return &models.Subscription{
+				ID:             subID,
+				UserID:         userID,
+				InitiativeName: "Test Initiative",
+				Status:         "active",
+			}, nil
+		},
+	}
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: userID, Username: username}, nil
+		},
+	}
+	svc := newSubscriptionSvc(subRepo, acceptingInitiative(), userRepo, &configStripeClient{})
+
+	sub, err := svc.GetByIDForUser(context.Background(), subID, username)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if sub.ID != subID {
+		t.Errorf("expected ID %s, got %s", subID, sub.ID)
+	}
+	if sub.InitiativeName != "Test Initiative" {
+		t.Errorf("expected initiative_name 'Test Initiative', got %q", sub.InitiativeName)
+	}
+}
+
+func TestSubscriptionService_GetByIDForUser_NotFound_Returns404(t *testing.T) {
+	subRepo := &testSubscriptionRepo{
+		onGetByIDForUser: func(_ context.Context, _, _ string) (*models.Subscription, error) {
+			return nil, domain.ErrSubscriptionNotFound
+		},
+	}
+	svc := newSubscriptionSvc(subRepo, acceptingInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.GetByIDForUser(context.Background(), "sub-missing", "testuser")
+	if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+		t.Errorf("expected ErrSubscriptionNotFound, got %v", err)
+	}
+}
+
+func TestSubscriptionService_GetByIDForUser_UserNotFound_Returns404(t *testing.T) {
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return nil, domain.ErrUserNotFound
+		},
+	}
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), userRepo, &configStripeClient{})
+
+	_, err := svc.GetByIDForUser(context.Background(), "sub-1", "ghost")
+	if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+		t.Errorf("expected ErrSubscriptionNotFound for unknown user, got %v", err)
+	}
+}
+
+func TestSubscriptionService_GetByIDForUser_RepoError_IsWrapped(t *testing.T) {
+	dbErr := errors.New("db connection failed")
+	subRepo := &testSubscriptionRepo{
+		onGetByIDForUser: func(_ context.Context, _, _ string) (*models.Subscription, error) {
+			return nil, dbErr
+		},
+	}
+	svc := newSubscriptionSvc(subRepo, acceptingInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.GetByIDForUser(context.Background(), "sub-1", "testuser")
+	if !errors.Is(err, dbErr) {
+		t.Errorf("expected wrapped dbErr, got %v", err)
+	}
+	if errors.Is(err, domain.ErrSubscriptionNotFound) {
+		t.Error("db error should not be treated as not-found")
+	}
+}
