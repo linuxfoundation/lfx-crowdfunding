@@ -17,16 +17,22 @@ export const useSanitize = () => {
    * If the input is plain text (no HTML tags), converts newlines to paragraph
    * and line-break elements so whitespace is preserved when rendered.
    */
+  const escapeHtml = (text: string): string =>
+    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   const renderDescription = (raw: string): string => {
     const hasHtmlTags = /<[a-z][\s\S]*>/i.test(raw);
     if (hasHtmlTags) {
       return DOMPurify.sanitize(raw);
     }
-    // Plain text: split on blank lines for paragraphs, single newlines become <br>
+    // Plain text: normalize line endings (CRLF/CR → LF), split blank lines into
+    // paragraphs, single newlines become <br>. Escape HTML-sensitive characters
+    // before wrapping so they survive the HTML parser before DOMPurify runs.
     const html = raw
+      .replace(/\r\n?/g, '\n')
       .split(/\n\n+/)
       .filter((p) => p.trim())
-      .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+      .map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
       .join('');
     return DOMPurify.sanitize(html || raw);
   };
