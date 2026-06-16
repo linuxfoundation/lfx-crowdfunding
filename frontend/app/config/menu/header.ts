@@ -26,6 +26,7 @@ export const lfxHeaderMenu: HeaderMenuItem[] = [
       { label: 'For Projects', icon: 'laptop-code', to: AppRoute.ForProjects },
       { label: 'For Companies', icon: 'buildings', to: AppRoute.ForCompanies },
       { label: 'About', icon: 'circle-info', to: AppRoute.About },
+      { label: 'Documentation', icon: 'book-open', to: AppRoute.Docs },
     ],
   },
 ];
