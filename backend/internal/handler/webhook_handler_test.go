@@ -847,11 +847,18 @@ func TestWebhookHandler_PaymentIntentSucceeded_V2_AlreadyProcessed_SkipsLedgerAn
 }
 
 // TestWebhookHandler_InvoicePaymentSucceeded_V2_SendsEmails verifies that
-// a v2 invoice.payment_succeeded event sends donor + admin emails.
-// Ledger writes are handled by the Ledger service via charge.succeeded.
+// a v2 invoice.payment_succeeded event sends donor + admin emails and does NOT
+// write to Ledger (the Ledger service handles that via charge.succeeded).
 func TestWebhookHandler_InvoicePaymentSucceeded_V2_SendsEmails(t *testing.T) {
 	var gotConfirmTo, gotAdminOwner string
+	ledgerCalled := false
 
+	lc := &wbLedgerClient{
+		onPostTransaction: func(_ context.Context, _ clients.LedgerTransaction) error {
+			ledgerCalled = true
+			return nil
+		},
+	}
 	es := &wbEmailService{
 		onConfirmation: func(toEmail, _, _, _, _ string) { gotConfirmTo = toEmail },
 		onAdminNotify:  func(ownerEmail, _, _, _, _, _ string) { gotAdminOwner = ownerEmail },
@@ -861,10 +868,13 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_SendsEmails(t *testing.T) {
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
 	}
 
-	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, &wbLedgerClient{}, es), "t=1,v1=sig", `{}`)
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, lc, es), "t=1,v1=sig", `{}`)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if ledgerCalled {
+		t.Error("Ledger must not be called from invoice.payment_succeeded (Ledger service handles this)")
 	}
 	if gotConfirmTo != "jane@example.com" {
 		t.Errorf("confirmation email to = %q, want jane@example.com", gotConfirmTo)
