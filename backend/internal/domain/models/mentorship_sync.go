@@ -14,6 +14,10 @@ type MentorshipProgram struct {
 	Slug               string // program_slug
 	Industry           string // PROGRAM_TECHNOLOGY (comma-separated list)
 	OwnerLFUsername    string // OWNER_LF_USERNAME — LF SSO username of the program owner
+	OwnerEmail         string // OWNER_EMAIL
+	OwnerFirstName     string // OWNER_FIRST_NAME
+	OwnerLastName      string // OWNER_LAST_NAME
+	OwnerAvatarURL     string // OWNER_AVATAR_URL
 
 	// Skills is nil when the source did not provide skills data.
 	// A nil slice means "do not touch skills"; non-nil (even empty) replaces all existing rows.

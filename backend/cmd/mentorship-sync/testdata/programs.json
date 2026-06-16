@@ -7,6 +7,10 @@
     "slug": "cncf-example-hidden",
     "industry": "Cloud Computing, Containers",
     "owner_lf_username": "cncf-admin",
+    "owner_email": "cncf-admin@example.com",
+    "owner_first_name": "Admin",
+    "owner_last_name": "CNCF",
+    "owner_avatar_url": "https://example.com/cncf-admin.png",
     "skills": ["Golang", "Kubernetes", "kubeadm"],
     "mentors": [
       {"name": "Jane Mentor", "email": "jane.mentor@example.com", "avatar_url": "https://example.com/jane.png"}
@@ -21,6 +25,10 @@
     "slug": "omp-example-published",
     "industry": "Mainframe, Enterprise Computing",
     "owner_lf_username": "omp-admin",
+    "owner_email": "omp-admin@example.com",
+    "owner_first_name": "Admin",
+    "owner_last_name": "OMP",
+    "owner_avatar_url": "https://example.com/omp-admin.png",
     "skills": ["COBOL", "z/OS"],
     "mentors": [],
     "beneficiaries": [
@@ -36,6 +44,10 @@
     "slug": "",
     "industry": "",
     "owner_lf_username": "meshery-admin",
+    "owner_email": "meshery-admin@example.com",
+    "owner_first_name": "Admin",
+    "owner_last_name": "Meshery",
+    "owner_avatar_url": "",
     "beneficiaries": []
   }
 ]

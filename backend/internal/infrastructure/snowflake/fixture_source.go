@@ -21,6 +21,10 @@ type fixtureProgram struct {
 	Slug               string               `json:"slug"`
 	Industry           string               `json:"industry"`
 	OwnerLFUsername    string               `json:"owner_lf_username"`
+	OwnerEmail         string               `json:"owner_email"`
+	OwnerFirstName     string               `json:"owner_first_name"`
+	OwnerLastName      string               `json:"owner_last_name"`
+	OwnerAvatarURL     string               `json:"owner_avatar_url"`
 	Skills             []string             `json:"skills"`
 	Mentors            []fixtureMentor      `json:"mentors"`
 	Beneficiaries      []fixtureBeneficiary `json:"beneficiaries"`
@@ -88,6 +92,10 @@ func (f *FixtureSource) FetchPrograms(_ context.Context) ([]models.MentorshipPro
 			Slug:               r.Slug,
 			Industry:           r.Industry,
 			OwnerLFUsername:    r.OwnerLFUsername,
+			OwnerEmail:         r.OwnerEmail,
+			OwnerFirstName:     r.OwnerFirstName,
+			OwnerLastName:      r.OwnerLastName,
+			OwnerAvatarURL:     r.OwnerAvatarURL,
 			Skills:             r.Skills,
 			Mentors:            mentors,
 			Beneficiaries:      beneficiaries,

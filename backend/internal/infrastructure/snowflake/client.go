@@ -30,6 +30,10 @@ SELECT
 	p.PROGRAM_DESCRIPTION,
 	p.PROGRAM_SLUG,
 	COALESCE(p.OWNER_LF_USERNAME, '') AS OWNER_LF_USERNAME,
+	COALESCE(p.OWNER_EMAIL, '') AS OWNER_EMAIL,
+	COALESCE(p.OWNER_FIRST_NAME, '') AS OWNER_FIRST_NAME,
+	COALESCE(p.OWNER_LAST_NAME, '') AS OWNER_LAST_NAME,
+	COALESCE(p.OWNER_AVATAR_URL, '') AS OWNER_AVATAR_URL,
 	p.PROGRAM_TECHNOLOGY,
 	p.SELECTED_MENTEES,
 	p.MENTORS,
@@ -151,6 +155,10 @@ func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgra
 			description     sql.NullString
 			slug            sql.NullString
 			ownerLFUsername string
+			ownerEmail      string
+			ownerFirstName  string
+			ownerLastName   string
+			ownerAvatarURL  string
 			industry        sql.NullString
 			menteesJSON     sql.NullString
 			mentorsJSON     sql.NullString
@@ -163,6 +171,10 @@ func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgra
 			&description,
 			&slug,
 			&ownerLFUsername,
+			&ownerEmail,
+			&ownerFirstName,
+			&ownerLastName,
+			&ownerAvatarURL,
 			&industry,
 			&menteesJSON,
 			&mentorsJSON,
@@ -178,6 +190,10 @@ func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgra
 			Description:        description.String,
 			Slug:               slug.String,
 			OwnerLFUsername:    ownerLFUsername,
+			OwnerEmail:         ownerEmail,
+			OwnerFirstName:     ownerFirstName,
+			OwnerLastName:      ownerLastName,
+			OwnerAvatarURL:     ownerAvatarURL,
 			Industry:           industry.String,
 		}
 

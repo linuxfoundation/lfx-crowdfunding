@@ -41,14 +41,18 @@ func (r *MentorshipRepositoryImpl) UpsertProgram(ctx context.Context, p models.M
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	// 1. Resolve owner: upsert a stub user row by LF username, then fetch the UUID.
-	// DO NOTHING avoids a no-op UPDATE that would fire the set_updated_on trigger.
+	// Use COALESCE(NULLIF(...,''), col) so empty strings don't overwrite existing values.
 	const insertOwner = `
-INSERT INTO users (username, created_on, updated_on)
-VALUES ($1, NOW(), NOW())
-ON CONFLICT (username) DO NOTHING`
+INSERT INTO users (username, email, given_name, family_name, avatar_url, created_on, updated_on)
+VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), NOW(), NOW())
+ON CONFLICT (username) DO UPDATE SET
+	email       = COALESCE(NULLIF(EXCLUDED.email, ''), users.email),
+	given_name  = COALESCE(NULLIF(EXCLUDED.given_name, ''), users.given_name),
+	family_name = COALESCE(NULLIF(EXCLUDED.family_name, ''), users.family_name),
+	avatar_url  = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), users.avatar_url)`
 	const selectOwner = `SELECT id FROM users WHERE username = $1`
 
-	if _, err := tx.Exec(ctx, insertOwner, p.OwnerLFUsername); err != nil {
+	if _, err := tx.Exec(ctx, insertOwner, p.OwnerLFUsername, p.OwnerEmail, p.OwnerFirstName, p.OwnerLastName, p.OwnerAvatarURL); err != nil {
 		return "", fmt.Errorf("insert owner user %q: %w", p.OwnerLFUsername, err)
 	}
 	var ownerID string

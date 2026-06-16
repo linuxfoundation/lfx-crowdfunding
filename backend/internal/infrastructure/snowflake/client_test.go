@@ -54,6 +54,10 @@ func (r *mockRows) Columns() []string {
 		"PROGRAM_DESCRIPTION",
 		"program_slug",
 		"OWNER_LF_USERNAME",
+		"OWNER_EMAIL",
+		"OWNER_FIRST_NAME",
+		"OWNER_LAST_NAME",
+		"OWNER_AVATAR_URL",
 		"PROGRAM_TECHNOLOGY",
 		"SELECTED_MENTEES",
 		"mentors",
@@ -86,6 +90,10 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 				"A great program",
 				"linux-kernel-mentorship",
 				"cncf-admin",
+				"cncf-admin@example.com",
+				"Admin",
+				"CNCF",
+				"https://example.com/cncf-admin.png",
 				"Cloud Native",
 				menteesJSON,
 				mentorsJSON,
@@ -133,6 +141,18 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 	}
 	if p.OwnerLFUsername != "cncf-admin" {
 		t.Errorf("OwnerLFUsername: got %q, want cncf-admin", p.OwnerLFUsername)
+	}
+	if p.OwnerEmail != "cncf-admin@example.com" {
+		t.Errorf("OwnerEmail: got %q, want cncf-admin@example.com", p.OwnerEmail)
+	}
+	if p.OwnerFirstName != "Admin" {
+		t.Errorf("OwnerFirstName: got %q, want Admin", p.OwnerFirstName)
+	}
+	if p.OwnerLastName != "CNCF" {
+		t.Errorf("OwnerLastName: got %q, want CNCF", p.OwnerLastName)
+	}
+	if p.OwnerAvatarURL != "https://example.com/cncf-admin.png" {
+		t.Errorf("OwnerAvatarURL: got %q, want https://example.com/cncf-admin.png", p.OwnerAvatarURL)
 	}
 	if p.Description != "A great program" {
 		t.Errorf("Description: got %q, want A great program", p.Description)
