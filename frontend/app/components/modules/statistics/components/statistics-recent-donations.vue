@@ -43,8 +43,8 @@ SPDX-License-Identifier: MIT
   </div>
 
   <recent-donations
-    v-else-if="data?.data?.length"
-    :donations="data.data"
+    v-else-if="limitedDonations.length"
+    :donations="limitedDonations"
     :show-initiative-link="true"
     :show-see-all-link="false"
   />
@@ -59,6 +59,10 @@ import { useStatisticsRecentDonations } from '~/composables/statistics/useStatis
 
 const { data, isLoading, error: rawError } = useStatisticsRecentDonations();
 const error = computed(() => rawError.value as Error | null);
+
+// Show at most the 10 most recent donations (data arrives most-recent-first).
+const RECENT_DONATIONS_LIMIT = 10;
+const limitedDonations = computed(() => (data.value?.data ?? []).slice(0, RECENT_DONATIONS_LIMIT));
 </script>
 
 <script lang="ts">
