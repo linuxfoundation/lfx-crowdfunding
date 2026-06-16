@@ -17,7 +17,7 @@ export function useDocumentation(slug: MaybeRefOrGetter<string>) {
   });
 
   onServerPrefetch(async () => {
-    await query.suspense();
+    await query.suspense().catch(() => {});
   });
 
   return query;

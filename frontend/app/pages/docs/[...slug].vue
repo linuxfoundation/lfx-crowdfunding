@@ -16,8 +16,4 @@ const slug = computed(() => {
   const parts = route.params.slug;
   return Array.isArray(parts) ? parts.join('/') : (parts ?? '');
 });
-
-useHead({
-  title: computed(() => `Docs — ${slug.value}`),
-});
 </script>

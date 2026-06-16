@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { resolve, join } from 'node:path';
+import { resolve, join, sep } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { rewriteDocLink, parseFrontmatter, formatDate, toTitleCase } from './doc-utils';
 
@@ -100,7 +100,7 @@ describe('rewriteDocLink', () => {
 function isSlugSafe(slug: string, docsDir: string): boolean {
   const safe = resolve(docsDir);
   return [resolve(join(safe, `${slug}.md`)), resolve(join(safe, slug, 'index.md'))].every((c) =>
-    c.startsWith(safe + '/'),
+    c.startsWith(safe + sep),
   );
 }
 

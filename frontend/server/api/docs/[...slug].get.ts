@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, sep } from 'node:path';
 import { marked, Renderer } from 'marked';
 import DOMPurify from 'isomorphic-dompurify';
 import {
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event): Promise<DocArticle> => {
     resolve(join(safeDocsDir, normalised, 'index.md')),
   ];
 
-  if (candidates.some((c) => !c.startsWith(safeDocsDir + '/'))) {
+  if (candidates.some((c) => !c.startsWith(safeDocsDir + sep))) {
     throw createError({ statusCode: 400, message: 'Invalid slug' });
   }
 

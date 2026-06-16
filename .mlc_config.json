@@ -15,7 +15,7 @@
     },
     {
       "pattern": "^/for-companies",
-      "comment": "Planned page not yet implemented — ignore until the route exists"
+      "comment": "App-relative route (frontend/app/pages/for-companies.vue) — not resolvable by offline link checkers"
     }
   ],
   "timeout": "20s",

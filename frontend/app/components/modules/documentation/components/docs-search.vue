@@ -116,6 +116,8 @@ async function ensureIndex(): Promise<void> {
       idField: 'slug',
     });
     searchIndex.addAll(docs);
+  } catch {
+    // Search index unavailable — leave searchIndex null so results stay empty
   } finally {
     isIndexLoading.value = false;
   }

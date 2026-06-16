@@ -68,12 +68,14 @@ SPDX-License-Identifier: MIT
                 </NuxtLink>
               </template>
 
-              <lfx-icon
-                name="chevron-right"
-                type="light"
-                :size="10"
-              />
-              <span class="text-neutral-900">{{ article?.title }}</span>
+              <template v-if="!isError">
+                <lfx-icon
+                  name="chevron-right"
+                  type="light"
+                  :size="10"
+                />
+                <span class="text-neutral-900">{{ article?.title }}</span>
+              </template>
             </template>
           </nav>
 

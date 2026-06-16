@@ -22,9 +22,10 @@ export function parseFrontmatter(raw: string): { data: Record<string, unknown>; 
 }
 
 // Rewrite relative doc links to absolute /docs/* paths.
-// slugDir is the directory context of the current article:
-//   - for index.md files (slug = 'donations') → slugDir = 'donations'
-//   - for sub-page files (slug = 'donations/make-donation') → slugDir = 'donations'
+// slugDir is the directory context of the current article (set by the route handler):
+//   - top-level index.md  (slug = 'donations')                    → slugDir = 'donations'
+//   - nested index.md     (slug = 'donations/make-donation')       → slugDir = 'donations/make-donation'
+//   - direct .md file     (slug = 'donations/make-donation/guide') → slugDir = 'donations/make-donation'
 export function rewriteDocLink(href: string, slugDir: string): string {
   // Anchors and root-relative paths pass through unchanged
   if (href.startsWith('#') || href.startsWith('/')) {
