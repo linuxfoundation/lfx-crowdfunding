@@ -29,18 +29,14 @@ SPDX-License-Identifier: MIT
             class="w-full justify-center"
           />
         </NuxtLink>
-        <NuxtLink
-          :to="AppRoute.Contact"
-          class="md:w-auto w-full md:shrink-0"
-        >
-          <lfx-button
-            icon="envelope"
-            label="Contact our team"
-            type="primary"
-            button-style="pill"
-            class="w-full justify-center"
-          />
-        </NuxtLink>
+        <lfx-button
+          icon="envelope"
+          label="Contact our team"
+          type="primary"
+          button-style="pill"
+          class="md:w-auto w-full md:shrink-0 justify-center"
+          @click="openIntercom"
+        />
       </div>
     </div>
   </div>
@@ -49,6 +45,13 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import LfxButton from '~/components/uikit/button/button.vue';
 import { AppRoute } from '~/config/routes';
+import { useIntercom } from '~/composables/useIntercom';
+
+const { show } = useIntercom();
+
+function openIntercom() {
+  show();
+}
 </script>
 
 <script lang="ts">

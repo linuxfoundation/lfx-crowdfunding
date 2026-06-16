@@ -205,5 +205,15 @@ export const useIntercom = () => {
     bootedWithIdentity = false;
   }
 
-  return { boot, update, shutdown };
+  function show(): void {
+    if (typeof window !== 'undefined' && window.Intercom && isBooted) {
+      try {
+        window.Intercom('show');
+      } catch (err) {
+        console.error('[useIntercom] Show failed', err);
+      }
+    }
+  }
+
+  return { boot, update, shutdown, show };
 };
