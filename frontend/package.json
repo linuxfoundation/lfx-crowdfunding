@@ -81,11 +81,6 @@
       "autoprefixer": {}
     }
   },
-  "pnpm": {
-    "overrides": {
-      "shell-quote": ">=1.8.4"
-    }
-  },
   "lint-staged": {
     "*.{js,ts,vue}": [
       "eslint --fix",
