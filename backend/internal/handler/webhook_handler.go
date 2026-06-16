@@ -340,15 +340,10 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 		return nil
 	}
 	initiativeID := subMeta["initiative_id"]
-	userID := subMeta["user_id"]
-	if initiativeID == "" || userID == "" {
-		h.logger.Warn("invoice.payment_succeeded: missing required subscription metadata, skipping ledger post",
+	if initiativeID == "" {
+		h.logger.Warn("invoice.payment_succeeded: missing initiative_id in subscription metadata, skipping emails",
 			"sub_id", subID)
 		return nil
-	}
-	customerID := ""
-	if inv.Customer != nil {
-		customerID = inv.Customer.ID
 	}
 	amount := int(inv.AmountPaid)
 	// inv.CustomerEmail can be empty depending on how the Invoice was created.
@@ -357,51 +352,9 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	if donorEmail == "" {
 		donorEmail = subMeta["donor_email"]
 	}
-	// Use the charge ID as source_txn_id so it matches the source_txn_id the
-	// Ledger service posts from its charge.succeeded handler — enabling dedup
-	// regardless of event ordering or metadata-stamp timing.
-	// stripe-go v85 does not map the "charge" field on Invoice, so read it from
-	// the raw payload. The field is expandable: Stripe may send either a bare
-	// string ID ("ch_xxx") or an expanded object ({"id":"ch_xxx",...}); handle
-	// both to avoid a 500 / unnecessary retry.
-	var rawInv struct {
-		Charge json.RawMessage `json:"charge"`
-	}
-	if err := json.Unmarshal(event.Data.Raw, &rawInv); err != nil {
-		h.logger.Error("invoice.payment_succeeded: raw unmarshal failed", "event_id", event.ID, "error", err)
-		return fmt.Errorf("invoice.payment_succeeded: raw unmarshal: %w", err)
-	}
-	sourceTxnID := extractStringOrIDField(rawInv.Charge)
-	if sourceTxnID == "" {
-		// Older invoices or API versions may not carry the charge field; fall
-		// back to the invoice ID so we always post something to Ledger.
-		h.logger.Warn("invoice.payment_succeeded: charge field absent, falling back to invoice ID",
-			"sub_id", subID, "invoice_id", inv.ID)
-		sourceTxnID = inv.ID
-	}
-	txn := clients.LedgerTransaction{
-		ProjectID:       initiativeID,
-		UserID:          userID,
-		OrganizationID:  subMeta["org_id"],
-		AccountEmail:    donorEmail,
-		SourceType:      ledgerSourceType,
-		SourceTxnID:     sourceTxnID,
-		SourceAccountID: customerID,
-		TxnType:         ledgerTxnType,
-		TxnCategory:     subMeta["category"],
-		Amount:          amount,
-		TxnDate:         inv.Created,
-	}
-	// Ledger post is best-effort: the DB is already marked active, so returning
-	// an error would cause Stripe to retry — but the retry hits ErrAlreadyProcessed
-	// and skips this path entirely. Log the failure and continue.
-	if err := h.ledgerClient.PostTransaction(r.Context(), txn); err != nil {
-		h.logger.Error("invoice.payment_succeeded: failed to post transaction to ledger",
-			"sub_id", subID, "error", err)
-	} else {
-		h.logger.Info("invoice.payment_succeeded: transaction posted to ledger",
-			"sub_id", subID, "initiative_id", initiativeID)
-	}
+	// The Ledger service posts to the Ledger DB via its own charge.succeeded
+	// webhook handler using the correct ch_xxx charge ID. We do not write to
+	// the Ledger here to avoid duplicate entries.
 
 	// Send emails — failures are logged but do not fail the webhook.
 	initiativeURL := ""
