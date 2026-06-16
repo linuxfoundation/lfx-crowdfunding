@@ -134,7 +134,7 @@ createPlaceholderSecret: false
 #
 # DEV: set fixtureFile to /app/testdata/programs.json — no Snowflake config needed.
 # Staging/prod: leave fixtureFile empty.
-#   Non-secret config (ACCOUNT, USER, WAREHOUSE, DATABASE, ROLE) → env: in ArgoCD values.
+#   Non-secret config (ACCOUNT, USER, WAREHOUSE, DATABASE, ROLE) → config: in ArgoCD values.
 #   Secret (SNOWFLAKE_PRIVATE_KEY only) → external secret (lfx-crowdfunding-backend-secrets).
 mentorshipSyncCronJob:
   enabled: false
@@ -144,8 +144,9 @@ mentorshipSyncCronJob:
   # Override to "/app/testdata/programs.json" in DEV.
   fixtureFile: ""
   image:
-    # Required — use the dedicated mentorship-sync image, not the main API image.
-    repository: ghcr.io/linuxfoundation/lfx-crowdfunding-mentorship-sync
+    # Defaults to the same repository and tag as the main backend image.
+    # Both binaries are built into the same Docker image.
+    repository: ""
     tag: ""
   resources:
     requests:
