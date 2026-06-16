@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 <template>
   <NuxtLink
     :to="`/initiatives/${initiative.slug}`"
-    class="flex flex-col justify-between border border-neutral-200 rounded-2xl p-6 h-[400px]"
+    class="flex flex-col justify-between border border-neutral-200 rounded-2xl p-6 h-full min-h-[400px] transition-shadow duration-200 hover:shadow-lg"
     :style="{ backgroundImage: typeConfig.gradient }"
   >
     <!-- Top section -->
@@ -43,7 +43,6 @@ SPDX-License-Identifier: MIT
         <!-- Tags -->
         <div
           v-if="tags.length"
-          ref="tagsContainer"
           class="flex flex-wrap gap-2"
         >
           <lfx-chip
@@ -80,7 +79,7 @@ SPDX-License-Identifier: MIT
     </div>
 
     <!-- Bottom funding section -->
-    <div class="flex flex-col gap-2 w-full">
+    <div class="flex flex-col gap-2 w-full pt-6">
       <div class="flex items-center justify-between text-sm">
         <span>
           <span class="font-semibold text-neutral-900">{{ amountRaisedFormatted }}</span>
@@ -101,8 +100,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick } from 'vue';
-import { useResizeObserver } from '@vueuse/core';
+import { computed } from 'vue';
 import { initiativeTypeConfigMap, defaultInitiativeTypeConfig } from './initiative-card.config';
 import type { Initiative } from '~/types/initiative.types';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
@@ -131,41 +129,10 @@ const tags = computed(() => {
     .filter(Boolean);
 });
 
-const tagsContainer = ref<HTMLElement | null>(null);
-const visibleCount = ref(tags.value.length);
+const MAX_VISIBLE_TAGS = 8;
 
-const visibleTags = computed(() => tags.value.slice(0, visibleCount.value));
-const overflowTags = computed(() => tags.value.slice(visibleCount.value));
-
-let measuring = false;
-const computeVisibleCount = async () => {
-  if (measuring) return;
-  measuring = true;
-  visibleCount.value = tags.value.length;
-  await nextTick();
-  const container = tagsContainer.value;
-  if (!container) {
-    measuring = false;
-    return;
-  }
-  const chips = Array.from(container.querySelectorAll('.p-chip')) as HTMLElement[];
-  if (!chips.length) {
-    measuring = false;
-    return;
-  }
-  const rowTops = [...new Set(chips.map((c) => c.offsetTop))].sort((a, b) => a - b);
-  if (rowTops.length <= 2) {
-    measuring = false;
-    return;
-  }
-  const row2Top = rowTops[1];
-  const fitsIn2Rows = chips.filter((c) => c.offsetTop <= row2Top).length;
-  visibleCount.value = Math.max(0, fitsIn2Rows - 1);
-  measuring = false;
-};
-
-onMounted(computeVisibleCount);
-useResizeObserver(tagsContainer, computeVisibleCount);
+const visibleTags = computed(() => tags.value.slice(0, MAX_VISIBLE_TAGS));
+const overflowTags = computed(() => tags.value.slice(MAX_VISIBLE_TAGS));
 
 const progressPercent = computed(() => {
   const goal = props.initiative.fundingStatus?.goalsTotalCents ?? 0;
