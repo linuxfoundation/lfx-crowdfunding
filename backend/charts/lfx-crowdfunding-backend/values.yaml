@@ -128,6 +128,36 @@ secretName: lfx-crowdfunding-backend-secrets
 # Secret it did not create and the sync will fail silently.
 createPlaceholderSecret: false
 
+# ── CronJob: mentorship-sync ──────────────────────────────────────────────────
+# Runs daily to pull Mentorship program data from Snowflake and upsert into
+# initiatives (initiative_type=mentorship) and initiative_beneficiaries.
+#
+# DEV: set fixtureFile to /app/testdata/programs.json — no Snowflake config needed.
+# Staging/prod: leave fixtureFile empty.
+#   Non-secret config (ACCOUNT, USER, WAREHOUSE, DATABASE, ROLE) → env: in ArgoCD values.
+#   Secret (SNOWFLAKE_PRIVATE_KEY only) → external secret (lfx-crowdfunding-backend-secrets).
+mentorshipSyncCronJob:
+  enabled: false
+  schedule: "0 2 * * *"    # daily at 02:00 UTC
+  # fixtureFile: path inside the container to a JSON fixture file.
+  # When set, the CronJob skips Snowflake and reads from this file instead.
+  # Override to "/app/testdata/programs.json" in DEV.
+  fixtureFile: ""
+  image:
+    # Required — use the dedicated mentorship-sync image, not the main API image.
+    repository: ghcr.io/linuxfoundation/lfx-crowdfunding-mentorship-sync
+    tag: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+
 # ── CronJob: ledger-stats-sync ────────────────────────────────────────────────
 # Runs hourly to sync financial data from the ledger service into initiative_ledger_stats.
 cronJob:

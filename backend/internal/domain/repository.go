@@ -143,3 +143,19 @@ type LedgerStatsRepository interface {
 	// IDs in the slice.  Missing IDs are simply absent from the map.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
 }
+
+// MentorshipRepository defines persistence operations used by mentorship-sync.
+// All methods are scoped to the batch upsert pattern of that CronJob.
+type MentorshipRepository interface {
+	// UpsertProgram creates or updates the initiative row for a mentorship program,
+	// ensures the fixed mentee funding goal exists, and replaces beneficiaries,
+	// skills, and mentors — all in a single transaction.
+	// nil slice fields are skipped; non-nil (including empty) replace the existing rows.
+	// The upsert key is the program's UUID (initiatives.id). Returns the initiative UUID.
+	UpsertProgram(ctx context.Context, p models.MentorshipProgram) (string, error)
+
+	// ListJobspringIDs returns the jobspring_project_id values for all existing
+	// mentorship initiatives. Used to detect programs that have been removed from
+	// Snowflake (not currently acted on, but useful for future reconciliation).
+	ListJobspringIDs(ctx context.Context) ([]string, error)
+}
