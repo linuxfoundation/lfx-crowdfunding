@@ -190,6 +190,20 @@ export const formatValueToLargestUnitDuration = (
 };
 
 /**
+ * Converts a label to Title Case, inserting spaces at camelCase boundaries.
+ * e.g. "bugBounty" -> "Bug Bounty", "general fund" -> "General Fund".
+ * Already-spaced, already-capitalized names (e.g. "Falco Feature Grants") are left intact.
+ * @param value - The raw label
+ * @returns The title-cased label
+ */
+export const formatTitleCase = (value: string): string =>
+  value
+    .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+/**
  * Format date from iso string to locale string or format string
  * @param date - The date to format
  * @param format - The format to use (default: 'short')
