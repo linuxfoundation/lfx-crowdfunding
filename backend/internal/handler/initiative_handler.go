@@ -408,6 +408,26 @@ func (h *InitiativeHandler) GetOwnerInfo(w http.ResponseWriter, r *http.Request)
 	JSON(w, http.StatusOK, info)
 }
 
+// ListPublished handles GET /v1/initiatives/published-list.
+// Requires a valid bearer token with the access:manage scope (M2M only).
+// Returns the ID and Name of every published initiative, for use by the
+// Reimbursement Service initiative picker.
+func (h *InitiativeHandler) ListPublished(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Vary", "Authorization")
+	results, err := h.svc.ListPublished(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if results == nil {
+		results = []models.InitiativeSummary{}
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"data": results,
+	})
+}
+
 // isApprover reports whether the principal is in the allowed approvers list.
 // Identity is matched solely against Principal.Username — the LF SSO username
 // claim.
