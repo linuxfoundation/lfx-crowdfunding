@@ -88,12 +88,16 @@ const props = defineProps<{ initiativeSlug: string }>();
 
 const { data, isLoading, error } = useInitiative(computed(() => props.initiativeSlug));
 
-watch(error, (err) => {
-  if (!err) return;
-  const fetchErr = err as FetchError;
-  const status = fetchErr.statusCode ?? fetchErr.response?.status ?? 500;
-  showError(createError({ statusCode: status }));
-});
+watch(
+  error,
+  (err) => {
+    if (!err) return;
+    const fetchErr = err as FetchError;
+    const status = fetchErr.statusCode ?? fetchErr.response?.status ?? 500;
+    showError(createError({ statusCode: status }));
+  },
+  { immediate: true },
+);
 
 const { data: txnData, isLoading: transactionsLoading } = useInitiativeTransactions(
   computed(() => props.initiativeSlug),

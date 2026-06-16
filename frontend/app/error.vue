@@ -5,9 +5,6 @@ SPDX-License-Identifier: MIT
 <template>
   <main>
     <crowdfunding-header />
-    <div class="hidden">
-      {{ error }}
-    </div>
     <div class="container py-30">
       <div class="flex flex-col items-center">
         <lfx-icon
@@ -44,6 +41,7 @@ SPDX-License-Identifier: MIT
 </template>
 <script setup lang="ts">
 import { clearError, useRoute } from 'nuxt/app';
+import type { NuxtError } from '#app';
 import CrowdfundingHeader from '~/components/shared/layout/header.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
@@ -51,7 +49,7 @@ import { AppRoute } from '~/config/routes';
 import useResponsive from '~/utils/responsive';
 
 const props = defineProps<{
-  error: object;
+  error: NuxtError;
 }>();
 
 const route = useRoute();
@@ -59,7 +57,10 @@ const { pageWidth } = useResponsive();
 
 const notFound = computed(() => props.error?.statusCode === 404);
 
-watch(route, () => {
-  clearError();
-});
+watch(
+  () => route.fullPath,
+  () => {
+    clearError();
+  },
+);
 </script>
