@@ -14,6 +14,12 @@ SPDX-License-Identifier: MIT
       v-for="(value, index) in props.values"
       :key="`${value}-${index}`"
     >
+      <!--
+        No default slot on purpose: the class + inline style fall through onto
+        lfx-tooltip's popover trigger element, so the trigger IS the bar segment
+        (sized by .c-progress-bar__value + the inline width/color). It renders
+        without slot content.
+      -->
       <lfx-tooltip
         v-if="props.tooltips?.[index]"
         class="c-progress-bar__value"
