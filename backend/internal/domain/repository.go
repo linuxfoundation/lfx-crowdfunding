@@ -44,6 +44,10 @@ type InitiativeRepository interface {
 	// GetOwnerInfoBySlug returns the email and display name of the owner of the
 	// initiative with the given slug, regardless of initiative status. Used by M2M callers.
 	GetOwnerInfoBySlug(ctx context.Context, slug string) (models.OwnerInfo, error)
+
+	// ListPublished returns the ID and Name of every published initiative.
+	// Intended for M2M callers only (e.g. Reimbursement Service).
+	ListPublished(ctx context.Context) ([]models.InitiativeSummary, error)
 }
 
 // DonationRepository defines persistence operations for donations.

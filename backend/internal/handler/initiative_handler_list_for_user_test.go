@@ -66,6 +66,9 @@ func (r *stubInitiativeRepoForListForUser) GetUsersByLegacyIDs(_ context.Context
 func (r *stubInitiativeRepoForListForUser) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *stubInitiativeRepoForListForUser) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *stubInitiativeRepoForListForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }

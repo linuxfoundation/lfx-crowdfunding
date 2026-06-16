@@ -175,6 +175,39 @@ func (r *InitiativeRepository) GetOwnerInfoBySlug(ctx context.Context, slug stri
 	return info, nil
 }
 
+// ListPublished returns the ID and Name of every published initiative, ordered by name.
+// Intended for M2M callers — no pagination, no Ledger enrichment.
+func (r *InitiativeRepository) ListPublished(ctx context.Context) ([]models.InitiativeSummary, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.ListPublished")
+	defer span.End()
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, name
+		FROM initiatives
+		WHERE status = 'published'
+		ORDER BY name`)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list published initiatives: %w", err)
+	}
+	defer rows.Close()
+
+	var results []models.InitiativeSummary
+	for rows.Next() {
+		var s models.InitiativeSummary
+		if err := rows.Scan(&s.ID, &s.Name); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan published initiative: %w", err)
+		}
+		results = append(results, s)
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("iterate published initiatives: %w", err)
+	}
+	return results, nil
+}
+
 // List retrieves initiatives matching the filter with pagination.
 func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")

@@ -87,6 +87,9 @@ func (m *mockInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (mo
 	}
 	return models.OwnerInfo{Email: m.ownerEmail, Name: m.ownerName}, nil
 }
+func (m *mockInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (m *mockInitiativeRepo) UpdateStripeProductID(ctx context.Context, id, productID string) error {
 	if m.onUpdateStripeProductID != nil {
 		return m.onUpdateStripeProductID(ctx, id, productID)
@@ -422,6 +425,9 @@ func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error           
 func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 func (m *mockRepoForEnrich) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
+}
+func (m *mockRepoForEnrich) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
 }
 
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
