@@ -19,6 +19,7 @@ SPDX-License-Identifier: MIT
             ? 'bg-brand-50 font-semibold text-neutral-900'
             : 'font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700'
         "
+        :aria-current="isActive ? 'page' : undefined"
         @click="navigate"
       >
         <lfx-icon
