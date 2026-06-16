@@ -198,6 +198,20 @@ func (s *InitiativeService) GetOwnerInfoBySlug(ctx context.Context, slug string)
 	return info, nil
 }
 
+// ListPublished returns the ID and Name of every published initiative.
+// Intended for M2M callers (e.g. Reimbursement Service initiative picker).
+func (s *InitiativeService) ListPublished(ctx context.Context) ([]models.InitiativeSummary, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ListPublished")
+	defer span.End()
+
+	results, err := s.repo.ListPublished(ctx)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list published initiatives: %w", err)
+	}
+	return results, nil
+}
+
 // GetForUser retrieves an initiative owned by the authenticated caller, by slug or
 // UUID, regardless of its status. The public GetByID/GetBySlug path only exposes
 // published initiatives to non-approvers, so owners need this identity-scoped read

@@ -112,6 +112,9 @@ func (r *donationInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ s
 func (r *donationInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *donationInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *donationInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	if r.orgsByIDs != nil {
 		return r.orgsByIDs, nil

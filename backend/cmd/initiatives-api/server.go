@@ -237,6 +237,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// These endpoints are for service-to-service callers, not end users.
 	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
 		Get("/v1/initiatives/{slug}/owner-info", initiativeH.GetOwnerInfo)
+	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
+		Get("/v1/initiatives/published-list", initiativeH.ListPublished)
 
 	// Expense action — proxies action to the Reimbursement Service.
 	// Requires a valid bearer token (any scope); no specific scope is enforced

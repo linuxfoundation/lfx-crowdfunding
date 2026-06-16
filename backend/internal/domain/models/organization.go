@@ -42,3 +42,9 @@ type OwnerInfo struct {
 	Email string `json:"email"`
 	Name  string `json:"name,omitempty"`
 }
+
+// InitiativeSummary holds the minimal fields returned by the M2M published-list endpoint.
+type InitiativeSummary struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
