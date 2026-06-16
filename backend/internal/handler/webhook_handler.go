@@ -357,13 +357,35 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	if donorEmail == "" {
 		donorEmail = subMeta["donor_email"]
 	}
+	// Use the charge ID as source_txn_id so it matches the source_txn_id the
+	// Ledger service posts from its charge.succeeded handler — enabling dedup
+	// regardless of event ordering or metadata-stamp timing.
+	// stripe-go v85 does not map the "charge" field on Invoice, so read it from
+	// the raw payload. The field is expandable: Stripe may send either a bare
+	// string ID ("ch_xxx") or an expanded object ({"id":"ch_xxx",...}); handle
+	// both to avoid a 500 / unnecessary retry.
+	var rawInv struct {
+		Charge json.RawMessage `json:"charge"`
+	}
+	if err := json.Unmarshal(event.Data.Raw, &rawInv); err != nil {
+		h.logger.Error("invoice.payment_succeeded: raw unmarshal failed", "event_id", event.ID, "error", err)
+		return fmt.Errorf("invoice.payment_succeeded: raw unmarshal: %w", err)
+	}
+	sourceTxnID := extractStringOrIDField(rawInv.Charge)
+	if sourceTxnID == "" {
+		// Older invoices or API versions may not carry the charge field; fall
+		// back to the invoice ID so we always post something to Ledger.
+		h.logger.Warn("invoice.payment_succeeded: charge field absent, falling back to invoice ID",
+			"sub_id", subID, "invoice_id", inv.ID)
+		sourceTxnID = inv.ID
+	}
 	txn := clients.LedgerTransaction{
 		ProjectID:       initiativeID,
 		UserID:          userID,
 		OrganizationID:  subMeta["org_id"],
 		AccountEmail:    donorEmail,
 		SourceType:      ledgerSourceType,
-		SourceTxnID:     inv.ID, // invoice ID is the stable unique key for subscription payments
+		SourceTxnID:     sourceTxnID,
 		SourceAccountID: customerID,
 		TxnType:         ledgerTxnType,
 		TxnCategory:     subMeta["category"],
@@ -566,6 +588,28 @@ func (h *WebhookHandler) handleSubscriptionCanceled(r *http.Request, subID strin
 	}
 	h.logger.Info("subscription cancelled", "sub_id", subID)
 	return nil
+}
+
+// extractStringOrIDField extracts a string value from a json.RawMessage that is
+// either a JSON string ("ch_xxx") or an expanded object ({"id":"ch_xxx",...}).
+// Returns "" if raw is nil, null, or neither form.
+func extractStringOrIDField(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	// Try bare string first.
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	// Try expanded object: extract the "id" field.
+	var obj struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.ID
+	}
+	return ""
 }
 
 // donationTypeLabel maps a stored frequency metadata value to a human-readable
