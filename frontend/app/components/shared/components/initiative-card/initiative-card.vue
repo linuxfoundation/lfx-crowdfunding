@@ -43,16 +43,38 @@ SPDX-License-Identifier: MIT
         <!-- Tags -->
         <div
           v-if="tags.length"
+          ref="tagsContainer"
           class="flex flex-wrap gap-2"
         >
           <lfx-chip
-            v-for="tag in tags"
+            v-for="tag in visibleTags"
             :key="tag"
             type="bordered"
             size="xsmall"
           >
             {{ tag }}
           </lfx-chip>
+          <lfx-tooltip
+            v-if="overflowTags.length"
+            placement="top"
+            class="inline-flex"
+          >
+            <lfx-chip
+              type="bordered"
+              size="xsmall"
+            >
+              +{{ overflowTags.length }}
+            </lfx-chip>
+            <template #content>
+              <div class="flex flex-col gap-1 text-xs">
+                <span
+                  v-for="tag in overflowTags"
+                  :key="tag"
+                  >{{ tag }}</span
+                >
+              </div>
+            </template>
+          </lfx-tooltip>
         </div>
       </div>
     </div>
@@ -79,13 +101,15 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted, nextTick } from 'vue';
+import { useResizeObserver } from '@vueuse/core';
 import { initiativeTypeConfigMap, defaultInitiativeTypeConfig } from './initiative-card.config';
 import type { Initiative } from '~/types/initiative.types';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
+import LfxTooltip from '~/components/uikit/tooltip/tooltip.vue';
 import { useSanitize } from '~/composables/useSanitize';
 
 const props = defineProps<{ initiative: Initiative }>();
@@ -106,6 +130,42 @@ const tags = computed(() => {
     .map((t) => t.trim())
     .filter(Boolean);
 });
+
+const tagsContainer = ref<HTMLElement | null>(null);
+const visibleCount = ref(tags.value.length);
+
+const visibleTags = computed(() => tags.value.slice(0, visibleCount.value));
+const overflowTags = computed(() => tags.value.slice(visibleCount.value));
+
+let measuring = false;
+const computeVisibleCount = async () => {
+  if (measuring) return;
+  measuring = true;
+  visibleCount.value = tags.value.length;
+  await nextTick();
+  const container = tagsContainer.value;
+  if (!container) {
+    measuring = false;
+    return;
+  }
+  const chips = Array.from(container.querySelectorAll('.p-chip')) as HTMLElement[];
+  if (!chips.length) {
+    measuring = false;
+    return;
+  }
+  const rowTops = [...new Set(chips.map((c) => c.offsetTop))].sort((a, b) => a - b);
+  if (rowTops.length <= 2) {
+    measuring = false;
+    return;
+  }
+  const row2Top = rowTops[1];
+  const fitsIn2Rows = chips.filter((c) => c.offsetTop <= row2Top).length;
+  visibleCount.value = Math.max(0, fitsIn2Rows - 1);
+  measuring = false;
+};
+
+onMounted(computeVisibleCount);
+useResizeObserver(tagsContainer, computeVisibleCount);
 
 const progressPercent = computed(() => {
   const goal = props.initiative.fundingStatus?.goalsTotalCents ?? 0;
