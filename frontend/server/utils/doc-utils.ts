@@ -6,12 +6,15 @@ import { resolve } from 'node:path';
 import { load as parseYaml } from 'js-yaml';
 
 export function getDocsDir(): string {
-  // Try both common launch points so the server works regardless of CWD:
-  //   dev (pnpm dev from frontend/): process.cwd() = …/frontend → ../docs/user is correct
+  // Try both common launch points so the server works regardless of CWD.
+  // Prefer docs/user (fromRoot) so that when started from the repo root the
+  // correct path is chosen immediately. Fall back to ../docs/user (fromFrontend)
+  // only when CWD is the frontend/ subdirectory (pnpm dev workflow):
   //   repo root / CI:                process.cwd() = …/repo-root → docs/user is correct
-  const fromFrontend = resolve(process.cwd(), '../docs/user');
+  //   dev (pnpm dev from frontend/): process.cwd() = …/frontend  → ../docs/user is correct
   const fromRoot = resolve(process.cwd(), 'docs/user');
-  return existsSync(fromFrontend) ? fromFrontend : fromRoot;
+  const fromFrontend = resolve(process.cwd(), '../docs/user');
+  return existsSync(fromRoot) ? fromRoot : fromFrontend;
 }
 
 export function parseFrontmatter(raw: string): { data: Record<string, unknown>; content: string } {
@@ -59,6 +62,18 @@ export function rewriteDocLink(href: string, slugDir: string): string {
     .replace(/\/$/, '');
 
   return `/docs/${cleaned}`;
+}
+
+// Escape characters that are unsafe inside HTML attribute values.
+// Handles both double-quoted and single-quoted attributes, and prevents
+// tag injection via angle brackets.
+export function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 export function formatDate(val: unknown): string {

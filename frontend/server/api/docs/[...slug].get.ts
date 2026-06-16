@@ -9,6 +9,7 @@ import {
   getDocsDir,
   parseFrontmatter,
   rewriteDocLink,
+  escapeAttr,
   formatDate,
   toTitleCase,
 } from '../../utils/doc-utils';
@@ -20,8 +21,8 @@ function buildRenderer(slugDir: string): Renderer {
     const rewritten = rewriteDocLink(href ?? '', slugDir);
     const isExternal = rewritten.startsWith('http://') || rewritten.startsWith('https://');
     const attrs = [
-      `href="${rewritten}"`,
-      title ? `title="${title}"` : '',
+      `href="${escapeAttr(rewritten)}"`,
+      title ? `title="${escapeAttr(title)}"` : '',
       isExternal ? 'target="_blank" rel="noopener noreferrer"' : '',
     ]
       .filter(Boolean)
