@@ -70,6 +70,9 @@ func (r *apprInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ strin
 func (r *apprInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *apprInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *apprInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }

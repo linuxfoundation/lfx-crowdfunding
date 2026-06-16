@@ -636,6 +636,9 @@ func (r *mockCapturingRepo) ListActiveSyncIDs(ctx context.Context) ([]string, er
 func (r *mockCapturingRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *mockCapturingRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *mockCapturingRepo) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
 	*r.captureOrgIDs = append(*r.captureOrgIDs, ids...)
 	sort.Strings(*r.captureOrgIDs)

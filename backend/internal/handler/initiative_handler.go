@@ -50,10 +50,15 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 
+	status := models.InitiativeStatus(q.Get("status"))
+	if status == "" {
+		status = models.StatusPublished
+	}
+
 	filter := models.InitiativeFilter{
 		OwnerID:        q.Get("owner_id"),
 		InitiativeType: q.Get("type"),
-		Status:         models.InitiativeStatus(q.Get("status")),
+		Status:         status,
 		Search:         q.Get("search"),
 		SortBy:         strings.ToLower(q.Get("sort_by")),
 		SortDir:        strings.ToLower(q.Get("sort_dir")),
@@ -88,7 +93,13 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	status := models.InitiativeStatus(r.URL.Query().Get("status"))
+	if status == "" {
+		status = models.StatusPublished
+	}
+
 	initiatives, meta, err := h.svc.ListForUser(r.Context(), principal.Username, models.InitiativeFilter{
+		Status: status,
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -395,6 +406,26 @@ func (h *InitiativeHandler) GetOwnerInfo(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Vary", "Authorization")
 	JSON(w, http.StatusOK, info)
+}
+
+// ListPublished handles GET /v1/initiatives/published-list.
+// Requires a valid bearer token with the access:manage scope (M2M only).
+// Returns the ID and Name of every published initiative, for use by the
+// Reimbursement Service initiative picker.
+func (h *InitiativeHandler) ListPublished(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Vary", "Authorization")
+	results, err := h.svc.ListPublished(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if results == nil {
+		results = []models.InitiativeSummary{}
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"data": results,
+	})
 }
 
 // isApprover reports whether the principal is in the allowed approvers list.
