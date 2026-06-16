@@ -10,9 +10,7 @@ SPDX-License-Identifier: MIT
       </div>
     </template>
 
-    <template v-else-if="error">
-      <div class="flex items-center justify-center py-24 text-neutral-500 text-sm">Failed to load initiative.</div>
-    </template>
+    <template v-else-if="error" />
 
     <template v-else-if="data">
       <initiative-detail-header
@@ -71,6 +69,8 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import type { FetchError } from 'ofetch';
+import { showError, createError } from 'nuxt/app';
 import InitiativeDetailHeader from '../components/initiative-detail-header.vue';
 import InitiativeDetailOverview from '../components/details-overview/initiative-detail-overview.vue';
 import InitiativeDetailSponsors from '../components/details-overview/initiative-detail-sponsors.vue';
@@ -87,6 +87,14 @@ import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/type
 const props = defineProps<{ initiativeSlug: string }>();
 
 const { data, isLoading, error } = useInitiative(computed(() => props.initiativeSlug));
+
+watch(error, (err) => {
+  if (!err) return;
+  const fetchErr = err as FetchError;
+  const status = fetchErr.statusCode ?? fetchErr.response?.status ?? 500;
+  showError(createError({ statusCode: status }));
+});
+
 const { data: txnData, isLoading: transactionsLoading } = useInitiativeTransactions(
   computed(() => props.initiativeSlug),
   'donations',
