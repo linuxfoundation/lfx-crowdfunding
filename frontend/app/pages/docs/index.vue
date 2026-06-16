@@ -18,11 +18,11 @@ useSeoMeta({
   ogDescription:
     'Learn how to use LFX Crowdfunding — browse initiatives, make donations, manage your account, and more.',
   ogType: 'website',
-  ogUrl: url.href,
+  ogUrl: url.origin + url.pathname,
   twitterCard: 'summary',
   twitterTitle: 'Documentation — LFX Crowdfunding',
   twitterDescription:
     'Learn how to use LFX Crowdfunding — browse initiatives, make donations, manage your account, and more.',
 });
-useHead({ link: [{ rel: 'canonical', href: url.href }] });
+useHead({ link: [{ rel: 'canonical', href: url.origin + url.pathname }] });
 </script>

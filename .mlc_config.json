@@ -8,6 +8,14 @@
     },
     {
       "pattern": "^https://github\\.com/mlehotskylf"
+    },
+    {
+      "pattern": "^/images/",
+      "comment": "App-relative image paths served by the Nuxt frontend (frontend/public/images/) — not resolvable by offline link checkers"
+    },
+    {
+      "pattern": "^/for-companies",
+      "comment": "Planned page not yet implemented — ignore until the route exists"
     }
   ],
   "timeout": "20s",

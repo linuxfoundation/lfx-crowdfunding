@@ -2,20 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
-import { load as parseYaml } from 'js-yaml';
+import { join } from 'node:path';
+import { getDocsDir, parseFrontmatter, formatDate, toTitleCase } from '../../utils/doc-utils';
 import type { DocSection, DocSectionsResponse } from '#shared/types/documentation.types';
-
-function getDocsDir(): string {
-  return resolve(process.cwd(), '../docs/user');
-}
-
-function parseFrontmatter(raw: string): { data: Record<string, unknown>; content: string } {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return { data: {}, content: raw };
-  const data = (parseYaml(match[1]) ?? {}) as Record<string, unknown>;
-  return { data, content: match[2] };
-}
 
 export default defineEventHandler((): DocSectionsResponse => {
   const docsDir = getDocsDir();
@@ -75,15 +64,3 @@ export default defineEventHandler((): DocSectionsResponse => {
 
   return { sections };
 });
-
-function formatDate(val: unknown): string {
-  if (val instanceof Date) return val.toISOString().slice(0, 10);
-  return String(val).slice(0, 10);
-}
-
-function toTitleCase(slug: string): string {
-  return slug
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}

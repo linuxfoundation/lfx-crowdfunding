@@ -5,8 +5,10 @@
   "packageManager": "pnpm@11.1.2",
   "scripts": {
     "docs:build": "node scripts/build-docs.mjs",
-    "build": "node scripts/build-docs.mjs && nuxt build",
-    "dev": "node scripts/build-docs.mjs && nuxt dev",
+    "prebuild": "node scripts/build-docs.mjs",
+    "predev": "node scripts/build-docs.mjs",
+    "build": "nuxt build",
+    "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
