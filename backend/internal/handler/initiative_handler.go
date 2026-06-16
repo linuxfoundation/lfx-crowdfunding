@@ -402,6 +402,8 @@ func (h *InitiativeHandler) GetOwnerInfo(w http.ResponseWriter, r *http.Request)
 // Returns the ID and Name of every published initiative, for use by the
 // Reimbursement Service initiative picker.
 func (h *InitiativeHandler) ListPublished(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Vary", "Authorization")
 	results, err := h.svc.ListPublished(r.Context())
 	if err != nil {
 		Error(w, err)
@@ -410,8 +412,6 @@ func (h *InitiativeHandler) ListPublished(w http.ResponseWriter, r *http.Request
 	if results == nil {
 		results = []models.InitiativeSummary{}
 	}
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("Vary", "Authorization")
 	JSON(w, http.StatusOK, map[string]any{
 		"data": results,
 	})

@@ -184,8 +184,8 @@ func (r *InitiativeRepository) ListPublished(ctx context.Context) ([]models.Init
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, name
 		FROM initiatives
-		WHERE status = 'published'
-		ORDER BY name`)
+		WHERE LOWER(status) = $1
+		ORDER BY name`, models.StatusPublished)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("list published initiatives: %w", err)

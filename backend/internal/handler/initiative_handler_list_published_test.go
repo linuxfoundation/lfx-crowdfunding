@@ -91,7 +91,7 @@ func TestListPublished_SetsNoCacheHeaders(t *testing.T) {
 	}
 }
 
-func TestListPublished_DBError_Returns500(t *testing.T) {
+func TestListPublished_DBError_Returns500WithCacheHeaders(t *testing.T) {
 	repo := &initiativeRepo{listPublishedErr: errors.New("db connection reset")}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
@@ -101,6 +101,13 @@ func TestListPublished_DBError_Returns500(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+	// Cache headers must be set even on error responses (set before service call).
+	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Errorf("expected Cache-Control %q on error response, got %q", "private, no-store", got)
+	}
+	if got := w.Header().Get("Vary"); got != "Authorization" {
+		t.Errorf("expected Vary %q on error response, got %q", "Authorization", got)
 	}
 }
 
