@@ -62,7 +62,8 @@ SPDX-License-Identifier: MIT
               type="bordered"
               size="xsmall"
             >
-              ...
+              <span aria-hidden="true">...</span>
+              <span class="sr-only">{{ overflowLabel }}</span>
             </lfx-chip>
             <template #content>
               <div class="flex flex-col gap-1 text-xs">
@@ -133,6 +134,7 @@ const MAX_VISIBLE_TAGS = 8;
 
 const visibleTags = computed(() => tags.value.slice(0, MAX_VISIBLE_TAGS));
 const overflowTags = computed(() => tags.value.slice(MAX_VISIBLE_TAGS));
+const overflowLabel = computed(() => `${overflowTags.value.length} more tags: ${overflowTags.value.join(', ')}`);
 
 const progressPercent = computed(() => {
   const goal = props.initiative.fundingStatus?.goalsTotalCents ?? 0;
