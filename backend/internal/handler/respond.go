@@ -100,12 +100,12 @@ func parseStatusFilter(w http.ResponseWriter, r *http.Request) ([]models.Initiat
 	}
 	statuses := make([]models.InitiativeStatus, 0, len(raw))
 	for _, v := range raw {
-		s := models.InitiativeStatus(v)
+		s := models.InitiativeStatus(strings.ToLower(v))
 		if !s.IsValid() {
 			Error(w, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, v))
 			return nil, false
 		}
-		statuses = append(statuses, models.InitiativeStatus(strings.ToLower(v)))
+		statuses = append(statuses, s)
 	}
 	return statuses, true
 }

@@ -241,13 +241,13 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		placeholders := make([]string, len(filter.Statuses))
 		for i, s := range filter.Statuses {
 			placeholders[i] = fmt.Sprintf("$%d", argN)
-			args = append(args, s)
+			args = append(args, strings.ToLower(string(s)))
 			argN++
 		}
-		where += " AND i.status IN (" + strings.Join(placeholders, ", ") + ")"
+		where += " AND LOWER(i.status) IN (" + strings.Join(placeholders, ", ") + ")"
 	case filter.Status != "":
-		where += fmt.Sprintf(" AND i.status = $%d", argN)
-		args = append(args, filter.Status)
+		where += fmt.Sprintf(" AND LOWER(i.status) = $%d", argN)
+		args = append(args, strings.ToLower(string(filter.Status)))
 		argN++
 	}
 	if filter.Search != "" {
