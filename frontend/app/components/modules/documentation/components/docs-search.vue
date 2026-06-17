@@ -123,6 +123,10 @@ async function ensureIndex(): Promise<void> {
       // Search index unavailable — leave searchIndex null so results stay empty
     } finally {
       isIndexLoading.value = false;
+      // Clear the promise so callers can retry after a transient failure.
+      // On success, searchIndex is set and the early-return guard at the top
+      // of ensureIndex() prevents a redundant reload.
+      indexLoadPromise = null;
     }
   })();
   return indexLoadPromise;

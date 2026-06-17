@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { resolve, join, sep } from 'node:path';
 import { marked, Renderer } from 'marked';
 import DOMPurify from 'isomorphic-dompurify';
@@ -40,7 +40,7 @@ export default defineEventHandler(async (event): Promise<DocArticle> => {
   }
 
   const normalised = slugParts.toLowerCase().replace(/^\/|\/$/g, '');
-  const safeDocsDir = resolve(getDocsDir());
+  const safeDocsDir = resolve(await getDocsDir());
 
   // Build candidate paths then guard against path traversal before any disk access
   const candidates = [
@@ -55,10 +55,12 @@ export default defineEventHandler(async (event): Promise<DocArticle> => {
   let raw: string | null = null;
   let isIndex = false;
   for (const [i, candidate] of candidates.entries()) {
-    if (existsSync(candidate)) {
-      raw = readFileSync(candidate, 'utf-8');
+    try {
+      raw = await readFile(candidate, 'utf-8');
       isIndex = i === 1;
       break;
+    } catch {
+      // try next candidate
     }
   }
 

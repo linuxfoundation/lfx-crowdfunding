@@ -1,11 +1,20 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { existsSync } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { load as parseYaml } from 'js-yaml';
 
-export function getDocsDir(): string {
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function getDocsDir(): Promise<string> {
   // Try both common launch points so the server works regardless of CWD.
   // Prefer docs/user (fromRoot) so that when started from the repo root the
   // correct path is chosen immediately. Fall back to ../docs/user (fromFrontend)
@@ -14,8 +23,10 @@ export function getDocsDir(): string {
   //   dev (pnpm dev from frontend/): process.cwd() = …/frontend  → ../docs/user is correct
   const fromRoot = resolve(process.cwd(), 'docs/user');
   const fromFrontend = resolve(process.cwd(), '../docs/user');
-  return existsSync(fromRoot) ? fromRoot : fromFrontend;
+  return (await pathExists(fromRoot)) ? fromRoot : fromFrontend;
 }
+
+export { pathExists };
 
 export function parseFrontmatter(raw: string): { data: Record<string, unknown>; content: string } {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);

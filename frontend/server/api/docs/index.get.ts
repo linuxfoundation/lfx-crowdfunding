@@ -1,39 +1,51 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getDocsDir, parseFrontmatter, formatDate, toTitleCase } from '../../utils/doc-utils';
+import {
+  getDocsDir,
+  pathExists,
+  parseFrontmatter,
+  formatDate,
+  toTitleCase,
+} from '../../utils/doc-utils';
 import type { DocSection, DocSectionsResponse } from '#shared/types/documentation.types';
 
-export default defineEventHandler((): DocSectionsResponse => {
-  const docsDir = getDocsDir();
+export default defineEventHandler(async (): Promise<DocSectionsResponse> => {
+  const docsDir = await getDocsDir();
 
-  if (!existsSync(docsDir)) {
+  if (!(await pathExists(docsDir))) {
     return { sections: [] };
   }
 
-  const entries = readdirSync(docsDir, { withFileTypes: true });
+  const entries = await readdir(docsDir, { withFileTypes: true });
   const sectionDirs = entries.filter((e) => e.isDirectory());
 
   const sections: DocSection[] = [];
 
   for (const dir of sectionDirs) {
     const indexPath = join(docsDir, dir.name, 'index.md');
-    if (!existsSync(indexPath)) continue;
-
-    const raw = readFileSync(indexPath, 'utf-8');
+    let raw: string;
+    try {
+      raw = await readFile(indexPath, 'utf-8');
+    } catch {
+      continue;
+    }
     const { data: fm } = parseFrontmatter(raw);
 
     // Scan sub-directories for child sections
-    const subEntries = readdirSync(join(docsDir, dir.name), { withFileTypes: true });
+    const subEntries = await readdir(join(docsDir, dir.name), { withFileTypes: true });
     const children: DocSection[] = [];
 
     for (const subDir of subEntries.filter((e) => e.isDirectory())) {
       const subIndexPath = join(docsDir, dir.name, subDir.name, 'index.md');
-      if (!existsSync(subIndexPath)) continue;
-
-      const subRaw = readFileSync(subIndexPath, 'utf-8');
+      let subRaw: string;
+      try {
+        subRaw = await readFile(subIndexPath, 'utf-8');
+      } catch {
+        continue;
+      }
       const { data: subFm } = parseFrontmatter(subRaw);
 
       children.push({
