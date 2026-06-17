@@ -7,8 +7,11 @@ import type { OrganizationResponse } from '../../types/organization.types';
 import type { Organization } from '#shared/types/organization.types';
 
 export default defineEventHandler(async (event): Promise<Organization[]> => {
-  const raw = await useBackendFetch<OrganizationResponse[]>(event, '/v1/me/organizations');
-  return raw.map((o) => ({
+  const { data } = await useBackendFetch<{ data: OrganizationResponse[] }>(
+    event,
+    '/v1/me/organizations',
+  );
+  return data.map((o) => ({
     id: o.id,
     name: o.name,
     avatarUrl: o.avatar_url,

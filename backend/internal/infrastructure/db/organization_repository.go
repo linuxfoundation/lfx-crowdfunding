@@ -120,6 +120,25 @@ func (r *OrganizationRepository) Update(ctx context.Context, id string, ownerID 
 	return o, nil
 }
 
+// Delete removes the organization identified by id, but only when the caller is the owner.
+// Returns ErrOrganizationNotFound when no row matches (missing or wrong owner).
+func (r *OrganizationRepository) Delete(ctx context.Context, id string, ownerID string) error {
+	ctx, span := orgTracer.Start(ctx, "db.organizations.Delete")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.org_id", id))
+
+	const q = `DELETE FROM organizations WHERE id = $1 AND owner_id = $2`
+	tag, err := r.pool.Exec(ctx, q, id, ownerID)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("delete organization: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrOrganizationNotFound
+	}
+	return nil
+}
+
 func scanOrganization(row scanner) (*models.Organization, error) {
 	o := &models.Organization{}
 	var avatarURL, status *string

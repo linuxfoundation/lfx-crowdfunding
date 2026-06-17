@@ -204,6 +204,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Get("/organizations", orgH.List)
 		r.Post("/organizations", orgH.Create)
 		r.Patch("/organizations/{id}", orgH.Update)
+		r.Delete("/organizations/{id}", orgH.Delete)
 
 		// Payment account (saved card for 3DS flows).
 		r.Post("/setup-intent", paymentH.CreateSetupIntent)

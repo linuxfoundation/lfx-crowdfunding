@@ -70,6 +70,25 @@ func (s *OrganizationService) Update(ctx context.Context, username string, id st
 	return org, nil
 }
 
+// Delete removes the organization identified by id, verifying the caller owns it.
+func (s *OrganizationService) Delete(ctx context.Context, username string, id string) error {
+	ctx, span := orgSvcTracer.Start(ctx, "OrganizationService.Delete")
+	defer span.End()
+	span.SetAttributes(attribute.String("owner.username", username), attribute.String("org.id", id))
+
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("resolve user: %w", err)
+	}
+
+	if err := s.repo.Delete(ctx, id, user.ID); err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("delete organization: %w", err)
+	}
+	return nil
+}
+
 // Create inserts a new organization owned by the given user (identified by LF SSO username).
 func (s *OrganizationService) Create(ctx context.Context, username string, input models.OrganizationCreateInput) (*models.Organization, error) {
 	ctx, span := orgSvcTracer.Start(ctx, "OrganizationService.Create")

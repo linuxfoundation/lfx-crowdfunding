@@ -65,6 +65,18 @@ export const useOrganizations = () => {
     }
   };
 
+  const deleteOrganization = async (id: string): Promise<boolean> => {
+    try {
+      await $fetch(`/api/me/organizations/${id}`, { method: 'DELETE' });
+      organizations.value = organizations.value.filter((o) => o.id !== id);
+      return true;
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      error.value = err?.message ?? 'Could not delete organization.';
+      return false;
+    }
+  };
+
   return {
     organizations,
     loading,
@@ -72,5 +84,6 @@ export const useOrganizations = () => {
     fetchOrganizations,
     createOrganization,
     updateOrganization,
+    deleteOrganization,
   };
 };

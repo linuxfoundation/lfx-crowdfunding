@@ -11,6 +11,12 @@ SPDX-License-Identifier: MIT
       @updated="showAddOrgModal = false"
     />
 
+    <donate-delete-org-modal
+      v-model="showDeleteModal"
+      :organization="deletingOrg"
+      @deleted="onOrgDeleted"
+    />
+
     <p class="text-xs font-medium text-neutral-900">I'm donating as</p>
 
     <div class="border border-neutral-200 rounded-xl w-full">
@@ -75,12 +81,23 @@ SPDX-License-Identifier: MIT
             <p class="text-sm font-semibold text-neutral-900 truncate">{{ org.name }}</p>
             <p class="text-xs text-neutral-600">Organization</p>
           </div>
-          <div class="flex gap-8 items-center shrink-0">
-            <lfx-link-button
-              icon="pen"
-              label="Edit organisation"
-              @click.stop="openEditModal(org)"
-            />
+          <div class="flex gap-4 items-center shrink-0">
+            <div class="flex gap-4">
+              <lfx-icon-button
+                icon="pen"
+                type="outline"
+                size="medium"
+                aria-label="Edit organisation"
+                @click.stop="openEditModal(org)"
+              />
+              <lfx-icon-button
+                icon="trash-can"
+                type="outline"
+                size="medium"
+                aria-label="Delete organisation"
+                @click.stop="openDeleteModal(org)"
+              />
+            </div>
             <lfx-radio
               v-model="selectedKey"
               :value="org.id"
@@ -107,6 +124,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { reactive, ref, watch, computed, onMounted } from 'vue';
 import DonateAddOrgModal from './donate-add-org-modal.vue';
+import DonateDeleteOrgModal from './donate-delete-org-modal.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxLinkButton from '~/components/uikit/link-button/link-button.vue';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
@@ -128,10 +146,24 @@ const { organizations, loading, fetchOrganizations } = useOrganizations();
 const form = reactive<DonateContactForm>({ ...props.modelValue });
 const showAddOrgModal = ref(false);
 const editingOrg = ref<Organization | null>(null);
+const showDeleteModal = ref(false);
+const deletingOrg = ref<Organization | null>(null);
 
 const openEditModal = (org: Organization) => {
   editingOrg.value = org;
   showAddOrgModal.value = true;
+};
+
+const openDeleteModal = (org: Organization) => {
+  deletingOrg.value = org;
+  showDeleteModal.value = true;
+};
+
+const onOrgDeleted = (id: string) => {
+  if (form.organizationId === id) {
+    form.donorType = 'individual';
+    form.organizationId = null;
+  }
 };
 
 watch(

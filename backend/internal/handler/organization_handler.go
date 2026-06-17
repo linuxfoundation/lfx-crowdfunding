@@ -18,6 +18,7 @@ type organizationService interface {
 	ListByOwner(ctx context.Context, username string) ([]models.Organization, error)
 	Create(ctx context.Context, username string, input models.OrganizationCreateInput) (*models.Organization, error)
 	Update(ctx context.Context, username string, id string, input models.OrganizationUpdateInput) (*models.Organization, error)
+	Delete(ctx context.Context, username string, id string) error
 }
 
 // OrganizationHandler holds Chi handlers for organization resources.
@@ -46,7 +47,7 @@ func (h *OrganizationHandler) List(w http.ResponseWriter, r *http.Request) {
 	if orgs == nil {
 		orgs = []models.Organization{}
 	}
-	JSON(w, http.StatusOK, orgs)
+	JSON(w, http.StatusOK, map[string]any{"data": orgs})
 }
 
 // Create handles POST /v1/me/organizations.
@@ -69,6 +70,27 @@ func (h *OrganizationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusCreated, org)
+}
+
+// Delete handles DELETE /v1/me/organizations/{id}.
+func (h *OrganizationHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		Error(w, domain.ErrInvalidInput)
+		return
+	}
+
+	if err := h.svc.Delete(r.Context(), principal.Username, id); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Update handles PATCH /v1/me/organizations/{id}.
