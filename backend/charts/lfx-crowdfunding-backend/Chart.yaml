@@ -5,8 +5,8 @@ apiVersion: v2
 name: lfx-crowdfunding-backend
 description: LFX Crowdfunding Backend API
 type: application
-version: 0.1.1
-appVersion: "0.1.1"
+version: 0.1.9
+appVersion: "0.1.9"
 keywords:
   - lfx
   - crowdfunding
