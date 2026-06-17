@@ -17,6 +17,18 @@ type Organization struct {
 	UpdatedOn time.Time `json:"updated_on"`
 }
 
+// OrganizationCreateInput holds the fields required to create a new organization.
+type OrganizationCreateInput struct {
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+}
+
+// OrganizationUpdateInput holds the fields that may be updated on an organization.
+type OrganizationUpdateInput struct {
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+}
+
 // User maps to the crowdfunding.users table.
 // users.id (UUID) is the FK target throughout the schema.
 // username is the LF SSO username used as the application-level identity input.

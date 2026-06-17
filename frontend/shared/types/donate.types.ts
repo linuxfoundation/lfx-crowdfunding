@@ -19,16 +19,11 @@ export interface DonateAmountForm {
   category: string | null;
 }
 
-export type DonorType = 'individual' | 'company';
+export type DonorType = 'individual' | 'organization';
 
 export interface DonateContactForm {
   donorType: DonorType;
-  fullName: string;
-  companyName: string;
-  contactName: string;
-  email: string;
-  needsInvoice: boolean;
-  poNumber: string;
+  organizationId: string | null;
 }
 
 export interface DonateSubmission {
