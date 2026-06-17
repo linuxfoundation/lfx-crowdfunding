@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="pt-16 md:pb-30 pb-20">
     <div
-      class="bg-gradient-to-b from-white to-accent-100 rounded-xl md:p-16 p-6 flex md:items-end items-start justify-between gap-10 md:flex-row flex-col"
+      class="bg-gradient-to-b from-neutral-50 to-accent-100 rounded-xl md:p-16 p-6 flex md:items-end items-start justify-between gap-10 md:flex-row flex-col"
     >
       <div class="flex-1 flex flex-col gap-3 min-w-0">
         <h2 class="text-3xl font-secondary font-light leading-11 text-neutral-900 md:whitespace-nowrap">
