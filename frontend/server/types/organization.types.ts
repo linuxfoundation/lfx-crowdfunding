@@ -5,8 +5,8 @@ export interface OrganizationResponse {
   id: string;
   owner_id: string;
   name: string;
-  avatar_url: string;
-  status: string;
+  avatar_url?: string;
+  status?: string;
   created_on: string;
   updated_on: string;
 }

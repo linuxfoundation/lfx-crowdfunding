@@ -90,7 +90,7 @@ SPDX-License-Identifier: MIT
               />
             </div>
             <div class="flex-1 flex items-center justify-between min-w-0">
-              <span class="text-sm text-neutral-900 truncate">{{ localFileName }}</span>
+              <span class="text-sm text-neutral-900 truncate">{{ localFileName || 'Logo' }}</span>
               <div class="flex items-center gap-4 shrink-0">
                 <button
                   type="button"

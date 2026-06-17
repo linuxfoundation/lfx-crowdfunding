@@ -127,6 +127,7 @@ import DonateAddOrgModal from './donate-add-org-modal.vue';
 import DonateDeleteOrgModal from './donate-delete-org-modal.vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxLinkButton from '~/components/uikit/link-button/link-button.vue';
+import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import type { DonateContactForm } from '#shared/types/donate.types';

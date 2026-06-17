@@ -53,7 +53,7 @@ func (s *OrganizationService) Update(ctx context.Context, username string, id st
 	span.SetAttributes(attribute.String("owner.username", username), attribute.String("org.id", id))
 
 	if input.Name == "" {
-		return nil, domain.ErrInvalidInput
+		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}
 
 	user, err := s.userRepo.GetByUsername(ctx, username)
@@ -96,7 +96,7 @@ func (s *OrganizationService) Create(ctx context.Context, username string, input
 	span.SetAttributes(attribute.String("owner.username", username))
 
 	if input.Name == "" {
-		return nil, domain.ErrInvalidInput
+		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}
 
 	user, err := s.userRepo.GetByUsername(ctx, username)

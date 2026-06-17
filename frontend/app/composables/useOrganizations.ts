@@ -68,6 +68,7 @@ export const useOrganizations = () => {
   };
 
   const deleteOrganization = async (id: string): Promise<boolean> => {
+    error.value = null;
     try {
       await $fetch(`/api/me/organizations/${id}`, { method: 'DELETE' });
       organizations.value = organizations.value.filter((o) => o.id !== id);

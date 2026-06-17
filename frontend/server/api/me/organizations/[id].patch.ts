@@ -21,7 +21,7 @@ export default defineEventHandler(async (event): Promise<Organization> => {
   return {
     id: raw.id,
     name: raw.name,
-    avatarUrl: raw.avatar_url,
-    status: raw.status,
+    avatarUrl: raw.avatar_url ?? '',
+    status: raw.status ?? '',
   };
 });

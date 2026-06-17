@@ -14,7 +14,7 @@ export default defineEventHandler(async (event): Promise<Organization[]> => {
   return data.map((o) => ({
     id: o.id,
     name: o.name,
-    avatarUrl: o.avatar_url,
-    status: o.status,
+    avatarUrl: o.avatar_url ?? '',
+    status: o.status ?? '',
   }));
 });
