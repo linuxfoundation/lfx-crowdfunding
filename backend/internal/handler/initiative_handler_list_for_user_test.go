@@ -163,7 +163,7 @@ func TestListForUser_NoPrincipal_Returns401(t *testing.T) {
 	}
 }
 
-func TestListForUser_NoStatusParam_DefaultsToPublished(t *testing.T) {
+func TestListForUser_NoStatusParam_ReturnsAll(t *testing.T) {
 	userRepo := &stubUserRepoForListForUser{
 		user: &models.User{ID: "user-uuid-123", Username: "testuser"},
 	}
@@ -171,7 +171,7 @@ func TestListForUser_NoStatusParam_DefaultsToPublished(t *testing.T) {
 	svc := service.NewInitiativeService(initiativeRepo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	// No ?status param — handler must default to published.
+	// No ?status param — handler must apply no status filter (return all statuses).
 	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives?limit=10&offset=0", nil)
 	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), &models.Principal{Username: "testuser"}))
 	w := httptest.NewRecorder()
@@ -181,11 +181,8 @@ func TestListForUser_NoStatusParam_DefaultsToPublished(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if len(initiativeRepo.capturedFilter.Statuses) != 1 {
-		t.Fatalf("expected 1 status in filter, got %d", len(initiativeRepo.capturedFilter.Statuses))
-	}
-	if initiativeRepo.capturedFilter.Statuses[0] != models.StatusPublished {
-		t.Errorf("expected default status=published, got %q", initiativeRepo.capturedFilter.Statuses[0])
+	if len(initiativeRepo.capturedFilter.Statuses) != 0 {
+		t.Errorf("expected no status filter, got %v", initiativeRepo.capturedFilter.Statuses)
 	}
 }
 
