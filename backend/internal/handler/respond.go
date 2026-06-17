@@ -11,8 +11,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
 type errorBody struct {
@@ -86,4 +88,24 @@ func Error(w http.ResponseWriter, err error) {
 		slog.Error("internal error", "error", err)
 	}
 	JSON(w, status, errorBody{Error: msg})
+}
+
+// parseStatusFilter parses repeated ?status= query params (e.g. ?status=hidden&status=declined).
+// Each value is validated against the known status set; an unknown value writes a 400 and returns ok=false.
+// Returns nil (and ok=true) when no status params are present, leaving default handling to the caller.
+func parseStatusFilter(w http.ResponseWriter, r *http.Request) ([]models.InitiativeStatus, bool) {
+	raw := r.URL.Query()["status"]
+	if len(raw) == 0 {
+		return nil, true
+	}
+	statuses := make([]models.InitiativeStatus, 0, len(raw))
+	for _, v := range raw {
+		s := models.InitiativeStatus(v)
+		if !s.IsValid() {
+			Error(w, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, v))
+			return nil, false
+		}
+		statuses = append(statuses, models.InitiativeStatus(strings.ToLower(v)))
+	}
+	return statuses, true
 }

@@ -236,7 +236,16 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		args = append(args, filter.InitiativeType)
 		argN++
 	}
-	if filter.Status != "" {
+	switch {
+	case len(filter.Statuses) > 0:
+		placeholders := make([]string, len(filter.Statuses))
+		for i, s := range filter.Statuses {
+			placeholders[i] = fmt.Sprintf("$%d", argN)
+			args = append(args, s)
+			argN++
+		}
+		where += " AND i.status IN (" + strings.Join(placeholders, ", ") + ")"
+	case filter.Status != "":
 		where += fmt.Sprintf(" AND i.status = $%d", argN)
 		args = append(args, filter.Status)
 		argN++
