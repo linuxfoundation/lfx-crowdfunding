@@ -91,11 +91,11 @@ SPDX-License-Identifier: MIT
             />
             <lfx-skeleton
               height="1rem"
-              custom-class="mb-1.5 max-w-4/5 rounded"
+              custom-class="mb-1.5 w-4/5 rounded"
             />
             <lfx-skeleton
               height="1rem"
-              custom-class="mb-8 max-w-3/5 rounded"
+              custom-class="mb-8 w-3/5 rounded"
             />
             <lfx-skeleton
               height="1.5rem"

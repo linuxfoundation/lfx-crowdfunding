@@ -16,6 +16,10 @@
     {
       "pattern": "^/for-companies",
       "comment": "App-relative route (frontend/app/pages/for-companies.vue) — not resolvable by offline link checkers"
+    },
+    {
+      "pattern": "^https://crowdfunding\\.linuxfoundation\\.org/images/docs/",
+      "comment": "Docs screenshot images served from the production LFX Crowdfunding site — not yet available in CI (site not yet deployed to production)"
     }
   ],
   "timeout": "20s",
