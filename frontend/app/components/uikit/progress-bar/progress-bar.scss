@@ -52,4 +52,14 @@
   .c-progress-bar__empty {
     @apply bg-neutral-200 grow;
   }
+
+  // Interactive bars dim every segment on hover, keeping only the hovered one at full opacity.
+  &--interactive:hover {
+    .c-progress-bar__value {
+      @apply opacity-40;
+    }
+    .c-progress-bar__value:hover {
+      @apply opacity-100;
+    }
+  }
 }

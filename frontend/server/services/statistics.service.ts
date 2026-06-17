@@ -19,6 +19,32 @@ export const mapToFundingCategory = (cat: BackendCategoryTotal): FundingCategory
   supporterCount: cat.count,
 });
 
+/**
+ * Merges funding categories whose names match case-insensitively (e.g. "mentorship"
+ * and "Mentorship") into one entry, summing amounts and supporters. The upstream
+ * aggregation is case-sensitive, so the same category can arrive as multiple buckets.
+ * The display name from the largest-raising variant is kept; results stay sorted by amount.
+ */
+export const mergeFundingCategoriesByName = (categories: FundingCategory[]): FundingCategory[] => {
+  const merged = new Map<string, { cat: FundingCategory; topRaised: number }>();
+  for (const cat of categories) {
+    const key = cat.name.trim().toLowerCase();
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { cat: { ...cat, id: key }, topRaised: cat.raisedCents });
+      continue;
+    }
+    existing.cat.raisedCents += cat.raisedCents;
+    existing.cat.supporterCount += cat.supporterCount;
+    existing.cat.goalCents += cat.goalCents;
+    if (cat.raisedCents > existing.topRaised) {
+      existing.cat.name = cat.name;
+      existing.topRaised = cat.raisedCents;
+    }
+  }
+  return [...merged.values()].map((e) => e.cat).sort((a, b) => b.raisedCents - a.raisedCents);
+};
+
 export const mapToMonthlyBucket = (b: BackendMonthlyBucket): MonthlyBucket => ({
   year: b.year,
   month: b.month,

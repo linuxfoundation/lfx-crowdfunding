@@ -57,7 +57,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, onMounted } from 'vue';
+import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue';
 import FundraiseStepType from './main/fundraise-step-type.vue';
 import FundraiseStepDetails from './fundraise-step-details.vue';
 import FundraiseHeader from './main/fundraise-header.vue';
@@ -104,6 +104,15 @@ const continueLabel = computed(() => {
   return 'Continue';
 });
 
+// Track whether close was triggered by the browser back button to avoid
+// calling history.back() a second time in onUnmounted.
+let closedViaPopstate = false;
+
+const handlePopState = () => {
+  closedViaPopstate = true;
+  close();
+};
+
 const close = () => {
   isOpen.value = false;
   step.value = 0;
@@ -113,6 +122,11 @@ const close = () => {
 };
 
 onMounted(async () => {
+  // Push a sentinel history entry so the browser back button triggers popstate
+  // instead of navigating away from the page while the drawer is open.
+  window.history.pushState({ fundraiseDrawer: true }, document.title);
+  window.addEventListener('popstate', handlePopState);
+
   const raw = sessionStorage.getItem(GITHUB_FUNDRAISE_SESSION_KEY);
   if (!raw) return;
   sessionStorage.removeItem(GITHUB_FUNDRAISE_SESSION_KEY);
@@ -130,6 +144,15 @@ onMounted(async () => {
   } catch {
     // Corrupted session — start fresh
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('popstate', handlePopState);
+  if (!closedViaPopstate) {
+    // Drawer was closed by a button — remove the sentinel history entry we pushed.
+    window.history.back();
+  }
+  closedViaPopstate = false;
 });
 
 const previousStep = () => {

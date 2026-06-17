@@ -27,5 +27,10 @@ skip-check:
 # CKV_K8S_22: The frontend Nuxt/Nitro container requires a writable root
 # filesystem (writes tmp files at runtime). Scope the skip to the specific
 # file so the backend Deployment continues to be checked.
+#
+# validate.yaml files only emit {{- fail ... }} directives — they produce no
+# Kubernetes resources and intentionally abort `helm template` when required
+# values are absent. Checkov cannot render or check them meaningfully.
 skip-path:
   - frontend/charts/lfx-crowdfunding-frontend/templates/deployment.yaml
+  - backend/charts/lfx-crowdfunding-backend/templates/validate.yaml

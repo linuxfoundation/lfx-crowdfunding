@@ -44,6 +44,10 @@ type InitiativeRepository interface {
 	// GetOwnerInfoBySlug returns the email and display name of the owner of the
 	// initiative with the given slug, regardless of initiative status. Used by M2M callers.
 	GetOwnerInfoBySlug(ctx context.Context, slug string) (models.OwnerInfo, error)
+
+	// ListPublished returns the ID and Name of every published initiative.
+	// Intended for M2M callers only (e.g. Reimbursement Service).
+	ListPublished(ctx context.Context) ([]models.InitiativeSummary, error)
 }
 
 // DonationRepository defines persistence operations for donations.
@@ -59,6 +63,10 @@ type DonationRepository interface {
 // SubscriptionRepository defines persistence operations for subscriptions.
 type SubscriptionRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Subscription, error)
+	// GetByIDForUser returns a single subscription by ID that belongs to the given user,
+	// enriched with initiative name and logo. Returns ErrSubscriptionNotFound when the
+	// subscription does not exist or belongs to a different user.
+	GetByIDForUser(ctx context.Context, id, userID string) (*models.Subscription, error)
 	// GetActiveByUserAndInitiative returns any subscription for the given user+initiative
 	// that is not in a terminal state (i.e. status is active, incomplete, or past_due).
 	// Returns ErrSubscriptionNotFound when no such subscription exists.
@@ -75,6 +83,9 @@ type SubscriptionRepository interface {
 type OrganizationRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Organization, error)
 	ListByOwner(ctx context.Context, ownerID string) ([]models.Organization, error)
+	Create(ctx context.Context, ownerID string, input models.OrganizationCreateInput) (*models.Organization, error)
+	Update(ctx context.Context, id string, ownerID string, input models.OrganizationUpdateInput) (*models.Organization, error)
+	Delete(ctx context.Context, id string, ownerID string) error
 }
 
 // UserRepository defines persistence operations for users.
@@ -138,4 +149,20 @@ type LedgerStatsRepository interface {
 	// GetUsersByIDs returns a map of user UUID → User for all
 	// IDs in the slice.  Missing IDs are simply absent from the map.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
+}
+
+// MentorshipRepository defines persistence operations used by mentorship-sync.
+// All methods are scoped to the batch upsert pattern of that CronJob.
+type MentorshipRepository interface {
+	// UpsertProgram creates or updates the initiative row for a mentorship program,
+	// ensures the fixed mentee funding goal exists, and replaces beneficiaries,
+	// skills, and mentors — all in a single transaction.
+	// nil slice fields are skipped; non-nil (including empty) replace the existing rows.
+	// The upsert key is the program's UUID (initiatives.id). Returns the initiative UUID.
+	UpsertProgram(ctx context.Context, p models.MentorshipProgram) (string, error)
+
+	// ListJobspringIDs returns the jobspring_project_id values for all existing
+	// mentorship initiatives. Used to detect programs that have been removed from
+	// Snowflake (not currently acted on, but useful for future reconciliation).
+	ListJobspringIDs(ctx context.Context) ([]string, error)
 }
