@@ -14,12 +14,12 @@ SPDX-License-Identifier: MIT
     <!-- Loading -->
     <div
       v-if="isLoading"
-      class="border border-neutral-200 rounded-xl overflow-hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-neutral-200"
+      class="border-t border-l border-neutral-200 rounded-xl overflow-hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 bg-white"
     >
       <div
         v-for="n in 16"
         :key="n"
-        class="flex gap-4 items-center p-6 bg-white"
+        class="flex gap-4 items-center p-6 border-r border-b border-neutral-200"
       >
         <lfx-skeleton
           :rounded="true"
@@ -52,15 +52,17 @@ SPDX-License-Identifier: MIT
       <span class="text-sm leading-5">Failed to load companies.</span>
     </div>
 
-    <!-- Responsive grid: 1 / 2 / 4 columns (16 companies divide evenly at each breakpoint) -->
+    <!-- Responsive 1 / 2 / 4-column grid. Per-cell right/bottom borders form the
+         dividers, so any company count renders cleanly: a partial last row simply
+         leaves blank space rather than empty divider cells. -->
     <div
       v-else
-      class="border border-neutral-200 rounded-xl overflow-hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-neutral-200"
+      class="border-t border-l border-neutral-200 rounded-xl overflow-hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 bg-white"
     >
       <div
         v-for="company in companies"
         :key="company.id"
-        class="flex gap-4 items-center p-6 min-w-0 bg-white"
+        class="flex gap-4 items-center p-6 min-w-0 border-r border-b border-neutral-200"
       >
         <lfx-avatar
           type="organization"
