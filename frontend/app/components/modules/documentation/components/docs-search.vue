@@ -99,6 +99,7 @@ const isIndexLoading = ref(false);
 const results = ref<DocSearchResult[]>([]);
 
 let searchIndex: MiniSearch<DocSearchDocument> | null = null;
+let indexLoadPromise: Promise<void> | null = null;
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef');
 onClickOutside(containerRef, () => {
@@ -107,20 +108,24 @@ onClickOutside(containerRef, () => {
 
 async function ensureIndex(): Promise<void> {
   if (searchIndex) return;
-  isIndexLoading.value = true;
-  try {
-    const docs = await $fetch<DocSearchDocument[]>('/assets/docs/search-index.json');
-    searchIndex = new MiniSearch<DocSearchDocument>({
-      fields: ['title', 'description', 'content'],
-      storeFields: ['slug', 'title', 'description'],
-      idField: 'slug',
-    });
-    searchIndex.addAll(docs);
-  } catch {
-    // Search index unavailable — leave searchIndex null so results stay empty
-  } finally {
-    isIndexLoading.value = false;
-  }
+  if (indexLoadPromise) return indexLoadPromise;
+  indexLoadPromise = (async () => {
+    isIndexLoading.value = true;
+    try {
+      const docs = await $fetch<DocSearchDocument[]>('/assets/docs/search-index.json');
+      searchIndex = new MiniSearch<DocSearchDocument>({
+        fields: ['title', 'description', 'content'],
+        storeFields: ['slug', 'title', 'description'],
+        idField: 'slug',
+      });
+      searchIndex.addAll(docs);
+    } catch {
+      // Search index unavailable — leave searchIndex null so results stay empty
+    } finally {
+      isIndexLoading.value = false;
+    }
+  })();
+  return indexLoadPromise;
 }
 
 function onFocus(): void {
