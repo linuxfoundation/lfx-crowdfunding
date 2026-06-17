@@ -3,162 +3,116 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="flex flex-col gap-6">
-    <!-- Donor type toggle -->
-    <div>
-      <p class="text-sm font-medium text-neutral-700 mb-3">I'm donating as</p>
-      <div class="flex gap-2">
-        <lfx-button
-          :type="form.donorType === 'individual' ? 'primary' : 'outline'"
-          button-style="pill"
-          icon="user"
-          label="Individual"
-          @click="setDonorType('individual')"
+  <div class="flex flex-col gap-3">
+    <donate-add-org-modal
+      v-model="showAddOrgModal"
+      :organization="editingOrg ?? undefined"
+      @created="onOrgCreated"
+      @updated="showAddOrgModal = false"
+    />
+
+    <p class="text-xs font-medium text-neutral-900">I'm donating as</p>
+
+    <div class="border border-neutral-200 rounded-xl w-full">
+      <!-- Individual row -->
+      <div
+        class="flex gap-3 items-center p-6 w-full cursor-pointer"
+        @click="selectedKey = 'individual'"
+      >
+        <lfx-avatar
+          :src="user?.picture ?? undefined"
+          type="member"
+          size="normal"
         />
-        <lfx-button
-          :type="form.donorType === 'company' ? 'primary' : 'outline'"
-          button-style="pill"
-          icon="building"
-          label="Company"
-          @click="setDonorType('company')"
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-neutral-900 truncate">{{ user?.name ?? 'You' }}</p>
+          <p class="text-xs text-neutral-600">Individual</p>
+        </div>
+        <lfx-radio
+          v-model="selectedKey"
+          value="individual"
+          name="donor-type"
         />
       </div>
+
+      <!-- Skeleton rows while loading -->
+      <template v-if="loading">
+        <div class="h-px bg-neutral-200" />
+        <div class="flex gap-3 items-center p-6 w-full">
+          <lfx-skeleton
+            width="40px"
+            height="40px"
+          />
+          <div class="flex flex-col gap-1.5 flex-1">
+            <lfx-skeleton
+              width="140px"
+              height="14px"
+            />
+            <lfx-skeleton
+              width="90px"
+              height="12px"
+            />
+          </div>
+        </div>
+      </template>
+
+      <!-- Organization rows -->
+      <template
+        v-for="org in organizations"
+        :key="org.id"
+      >
+        <div class="h-px bg-neutral-200" />
+        <div
+          class="flex gap-3 items-center p-6 w-full cursor-pointer"
+          @click="selectedKey = org.id"
+        >
+          <lfx-avatar
+            :src="org.avatarUrl || undefined"
+            type="organization"
+            size="normal"
+          />
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-neutral-900 truncate">{{ org.name }}</p>
+            <p class="text-xs text-neutral-600">Organization</p>
+          </div>
+          <div class="flex gap-8 items-center shrink-0">
+            <lfx-link-button
+              icon="pen"
+              label="Edit organisation"
+              @click.stop="openEditModal(org)"
+            />
+            <lfx-radio
+              v-model="selectedKey"
+              :value="org.id"
+              name="donor-type"
+            />
+          </div>
+        </div>
+      </template>
     </div>
 
-    <!-- Individual fields -->
-    <template v-if="form.donorType === 'individual'">
-      <lfx-field
-        label="Full name"
-        :required="true"
-      >
-        <lfx-tooltip
-          class="!w-full"
-          placement="top-start"
-          :content="AUTH_FIELD_TOOLTIP"
-          :disabled="!user?.name"
-        >
-          <lfx-input
-            v-model="form.fullName"
-            placeholder=""
-            :disabled="!!user?.name"
-            :invalid="$v.fullName.$error"
-            @blur="$v.fullName.$touch()"
-          />
-        </lfx-tooltip>
-        <lfx-field-messages :validation="$v.fullName" />
-      </lfx-field>
-
-      <lfx-field
-        label="Email"
-        :required="true"
-      >
-        <lfx-tooltip
-          class="!w-full"
-          placement="top-start"
-          :content="AUTH_FIELD_TOOLTIP"
-          :disabled="!user?.email"
-        >
-          <lfx-input
-            v-model="form.email"
-            type="email"
-            placeholder=""
-            :disabled="!!user?.email"
-            :invalid="$v.email.$error"
-            @blur="$v.email.$touch()"
-          />
-        </lfx-tooltip>
-        <lfx-field-messages :validation="$v.email" />
-      </lfx-field>
-    </template>
-
-    <!-- Company fields -->
-    <template v-else>
-      <div class="grid md:grid-cols-2 grid-cols-1 gap-4">
-        <lfx-field
-          label="Company name"
-          :required="true"
-        >
-          <lfx-input
-            v-model="form.companyName"
-            placeholder=""
-            :invalid="$v.companyName.$error"
-            @blur="$v.companyName.$touch()"
-          />
-          <lfx-field-messages :validation="$v.companyName" />
-        </lfx-field>
-
-        <lfx-field
-          label="Contact name"
-          :required="true"
-        >
-          <lfx-tooltip
-            class="!w-full"
-            placement="top-start"
-            :content="AUTH_FIELD_TOOLTIP"
-            :disabled="!user?.name"
-          >
-            <lfx-input
-              v-model="form.contactName"
-              placeholder=""
-              :disabled="!!user?.name"
-              :invalid="$v.contactName.$error"
-              @blur="$v.contactName.$touch()"
-            />
-          </lfx-tooltip>
-          <lfx-field-messages :validation="$v.contactName" />
-        </lfx-field>
-      </div>
-
-      <lfx-field
-        label="Email"
-        :required="true"
-      >
-        <lfx-tooltip
-          class="!w-full"
-          placement="top-start"
-          :content="AUTH_FIELD_TOOLTIP"
-          :disabled="!user?.email"
-        >
-          <lfx-input
-            v-model="form.email"
-            type="email"
-            placeholder=""
-            :disabled="!!user?.email"
-            :invalid="$v.email.$error"
-            @blur="$v.email.$touch()"
-          />
-        </lfx-tooltip>
-        <lfx-field-messages :validation="$v.email" />
-      </lfx-field>
-
-      <!-- Hiding this for now until we can implement this -->
-      <!-- <lfx-checkbox v-model="form.needsInvoice"> I need an invoice for this donation </lfx-checkbox> -->
-
-      <lfx-field
-        v-if="form.needsInvoice"
-        label="PO Number"
-      >
-        <lfx-input
-          v-model="form.poNumber"
-          placeholder=""
-        />
-      </lfx-field>
-    </template>
+    <lfx-link-button
+      icon="plus"
+      label="Add organization"
+      variant="accent"
+      class="self-start mb-4"
+      @click="
+        editingOrg = null;
+        showAddOrgModal = true;
+      "
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, watch, computed } from 'vue';
-import { useVuelidate } from '@vuelidate/core';
-import { required, email as emailValidator } from '@vuelidate/validators';
-import type { DonateContactForm, DonorType } from '#shared/types/donate.types';
-import LfxButton from '~/components/uikit/button/button.vue';
-import LfxField from '~/components/uikit/field/field.vue';
-import LfxFieldMessages from '~/components/uikit/field/field-messages.vue';
-import LfxInput from '~/components/uikit/input/input.vue';
-import LfxTooltip from '~/components/uikit/tooltip/tooltip.vue';
-
-const AUTH_FIELD_TOOLTIP = 'Need to change something? Go to your LF ID';
+import { reactive, ref, watch, computed, onMounted } from 'vue';
+import DonateAddOrgModal from './donate-add-org-modal.vue';
+import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
+import LfxLinkButton from '~/components/uikit/link-button/link-button.vue';
+import LfxRadio from '~/components/uikit/radio/radio.vue';
+import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
+import type { DonateContactForm } from '#shared/types/donate.types';
+import type { Organization } from '#shared/types/organization.types';
 
 const props = defineProps<{
   modelValue: DonateContactForm;
@@ -169,8 +123,16 @@ const emit = defineEmits<{
 }>();
 
 const { user } = useAuth();
+const { organizations, loading, fetchOrganizations } = useOrganizations();
 
 const form = reactive<DonateContactForm>({ ...props.modelValue });
+const showAddOrgModal = ref(false);
+const editingOrg = ref<Organization | null>(null);
+
+const openEditModal = (org: Organization) => {
+  editingOrg.value = org;
+  showAddOrgModal.value = true;
+};
 
 watch(
   () => props.modelValue,
@@ -178,37 +140,29 @@ watch(
   { deep: true },
 );
 
-watch(
-  user,
-  (authUser) => {
-    if (authUser?.name) {
-      form.fullName = authUser.name;
-      form.contactName = authUser.name;
-    }
-    if (authUser?.email) {
-      form.email = authUser.email;
-    }
-  },
-  { immediate: true },
-);
-
 watch(form, (val) => emit('update:modelValue', { ...val }), { deep: true });
 
-const rules = computed(() => ({
-  email: { required, email: emailValidator },
-  ...(form.donorType === 'individual'
-    ? { fullName: { required } }
-    : { companyName: { required }, contactName: { required } }),
-}));
+const selectedKey = computed({
+  get: () => (form.donorType === 'individual' ? 'individual' : (form.organizationId ?? 'individual')),
+  set: (val: string | number | boolean) => {
+    if (val === 'individual') {
+      form.donorType = 'individual';
+      form.organizationId = null;
+    } else {
+      form.donorType = 'organization';
+      form.organizationId = val as string;
+    }
+  },
+});
 
-const $v = useVuelidate(rules, form);
-
-const setDonorType = (type: DonorType) => {
-  form.donorType = type;
-  $v.value.$reset();
+const onOrgCreated = (org: Organization) => {
+  form.donorType = 'organization';
+  form.organizationId = org.id;
 };
 
-defineExpose({ $v });
+onMounted(() => {
+  fetchOrganizations();
+});
 </script>
 
 <script lang="ts">
