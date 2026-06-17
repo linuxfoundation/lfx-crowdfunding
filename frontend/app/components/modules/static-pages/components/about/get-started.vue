@@ -36,14 +36,13 @@ SPDX-License-Identifier: MIT
 
       <NuxtLink
         :to="AppRoute.ForProjects"
-        class="md:w-auto w-full"
+        class="self-end"
       >
         <lfx-button
           icon="laptop-code"
           label="Learn more for Projects"
-          type="primary"
+          type="transparent"
           button-style="pill"
-          class="w-full justify-center"
         />
       </NuxtLink>
     </div>
