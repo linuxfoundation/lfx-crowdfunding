@@ -826,23 +826,76 @@ func TestUpdate_ForbiddenForNonOwner(t *testing.T) {
 	}
 }
 
-func TestUpdate_CannotSetApprovalControlledStatus(t *testing.T) {
-	restricted := []models.InitiativeStatus{
-		models.StatusPublished,
-		models.StatusDeclined,
-		models.StatusPending,
+func TestUpdate_AllowedOwnerStatusTransitions(t *testing.T) {
+	allowed := []struct {
+		from models.InitiativeStatus
+		to   models.InitiativeStatus
+	}{
+		{models.StatusSubmitted, models.StatusPending},
+		{models.StatusSubmitted, models.StatusDeclined},
+		{models.StatusPending, models.StatusDeclined},
+		{models.StatusPublished, models.StatusHidden},
+		{models.StatusHidden, models.StatusPublished},
 	}
-	for _, s := range restricted {
-		s := s
-		t.Run(string(s), func(t *testing.T) {
+	for _, tt := range allowed {
+		tt := tt
+		t.Run(string(tt.from)+"_to_"+string(tt.to), func(t *testing.T) {
+			status := tt.to
 			repo := &mockInitiativeRepo{
-				initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+				initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Status: tt.from},
+			}
+			updated, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+				models.InitiativeUpdateInput{Status: &status},
+			)
+			if err != nil {
+				t.Fatalf("unexpected error for %q -> %q: %v", tt.from, tt.to, err)
+			}
+			if updated.Status != tt.to {
+				t.Fatalf("expected status %q, got %q", tt.to, updated.Status)
+			}
+		})
+	}
+}
+
+func TestUpdate_RejectsDisallowedDirectStatusTransitions(t *testing.T) {
+	tests := []struct {
+		from models.InitiativeStatus
+		to   models.InitiativeStatus
+	}{
+		// from submitted — only pending and declined are allowed
+		{models.StatusSubmitted, models.StatusPublished},
+		{models.StatusSubmitted, models.StatusHidden},
+		// from pending — only declined is allowed
+		{models.StatusPending, models.StatusSubmitted},
+		{models.StatusPending, models.StatusPublished},
+		{models.StatusPending, models.StatusHidden},
+		// from published — only hidden is allowed
+		{models.StatusPublished, models.StatusSubmitted},
+		{models.StatusPublished, models.StatusPending},
+		{models.StatusPublished, models.StatusDeclined},
+		// from hidden — only published is allowed
+		{models.StatusHidden, models.StatusSubmitted},
+		{models.StatusHidden, models.StatusPending},
+		{models.StatusHidden, models.StatusDeclined},
+		// from declined — no owner transitions allowed
+		{models.StatusDeclined, models.StatusSubmitted},
+		{models.StatusDeclined, models.StatusPending},
+		{models.StatusDeclined, models.StatusPublished},
+		{models.StatusDeclined, models.StatusHidden},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(string(tt.from)+"_to_"+string(tt.to), func(t *testing.T) {
+			status := tt.to
+			repo := &mockInitiativeRepo{
+				initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Status: tt.from},
 			}
 			_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
-				models.InitiativeUpdateInput{Status: &s},
+				models.InitiativeUpdateInput{Status: &status},
 			)
 			if !errors.Is(err, domain.ErrForbidden) {
-				t.Fatalf("expected ErrForbidden for status %q, got %v", s, err)
+				t.Fatalf("expected ErrForbidden for %q -> %q, got %v", tt.from, tt.to, err)
 			}
 		})
 	}
