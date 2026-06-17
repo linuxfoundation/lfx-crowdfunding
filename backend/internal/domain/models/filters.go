@@ -15,7 +15,8 @@ type PaginationMeta struct {
 type InitiativeFilter struct {
 	OwnerID        string
 	InitiativeType string
-	Status         InitiativeStatus
+	Status         InitiativeStatus   // single-value filter used by the public List handler
+	Statuses       []InitiativeStatus // multi-value filter used by the ListForUser handler
 	Search         string
 	SortBy         string // "supporters" | "total_raised" | "name" | "created_on" (default)
 	SortDir        string // "asc" | "desc" (default)
