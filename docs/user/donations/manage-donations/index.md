@@ -2,8 +2,9 @@
 title: Managing Your Donations
 description: How to view your donation history and manage recurring subscriptions on LFX Crowdfunding.
 tags: [donations, history, subscriptions, recurring, cancel]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 2
+intercom_collection: LFX Crowdfunding
 ---
 
 Your donation history and recurring subscriptions are managed through the LFX platform. Visit [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations) to access them.

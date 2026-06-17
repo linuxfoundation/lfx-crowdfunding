@@ -2,8 +2,9 @@
 title: Getting Started
 description: Learn how to use LFX Crowdfunding to support open source projects and communities.
 tags: [getting-started, overview, introduction]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 1
+intercom_collection: LFX Crowdfunding
 ---
 
 LFX Crowdfunding is the Linux Foundation's platform for funding open source initiatives. Whether you want to support a project you care about or raise funds for your own community, this guide will help you get started.

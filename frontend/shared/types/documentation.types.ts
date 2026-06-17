@@ -37,4 +37,5 @@ export interface DocArticle {
   bodyHtml: string;
   tags: string[];
   lastUpdated: string | null;
+  intercomCollection: string | null;
 }

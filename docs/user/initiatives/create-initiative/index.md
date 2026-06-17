@@ -2,8 +2,9 @@
 title: Create an Initiative
 description: How to create a fundraising initiative for your open source project or event on LFX Crowdfunding.
 tags: [initiatives, create, fundraising, project, event]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 2
+intercom_collection: LFX Crowdfunding
 ---
 
 > **Sign in required** — Creating an initiative requires an [LF ID](https://openprofile.dev/) account.
@@ -18,7 +19,7 @@ Click **Start a Fundraiser** in the header navigation to open the creation form.
 
 ### Step 1 — Choose an initiative type
 
-![Initiative type selection](/images/docs/fundraising-type-select.png)
+![Initiative type selection](https://crowdfunding.linuxfoundation.org/images/docs/fundraising-type-select.png)
 
 Select the type that best describes your initiative:
 
@@ -56,13 +57,13 @@ Fill in the details for your initiative. Fields vary by type, but all types ask 
 - **Location** — city and country (optional)
 - **Budget distribution** — an optional breakdown across categories such as Venue, Travel, and Marketing
 
-![Initiative details form](/images/docs/fundraising-details-form.png)
+![Initiative details form](https://crowdfunding.linuxfoundation.org/images/docs/fundraising-details-form.png)
 
 ### Step 3 — Compliance and terms
 
 Before submitting, you must confirm:
 
-- **OFAC compliance** — that your initiative complies with US sanctions regulations
+- **OFAC compliance** — that your initiative complies with US sanctions regulations. OFAC (the US Office of Foreign Assets Control) administers US sanctions law; you are confirming that your initiative does not involve sanctioned countries, organisations, or individuals.
 - **Terms of service** — acceptance of the LFX Platform Use Agreement
 
 ## After submission

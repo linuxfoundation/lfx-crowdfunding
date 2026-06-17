@@ -2,8 +2,9 @@
 title: Initiatives
 description: Learn about fundraising initiatives on LFX Crowdfunding — browse campaigns, create your own, and manage your initiative.
 tags: [initiatives, campaigns, projects, fundraising]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 2
+intercom_collection: LFX Crowdfunding
 ---
 
 Initiatives are fundraising campaigns created by open source projects, events, and organisations affiliated with the Linux Foundation. Each initiative has a goal, a description of how funds will be used, and a transparent record of donations received.
@@ -25,7 +26,7 @@ Initiatives are fundraising campaigns created by open source projects, events, a
 
 ## For companies and sponsors
 
-Companies looking to sponsor open source projects can donate to any published initiative. See [For Companies](/for-companies) for more information on sponsorship packages.
+Companies looking to sponsor open source projects can donate to any published initiative directly from its page. Contact the Linux Foundation for information on sponsorship packages.
 
 ## Related sections
 

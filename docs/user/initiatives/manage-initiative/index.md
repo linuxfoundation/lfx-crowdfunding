@@ -2,8 +2,9 @@
 title: Manage Your Initiative
 description: How to update and manage a published initiative on LFX Crowdfunding.
 tags: [initiatives, manage, edit, financials, reporting]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 3
+intercom_collection: LFX Crowdfunding
 ---
 
 Once your initiative is approved and published, you can manage it through the LFX platform. Visit [My Initiatives on LFX](https://app.lfx.dev/crowdfunding/initiatives) to update your initiative's details.

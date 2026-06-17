@@ -2,13 +2,14 @@
 title: Browsing Initiatives
 description: How to find and explore active fundraising campaigns on LFX Crowdfunding.
 tags: [initiatives, browse, search, filter]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 1
+intercom_collection: LFX Crowdfunding
 ---
 
 Go to the **Initiatives** page from the top navigation to see all active campaigns. You can search by name or filter by category.
 
-![Browse initiatives page](/images/docs/initiatives-browse.png)
+![Browse initiatives page](https://crowdfunding.linuxfoundation.org/images/docs/initiatives-browse.png)
 
 Each initiative card shows:
 
@@ -20,7 +21,7 @@ Each initiative card shows:
 
 Click any initiative to view its full detail page.
 
-![Initiative detail page](/images/docs/initiatives-detail.png)
+![Initiative detail page](https://crowdfunding.linuxfoundation.org/images/docs/initiatives-detail.png)
 
 The detail page includes:
 

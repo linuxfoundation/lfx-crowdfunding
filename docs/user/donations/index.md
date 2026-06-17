@@ -2,8 +2,9 @@
 title: Donations
 description: Learn how to donate to open source initiatives and manage your giving history on LFX Crowdfunding.
 tags: [donations, giving, payments, recurring]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 3
+intercom_collection: LFX Crowdfunding
 ---
 
 Donating to an initiative supports open source projects directly. All payments are processed securely through Stripe.
@@ -32,7 +33,7 @@ Your past donations and active monthly subscriptions are managed through the LFX
 
 ## Email acknowledgement and tax information
 
-All donations are made to the Linux Foundation, a 501(c)(6) non-profit organisation. An email acknowledgement is sent automatically after each payment. For tax purposes, please consult your tax adviser regarding the deductibility of your donations.
+All donations are made to the Linux Foundation, a 501(c)(6) non-profit organisation (a category of non-profit under US tax law). An email acknowledgement is sent automatically after each payment. For tax purposes, please consult your tax adviser regarding the deductibility of your donations.
 
 ## Payment security
 

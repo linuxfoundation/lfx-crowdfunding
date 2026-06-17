@@ -2,9 +2,12 @@
 title: Backers
 description: Understand how supporters are listed on initiative pages on LFX Crowdfunding.
 tags: [backers, supporters, donors, donations, anonymous]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 6
+intercom_collection: LFX Crowdfunding
 ---
+
+This page explains how donors are listed on initiative pages. If you want to make a donation, see [Donations](../donations/).
 
 Every initiative publicly recognises the people and organisations that have contributed to it. Backers are listed in two places on each initiative page.
 

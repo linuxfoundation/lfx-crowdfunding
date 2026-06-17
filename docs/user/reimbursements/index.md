@@ -2,9 +2,12 @@
 title: Reimbursements
 description: How expense reimbursements work for initiative owners and beneficiaries on LFX Crowdfunding.
 tags: [reimbursements, expenses, beneficiaries, expensify]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 7
+intercom_collection: LFX Crowdfunding
 ---
+
+This section applies to initiative owners and beneficiaries claiming expenses against initiative funds.
 
 Reimbursements allow initiative owners and their designated beneficiaries to claim expenses against initiative funds. The process is managed through an external expense service — LFX Crowdfunding handles the setup and approval flow.
 

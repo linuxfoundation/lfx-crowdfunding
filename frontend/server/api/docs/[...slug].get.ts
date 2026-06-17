@@ -88,5 +88,6 @@ export default defineEventHandler(async (event): Promise<DocArticle> => {
     bodyHtml,
     tags: (fm.tags as string[] | undefined) ?? [],
     lastUpdated: fm.last_updated != null ? formatDate(fm.last_updated) : null,
+    intercomCollection: (fm.intercom_collection as string | undefined) ?? null,
   };
 });

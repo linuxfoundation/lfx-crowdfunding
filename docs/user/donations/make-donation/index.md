@@ -2,8 +2,9 @@
 title: Making a Donation
 description: How to make a one-time or monthly donation to an open source initiative on LFX Crowdfunding.
 tags: [donations, one-time, monthly, payment, stripe]
-last_updated: 2026-06-16
+last_updated: 2026-06-17
 display_order: 1
+intercom_collection: LFX Crowdfunding
 ---
 
 > **Sign in required** — You must be signed in with your [LF ID](https://openprofile.dev/) to make a donation.
@@ -14,7 +15,7 @@ Open any published initiative page and click the **Donate** button. A drawer wil
 
 ## Step 1 — Choose an amount and frequency
 
-![Donation amount selection](/images/docs/donation-step-amount.png)
+![Donation amount selection](https://crowdfunding.linuxfoundation.org/images/docs/donation-step-amount.png)
 
 Select a preset amount or enter a custom amount in the input field.
 
@@ -27,7 +28,7 @@ Optionally, you can allocate your donation to a specific funding goal (e.g. Deve
 
 ## Step 2 — Payment
 
-![Donation payment step](/images/docs/donation-step-payment.png)
+![Donation payment step](https://crowdfunding.linuxfoundation.org/images/docs/donation-step-payment.png)
 
 Enter your card details:
 
@@ -39,7 +40,11 @@ If you have previously saved a card, it will be shown here. You can use it direc
 
 **Order summary** — The drawer shows a breakdown of your donation amount and total. The Linux Foundation underwrites all transaction fees, so 100% of your donation goes to the initiative.
 
-Click **Donate** to process your payment. For cards that require additional verification (3D Secure), you may be prompted to authenticate with your bank.
+Click **Donate** to process your payment. For cards that require additional verification (3D Secure — an extra authentication step your bank may require), you may be prompted to authenticate before the payment completes.
+
+## Anonymous donations
+
+LFX Crowdfunding does not currently offer a donor-selectable anonymous option. Your name and avatar will be displayed publicly on the initiative's backer list. If your donor information is unavailable at the time of processing, your name will appear as **Anonymous** on the initiative page.
 
 ## After donating
 
