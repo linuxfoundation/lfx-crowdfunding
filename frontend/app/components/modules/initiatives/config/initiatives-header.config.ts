@@ -17,10 +17,11 @@ export interface SortOption {
   label: string;
 }
 
-export const DEFAULT_SORT_OPTION: SortOption = { value: 'total_raised', label: 'Most funded' };
+export const DEFAULT_SORT_OPTION: SortOption = { value: 'supporters', label: 'Most supporters' };
 
 export const INITIATIVE_SORT_OPTIONS: SortOption[] = [
+  DEFAULT_SORT_OPTION,
+  { value: 'total_raised', label: 'Most funded' },
   { value: 'created_on', label: 'Most recent' },
   { value: 'name', label: 'Name (A–Z)' },
-  DEFAULT_SORT_OPTION,
 ];
