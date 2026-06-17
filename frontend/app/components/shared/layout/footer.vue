@@ -6,14 +6,17 @@ SPDX-License-Identifier: MIT
   <footer class="bg-accent-900">
     <div class="container py-10">
       <!-- Top: brand + nav columns -->
-      <div class="flex items-start justify-between gap-10">
+      <div class="flex flex-col gap-8 md:flex-row md:items-start md:justify-between md:gap-10">
         <!-- Brand -->
         <div class="flex flex-col gap-3">
-          <NuxtLink :to="AppRoute.Home">
+          <NuxtLink
+            :to="AppRoute.Home"
+            class="self-start"
+          >
             <img
               src="~/assets/images/logo.png"
               alt="LFX Crowdfunding"
-              class="h-6 brightness-0 invert"
+              class="h-6 w-auto max-w-full object-contain brightness-0 invert"
               loading="lazy"
             />
           </NuxtLink>
@@ -23,7 +26,7 @@ SPDX-License-Identifier: MIT
         </div>
 
         <!-- Nav sections -->
-        <div class="flex gap-16">
+        <div class="flex flex-col gap-8 md:flex-row md:gap-16">
           <section
             v-for="section in lfxFooterMenu"
             :key="section.title"
@@ -58,7 +61,7 @@ SPDX-License-Identifier: MIT
                 <template v-else>
                   <button
                     type="button"
-                    class="text-sm leading-7 text-white hover:underline -ml-1"
+                    class="text-sm leading-7 text-white hover:underline -ml-1 self-start text-left"
                     @click="link.action"
                   >
                     {{ link.name }}
