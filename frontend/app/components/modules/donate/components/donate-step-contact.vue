@@ -87,14 +87,14 @@ SPDX-License-Identifier: MIT
                 icon="pen"
                 type="outline"
                 size="medium"
-                aria-label="Edit organisation"
+                aria-label="Edit organization"
                 @click.stop="openEditModal(org)"
               />
               <lfx-icon-button
                 icon="trash-can"
                 type="outline"
                 size="medium"
-                aria-label="Delete organisation"
+                aria-label="Delete organization"
                 @click.stop="openDeleteModal(org)"
               />
             </div>

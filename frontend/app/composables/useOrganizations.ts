@@ -32,6 +32,7 @@ export const useOrganizations = () => {
     name: string,
     avatarUrl: string,
   ): Promise<Organization | null> => {
+    error.value = null;
     try {
       const org = await $fetch<Organization>('/api/me/organizations', {
         method: 'POST',
@@ -51,6 +52,7 @@ export const useOrganizations = () => {
     name: string,
     avatarUrl: string,
   ): Promise<Organization | null> => {
+    error.value = null;
     try {
       const org = await $fetch<Organization>(`/api/me/organizations/${id}`, {
         method: 'PATCH',

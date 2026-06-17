@@ -123,9 +123,13 @@ SPDX-License-Identifier: MIT
           <!-- Empty / drop zone -->
           <div
             v-else
+            role="button"
+            tabindex="0"
             class="border border-dashed border-neutral-300 rounded-xl px-5 py-6 flex items-center justify-center gap-5 cursor-pointer hover:bg-neutral-50 transition-colors"
             :class="{ 'bg-neutral-50': isDragging }"
             @click="fileInput?.click()"
+            @keydown.enter.prevent="fileInput?.click()"
+            @keydown.space.prevent="fileInput?.click()"
             @dragover.prevent="isDragging = true"
             @dragleave.prevent="isDragging = false"
             @drop.prevent="onDrop"
@@ -218,8 +222,23 @@ const localFileName = ref('');
 const isDragging = ref(false);
 const submitting = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
+const currentBlobUrl = ref<string | null>(null);
 
 const isFormValid = computed(() => name.value.trim() !== '' && logoUrl.value !== '');
+
+const resetForm = () => {
+  name.value = '';
+  nameTouched.value = false;
+  logoUrl.value = '';
+  if (currentBlobUrl.value) {
+    URL.revokeObjectURL(currentBlobUrl.value);
+    currentBlobUrl.value = null;
+  }
+  previewSrc.value = null;
+  localFileName.value = '';
+  isDragging.value = false;
+  if (fileInput.value) fileInput.value.value = '';
+};
 
 watch(
   () => props.modelValue,
@@ -230,30 +249,34 @@ watch(
       previewSrc.value = props.organization.avatarUrl ?? null;
       localFileName.value = '';
       nameTouched.value = false;
+    } else if (!open) {
+      resetForm();
     }
   },
 );
 
 const close = () => {
   isOpen.value = false;
-  name.value = '';
-  nameTouched.value = false;
-  logoUrl.value = '';
-  previewSrc.value = null;
-  localFileName.value = '';
-  isDragging.value = false;
-  if (fileInput.value) fileInput.value.value = '';
 };
 
 const handleFile = async (file: File) => {
-  previewSrc.value = URL.createObjectURL(file);
+  if (currentBlobUrl.value) {
+    URL.revokeObjectURL(currentBlobUrl.value);
+  }
+  const objectUrl = URL.createObjectURL(file);
+  currentBlobUrl.value = objectUrl;
+  previewSrc.value = objectUrl;
   localFileName.value = file.name;
   const url = await uploadLogo(file);
   if (url) {
     logoUrl.value = url;
+    URL.revokeObjectURL(objectUrl);
+    currentBlobUrl.value = null;
   } else {
     previewSrc.value = null;
     localFileName.value = '';
+    URL.revokeObjectURL(objectUrl);
+    currentBlobUrl.value = null;
   }
 };
 
@@ -270,6 +293,10 @@ const onDrop = (event: DragEvent) => {
 
 const removeLogo = () => {
   logoUrl.value = '';
+  if (currentBlobUrl.value) {
+    URL.revokeObjectURL(currentBlobUrl.value);
+    currentBlobUrl.value = null;
+  }
   previewSrc.value = null;
   localFileName.value = '';
   if (fileInput.value) fileInput.value.value = '';

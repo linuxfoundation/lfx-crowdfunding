@@ -83,7 +83,6 @@ SPDX-License-Identifier: MIT
           />
           <donate-step-contact
             v-else-if="step === 1"
-            ref="contactStepRef"
             v-model="contactForm"
           />
           <donate-step-payment
@@ -185,7 +184,6 @@ const submitting = ref(false);
 const submitted = ref(false);
 const paymentComplete = ref(false);
 
-const contactStepRef = ref<InstanceType<typeof DonateStepContact> | null>(null);
 const paymentStepRef = ref<InstanceType<typeof DonateStepPayment> | null>(null);
 
 const amountForm = ref<DonateAmountForm>({
