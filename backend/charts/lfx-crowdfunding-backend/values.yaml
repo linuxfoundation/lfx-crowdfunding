@@ -144,8 +144,9 @@ mentorshipSyncCronJob:
   # Override to "/app/testdata/programs.json" in DEV.
   fixtureFile: ""
   image:
-    # Required — use the dedicated mentorship-sync image, not the main API image.
-    repository: ghcr.io/linuxfoundation/lfx-crowdfunding-mentorship-sync
+    # Defaults to same repository and tag as the main API image.
+    # Override only if building a separate image for the CronJob.
+    repository: ""
     tag: ""
   resources:
     requests:
