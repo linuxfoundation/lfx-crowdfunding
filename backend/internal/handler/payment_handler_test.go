@@ -71,6 +71,9 @@ func (c *paymentStripeClient) CreateSubscription(_ context.Context, _ models.Str
 func (c *paymentStripeClient) CancelSubscription(_ context.Context, _ string) error {
 	return nil
 }
+func (c *paymentStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 func (c *paymentStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }

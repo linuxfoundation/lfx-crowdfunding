@@ -44,6 +44,9 @@ func (c *intStripeClient) CreateSubscription(_ context.Context, _ models.StripeS
 	return nil, nil
 }
 func (c *intStripeClient) CancelSubscription(_ context.Context, _ string) error { return nil }
+func (c *intStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 func (c *intStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }
