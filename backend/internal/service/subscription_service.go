@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	stripe "github.com/stripe/stripe-go/v85"
 
@@ -75,6 +76,8 @@ func (s *SubscriptionService) ListByUser(ctx context.Context, username string, f
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list subscriptions: %w", err)
 	}
+
+	s.enrichNextChargeDates(ctx, subs)
 	return subs, meta, nil
 }
 
@@ -106,6 +109,8 @@ func (s *SubscriptionService) GetByIDForUser(ctx context.Context, id, username s
 		}
 		return nil, err
 	}
+
+	s.enrichNextChargeDate(ctx, sub)
 	return sub, nil
 }
 
@@ -359,4 +364,27 @@ func isStripeSubscriptionMissing(err error) bool {
 		return se.HTTPStatusCode == 404 && se.Code == stripe.ErrorCodeResourceMissing
 	}
 	return strings.Contains(err.Error(), "resource_missing")
+}
+
+func (s *SubscriptionService) enrichNextChargeDates(ctx context.Context, subs []models.Subscription) {
+	for i := range subs {
+		s.enrichNextChargeDate(ctx, &subs[i])
+	}
+}
+
+func (s *SubscriptionService) enrichNextChargeDate(ctx context.Context, sub *models.Subscription) {
+	if sub == nil || sub.StripeSubscriptionID == "" {
+		return
+	}
+
+	periodEnd, err := s.stripe.GetSubscriptionCurrentPeriodEnd(ctx, sub.StripeSubscriptionID)
+	if err != nil {
+		slog.WarnContext(ctx, "subscription next charge date lookup failed", "subscription_id", sub.ID, "stripe_subscription_id", sub.StripeSubscriptionID, "error", err)
+		return
+	}
+	if periodEnd <= 0 {
+		return
+	}
+	next := time.Unix(periodEnd, 0).UTC()
+	sub.NextChargeDate = &next
 }

@@ -119,6 +119,9 @@ func (c *apprStripeClient) CreateSubscription(_ context.Context, _ models.Stripe
 	return nil, nil
 }
 func (c *apprStripeClient) CancelSubscription(_ context.Context, _ string) error { return nil }
+func (c *apprStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 func (c *apprStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }

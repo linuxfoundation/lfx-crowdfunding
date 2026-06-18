@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	stripe "github.com/stripe/stripe-go/v85"
 
@@ -620,6 +621,99 @@ func TestSubscriptionService_GetByIDForUser_Success(t *testing.T) {
 	}
 	if sub.InitiativeName != "Test Initiative" {
 		t.Errorf("expected initiative_name 'Test Initiative', got %q", sub.InitiativeName)
+	}
+}
+
+func TestSubscriptionService_ListByUser_EnrichesNextChargeDate(t *testing.T) {
+	const username = "testuser"
+	const userID = "00000000-0000-0000-0000-000000000001"
+	const periodEnd = int64(1767225600)
+
+	subRepo := &testSubscriptionRepo{
+		onListByUser: func(_ context.Context, uid string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+			if uid != userID {
+				t.Fatalf("expected userID %s, got %s", userID, uid)
+			}
+			return []models.Subscription{{
+				ID:                   "sub-1",
+				UserID:               userID,
+				StripeSubscriptionID: "stripe-sub-1",
+			}}, &models.PaginationMeta{Total: 1, Limit: 20, Offset: 0}, nil
+		},
+	}
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, gotUsername string) (*models.User, error) {
+			if gotUsername != username {
+				t.Fatalf("expected username %s, got %s", username, gotUsername)
+			}
+			return &models.User{ID: userID, Username: username}, nil
+		},
+	}
+	stripeClient := &configStripeClient{
+		onGetSubscriptionPeriodEnd: func(_ context.Context, subID string) (int64, error) {
+			if subID != "stripe-sub-1" {
+				t.Fatalf("expected stripe sub id stripe-sub-1, got %s", subID)
+			}
+			return periodEnd, nil
+		},
+	}
+
+	svc := newSubscriptionSvc(subRepo, acceptingInitiative(), userRepo, stripeClient)
+	subs, _, err := svc.ListByUser(context.Background(), username, models.SubscriptionFilter{Limit: 20, Offset: 0})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+	if subs[0].NextChargeDate == nil {
+		t.Fatal("expected next_charge_date to be present")
+	}
+	want := time.Unix(periodEnd, 0).UTC()
+	if !subs[0].NextChargeDate.Equal(want) {
+		t.Fatalf("expected next_charge_date %s, got %s", want.Format(time.RFC3339), subs[0].NextChargeDate.Format(time.RFC3339))
+	}
+}
+
+func TestSubscriptionService_GetByIDForUser_EnrichesNextChargeDate(t *testing.T) {
+	const subID = "sub-local-1"
+	const userID = "00000000-0000-0000-0000-000000000001"
+	const username = "testuser"
+	const periodEnd = int64(1767225600)
+
+	subRepo := &testSubscriptionRepo{
+		onGetByIDForUser: func(_ context.Context, id, uid string) (*models.Subscription, error) {
+			if id != subID || uid != userID {
+				return nil, domain.ErrSubscriptionNotFound
+			}
+			return &models.Subscription{ID: subID, UserID: userID, StripeSubscriptionID: "stripe-sub-1"}, nil
+		},
+	}
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: userID, Username: username}, nil
+		},
+	}
+	stripeClient := &configStripeClient{
+		onGetSubscriptionPeriodEnd: func(_ context.Context, subID string) (int64, error) {
+			if subID != "stripe-sub-1" {
+				t.Fatalf("expected stripe sub id stripe-sub-1, got %s", subID)
+			}
+			return periodEnd, nil
+		},
+	}
+
+	svc := newSubscriptionSvc(subRepo, acceptingInitiative(), userRepo, stripeClient)
+	sub, err := svc.GetByIDForUser(context.Background(), subID, username)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if sub.NextChargeDate == nil {
+		t.Fatal("expected next_charge_date to be present")
+	}
+	want := time.Unix(periodEnd, 0).UTC()
+	if !sub.NextChargeDate.Equal(want) {
+		t.Fatalf("expected next_charge_date %s, got %s", want.Format(time.RFC3339), sub.NextChargeDate.Format(time.RFC3339))
 	}
 }
 
