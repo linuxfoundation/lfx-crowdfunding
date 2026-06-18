@@ -8,6 +8,10 @@ import { defineConfig, devices } from '@playwright/test';
 //   NUXT_E2E_TEST_USERNAME=<user>   — username injected into the mock session
 //   DISABLED_MOCK_LOCAL_PRINCIPAL=<user>  — backend bypasses JWT for this username
 //   ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true — required by backend config validation
+//
+// Running payment tests against DEV (real Stripe test-mode charges):
+//   E2E_BASE_URL=https://crowdfunding.dev.lfx.dev pnpm test:e2e --grep "@dev"
+// The DEV deployment must have NUXT_E2E_TEST_MODE=true set for e2e-auth to work.
 
 export default defineConfig({
   testDir: './e2e/tests',
