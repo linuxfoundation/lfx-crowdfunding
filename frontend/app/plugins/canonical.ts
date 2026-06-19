@@ -6,7 +6,7 @@
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig();
   const route = useRoute();
-  const baseUrl = config.public.appUrl as string;
+  const baseUrl = (config.public.appUrl as string).replace(/\/$/, '');
 
   useHead({
     link: [

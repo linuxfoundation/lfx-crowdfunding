@@ -28,8 +28,9 @@ const description = computed(() => {
     ? `${raw.slice(0, 157)}...`
     : raw || 'Support this open source initiative on LFX Crowdfunding.';
 });
-const ogUrl = computed(() => `${config.public.appUrl}/initiatives/${slug.value}`);
-const ogImage = computed(() => initiative.value?.logoUrl ?? `${config.public.appUrl}/og-image.png`);
+const baseUrl = (config.public.appUrl as string).replace(/\/$/, '');
+const ogUrl = computed(() => `${baseUrl}/initiatives/${slug.value}`);
+const ogImage = computed(() => initiative.value?.logoUrl ?? `${baseUrl}/og-image.png`);
 
 useHead({ title });
 useSeoMeta({

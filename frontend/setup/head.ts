@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-const appUrl = process.env.NUXT_APP_URL || 'http://localhost:3000';
+const appUrl = (process.env.NUXT_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 const defaultDescription = 'Fund open source projects and mentorships through LFX.';
 
 export default {
