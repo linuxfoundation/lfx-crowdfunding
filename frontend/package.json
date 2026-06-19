@@ -21,6 +21,8 @@
   "dependencies": {
     "@linuxfoundation/lfx-ui-core": "^0.0.20",
     "@nuxt/eslint": "^1.12.1",
+    "@nuxtjs/robots": "^6.1.1",
+    "@nuxtjs/sitemap": "^8.2.1",
     "@nuxtjs/tailwindcss": "^6.13.1",
     "@pinia/nuxt": "^0.11.3",
     "@popperjs/core": "^2.11.8",
