@@ -31,9 +31,9 @@ export default defineNuxtPlugin(() => {
     trackResources: true,
     trackUserInteractions: true,
     trackLongTasks: true,
-    defaultPrivacyLevel: 'allow',
+    defaultPrivacyLevel: 'mask-user-input',
     traceSampleRate: 100,
-    // Trace requests to the BFF (all same-origin /api/* calls).
-    allowedTracingUrls: [appUrl as string],
+    // Trace requests to the BFF (/api/* calls only).
+    allowedTracingUrls: [`${appUrl as string}/api`],
   });
 });

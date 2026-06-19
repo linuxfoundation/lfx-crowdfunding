@@ -62,11 +62,13 @@ watch(
           hasIntercomJwt: !!intercomJwt,
         });
       }
-    } else if (!isAuthenticated && intercomBootAttempted) {
+    } else if (!isAuthenticated) {
       clearDdUser();
-      shutdown();
-      intercomBootAttempted = false;
-      bootAnonymous();
+      if (intercomBootAttempted) {
+        shutdown();
+        intercomBootAttempted = false;
+        bootAnonymous();
+      }
     }
   },
   { immediate: true },
