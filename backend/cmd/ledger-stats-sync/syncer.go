@@ -165,7 +165,18 @@ func mapBalance(
 		feeBalance = -feeBalance
 	}
 
-	supporters := len(raw.Sponsors.Orgs) + len(raw.Sponsors.Individuals)
+	// Enrich first so the supporter count is derived from the same data that
+	// gets persisted to DB. enrichSponsors already drops entries with empty
+	// IDs; the dedup set below guards against any upstream duplicates so the
+	// count stays consistent with the sponsors JSONB column.
+	enriched := enrichSponsors(raw.Sponsors, orgMap, userMap)
+	seen := make(map[string]struct{}, len(enriched.Orgs)+len(enriched.Individuals))
+	for _, o := range enriched.Orgs {
+		seen[o.ID] = struct{}{}
+	}
+	for _, u := range enriched.Individuals {
+		seen[u.ID] = struct{}{}
+	}
 
 	return models.LedgerStats{
 		InitiativeID:          raw.ProjectID,
@@ -174,8 +185,8 @@ func mapBalance(
 		TotalBalanceCents:     raw.TotalBalance,
 		AvailableBalanceCents: raw.AvailableBalance,
 		FeeBalanceCents:       feeBalance,
-		Supporters:            supporters, // count of unique org + individual donors
-		Sponsors:              enrichSponsors(raw.Sponsors, orgMap, userMap),
+		Supporters:            len(seen),
+		Sponsors:              enriched,
 	}
 }
 

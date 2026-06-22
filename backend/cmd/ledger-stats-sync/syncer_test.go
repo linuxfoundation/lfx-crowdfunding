@@ -242,6 +242,26 @@ func TestMapBalance(t *testing.T) {
 			wantSupporters:  4, // 3 orgs + 1 individual (not raw.Backers=1)
 		},
 		{
+			name: "empty IDs are excluded from supporter count",
+			raw: models.LedgerRawBalance{
+				Sponsors: models.LedgerRawSponsors{
+					Orgs:        []models.LedgerRawSponsor{{ID: ""}, {ID: "org-1"}},
+					Individuals: []models.LedgerRawSponsor{{ID: ""}, {ID: "auth0|u1"}},
+				},
+			},
+			wantSupporters: 2, // empty IDs dropped; 1 org + 1 individual
+		},
+		{
+			name: "duplicate IDs are counted once",
+			raw: models.LedgerRawBalance{
+				Sponsors: models.LedgerRawSponsors{
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-1"}, {ID: "org-1"}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}, {ID: "auth0|u1"}},
+				},
+			},
+			wantSupporters: 2, // deduped: 1 unique org + 1 unique individual
+		},
+		{
 			name: "already positive debit and fee are unchanged",
 			raw: models.LedgerRawBalance{
 				TotalDebit: 100,
