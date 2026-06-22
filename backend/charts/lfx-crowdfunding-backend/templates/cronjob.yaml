@@ -9,12 +9,16 @@ metadata:
   labels:
     {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
     app.kubernetes.io/component: ledger-stats-sync
+    tags.datadoghq.com/service: {{ include "lfx-v2-initiatives-service.name" . }}
 spec:
   schedule: {{ .Values.cronJob.schedule | quote }}
   concurrencyPolicy: {{ .Values.cronJob.concurrencyPolicy }}
   successfulJobsHistoryLimit: {{ .Values.cronJob.successfulJobsHistoryLimit }}
   failedJobsHistoryLimit: {{ .Values.cronJob.failedJobsHistoryLimit }}
   jobTemplate:
+    metadata:
+      labels:
+        tags.datadoghq.com/service: {{ include "lfx-v2-initiatives-service.name" . }}
     spec:
       template:
         metadata:
