@@ -20,6 +20,7 @@ spec:
         metadata:
           labels:
             app.kubernetes.io/component: ledger-stats-sync
+            tags.datadoghq.com/service: {{ include "lfx-v2-initiatives-service.name" . }}
         spec:
           restartPolicy: OnFailure
           serviceAccountName: {{ include "lfx-v2-initiatives-service.serviceAccountName" . }}
