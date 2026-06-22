@@ -9,5 +9,18 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import ForCompaniesView from '~/components/modules/static-pages/view/for-companies.vue';
 
-useHead({ title: 'For Companies' });
+const title = 'For Companies';
+const description =
+  'Invest in the open source projects that power your business. Sponsor initiatives on LFX Crowdfunding and demonstrate your commitment to the open source ecosystem.';
+
+useHead({ title });
+useSeoMeta({
+  description,
+  ogTitle: `${title} | LFX Crowdfunding`,
+  ogDescription: description,
+  ogType: 'website',
+  twitterCard: 'summary_large_image',
+  twitterTitle: `${title} | LFX Crowdfunding`,
+  twitterDescription: description,
+});
 </script>
