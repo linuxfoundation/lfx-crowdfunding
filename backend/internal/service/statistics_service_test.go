@@ -263,7 +263,7 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, TxnCategory: "Development", SourceType: "stripe"},
+			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, TxnCategory: "Development", SourceType: domain.LedgerSourceTypeStripe},
 		},
 	}
 
@@ -301,7 +301,7 @@ func TestGetRecentDonations_EnrichesProjectName(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, SourceType: "stripe"},
+			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, SourceType: domain.LedgerSourceTypeStripe},
 		},
 	}
 
@@ -326,7 +326,7 @@ func TestGetRecentDonations_IndividualDonor(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-2", UserID: "user-1", Amount: 5_000, TxnDate: 1_700_000_000, SourceType: "stripe"},
+			{TxnID: "txn-2", UserID: "user-1", Amount: 5_000, TxnDate: 1_700_000_000, SourceType: domain.LedgerSourceTypeStripe},
 		},
 	}
 
@@ -352,7 +352,7 @@ func TestGetRecentDonations_FallsBackToSubmitterName(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-3", UserID: "user-unknown", SubmitterName: "Carol", Amount: 2_000, SourceType: "stripe"},
+			{TxnID: "txn-3", UserID: "user-unknown", SubmitterName: "Carol", Amount: 2_000, SourceType: domain.LedgerSourceTypeStripe},
 		},
 	}
 
@@ -374,7 +374,7 @@ func TestGetRecentDonations_AnonymousFallback(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-4", UserID: "user-unknown", SubmitterName: "", Amount: 1_000, SourceType: "stripe"},
+			{TxnID: "txn-4", UserID: "user-unknown", SubmitterName: "", Amount: 1_000, SourceType: domain.LedgerSourceTypeStripe},
 		},
 	}
 
@@ -395,9 +395,9 @@ func TestGetRecentDonations_DeduplicatesByTxnID(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-dup", UserID: "user-1", Amount: 5000, TxnDate: 1_700_000_000, SourceType: "stripe"},
-			{TxnID: "txn-dup", UserID: "user-1", Amount: 5000, TxnDate: 1_700_000_000, SourceType: "stripe"},
-			{TxnID: "txn-unique", UserID: "user-1", Amount: 2500, TxnDate: 1_700_000_100, SourceType: "stripe"},
+			{TxnID: "txn-dup", UserID: "user-1", Amount: 5000, TxnDate: 1_700_000_000, SourceType: domain.LedgerSourceTypeStripe},
+			{TxnID: "txn-dup", UserID: "user-1", Amount: 5000, TxnDate: 1_700_000_000, SourceType: domain.LedgerSourceTypeStripe},
+			{TxnID: "txn-unique", UserID: "user-1", Amount: 2500, TxnDate: 1_700_000_100, SourceType: domain.LedgerSourceTypeStripe},
 		},
 	}
 
@@ -426,7 +426,7 @@ func TestGetRecentDonations_FiltersNonStripeSourceType(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-stripe", OrganizationID: "org-1", Amount: 300_000, TxnDate: 1_700_000_000, SourceType: "stripe"},
+			{TxnID: "txn-stripe", OrganizationID: "org-1", Amount: 300_000, TxnDate: 1_700_000_000, SourceType: domain.LedgerSourceTypeStripe},
 			{TxnID: "txn-expensify-1", OrganizationID: "org-1", Amount: 300_000, TxnDate: 1_700_000_000, SourceType: "expensify"},
 			{TxnID: "txn-expensify-2", OrganizationID: "org-1", Amount: 450_000, TxnDate: 1_700_000_000, SourceType: "expensify"},
 		},
@@ -549,7 +549,7 @@ func TestGetRecentDonations_EnrichmentRepoError(t *testing.T) {
 	repo := &testStatisticsRepo{err: errors.New("db connection lost")}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-1", OrganizationID: "org-1", Amount: 50_000, SourceType: "stripe"},
+			{TxnID: "txn-1", OrganizationID: "org-1", Amount: 50_000, SourceType: domain.LedgerSourceTypeStripe},
 		},
 	}
 

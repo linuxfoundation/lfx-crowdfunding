@@ -22,10 +22,6 @@ const (
 	donorTypeIndividual   = "individual"
 	unknownOrgName        = "Unknown Organization"
 	anonymousName         = "Anonymous"
-	// ledgerDonationSourceType is the only source type we accept in recent
-	// donations. Expensify allocations and other non-Stripe sources bypass the
-	// CF donations table and must not appear in the recent donations feed.
-	ledgerDonationSourceType = "stripe"
 )
 
 // StatisticsService provides platform-wide aggregate data.
@@ -185,7 +181,7 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	seenTxnIDs := make(map[string]struct{}, len(raw))
 	uniqueRaw := make([]clients.LedgerRecentDonation, 0, len(raw))
 	for _, d := range raw {
-		if d.SourceType != ledgerDonationSourceType {
+		if d.SourceType != domain.LedgerSourceTypeStripe {
 			continue
 		}
 		if d.TxnID != "" {
