@@ -263,7 +263,7 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, TxnCategory: "Development"},
+			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, TxnCategory: "Development", SourceType: "stripe"},
 		},
 	}
 
@@ -301,7 +301,7 @@ func TestGetRecentDonations_EnrichesProjectName(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000},
+			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, SourceType: "stripe"},
 		},
 	}
 
@@ -326,7 +326,7 @@ func TestGetRecentDonations_IndividualDonor(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-2", UserID: "user-1", Amount: 5_000, TxnDate: 1_700_000_000},
+			{TxnID: "txn-2", UserID: "user-1", Amount: 5_000, TxnDate: 1_700_000_000, SourceType: "stripe"},
 		},
 	}
 
@@ -352,7 +352,7 @@ func TestGetRecentDonations_FallsBackToSubmitterName(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-3", UserID: "user-unknown", SubmitterName: "Carol", Amount: 2_000},
+			{TxnID: "txn-3", UserID: "user-unknown", SubmitterName: "Carol", Amount: 2_000, SourceType: "stripe"},
 		},
 	}
 
@@ -374,7 +374,7 @@ func TestGetRecentDonations_AnonymousFallback(t *testing.T) {
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-4", UserID: "user-unknown", SubmitterName: "", Amount: 1_000},
+			{TxnID: "txn-4", UserID: "user-unknown", SubmitterName: "", Amount: 1_000, SourceType: "stripe"},
 		},
 	}
 
@@ -385,6 +385,63 @@ func TestGetRecentDonations_AnonymousFallback(t *testing.T) {
 	}
 	if resp.Data[0].DonorName != anonymousName {
 		t.Errorf("DonorName: want %q, got %s", anonymousName, resp.Data[0].DonorName)
+	}
+}
+
+func TestGetRecentDonations_DeduplicatesByTxnID(t *testing.T) {
+	repo := &testStatisticsRepo{
+		orgs:  map[string]models.Organization{},
+		users: map[string]models.User{"user-1": {ID: "user-1", Name: "Bob"}},
+	}
+	ledger := &testLedgerClient{
+		recentDonations: []clients.LedgerRecentDonation{
+			{TxnID: "txn-dup", UserID: "user-1", Amount: 5000, TxnDate: 1_700_000_000, SourceType: "stripe"},
+			{TxnID: "txn-dup", UserID: "user-1", Amount: 5000, TxnDate: 1_700_000_000, SourceType: "stripe"},
+			{TxnID: "txn-unique", UserID: "user-1", Amount: 2500, TxnDate: 1_700_000_100, SourceType: "stripe"},
+		},
+	}
+
+	svc := newStatsSvc(repo, ledger)
+	resp, err := svc.GetRecentDonations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(resp.Data) != 2 {
+		t.Fatalf("expected 2 donations after dedupe, got %d", len(resp.Data))
+	}
+	if resp.Data[0].TxnID != "txn-dup" {
+		t.Errorf("first TxnID: want txn-dup, got %q", resp.Data[0].TxnID)
+	}
+	if resp.Data[1].TxnID != "txn-unique" {
+		t.Errorf("second TxnID: want txn-unique, got %q", resp.Data[1].TxnID)
+	}
+}
+
+func TestGetRecentDonations_FiltersNonStripeSourceType(t *testing.T) {
+	// Only "stripe" entries should appear; "expensify" allocations are filtered out.
+	repo := &testStatisticsRepo{
+		orgs:  map[string]models.Organization{"org-1": {ID: "org-1", Name: "LFDT"}},
+		users: map[string]models.User{},
+	}
+	ledger := &testLedgerClient{
+		recentDonations: []clients.LedgerRecentDonation{
+			{TxnID: "txn-stripe", OrganizationID: "org-1", Amount: 300_000, TxnDate: 1_700_000_000, SourceType: "stripe"},
+			{TxnID: "txn-expensify-1", OrganizationID: "org-1", Amount: 300_000, TxnDate: 1_700_000_000, SourceType: "expensify"},
+			{TxnID: "txn-expensify-2", OrganizationID: "org-1", Amount: 450_000, TxnDate: 1_700_000_000, SourceType: "expensify"},
+		},
+	}
+
+	svc := newStatsSvc(repo, ledger)
+	resp, err := svc.GetRecentDonations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("expected 1 donation (stripe only), got %d", len(resp.Data))
+	}
+	if resp.Data[0].TxnID != "txn-stripe" {
+		t.Errorf("TxnID: want txn-stripe, got %q", resp.Data[0].TxnID)
 	}
 }
 
@@ -492,7 +549,7 @@ func TestGetRecentDonations_EnrichmentRepoError(t *testing.T) {
 	repo := &testStatisticsRepo{err: errors.New("db connection lost")}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-1", OrganizationID: "org-1", Amount: 50_000},
+			{TxnID: "txn-1", OrganizationID: "org-1", Amount: 50_000, SourceType: "stripe"},
 		},
 	}
 
