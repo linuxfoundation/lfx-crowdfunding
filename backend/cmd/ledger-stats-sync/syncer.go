@@ -165,6 +165,8 @@ func mapBalance(
 		feeBalance = -feeBalance
 	}
 
+	supporters := len(raw.Sponsors.Orgs) + len(raw.Sponsors.Individuals)
+
 	return models.LedgerStats{
 		InitiativeID:          raw.ProjectID,
 		TotalRaisedCents:      raw.TotalCredit,
@@ -172,7 +174,7 @@ func mapBalance(
 		TotalBalanceCents:     raw.TotalBalance,
 		AvailableBalanceCents: raw.AvailableBalance,
 		FeeBalanceCents:       feeBalance,
-		Supporters:            raw.Backers, // Ledger "backers" → DB supporters
+		Supporters:            supporters, // count of unique org + individual donors
 		Sponsors:              enrichSponsors(raw.Sponsors, orgMap, userMap),
 	}
 }
