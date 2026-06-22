@@ -539,15 +539,8 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		existing.Slug = *input.Slug
 	}
 	if input.Status != nil {
-		if !input.Status.IsValid() {
-			return nil, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, *input.Status)
-		}
-		// published, declined, and pending are exclusively set by the approval workflow.
-		// Allowing owners to set these directly would bypass the review process.
-		switch *input.Status {
-		case models.StatusPublished, models.StatusDeclined, models.StatusPending:
-			return nil, fmt.Errorf("%w: status %q cannot be set directly; use the approval workflow",
-				domain.ErrForbidden, *input.Status)
+		if err := validateOwnerStatusTransition(existing.Status, *input.Status); err != nil {
+			return nil, err
 		}
 		existing.Status = *input.Status
 	}
@@ -711,6 +704,34 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 		s.syncReimbursementPolicy(ctx, processed)
 	}
 	return processed, nil
+}
+
+// validateOwnerStatusTransition validates status changes requested through owner
+// update flows. The permitted transitions are:
+//
+//	submitted  → pending | declined
+//	pending    → declined
+//	published  → hidden
+//	hidden     → published
+func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
+	if !to.IsValid() {
+		return fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, to)
+	}
+
+	allowed := map[models.InitiativeStatus][]models.InitiativeStatus{
+		models.StatusSubmitted: {models.StatusPending, models.StatusDeclined},
+		models.StatusPending:   {models.StatusDeclined},
+		models.StatusPublished: {models.StatusHidden},
+		models.StatusHidden:    {models.StatusPublished},
+	}
+	for _, permitted := range allowed[from] {
+		if to.EqualFold(permitted) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w: status transition %q -> %q is not permitted for owners",
+		domain.ErrForbidden, from, to)
 }
 
 // GetTransactions fetches transactions from Ledger and enriches each with donor

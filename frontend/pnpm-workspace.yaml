@@ -5,7 +5,8 @@ packages:
   - "."
 
 overrides:
-  dompurify: "^3.4.9"
+  dompurify: ">=3.4.11"
+  undici: "7.28.0"
   ws: ">=8.21.0 <9"
   devalue: "^5.8.1"
   esbuild: ">=0.28.1"

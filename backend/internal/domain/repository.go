@@ -83,6 +83,9 @@ type SubscriptionRepository interface {
 type OrganizationRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Organization, error)
 	ListByOwner(ctx context.Context, ownerID string) ([]models.Organization, error)
+	Create(ctx context.Context, ownerID string, input models.OrganizationCreateInput) (*models.Organization, error)
+	Update(ctx context.Context, id string, ownerID string, input models.OrganizationUpdateInput) (*models.Organization, error)
+	Delete(ctx context.Context, id string, ownerID string) error
 }
 
 // UserRepository defines persistence operations for users.

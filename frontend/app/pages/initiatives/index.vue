@@ -9,5 +9,18 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import InitiativesView from '~/components/modules/initiatives/view/initiatives.vue';
 
-useHead({ title: 'Initiatives' });
+const title = 'Initiatives';
+const description =
+  'Browse all open source initiatives on LFX Crowdfunding. Support projects, mentorships, events, and security research from the Linux Foundation ecosystem.';
+
+useHead({ title });
+useSeoMeta({
+  description,
+  ogTitle: `${title} | LFX Crowdfunding`,
+  ogDescription: description,
+  ogType: 'website',
+  twitterCard: 'summary_large_image',
+  twitterTitle: `${title} | LFX Crowdfunding`,
+  twitterDescription: description,
+});
 </script>

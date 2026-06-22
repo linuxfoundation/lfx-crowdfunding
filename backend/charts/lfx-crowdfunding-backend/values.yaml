@@ -144,8 +144,8 @@ mentorshipSyncCronJob:
   # Override to "/app/testdata/programs.json" in DEV.
   fixtureFile: ""
   image:
-    # Defaults to the same repository and tag as the main backend image.
-    # Both binaries are built into the same Docker image.
+    # Defaults to same repository and tag as the main API image.
+    # Override only if building a separate image for the CronJob.
     repository: ""
     tag: ""
   resources:

@@ -173,6 +173,9 @@ func (c *donationStripeClient) CreateSubscription(_ context.Context, _ models.St
 func (c *donationStripeClient) CancelSubscription(_ context.Context, _ string) error {
 	return nil
 }
+func (c *donationStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 func (c *donationStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }

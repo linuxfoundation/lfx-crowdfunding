@@ -1,12 +1,30 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
+
+const appUrl = (process.env.NUXT_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+const defaultDescription = 'Fund open source projects and mentorships through LFX.';
+
 export default {
   titleTemplate: '%s | LFX Crowdfunding',
   htmlAttrs: { lang: 'en' },
   meta: [
     { charset: 'utf-8' },
     { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-    { name: 'description', content: 'Fund open source projects and mentorships through LFX.' },
+    { name: 'description', content: defaultDescription },
+    // Open Graph defaults — overridden per-page via useSeoMeta
+    { hid: 'og:type', property: 'og:type', content: 'website' },
+    { hid: 'og:site_name', property: 'og:site_name', content: 'LFX Crowdfunding' },
+    { hid: 'og:title', property: 'og:title', content: 'LFX Crowdfunding' },
+    { hid: 'og:description', property: 'og:description', content: defaultDescription },
+    { hid: 'og:url', property: 'og:url', content: appUrl },
+    { hid: 'og:image', property: 'og:image', content: `${appUrl}/og-image.png` },
+    { hid: 'og:image:width', property: 'og:image:width', content: '1200' },
+    { hid: 'og:image:height', property: 'og:image:height', content: '630' },
+    // Twitter Card defaults
+    { hid: 'twitter:card', name: 'twitter:card', content: 'summary_large_image' },
+    { hid: 'twitter:title', name: 'twitter:title', content: 'LFX Crowdfunding' },
+    { hid: 'twitter:description', name: 'twitter:description', content: defaultDescription },
+    { hid: 'twitter:image', name: 'twitter:image', content: `${appUrl}/og-image.png` },
   ],
   link: [
     {
