@@ -174,14 +174,33 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		return nil, fmt.Errorf("get platform recent donations: %w", err)
 	}
 
+	// Filter to Stripe-originated donations only. Expensify fund allocations and
+	// other non-Stripe source types bypass the CF donations table and produce
+	// duplicate entries for the same donor/day that do not match initiative Financials.
+	// Also deduplicate by TxnID to guard against upstream duplicates.
+	seenTxnIDs := make(map[string]struct{}, len(raw))
+	uniqueRaw := make([]clients.LedgerRecentDonation, 0, len(raw))
+	for _, d := range raw {
+		if d.SourceType != domain.LedgerSourceTypeStripe {
+			continue
+		}
+		if d.TxnID != "" {
+			if _, exists := seenTxnIDs[d.TxnID]; exists {
+				continue
+			}
+			seenTxnIDs[d.TxnID] = struct{}{}
+		}
+		uniqueRaw = append(uniqueRaw, d)
+	}
+
 	// Collect unique IDs for enrichment to avoid redundant DB work.
-	orgIDs := make([]string, 0, len(raw))
-	userIDs := make([]string, 0, len(raw))
-	projectIDs := make([]string, 0, len(raw))
+	orgIDs := make([]string, 0, len(uniqueRaw))
+	userIDs := make([]string, 0, len(uniqueRaw))
+	projectIDs := make([]string, 0, len(uniqueRaw))
 	seenOrgs := map[string]bool{}
 	seenUsers := map[string]bool{}
 	seenProjects := map[string]bool{}
-	for _, d := range raw {
+	for _, d := range uniqueRaw {
 		if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
 			orgIDs = append(orgIDs, d.OrganizationID)
 			seenOrgs[d.OrganizationID] = true
@@ -211,8 +230,8 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		return nil, fmt.Errorf("enrich project names: %w", err)
 	}
 
-	donations := make([]models.RecentDonation, 0, len(raw))
-	for _, d := range raw {
+	donations := make([]models.RecentDonation, 0, len(uniqueRaw))
+	for _, d := range uniqueRaw {
 		entry := models.RecentDonation{
 			TxnID:       d.TxnID,
 			ProjectID:   d.ProjectID,
