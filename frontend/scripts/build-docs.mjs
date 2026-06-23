@@ -19,7 +19,12 @@ const OUT_FILE = resolve(import.meta.dirname, '../public/assets/docs/search-inde
 function parseFrontmatter(raw) {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) return { data: {}, content: raw };
-  const data = /** @type {Record<string, unknown>} */ (parseYaml(match[1]) ?? {});
+  let data = /** @type {Record<string, unknown>} */ ({});
+  try {
+    data = /** @type {Record<string, unknown>} */ (parseYaml(match[1]) ?? {});
+  } catch {
+    // malformed frontmatter — fall back to empty metadata
+  }
   return { data, content: match[2] };
 }
 

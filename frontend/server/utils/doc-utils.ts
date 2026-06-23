@@ -31,7 +31,12 @@ export { pathExists };
 export function parseFrontmatter(raw: string): { data: Record<string, unknown>; content: string } {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) return { data: {}, content: raw };
-  const data = (parseYaml(match[1]) ?? {}) as Record<string, unknown>;
+  let data: Record<string, unknown> = {};
+  try {
+    data = (parseYaml(match[1]) ?? {}) as Record<string, unknown>;
+  } catch {
+    // malformed frontmatter — fall back to empty metadata
+  }
   return { data, content: match[2] };
 }
 

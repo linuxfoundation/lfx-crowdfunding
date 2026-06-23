@@ -59,7 +59,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute } from 'nuxt/app';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import { useDocumentationNav } from '~/composables/documentation/useDocumentationNav';
