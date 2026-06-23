@@ -216,8 +216,8 @@ func TestMapBalance(t *testing.T) {
 				AvailableBalance: 650,
 				FeeBalance:       -50,
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: "org-1"}, {ID: "org-2"}, {ID: "org-3"}},
-					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}, {ID: "auth0|u2"}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-1", Total: 100}, {ID: "org-2", Total: 200}, {ID: "org-3", Total: 300}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1", Total: 50}, {ID: "auth0|u2", Total: 75}},
 				},
 			},
 			wantTotalRaised:  1000,
@@ -225,28 +225,50 @@ func TestMapBalance(t *testing.T) {
 			wantTotalBalance: 700,
 			wantAvailable:    650,
 			wantFeeBalance:   50,
-			wantSupporters:   5, // 3 orgs + 2 individuals
+			wantSupporters:   5, // 3 orgs + 2 individuals (all positive totals)
 		},
 		{
 			name: "org-only donors counted as supporters",
 			raw: models.LedgerRawBalance{
-				ProjectID:   "sos",
+				ProjectID:   "proj",
 				TotalCredit: 72600000,
 				Backers:     1, // Ledger backers field only counts individuals
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: "org-google"}, {ID: "org-ms"}, {ID: "org-meta"}},
-					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-google", Total: 1000000}, {ID: "org-ms", Total: 500000}, {ID: "org-meta", Total: 250000}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1", Total: 100}},
 				},
 			},
 			wantTotalRaised: 72600000,
 			wantSupporters:  4, // 3 orgs + 1 individual (not raw.Backers=1)
 		},
 		{
+			name: "expense recipients with negative totals are not counted as supporters",
+			raw: models.LedgerRawBalance{
+				ProjectID:   "sos",
+				TotalCredit: 72599000,
+				Backers:     2,
+				Sponsors: models.LedgerRawSponsors{
+					// 1 donor org (positive) + 15 expense recipients (negative)
+					Orgs: []models.LedgerRawSponsor{
+						{ID: "org-google", Total: 100000000}, // donor ✓
+						{ID: "org-illia", Total: -50500},     // expense recipient ✗
+						{ID: "org-seth", Total: -100000},     // expense recipient ✗
+					},
+					// 1 donor individual (positive)
+					Individuals: []models.LedgerRawSponsor{
+						{ID: "auth0|michal", Total: 400}, // donor ✓
+					},
+				},
+			},
+			wantTotalRaised: 72599000,
+			wantSupporters:  2, // only positive-total entries: org-google + auth0|michal
+		},
+		{
 			name: "empty IDs are excluded from supporter count",
 			raw: models.LedgerRawBalance{
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: ""}, {ID: "org-1"}},
-					Individuals: []models.LedgerRawSponsor{{ID: ""}, {ID: "auth0|u1"}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "", Total: 100}, {ID: "org-1", Total: 100}},
+					Individuals: []models.LedgerRawSponsor{{ID: "", Total: 100}, {ID: "auth0|u1", Total: 100}},
 				},
 			},
 			wantSupporters: 2, // empty IDs dropped; 1 org + 1 individual
@@ -255,8 +277,8 @@ func TestMapBalance(t *testing.T) {
 			name: "duplicate IDs are counted once",
 			raw: models.LedgerRawBalance{
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: "org-1"}, {ID: "org-1"}},
-					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}, {ID: "auth0|u1"}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-1", Total: 100}, {ID: "org-1", Total: 100}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1", Total: 100}, {ID: "auth0|u1", Total: 100}},
 				},
 			},
 			wantSupporters: 2, // deduped: 1 unique org + 1 unique individual
