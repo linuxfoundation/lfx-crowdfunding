@@ -112,7 +112,7 @@ jobs:
         run: |
           set -euo pipefail
           APP_VERSION="${REF_NAME#v}"
-          CHART_VERSION="$(yq '.version' backend/charts/lfx-crowdfunding-backend/Chart.yaml)"
+          CHART_VERSION="${REF_NAME#v}"
           echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
           echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
 
@@ -172,7 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           APP_VERSION="${REF_NAME#v}"
-          CHART_VERSION="$(yq '.version' frontend/charts/lfx-crowdfunding-frontend/Chart.yaml)"
+          CHART_VERSION="${REF_NAME#v}"
           echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
           echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
 

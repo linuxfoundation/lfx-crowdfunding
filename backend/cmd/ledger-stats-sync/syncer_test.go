@@ -215,14 +215,51 @@ func TestMapBalance(t *testing.T) {
 				TotalBalance:     700,
 				AvailableBalance: 650,
 				FeeBalance:       -50,
-				Backers:          5,
+				Sponsors: models.LedgerRawSponsors{
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-1"}, {ID: "org-2"}, {ID: "org-3"}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}, {ID: "auth0|u2"}},
+				},
 			},
 			wantTotalRaised:  1000,
 			wantTotalDebited: 300,
 			wantTotalBalance: 700,
 			wantAvailable:    650,
 			wantFeeBalance:   50,
-			wantSupporters:   5,
+			wantSupporters:   5, // 3 orgs + 2 individuals
+		},
+		{
+			name: "org-only donors counted as supporters",
+			raw: models.LedgerRawBalance{
+				ProjectID:   "sos",
+				TotalCredit: 72600000,
+				Backers:     1, // Ledger backers field only counts individuals
+				Sponsors: models.LedgerRawSponsors{
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-google"}, {ID: "org-ms"}, {ID: "org-meta"}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}},
+				},
+			},
+			wantTotalRaised: 72600000,
+			wantSupporters:  4, // 3 orgs + 1 individual (not raw.Backers=1)
+		},
+		{
+			name: "empty IDs are excluded from supporter count",
+			raw: models.LedgerRawBalance{
+				Sponsors: models.LedgerRawSponsors{
+					Orgs:        []models.LedgerRawSponsor{{ID: ""}, {ID: "org-1"}},
+					Individuals: []models.LedgerRawSponsor{{ID: ""}, {ID: "auth0|u1"}},
+				},
+			},
+			wantSupporters: 2, // empty IDs dropped; 1 org + 1 individual
+		},
+		{
+			name: "duplicate IDs are counted once",
+			raw: models.LedgerRawBalance{
+				Sponsors: models.LedgerRawSponsors{
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-1"}, {ID: "org-1"}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}, {ID: "auth0|u1"}},
+				},
+			},
+			wantSupporters: 2, // deduped: 1 unique org + 1 unique individual
 		},
 		{
 			name: "already positive debit and fee are unchanged",
@@ -459,8 +496,8 @@ func TestSyncer_Run_upsertsWithEnrichedSponsors(t *testing.T) {
 	if got.FeeBalanceCents != 20 {
 		t.Errorf("FeeBalanceCents: got %d, want 20 (ABS)", got.FeeBalanceCents)
 	}
-	if got.Supporters != 3 {
-		t.Errorf("Supporters: got %d, want 3", got.Supporters)
+	if got.Supporters != 2 { // 1 org + 1 individual
+		t.Errorf("Supporters: got %d, want 2", got.Supporters)
 	}
 
 	if len(got.Sponsors.Orgs) != 1 {

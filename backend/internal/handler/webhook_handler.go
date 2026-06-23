@@ -18,12 +18,10 @@ import (
 	stripe "github.com/stripe/stripe-go/v85"
 )
 
-// ledgerSourceType and ledgerTxnType are the fixed values sent to the Ledger
-// service for all charges originating from this service.
-const (
-	ledgerSourceType = "stripe"
-	ledgerTxnType    = "credit"
-)
+// ledgerTxnType is the fixed transaction type sent to the Ledger service for
+// all charges originating from this service. The source type is the shared
+// domain.LedgerSourceTypeStripe constant.
+const ledgerTxnType = "credit"
 
 // WebhookHandler handles inbound Stripe webhook events.
 // Signature validation is ALWAYS performed before processing — never skip this check.
@@ -215,7 +213,7 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		UserID:          userID,
 		OrganizationID:  pi.Metadata["org_id"],
 		AccountEmail:    donorEmail,
-		SourceType:      ledgerSourceType,
+		SourceType:      domain.LedgerSourceTypeStripe,
 		SourceTxnID:     sourceTxnID,
 		SourceAccountID: customerID,
 		TxnType:         ledgerTxnType,
