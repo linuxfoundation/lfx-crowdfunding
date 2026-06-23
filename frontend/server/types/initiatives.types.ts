@@ -51,6 +51,7 @@ export interface BackendInitiative {
     total_disbursed_cents: number;
     available_cents: number;
   };
+  custom_websites?: { id?: string; name?: string; url: string }[];
 }
 
 export interface BackendResponse {
