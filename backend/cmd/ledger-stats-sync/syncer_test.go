@@ -248,7 +248,7 @@ func TestMapBalance(t *testing.T) {
 				TotalCredit: 72599000,
 				Backers:     2,
 				Sponsors: models.LedgerRawSponsors{
-					// 1 donor org (positive) + 15 expense recipients (negative)
+					// 1 donor org (positive) + 2 expense recipients (negative)
 					Orgs: []models.LedgerRawSponsor{
 						{ID: "org-google", Total: 100000000}, // donor ✓
 						{ID: "org-illia", Total: -50500},     // expense recipient ✗
