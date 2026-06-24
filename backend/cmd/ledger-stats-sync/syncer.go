@@ -154,15 +154,17 @@ func collectSponsorIDs(balances []models.LedgerRawBalance) (orgIDs, userIDs []st
 //
 // Normalisation rules:
 //   - TotalDebit and FeeBalance are stored negative by Ledger; ABS both.
-//   - TotalRaisedCents = max(raw.TotalCredit, sponsorPositiveSum). Ledger
-//     sometimes records fund disbursements as negative-amount "credit"
-//     transactions (txnType=credit, amount<0), which corrupts raw.TotalCredit.
-//     The sponsor list carries per-entity totals; summing positive entries
-//     recovers the actual donated amount.  When all credits are positive,
-//     raw.TotalCredit >= sponsorPositiveSum (possible unattributed donations)
-//     so we use raw.TotalCredit unchanged.
-//   - Negative credits also represent real expenses; their absolute value is
-//     added to TotalDebitedCents so "total expenses" reflects them correctly.
+//   - TotalRaisedCents recovers gross donations even when Ledger records fund
+//     disbursements as negative-amount "credit" transactions (txnType=credit,
+//     amount<0), which corrupt raw.TotalCredit.  The correction is:
+//     negSponsorAbs = Σ abs(sponsor.Total) for all sponsors with Total < 0
+//     TotalRaisedCents = max(0, raw.TotalCredit + negSponsorAbs)
+//     Derivation: raw.TotalCredit = grossPositive + negCreditSum, and
+//     negSponsorAbs ≈ abs(negCreditSum), so their sum cancels the pollution
+//     and yields grossPositive regardless of unattributed positive credits.
+//   - negSponsorAbs is also added to TotalDebitedCents: negative-credit
+//     transactions use a distinct txnType from proper debits, so there is
+//     no overlap with raw.TotalDebit and no double-counting.
 func mapBalance(
 	raw models.LedgerRawBalance,
 	orgMap map[string]models.Organization,
@@ -177,27 +179,27 @@ func mapBalance(
 		feeBalance = -feeBalance
 	}
 
-	// Sum positive sponsor totals to reconstruct the true donated amount.
-	var sponsorPositiveSum int64
+	// Sum the absolute value of negative sponsor totals.
+	// These represent disbursements that Ledger misrecords as negative-amount
+	// credit transactions, corrupting raw.TotalCredit.
+	var negSponsorAbs int64
 	for _, o := range raw.Sponsors.Orgs {
-		if o.Total > 0 {
-			sponsorPositiveSum += o.Total
+		if o.Total < 0 {
+			negSponsorAbs += -o.Total
 		}
 	}
 	for _, u := range raw.Sponsors.Individuals {
-		if u.Total > 0 {
-			sponsorPositiveSum += u.Total
+		if u.Total < 0 {
+			negSponsorAbs += -u.Total
 		}
 	}
-	totalRaised := raw.TotalCredit
-	if sponsorPositiveSum > totalRaised {
-		totalRaised = sponsorPositiveSum
+	totalRaised := raw.TotalCredit + negSponsorAbs
+	if totalRaised < 0 {
+		totalRaised = 0
 	}
-	// Any gap between sponsorPositiveSum and raw.TotalCredit represents
-	// disbursements recorded as negative credits; treat them as expenses.
-	if negCreditAbs := sponsorPositiveSum - raw.TotalCredit; negCreditAbs > 0 {
-		totalDebit += negCreditAbs
-	}
+	// Disbursements recorded as negative credits are real expenses not already
+	// present in raw.TotalDebit (different txnType; no double-counting).
+	totalDebit += negSponsorAbs
 
 	// Enrich first so the supporter count is derived from the same data that
 	// gets persisted to DB. enrichSponsors already drops entries with empty

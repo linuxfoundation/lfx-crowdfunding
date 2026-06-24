@@ -309,16 +309,15 @@ func TestMapBalance(t *testing.T) {
 		},
 		{
 			// Edge case: negative totalCredit with no sponsors (e.g. no transactions
-			// attributed to any org/user). sponsorPositiveSum=0, so totalRaised=0.
-			// The negative credit still counts as a disbursement expense.
-			name: "negative totalCredit with no sponsors: zero raised, disbursement tracked",
+			// attributed to any org/user). negSponsorAbs=0, so nothing can be recovered.
+			name: "negative totalCredit with no sponsors: zero raised, no disbursement data",
 			raw: models.LedgerRawBalance{
 				ProjectID:    "no-sponsors",
 				TotalCredit:  -4609,
 				TotalBalance: -4609,
 			},
-			wantTotalRaised:  0,    // sponsorPositiveSum=0; max(0, -4609)=0
-			wantTotalDebited: 4609, // negCreditAbs = 0-(-4609) = 4609
+			wantTotalRaised:  0, // clamped: -4609 + 0 < 0
+			wantTotalDebited: 0, // no attributed negative sponsors to derive disbursements from
 			wantTotalBalance: -4609,
 		},
 		{
@@ -341,13 +340,40 @@ func TestMapBalance(t *testing.T) {
 					},
 				},
 			},
-			// sponsorPositiveSum = 350000 + 462500 = 812500
-			// totalRaised = max(-4609, 812500) = 812500 ($8,125.00)
-			// negCreditAbs = 812500 - (-4609) = 817109 ($8,171.09)
+			// negSponsorAbs = 410859 + 406250 = 817109
+			// totalRaised   = -4609 + 817109  = 812500  ($8,125.00)
+			// totalDebit    = 0     + 817109  = 817109  ($8,171.09)
 			wantTotalRaised:  812500,
 			wantTotalDebited: 817109,
 			wantTotalBalance: -4609,
 			wantSupporters:   2, // org-msft + auth0|donor1
+		},
+		{
+			// Reviewer edge case: unattributed positive credits exist so
+			// raw.TotalCredit > sponsorPositiveSum.  The old sponsorPositiveSum
+			// approach would have left negCreditAbs ≤ 0 and lost both the
+			// gross-donations correction and the disbursement expense.
+			// The negSponsorAbs formula handles this correctly.
+			name: "unattributed positive credits plus negative-credit disbursement",
+			raw: models.LedgerRawBalance{
+				ProjectID: "mixed",
+				// gross = 1_000_000 positive credits (800_000 attributed + 200_000 anon)
+				// net   = 1_000_000 - 100_000 negative credit = 900_000
+				TotalCredit: 900000,
+				Sponsors: models.LedgerRawSponsors{
+					Orgs: []models.LedgerRawSponsor{
+						{ID: "org-a", Total: 800000},  // attributed donor ✓
+						{ID: "org-b", Total: -100000}, // disbursement ✗
+					},
+					// 200_000 in anonymous/unattributed credits not in sponsors list
+				},
+			},
+			// negSponsorAbs = 100_000
+			// totalRaised   = 900_000 + 100_000 = 1_000_000 (gross; old formula gave 900_000)
+			// totalDebit    = 0       + 100_000 = 100_000   (old formula gave 0)
+			wantTotalRaised:  1000000,
+			wantTotalDebited: 100000,
+			wantSupporters:   1, // org-a only
 		},
 	}
 
