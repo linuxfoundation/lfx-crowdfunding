@@ -269,6 +269,33 @@ func TestFlattenSponsors(t *testing.T) {
 	}
 }
 
+func TestFlattenSponsors_ExcludesNegativeAndZeroTotals(t *testing.T) {
+	// Expense payout recipients appear in the Ledger sponsor list with
+	// non-positive totals and must be excluded from the sponsors grid.
+	list := models.LedgerSponsorList{
+		Orgs: []models.LedgerSponsorOrg{
+			{ID: "google", Name: "Google", Total: 100_000_000_00}, // keep
+			{ID: "illia", Name: "Illia", Total: -50_500_00},       // expense recipient — drop
+			{ID: "seth", Name: "Seth", Total: -1_000_00},          // expense recipient — drop
+		},
+		Individuals: []models.LedgerSponsorUser{
+			{ID: "auth0|michal", Name: "Michal", Total: 400}, // keep
+			{ID: "auth0|zero", Name: "Zero", Total: 0},       // zero — drop
+		},
+	}
+
+	result := flattenSponsors(list)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 sponsors (positive totals only), got %d", len(result))
+	}
+	for _, s := range result {
+		if s.TotalCents <= 0 {
+			t.Errorf("sponsor %q with non-positive total %d slipped through", s.ID, s.TotalCents)
+		}
+	}
+}
+
 func TestFlattenSponsors_Empty(t *testing.T) {
 	result := flattenSponsors(models.LedgerSponsorList{})
 	if result == nil {
@@ -281,7 +308,7 @@ func TestFlattenSponsors_Empty(t *testing.T) {
 
 func TestFlattenSponsors_GeneratesAvatarWhenMissing(t *testing.T) {
 	list := models.LedgerSponsorList{
-		Orgs: []models.LedgerSponsorOrg{{ID: "org-1", Name: "Acme", AvatarURL: ""}},
+		Orgs: []models.LedgerSponsorOrg{{ID: "org-1", Name: "Acme", AvatarURL: "", Total: 100}},
 	}
 	result := flattenSponsors(list)
 	if result[0].AvatarURL == "" {

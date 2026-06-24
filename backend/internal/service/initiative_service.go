@@ -88,10 +88,14 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 }
 
 // flattenSponsors merges orgs and individuals from the cached sponsor list into a
-// single flat slice sorted by total descending.
+// single flat slice sorted by total descending.  Entries with a non-positive
+// total are expense-payout recipients, not donors, and are excluded.
 func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	sponsors := make([]models.Sponsor, 0, len(list.Orgs)+len(list.Individuals))
 	for _, o := range list.Orgs {
+		if o.Total <= 0 {
+			continue
+		}
 		avatarURL := o.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(o.ID, o.Name)
@@ -99,6 +103,9 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: avatarURL, TotalCents: o.Total})
 	}
 	for _, u := range list.Individuals {
+		if u.Total <= 0 {
+			continue
+		}
 		avatarURL := u.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(u.ID, u.Name)
