@@ -1659,6 +1659,9 @@ func TestGetTransactions_NegativeAmountsFilteredForDonations(t *testing.T) {
 	if len(list.Data) != 2 {
 		t.Fatalf("expected 2 positive-amount donations, got %d", len(list.Data))
 	}
+	if list.TotalCount != 2 {
+		t.Errorf("TotalCount must match filtered slice length: want 2, got %d", list.TotalCount)
+	}
 	for _, txn := range list.Data {
 		if txn.AmountCents <= 0 {
 			t.Errorf("negative-amount transaction %q slipped through filter (amount=%d)", txn.ID, txn.AmountCents)
