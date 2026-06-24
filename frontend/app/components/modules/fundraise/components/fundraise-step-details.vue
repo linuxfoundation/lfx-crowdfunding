@@ -108,6 +108,7 @@ const createInitialProjectForm = (): ProjectFormData => ({
     projectName: '',
     elevatorPitch: '',
     topics: [],
+    repositoryUrl: '',
     websiteUrl: '',
     ciiProjectId: '',
     codeOfConductUrl: '',
@@ -234,6 +235,9 @@ const isCurrentSubStepValid = computed(() => {
     if (subStep.value === 0) return projectForm.value.hostingType !== null;
     if (subStep.value === 1 && projectForm.value.hostingType === 'github') {
       return projectForm.value.selectedRepo !== null;
+    }
+    if (subStep.value === 1 && projectForm.value.hostingType !== 'github') {
+      return projectForm.value.details.repositoryUrl.trim() !== '';
     }
     if (subStep.value === totalSubSteps.value - 1) {
       return projectForm.value.compliance.ofacConfirmed && projectForm.value.compliance.termsAccepted;

@@ -46,6 +46,7 @@ export interface ProjectDetailsData {
   projectName: string;
   elevatorPitch: string;
   topics: string[];
+  repositoryUrl: string;
   websiteUrl: string;
   ciiProjectId: string;
   codeOfConductUrl: string;
