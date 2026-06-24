@@ -1717,7 +1717,7 @@ func TestGetTransactions_TotalCountClampedByOffset(t *testing.T) {
 	ledger := &txnMockLedgerClient{
 		total: 10,
 		txns: []models.Transaction{
-			{ID: "t1", AmountCents: 400, Type: "donation"},     // keep
+			{ID: "t1", AmountCents: 400, Type: "donation"},      // keep
 			{ID: "t2", AmountCents: -8148000, Type: "donation"}, // drop
 			{ID: "t3", AmountCents: -1785000, Type: "donation"}, // drop
 		},
