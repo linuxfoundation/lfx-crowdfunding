@@ -751,6 +751,20 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 		return nil, err
 	}
 
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts (e.g. SOS pays grants out of its fund). These are not
+	// donations and must not appear in the "Donations received" table.
+	if txnType == "donation" {
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		list.Data = kept
+		list.TotalCount = len(kept)
+	}
+
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
 	return list, nil
 }

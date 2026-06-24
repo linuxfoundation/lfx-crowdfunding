@@ -1623,3 +1623,72 @@ func TestGetOwnerInfoBySlug_NullEmail(t *testing.T) {
 		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
 	}
 }
+
+// txnMockLedgerClient is a minimal Ledger client stub for GetTransactions tests.
+type txnMockLedgerClient struct {
+	mockLedgerClient
+	txns []models.Transaction
+}
+
+func (c *txnMockLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
+	return &models.TransactionList{Data: c.txns, TotalCount: len(c.txns)}, nil
+}
+
+func TestGetTransactions_NegativeAmountsFilteredForDonations(t *testing.T) {
+	t.Parallel()
+
+	ledger := &txnMockLedgerClient{txns: []models.Transaction{
+		{ID: "t1", AmountCents: 100000000, Type: "donation"}, // Google — keep
+		{ID: "t2", AmountCents: 400, Type: "donation"},       // Michal — keep
+		{ID: "t3", AmountCents: -8148000, Type: "donation"},  // grant payout stored as negative credit — drop
+		{ID: "t4", AmountCents: -1785000, Type: "donation"},  // another negative credit — drop
+	}}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 2 {
+		t.Fatalf("expected 2 positive-amount donations, got %d", len(list.Data))
+	}
+	for _, txn := range list.Data {
+		if txn.AmountCents <= 0 {
+			t.Errorf("negative-amount transaction %q slipped through filter (amount=%d)", txn.ID, txn.AmountCents)
+		}
+	}
+}
+
+func TestGetTransactions_NegativeAmountsNotFilteredForExpenses(t *testing.T) {
+	t.Parallel()
+
+	// Expense (reimbursement) transactions legitimately have negative amounts;
+	// the filter must not apply to them.
+	ledger := &txnMockLedgerClient{txns: []models.Transaction{
+		{ID: "e1", AmountCents: -50500, Type: "reimbursement"},
+		{ID: "e2", AmountCents: -100000, Type: "reimbursement"},
+	}}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	list, err := svc.GetTransactions(context.Background(), "some-id", "reimbursement", 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 2 {
+		t.Fatalf("expected 2 expense transactions, got %d", len(list.Data))
+	}
+}
