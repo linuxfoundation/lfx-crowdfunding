@@ -169,13 +169,19 @@ func mapBalance(
 	// gets persisted to DB. enrichSponsors already drops entries with empty
 	// IDs; the dedup set below guards against any upstream duplicates so the
 	// count stays consistent with the sponsors JSONB column.
+	// Only entries with a positive total are counted as supporters — negative
+	// totals represent expense payouts to recipients, not donor contributions.
 	enriched := enrichSponsors(raw.Sponsors, orgMap, userMap)
 	seen := make(map[string]struct{}, len(enriched.Orgs)+len(enriched.Individuals))
 	for _, o := range enriched.Orgs {
-		seen[o.ID] = struct{}{}
+		if o.Total > 0 {
+			seen[o.ID] = struct{}{}
+		}
 	}
 	for _, u := range enriched.Individuals {
-		seen[u.ID] = struct{}{}
+		if u.Total > 0 {
+			seen[u.ID] = struct{}{}
+		}
 	}
 
 	return models.LedgerStats{
