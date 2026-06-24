@@ -150,7 +150,19 @@ func collectSponsorIDs(balances []models.LedgerRawBalance) (orgIDs, userIDs []st
 }
 
 // mapBalance converts a LedgerRawBalance into a LedgerStats row ready for
-// upsert, applying ABS to negative Ledger fields and enriching sponsors.
+// upsert, normalising Ledger fields and enriching sponsors.
+//
+// Normalisation rules:
+//   - TotalDebit and FeeBalance are stored negative by Ledger; ABS both.
+//   - TotalRaisedCents = max(raw.TotalCredit, sponsorPositiveSum). Ledger
+//     sometimes records fund disbursements as negative-amount "credit"
+//     transactions (txnType=credit, amount<0), which corrupts raw.TotalCredit.
+//     The sponsor list carries per-entity totals; summing positive entries
+//     recovers the actual donated amount.  When all credits are positive,
+//     raw.TotalCredit >= sponsorPositiveSum (possible unattributed donations)
+//     so we use raw.TotalCredit unchanged.
+//   - Negative credits also represent real expenses; their absolute value is
+//     added to TotalDebitedCents so "total expenses" reflects them correctly.
 func mapBalance(
 	raw models.LedgerRawBalance,
 	orgMap map[string]models.Organization,
@@ -163,6 +175,28 @@ func mapBalance(
 	feeBalance := raw.FeeBalance
 	if feeBalance < 0 {
 		feeBalance = -feeBalance
+	}
+
+	// Sum positive sponsor totals to reconstruct the true donated amount.
+	var sponsorPositiveSum int64
+	for _, o := range raw.Sponsors.Orgs {
+		if o.Total > 0 {
+			sponsorPositiveSum += o.Total
+		}
+	}
+	for _, u := range raw.Sponsors.Individuals {
+		if u.Total > 0 {
+			sponsorPositiveSum += u.Total
+		}
+	}
+	totalRaised := raw.TotalCredit
+	if sponsorPositiveSum > totalRaised {
+		totalRaised = sponsorPositiveSum
+	}
+	// Any gap between sponsorPositiveSum and raw.TotalCredit represents
+	// disbursements recorded as negative credits; treat them as expenses.
+	if negCreditAbs := sponsorPositiveSum - raw.TotalCredit; negCreditAbs > 0 {
+		totalDebit += negCreditAbs
 	}
 
 	// Enrich first so the supporter count is derived from the same data that
@@ -186,7 +220,7 @@ func mapBalance(
 
 	return models.LedgerStats{
 		InitiativeID:          raw.ProjectID,
-		TotalRaisedCents:      raw.TotalCredit,
+		TotalRaisedCents:      totalRaised,
 		TotalDebitedCents:     totalDebit,
 		TotalBalanceCents:     raw.TotalBalance,
 		AvailableBalanceCents: raw.AvailableBalance,
