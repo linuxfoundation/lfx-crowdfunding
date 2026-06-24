@@ -761,8 +761,17 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 				kept = append(kept, t)
 			}
 		}
+		dropped := len(list.Data) - len(kept)
 		list.Data = kept
-		list.TotalCount = len(kept)
+		// Adjust the Ledger's total estimate by the number of rows dropped
+		// from this page.  Clamp to at least offset+len(kept) so the
+		// frontend's "nextOffset < totalCount" guard does not stop early
+		// when a page happens to contain mostly negative rows.
+		adjusted := list.TotalCount - dropped
+		if minTotal := offset + len(kept); adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
