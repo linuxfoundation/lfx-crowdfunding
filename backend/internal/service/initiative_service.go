@@ -751,6 +751,29 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 		return nil, err
 	}
 
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts (e.g. SOS pays grants out of its fund). These are not
+	// donations and must not appear in the "Donations received" table.
+	if txnType == "donation" {
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+		// Adjust the Ledger's total estimate by the number of rows dropped
+		// from this page.  Clamp to at least offset+len(kept) so the
+		// frontend's "nextOffset < totalCount" guard does not stop early
+		// when a page happens to contain mostly negative rows.
+		adjusted := list.TotalCount - dropped
+		if minTotal := offset + len(kept); adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
+
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
 	return list, nil
 }
