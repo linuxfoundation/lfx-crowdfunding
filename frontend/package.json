@@ -19,6 +19,7 @@
     "prepare": "cd .. && husky ./frontend/.husky"
   },
   "dependencies": {
+    "@datadog/browser-rum": "^7.3.0",
     "@linuxfoundation/lfx-ui-core": "^0.0.20",
     "@nuxt/eslint": "^1.12.1",
     "@nuxtjs/robots": "^6.1.1",
