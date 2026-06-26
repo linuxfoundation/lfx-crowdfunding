@@ -31,6 +31,7 @@ SPDX-License-Identifier: MIT
       <fundraise-project-details-step
         v-else-if="currentStep === detailsStepIndex"
         :model-value="modelValue.details"
+        :show-repository-url="modelValue.hostingType !== 'github'"
         @update:model-value="emit('update:modelValue', { ...modelValue, details: $event })"
       />
 
