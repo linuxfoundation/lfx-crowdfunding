@@ -223,3 +223,63 @@ func TestInitiativeRepository_GetByID_NotFound(t *testing.T) {
 		t.Errorf("error = %v, want ErrInitiativeNotFound", err)
 	}
 }
+
+func TestInitiativeRepository_ListPublished(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "list-published-owner")
+	repo := NewInitiativeRepository(testPool)
+
+	// Create a published initiative.
+	seedInitiative(t, ctx, owner.ID, "Zebra Fund", "zebra-fund")
+
+	// Create a non-published initiative — must be excluded from results.
+	hiddenInit := &models.Initiative{
+		ID:             uuid.New().String(),
+		InitiativeType: "project",
+		OwnerID:        owner.ID,
+		Name:           "Hidden Initiative",
+		Slug:           "hidden-initiative",
+		Status:         models.StatusHidden,
+	}
+	_, err := repo.Create(ctx, hiddenInit, models.InitiativeCreateInput{
+		InitiativeType: "project",
+		Name:           "Hidden Initiative",
+		Slug:           "hidden-initiative",
+	})
+	if err != nil {
+		t.Fatalf("Create() hidden initiative: %v", err)
+	}
+
+	// Create a second published initiative with a name that sorts before the first.
+	seedInitiative(t, ctx, owner.ID, "Alpha Project", "alpha-project")
+
+	results, err := repo.ListPublished(ctx)
+	if err != nil {
+		t.Fatalf("ListPublished() error = %v", err)
+	}
+
+	// Only the two published initiatives should be returned.
+	if len(results) != 2 {
+		t.Fatalf("ListPublished() returned %d items, want 2", len(results))
+	}
+
+	// Results must be ordered by name ascending.
+	if results[0].Name != "Alpha Project" {
+		t.Errorf("results[0].Name = %q, want %q", results[0].Name, "Alpha Project")
+	}
+	if results[1].Name != "Zebra Fund" {
+		t.Errorf("results[1].Name = %q, want %q", results[1].Name, "Zebra Fund")
+	}
+
+	// IDs must be non-empty.
+	for i, r := range results {
+		if r.ID == "" {
+			t.Errorf("results[%d].ID is empty", i)
+		}
+	}
+}

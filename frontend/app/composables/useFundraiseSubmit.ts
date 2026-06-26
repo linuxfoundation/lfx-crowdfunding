@@ -60,11 +60,12 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
 
   switch (type) {
     case 'project': {
-      const repoUrl = projectForm?.selectedRepo
-        ? projectForm.hostingType === 'github'
-          ? `https://github.com/${projectForm.selectedRepo}`
-          : projectForm.selectedRepo
-        : undefined;
+      const repoUrl =
+        projectForm?.hostingType === 'github'
+          ? projectForm.selectedRepo
+            ? `https://github.com/${projectForm.selectedRepo}`
+            : undefined
+          : projectForm?.details.repositoryUrl || undefined;
       return {
         initiativeType: 'project',
         name: projectForm?.details.projectName ?? '',

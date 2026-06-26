@@ -134,6 +134,11 @@ jobs:
               --variable=ON_ERROR_STOP=1 -f "$f"
           done
 
+      - name: Seed e2e data
+        run: |
+          psql "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding" \
+            --variable=ON_ERROR_STOP=1 -f "backend/db/e2e-seed.sql"
+
       - name: Build backend
         working-directory: backend
         run: go build -o bin/initiatives-api ./cmd/initiatives-api
@@ -234,7 +239,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: frontend/
+          context: .
           file: frontend/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

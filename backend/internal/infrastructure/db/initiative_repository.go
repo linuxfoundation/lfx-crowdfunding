@@ -175,6 +175,39 @@ func (r *InitiativeRepository) GetOwnerInfoBySlug(ctx context.Context, slug stri
 	return info, nil
 }
 
+// ListPublished returns the ID and Name of every published initiative, ordered by name.
+// Intended for M2M callers — no pagination, no Ledger enrichment.
+func (r *InitiativeRepository) ListPublished(ctx context.Context) ([]models.InitiativeSummary, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.ListPublished")
+	defer span.End()
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, name
+		FROM initiatives
+		WHERE LOWER(status) = $1
+		ORDER BY name`, models.StatusPublished)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list published initiatives: %w", err)
+	}
+	defer rows.Close()
+
+	var results []models.InitiativeSummary
+	for rows.Next() {
+		var s models.InitiativeSummary
+		if err := rows.Scan(&s.ID, &s.Name); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan published initiative: %w", err)
+		}
+		results = append(results, s)
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("iterate published initiatives: %w", err)
+	}
+	return results, nil
+}
+
 // List retrieves initiatives matching the filter with pagination.
 func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")
@@ -203,9 +236,18 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		args = append(args, filter.InitiativeType)
 		argN++
 	}
-	if filter.Status != "" {
-		where += fmt.Sprintf(" AND i.status = $%d", argN)
-		args = append(args, filter.Status)
+	switch {
+	case len(filter.Statuses) > 0:
+		placeholders := make([]string, len(filter.Statuses))
+		for i, s := range filter.Statuses {
+			placeholders[i] = fmt.Sprintf("$%d", argN)
+			args = append(args, strings.ToLower(string(s)))
+			argN++
+		}
+		where += " AND LOWER(i.status) IN (" + strings.Join(placeholders, ", ") + ")"
+	case filter.Status != "":
+		where += fmt.Sprintf(" AND LOWER(i.status) = $%d", argN)
+		args = append(args, strings.ToLower(string(filter.Status)))
 		argN++
 	}
 	if filter.Search != "" {
@@ -1356,6 +1398,58 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 	if err := rows.Err(); err != nil {
 		span.RecordError(err)
 		return result, fmt.Errorf("iterate users: %w", err)
+	}
+	return result, nil
+}
+
+// GetUsersByLegacyIDs returns a map of legacy_user_id → User for all IDs provided.
+// The Ledger service identifies users by their Auth0 subject (legacy_user_id),
+// so this method queries by that column rather than the internal UUID primary key.
+// Missing IDs are absent from the map.
+func (r *InitiativeRepository) GetUsersByLegacyIDs(ctx context.Context, legacyIDs []string) (map[string]models.User, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetUsersByLegacyIDs")
+	defer span.End()
+
+	result := make(map[string]models.User, len(legacyIDs))
+	if len(legacyIDs) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT legacy_user_id, name, avatar_url FROM users WHERE legacy_user_id = ANY($1)`
+	rows, err := r.pool.Query(ctx, q, legacyIDs)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get users by legacy IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var (
+			u         models.User
+			legacyID  *string
+			name      *string
+			avatarURL *string
+		)
+		if err := rows.Scan(&legacyID, &name, &avatarURL); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		if legacyID != nil {
+			u.LegacyUserID = *legacyID
+		}
+		if name != nil {
+			u.Name = *name
+		}
+		if avatarURL != nil {
+			u.AvatarURL = *avatarURL
+		}
+		if u.LegacyUserID != "" {
+			result[u.LegacyUserID] = u
+		}
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return result, fmt.Errorf("iterate users by legacy IDs: %w", err)
 	}
 	return result, nil
 }

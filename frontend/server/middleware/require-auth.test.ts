@@ -138,4 +138,31 @@ describe('require-auth middleware', () => {
       expect(mockCreateError).not.toHaveBeenCalled();
     });
   });
+
+  describe('POST /api/expense-email/:action/:reportId', () => {
+    it('throws 401 when no token is present', () => {
+      const event = makeEvent('POST', '/api/expense-email/approve/R-001');
+      expect(() => (requireAuth as (e: unknown) => void)(event)).toThrow();
+      expect(mockCreateError).toHaveBeenCalledWith({
+        statusCode: 401,
+        statusMessage: 'Authentication required',
+      });
+    });
+
+    it('passes through when a valid token is present', () => {
+      const event = makeEvent('POST', '/api/expense-email/approve/R-001', 'eyJtoken');
+      expect(() => (requireAuth as (e: unknown) => void)(event)).not.toThrow();
+    });
+
+    it('passes through for reject action with token', () => {
+      const event = makeEvent('POST', '/api/expense-email/reject/R-002', 'eyJtoken');
+      expect(() => (requireAuth as (e: unknown) => void)(event)).not.toThrow();
+    });
+
+    it('passes through for GET — wrong method is not protected', () => {
+      const event = makeEvent('GET', '/api/expense-email/approve/R-001');
+      expect(() => (requireAuth as (e: unknown) => void)(event)).not.toThrow();
+      expect(mockCreateError).not.toHaveBeenCalled();
+    });
+  });
 });

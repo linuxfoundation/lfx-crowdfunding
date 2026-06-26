@@ -6,23 +6,9 @@
 
 ---
 
-## Why this guide exists
+## Overview
 
-The current `donate-step-payment.vue` calls `stripe.createPaymentMethod()` directly.
-That works for basic card collection but has two problems:
-
-1. **No 3DS challenge.** Many European cards (and increasingly US cards) require the
-   cardholder to approve the charge in their banking app. Without 3DS, those charges
-   are declined. Stripe's fix is the **SetupIntent** flow — it authenticates the card
-   once at save-time, so future charges can reuse the authenticated payment method.
-
-2. **No saved card.** The current code creates a fresh PaymentMethod on every donation.
-   The backend is built around saving one card per user (`pm_xxx`) and reusing it —
-   there is no mechanism to pass a bare card token to the donation or subscription
-   endpoints.
-
-The backend is **already complete** for the correct flow. This guide covers what the
-frontend needs to build.
+CF uses Stripe's **SetupIntent** flow for card management. Cards are authenticated once at save-time (handling 3DS challenges where required) and stored as a `PaymentMethod` (`pm_xxx`) per user. Donations and subscriptions reuse the saved payment method rather than collecting card details on each transaction.
 
 ---
 
@@ -49,6 +35,7 @@ automatically from the user's HTTP-only session cookie.
 | 6 | `POST` | `/v1/initiatives/{id}/subscriptions` | JWT | `Idempotency-Key: <uuid>` | Creates a recurring subscription using a saved `pm_xxx`. |
 | 7 | `DELETE` | `/v1/subscriptions/{id}` | JWT | — | Cancels an active subscription. Returns `204`. |
 | 8 | `GET` | `/v1/me/subscriptions` | JWT | — | Lists the authenticated user's own subscriptions (paginated). |
+| 9 | `GET` | `/v1/me/subscriptions/{id}` | JWT | — | Returns one authenticated user's subscription by ID. |
 
 ### Response shapes
 
@@ -88,12 +75,27 @@ automatically from the user's HTTP-only session cookie.
     {
       "id": "uuid",
       "initiative_id": "uuid",
-      "current_amount_in_cents": 5000,
+      "amount_cents": 5000,
+      "next_charge_date": "2026-07-01T00:00:00Z",
       "frequency": "monthly",
       "status": "active"
     }
   ],
   "meta": { "total": 1, "limit": 20, "offset": 0 }
+}
+```
+
+**`GET /v1/me/subscriptions/{id}`** (endpoint 9):
+```json
+{
+  "id": "uuid",
+  "initiative_id": "uuid",
+  "amount_cents": 5000,
+  "next_charge_date": "2026-07-01T00:00:00Z",
+  "frequency": "monthly",
+  "status": "active",
+  "initiative_name": "Test Initiative",
+  "initiative_logo_url": "https://example.com/logo.png"
 }
 ```
 
@@ -784,36 +786,10 @@ The current component exposes `createPaymentMethod()` which calls
 **Only the `<script setup>` section needs to change.** The template (the card
 number/expiry/cvc inputs) stays exactly the same.
 
-Find this block at the bottom of the `<script setup>` in `donate-step-payment.vue`:
+`donate-step-payment.vue` exposes `confirmSetup` and `cardNumberElement`:
 
 ```ts
-// CURRENT — replace this entire block:
-const createPaymentMethod = async (): Promise<string> => {
-  const stripe = await getStripe();
-  if (!stripe || !cardNumberEl) throw new Error('Stripe not loaded');
-
-  stripeError.value = '';
-
-  const { paymentMethod, error } = await stripe.createPaymentMethod({
-    type: 'card',
-    card: cardNumberEl,
-  });
-
-  if (error) {
-    stripeError.value = error.message ?? 'Payment failed. Please try again.';
-    throw new Error(error.message);
-  }
-
-  return paymentMethod!.id;
-};
-
-defineExpose({ createPaymentMethod });
-```
-
-Replace with:
-
-```ts
-// NEW — uses SetupIntent so the card is 3DS-authenticated at save-time.
+// Uses SetupIntent so the card is 3DS-authenticated at save-time.
 // The parent (donate-drawer.vue) calls confirmSetup() and gets back
 // the pm_xxx that was authenticated by Stripe.
 const confirmSetup = async (): Promise<string> => {
@@ -860,30 +836,10 @@ defineExpose({ confirmSetup });
 
 ### Step 8 — Update `donate-drawer.vue`
 
-The drawer currently calls `paymentStepRef.value.createPaymentMethod()` and posts to
-the stub `/api/donate` endpoint. Replace the last-step block inside `handleContinue`:
+Inside `handleContinue`, the `isLastStep` branch:
 
 ```ts
-// CURRENT (inside handleContinue, the isLastStep branch) — replace:
-submitting.value = true;
-try {
-  const paymentMethodId = await paymentStepRef.value.createPaymentMethod();
-  await $fetch('/api/donate', {
-    method: 'POST',
-    body: { ... },
-  });
-  submitted.value = true;
-  emit('submitted');
-} catch {
-} finally {
-  submitting.value = false;
-}
-```
-
-Replace with:
-
-```ts
-// NEW — check for existing saved card; only run SetupIntent if none exists
+// Check for existing saved card; only run SetupIntent if none exists
 const { card, fetchCard, saveCard } = usePaymentAccount()
 const { donate } = useDonate()
 

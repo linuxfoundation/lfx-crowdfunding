@@ -67,7 +67,8 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		return nil, fmt.Errorf("get platform balance: %w", err)
 	}
 
-	// Collect IDs for enrichment, skipping empty strings that would fail uuid[] cast.
+	// Collect IDs for enrichment. Org IDs are UUIDs; individual IDs from Ledger
+	// are Auth0 subjects (legacy_user_id), not internal UUIDs.
 	orgIDs := make([]string, 0, len(raw.TopOrganizations))
 	for _, o := range raw.TopOrganizations {
 		if o.ID != "" {
@@ -86,7 +87,7 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich sponsor organizations: %w", err)
 	}
-	users, err := s.repo.GetUsersByIDs(ctx, userIDs)
+	users, err := s.repo.GetUsersByLegacyIDs(ctx, userIDs)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich sponsor users: %w", err)
@@ -173,18 +174,43 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		return nil, fmt.Errorf("get platform recent donations: %w", err)
 	}
 
-	// Collect IDs for enrichment
-	orgIDs := make([]string, 0, len(raw))
-	userIDs := make([]string, 0, len(raw))
-	projectIDs := make([]string, 0, len(raw))
+	// Filter to Stripe-originated donations only. Expensify fund allocations and
+	// other non-Stripe source types bypass the CF donations table and produce
+	// duplicate entries for the same donor/day that do not match initiative Financials.
+	// Also deduplicate by TxnID to guard against upstream duplicates.
+	seenTxnIDs := make(map[string]struct{}, len(raw))
+	uniqueRaw := make([]clients.LedgerRecentDonation, 0, len(raw))
 	for _, d := range raw {
-		if d.OrganizationID != "" {
-			orgIDs = append(orgIDs, d.OrganizationID)
-		} else if d.UserID != "" {
-			userIDs = append(userIDs, d.UserID)
+		if d.SourceType != domain.LedgerSourceTypeStripe {
+			continue
 		}
-		if d.ProjectID != "" {
+		if d.TxnID != "" {
+			if _, exists := seenTxnIDs[d.TxnID]; exists {
+				continue
+			}
+			seenTxnIDs[d.TxnID] = struct{}{}
+		}
+		uniqueRaw = append(uniqueRaw, d)
+	}
+
+	// Collect unique IDs for enrichment to avoid redundant DB work.
+	orgIDs := make([]string, 0, len(uniqueRaw))
+	userIDs := make([]string, 0, len(uniqueRaw))
+	projectIDs := make([]string, 0, len(uniqueRaw))
+	seenOrgs := map[string]bool{}
+	seenUsers := map[string]bool{}
+	seenProjects := map[string]bool{}
+	for _, d := range uniqueRaw {
+		if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
+			orgIDs = append(orgIDs, d.OrganizationID)
+			seenOrgs[d.OrganizationID] = true
+		} else if d.UserID != "" && !seenUsers[d.UserID] {
+			userIDs = append(userIDs, d.UserID)
+			seenUsers[d.UserID] = true
+		}
+		if d.ProjectID != "" && !seenProjects[d.ProjectID] {
 			projectIDs = append(projectIDs, d.ProjectID)
+			seenProjects[d.ProjectID] = true
 		}
 	}
 
@@ -193,7 +219,7 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich donor organizations: %w", err)
 	}
-	users, err := s.repo.GetUsersByIDs(ctx, userIDs)
+	users, err := s.repo.GetUsersByLegacyIDs(ctx, userIDs)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("enrich donor users: %w", err)
@@ -204,8 +230,8 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		return nil, fmt.Errorf("enrich project names: %w", err)
 	}
 
-	donations := make([]models.RecentDonation, 0, len(raw))
-	for _, d := range raw {
+	donations := make([]models.RecentDonation, 0, len(uniqueRaw))
+	for _, d := range uniqueRaw {
 		entry := models.RecentDonation{
 			TxnID:       d.TxnID,
 			ProjectID:   d.ProjectID,

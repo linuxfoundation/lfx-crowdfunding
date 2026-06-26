@@ -8,15 +8,18 @@ import type { ProtectedRoute } from '../types/auth.types';
 // allocating a new RegExp on every request.
 const RE_DONATIONS = /^\/api\/initiatives\/[^/]+\/donations$/;
 const RE_PROCESS_APPROVAL = /^\/api\/initiatives\/[^/]+\/process-approval\/[^/]+$/;
+const RE_EXPENSE_ACTION = /^\/api\/expense-email\/[^/]+\/[^/]+$/;
 
 // Add entries here to require authentication on additional routes.
 // Omit `methods` to protect all HTTP methods on matching paths.
 const PROTECTED: ProtectedRoute[] = [
   { match: (p) => p === '/api/me', methods: ['PATCH'] },
+  { match: (p) => p.startsWith('/api/me/') },
   { match: (p) => p === '/api/presigned-url', methods: ['POST'] },
   { match: (p) => p.startsWith('/api/payment/') },
   { match: (p) => RE_DONATIONS.test(p), methods: ['POST'] },
   { match: (p) => RE_PROCESS_APPROVAL.test(p), methods: ['POST'] },
+  { match: (p) => RE_EXPENSE_ACTION.test(p), methods: ['POST'] },
   { match: (p) => p === '/api/fundraise', methods: ['POST'] },
 ];
 

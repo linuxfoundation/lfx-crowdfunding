@@ -16,7 +16,9 @@ SPDX-License-Identifier: MIT
         <span class="text-lg font-medium leading-7 text-accent-800">For Projects</span>
       </div>
 
-      <h1 class="md:text-5xl text-4xl font-light leading-tight text-black">Raise funds for your open source project</h1>
+      <h1 class="md:text-5xl text-4xl font-secondary font-light leading-tight text-black">
+        Raise funds for your open source project
+      </h1>
 
       <p class="text-base font-normal leading-6 text-neutral-900">
         Whether you need to fund a security audit, support infrastructure, sponsor travel, or grow your community — LFX

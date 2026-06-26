@@ -24,6 +24,7 @@ export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
     applicationURL: b.application_url,
     eventStartDate: b.event_start_date,
     eventEndDate: b.event_end_date,
+    acceptFunding: b.accept_funding,
     fundingStatus: b.financials
       ? {
           goalsTotalCents: b.financials.goals_total_cents,
@@ -36,10 +37,14 @@ export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
 
 export const mapToInitiativeDetail = (b: BackendInitiative): InitiativeDetail => {
   const currentBalanceCents = b.balance?.available_cents ?? b.financials?.available_balance_cents;
+  const githubURL = (b.custom_websites ?? []).find((w) =>
+    ['repository', 'github'].includes((w.name ?? '').toLowerCase()),
+  )?.url;
 
   return {
     ...mapToInitiativeBase(b),
     currentBalanceCents,
+    githubURL,
     fundingGoals: (b.goals ?? []).map((g) => ({
       id: g.id,
       name: g.name,

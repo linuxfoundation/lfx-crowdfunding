@@ -135,7 +135,7 @@ The `initiative_stats` table that existed in an earlier schema version has been 
 
 The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
-**Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SIGNING_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
+**Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
 
 **Cutover:** run `ledger-stats-sync` once manually before DNS cutover to pre-populate `initiative_ledger_stats` for all migrated initiatives. Rows are absent before the first run — the `initiative_repository` LEFT JOINs `initiative_ledger_stats` and COALESCEs all financial values to `0`, so missing rows display cleanly as zero. See OQ-15 for post-cutover ID strategy.
 
@@ -368,7 +368,7 @@ After DNS cutover, these requests hit the new CF Go API. If any of these lookups
 
 Ledger authenticates its CF API calls with a custom `x-ledger-auth` header (`fundspring.go:102`), sending the raw value of `LEDGER_AUTHORIZATION_TOKEN` (with the `Bearer ` prefix stripped). The old LFF Lambda read this from the API Gateway event — a Lambda/API Gateway artifact, not a design decision.
 
-The new CF Go API must **not** implement `x-ledger-auth` support. Instead, the Ledger Service must be updated to send a standard `Authorization: Bearer <token>` header before CF cutover. This is a one-line change in `fundspring.go:getToken()` and `request.Header.Set(...)`. Rationale: accepting a non-standard auth header creates a confusing third auth mechanism alongside Auth0 Bearer and `X-Internal-Token` (RS). `Authorization: Bearer` is the HTTP standard and is handled correctly by every proxy, middleware, and security scanner.
+The new CF Go API must **not** implement `x-ledger-auth` support. Instead, the Ledger Service must be updated to send a standard `Authorization: Bearer <token>` header before CF cutover. This is a one-line change in `fundspring.go:getToken()` and `request.Header.Set(...)`. Rationale: accepting a non-standard auth header creates a confusing third auth mechanism alongside the Auth0 Bearer tokens used by all other callers. `Authorization: Bearer` is the HTTP standard and is handled correctly by every proxy, middleware, and security scanner.
 
 The CF Go API accepts `Authorization: Bearer` on the project/entity detail endpoints and validates the token against a shared secret (`CF_LEDGER_AUTH_TOKEN` env var, same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`). This is a service-to-service shared secret, not a JWT — validated with a constant-time comparison (e.g. `hmac.Equal`) in a dedicated middleware applied only to these endpoints. Do not use `==` or `strings.EqualFold` — both are vulnerable to timing attacks.
 
@@ -546,15 +546,21 @@ if initiative.OwnerID != currentUser.ID {
 }
 ```
 
-**2. CF admin / initiative approver — `CF_APPROVERS` env var**
-The person who approves or rejects initiative submissions is identified by their LFID, stored in a `CF_APPROVERS` environment variable (comma- or pipe-separated). This is not an Auth0 role — it is a config value injected at deploy time.
+**2. CF admin / initiative approver — `ALLOWED_APPROVERS` env var**
+The person who approves or rejects initiative submissions is identified by their LFID, stored in a `ALLOWED_APPROVERS` environment variable (comma-separated). This is not an Auth0 role — it is a config value injected at deploy time.
 
 Production value: `shubhrakar` (Sriji). Confirmed as the approver for the new system.
 Dev/staging value: `*` (any authenticated user can approve — allows testing).
 
-Stored in AWS Secrets Manager, injected via ESO. The approval check at the API layer:
+Stored in AWS Secrets Manager, injected via ESO. The env var is parsed into a list at startup and the approval check does a case-insensitive exact match:
 ```go
-authorized := strings.Contains(os.Getenv("CF_APPROVERS"), user.LFID)
+// parsed at startup: parseCommaList(getEnv("ALLOWED_APPROVERS", ""))
+// check in handler:
+for _, a := range h.allowedApprovers {
+    if strings.EqualFold(a, principal.Username) {
+        return true
+    }
+}
 ```
 
 **3. Email approval links — HMAC-signed token, no Auth0**
@@ -649,18 +655,19 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | Env var | Description | Source / notes |
 |---|---|---|
 | `DATABASE_URL` | Postgres connection string for CF DB | Auto-provisioned via `lfx-v2-opentofu`; auto-rotated every 30 days |
-| `AUTH0_DOMAIN` | Auth0 tenant domain (e.g. `linuxfoundation.auth0.com`) | Same value as LFF `AUTH0_DOMAIN` |
-| `AUTH0_AUDIENCE` | Auth0 API audience for JWT validation | New — set when Auth0 API is configured for new CF app |
-| `STRIPE_CLIENT_SECRET` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
-| `STRIPE_WEBHOOK_SIGNING_SECRET` | Per-endpoint signing secret for `POST /v1/hooks/stripe` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
+| `JWKS_URL` | Auth0 JWKS endpoint for JWT validation | New — see `../../../docs/authentication-architecture.md` Configuration Reference |
+| `JWT_ISSUER` | Expected `iss` claim | New — environment-specific; see `09` |
+| `JWT_AUDIENCE` | Expected `aud` claim | New — `https://crowdfunding-api.{env}.lfx.dev`; see `09` |
+| `STRIPE_SECRET_KEY` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
+| `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /v1/stripe/webhook` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
 | `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
 | `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
 | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |
 | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret | Same as LFF |
 | `CF_LEDGER_AUTH_TOKEN` | Shared secret for authenticating Ledger→CF API calls (`Authorization: Bearer`) | Same value as Ledger's `LEDGER_AUTHORIZATION_TOKEN`; must match what Ledger sends after the `fundspring.go` auth header fix |
-| `CF_RS_INTERNAL_TOKEN` | Shared secret for `X-Internal-Token` on RS-facing internal endpoints | New — must be provisioned in both CF and RS |
+| *(removed)* | RS→CF auth uses Auth0 M2M (`access:manage` scope) — no shared secret on the CF side. RS mints a token via `client_credentials` grant; CF validates via JWKS. See `../../../docs/authentication-architecture.md` Flow 3. |
 | `CF_APPROVAL_SIGNING_SECRET` | HMAC secret for initiative/expense approval email links | New — replaces LFF `EMAIL_TOKEN_SIGNING_KEY` |
-| `CF_APPROVERS` | Comma-separated list of LFIDs who can approve initiatives | Replaces LFF `APPROVERS` env var |
+| `ALLOWED_APPROVERS` | Comma-separated list of LFIDs who can approve initiatives | Replaces LFF `APPROVERS` env var |
 | `SNOWFLAKE_ACCOUNT` | Snowflake account identifier (for `mentorship-sync` CronJob) | Follow LFX platform pattern (see `lfx-lens` ArgoCD values) |
 | `SNOWFLAKE_USER` | Snowflake user for CF service account | New — to be provisioned by DevOps |
 | `SNOWFLAKE_PRIVATE_KEY` | Snowflake private key (key-pair auth) | New — LFX platform standard (no password auth) |
@@ -675,9 +682,9 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 
 | LFF var | Reason dropped |
 |---|---|
-| `TRANSACTIONS_API_SECRET` / `BENEFICIARY_API_SECRET` | Replaced by `CF_LEDGER_AUTH_TOKEN` and `CF_RS_INTERNAL_TOKEN` with clearer names |
+| `TRANSACTIONS_API_SECRET` / `BENEFICIARY_API_SECRET` | Replaced by `CF_LEDGER_AUTH_TOKEN` (Ledger shared secret) — RS auth is now Auth0 M2M, no CF-side token needed |
 | `SNS_PROJECT_TOPIC_ARN` | SNS/SQS dropped; Mentorship sync is Snowflake pull, not push |
-| `REIMBURSEMENTS_API_SECRET` / `CLIENT_SECRET` / `CLIENT_ID` / `AUTH0_URL` | RS integration is internal HTTP with `X-Internal-Token`; no Auth0 M2M needed from CF side |
+| `REIMBURSEMENTS_API_SECRET` / `CLIENT_SECRET` / `CLIENT_ID` / `AUTH0_URL` | RS→CF auth uses Auth0 M2M (`access:manage` scope); CF validates via JWKS — no shared secret needed on the CF side. See `../../../docs/authentication-architecture.md` Flow 3. |
 | `DIVERSITY_BASE_URL` | Diversity API integration deferred |
 | `JOBSPRING_API_URL` | Mentorship data now comes from Snowflake, not Jobspring HTTP API |
 | `STAGE` / `REGION` / `APP_NAME` | Lambda-era config; replaced by K8s environment convention |

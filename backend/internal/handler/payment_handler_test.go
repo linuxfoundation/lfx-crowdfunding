@@ -47,10 +47,10 @@ func (r *paymentUserRepo) ClearStripePaymentMethod(_ context.Context, _ string) 
 
 // paymentStripeClient is a configurable StripeClient stub for payment handler tests.
 type paymentStripeClient struct {
-	onCreateSetupIntent    func(ctx context.Context, customerID string) (string, error)
-	onAttachPaymentMethod  func(ctx context.Context, customerID, pmID string) (*models.CardDetails, error)
-	onGetPaymentMethod     func(ctx context.Context, pmID string) (*models.CardDetails, error)
-	onDetachPaymentMethod  func(ctx context.Context, pmID string) error
+	onCreateSetupIntent   func(ctx context.Context, customerID string) (string, error)
+	onAttachPaymentMethod func(ctx context.Context, customerID, pmID string) (*models.CardDetails, error)
+	onGetPaymentMethod    func(ctx context.Context, pmID string) (*models.CardDetails, error)
+	onDetachPaymentMethod func(ctx context.Context, pmID string) error
 }
 
 func (c *paymentStripeClient) GetProduct(_ context.Context, _ string) (*models.StripeProduct, error) {
@@ -70,6 +70,9 @@ func (c *paymentStripeClient) CreateSubscription(_ context.Context, _ models.Str
 }
 func (c *paymentStripeClient) CancelSubscription(_ context.Context, _ string) error {
 	return nil
+}
+func (c *paymentStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ string) (int64, error) {
+	return 0, nil
 }
 func (c *paymentStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
@@ -312,8 +315,8 @@ func TestGetPaymentAccount_Success_Returns200(t *testing.T) {
 	paymentMethodID := "pm_xxx"
 	userRepo := &paymentUserRepo{
 		user: &models.User{
-			Username:              username,
-			Email:                 "test@example.com",
+			Username:                   username,
+			Email:                      "test@example.com",
 			StripeDefaultPaymentMethod: paymentMethodID,
 		},
 	}

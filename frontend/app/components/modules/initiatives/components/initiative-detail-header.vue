@@ -26,9 +26,11 @@ SPDX-License-Identifier: MIT
                 @click="handleShare()"
               />
               <lfx-icon-button
+                v-if="initiative.githubURL"
                 type="outline"
                 icon="github"
                 icon-type="brands"
+                @click="openGitHub()"
               />
             </div>
           </div>
@@ -64,12 +66,21 @@ SPDX-License-Identifier: MIT
                 </h1>
 
                 <!-- Description -->
-                <p
-                  class="text-sm text-neutral-600 leading-5"
-                  :class="{ hidden: isScrolled }"
-                >
-                  {{ plainDescription }}
-                </p>
+                <div :class="{ hidden: isScrolled }">
+                  <p
+                    ref="descRef"
+                    class="text-sm text-neutral-600 leading-5 line-clamp-2"
+                  >
+                    {{ plainDescription }}
+                  </p>
+                  <lfx-button
+                    v-if="isTruncated"
+                    label="Read more"
+                    type="transparent"
+                    size="small"
+                    @click="$emit('update:activeTab', 'about')"
+                  />
+                </div>
               </div>
             </div>
 
@@ -88,6 +99,14 @@ SPDX-License-Identifier: MIT
                 {{ tag }}
               </lfx-chip>
             </div>
+
+            <!-- Funding disabled notice -->
+            <p
+              v-if="initiative.acceptFunding === false && !isScrolled"
+              class="text-sm text-neutral-500 mt-2"
+            >
+              This initiative is not currently accepting donations.
+            </p>
           </div>
         </div>
 
@@ -109,16 +128,24 @@ SPDX-License-Identifier: MIT
             icon-type="brands"
             icon-position="left"
             button-style="pill"
+            @click="openGitHub()"
           />
-          <lfx-button
-            label="Fund this initiative"
-            type="ghost"
-            icon="hand-heart"
-            icon-position="left"
-            class="!text-accent-500"
-            button-style="pill"
-            @click="handleFundInitiative()"
-          />
+          <lfx-tooltip
+            content="This initiative is not currently accepting donations"
+            :disabled="initiative.acceptFunding !== false"
+          >
+            <span>
+              <lfx-button
+                label="Donate"
+                type="primary"
+                icon="hand-heart"
+                icon-position="left"
+                button-style="pill"
+                :disabled="initiative.acceptFunding === false"
+                @click="handleDonate()"
+              />
+            </span>
+          </lfx-tooltip>
         </div>
       </div>
 
@@ -134,7 +161,8 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, nextTick, watch } from 'vue';
+import { useResizeObserver } from '@vueuse/core';
 import {
   initiativeTypeConfigMap,
   defaultInitiativeTypeConfig,
@@ -147,6 +175,7 @@ import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxTabs from '~/components/uikit/tabs/tabs.vue';
+import LfxTooltip from '~/components/uikit/tooltip/tooltip.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
 import { useShareModalStore } from '~/components/shared/components/share/store/share-modal.store';
 import { useAuth } from '~/composables/useAuth';
@@ -160,9 +189,30 @@ const props = defineProps<{
 const { stripHtml } = useSanitize();
 const plainDescription = computed(() => stripHtml(props.initiative.description ?? ''));
 
+const descRef = ref<HTMLElement | null>(null);
+const isTruncated = ref(false);
+
+const checkTruncation = async () => {
+  await nextTick();
+  if (descRef.value) {
+    isTruncated.value = descRef.value.scrollHeight > descRef.value.clientHeight;
+  }
+};
+
+// Recompute on element resize (viewport changes, font load, etc.)
+useResizeObserver(descRef, checkTruncation);
+// Also recompute when the description text changes (e.g. async loads) since
+// ResizeObserver won't fire if the clamped element's border-box stays the same.
+// `immediate: true` covers the initial mount run.
+watch(plainDescription, checkTruncation, { immediate: true });
+
 const { openDonateDrawer } = useDonateDrawerStore();
 const { openShareModal } = useShareModalStore();
 const { isAuthenticated, login } = useAuth();
+
+function openGitHub() {
+  window.open(props.initiative.githubURL, '_blank', 'noopener,noreferrer');
+}
 
 function handleShare() {
   openShareModal({
@@ -171,7 +221,7 @@ function handleShare() {
   });
 }
 
-function handleFundInitiative() {
+function handleDonate() {
   if (!isAuthenticated.value) {
     login();
   } else {

@@ -133,7 +133,7 @@ func (s *emailService) SendProjectForReviewEmail(ctx context.Context, ownerName,
 		"SUBMITTER_EMAIL": ownerEmail,
 		"VIEW_URL":        initiativeURL,
 		"APPROVE_URL":     approveURL,
-		"DECLINE_URL":     declineURL,
+		"REJECT_URL":      declineURL,
 	}
 	for _, recipient := range s.notificationEmails {
 		if err := s.sendEmail(ctx, emailRequest{

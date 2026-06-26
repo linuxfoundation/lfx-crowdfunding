@@ -29,4 +29,7 @@ var (
 	// Webhook handlers use this to skip idempotent re-processing (e.g. Ledger POST,
 	// emails) on Stripe retry events without returning an error.
 	ErrAlreadyProcessed = errors.New("already processed")
+	// ErrExpenseReportNotFound is returned when the Reimbursement Service responds
+	// with 404 for a given expense report ID.
+	ErrExpenseReportNotFound = errors.New("expense report not found")
 )

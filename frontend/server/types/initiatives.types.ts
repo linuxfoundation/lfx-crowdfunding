@@ -34,6 +34,7 @@ export interface BackendInitiative {
   application_url?: string;
   event_start_date?: string;
   event_end_date?: string;
+  accept_funding: boolean;
   created_on: string;
   updated_on: string;
   financials?: {
@@ -50,6 +51,7 @@ export interface BackendInitiative {
     total_disbursed_cents: number;
     available_cents: number;
   };
+  custom_websites?: { id?: string; name?: string; url: string }[];
 }
 
 export interface BackendResponse {

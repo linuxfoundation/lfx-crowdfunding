@@ -56,17 +56,17 @@ SPDX-License-Identifier: MIT
         <p class="text-4xl font-normal leading-[56px] text-neutral-900 whitespace-nowrap">
           {{ totalFormatted }}
         </p>
-        <div class="flex items-center gap-2">
-          <p class="text-sm text-neutral-600">Raised in {{ latestPeriodLabel }}</p>
+        <div class="flex flex-col items-start gap-1">
+          <p class="text-xs text-neutral-600 whitespace-nowrap">Raised in {{ latestPeriodLabel }}</p>
           <span
             v-if="growthPercent !== null"
-            class="text-xs font-semibold flex items-center gap-1"
+            class="text-[10px] font-semibold flex items-center gap-1 whitespace-nowrap"
             :class="growthPercent >= 0 ? 'text-positive-600' : 'text-negative-600'"
           >
             <lfx-icon
               :name="growthPercent >= 0 ? 'arrow-trend-up' : 'arrow-trend-down'"
               type="solid"
-              :size="12"
+              :size="10"
             />
             {{ Math.abs(growthPercent) }}% vs prev month
           </span>
@@ -78,18 +78,18 @@ SPDX-License-Identifier: MIT
         <p class="text-4xl font-normal leading-[56px] text-neutral-900">
           {{ latestSupporters }}
         </p>
-        <p class="text-sm text-neutral-600">New supporters</p>
+        <p class="text-xs text-neutral-600 whitespace-nowrap">New supporters</p>
       </div>
 
-      <!-- Right: bar chart (all 12 buckets) -->
-      <statistics-monthly-bar-chart :buckets="activeBuckets" />
+      <!-- Right: line chart (all 12 buckets) -->
+      <statistics-monthly-line-chart :buckets="activeBuckets" />
     </div>
   </lfx-card>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import StatisticsMonthlyBarChart from './statistics-monthly-bar-chart.vue';
+import StatisticsMonthlyLineChart from './statistics-monthly-line-chart.vue';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';

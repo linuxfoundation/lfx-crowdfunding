@@ -22,7 +22,7 @@ if (isProduction) {
 const appUrl = process.env.NUXT_APP_URL || 'http://localhost:3000';
 const selfServeUrl =
   process.env.NUXT_PUBLIC_SELF_SERVE_URL ||
-  (isProduction ? 'https://app.lfx.dev' : 'https://ui-pr-749.dev.v2.cluster.linuxfound.info');
+  (isProduction ? 'https://app.lfx.dev' : 'https://app.dev.lfx.dev');
 const auth0Domain =
   process.env.NUXT_PUBLIC_AUTH0_DOMAIN || 'https://linuxfoundation-staging.auth0.com';
 const auth0CookieDomain = process.env.NUXT_AUTH0_COOKIE_DOMAIN;
@@ -45,5 +45,12 @@ export default {
     selfServeUrl,
     stripePublishableKey: '', // populated from NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     githubOauthClientId: process.env.NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID || '',
+    intercomAppId:
+      process.env.NUXT_PUBLIC_INTERCOM_APP_ID || (isProduction ? 'w29sqomy' : 'mxl90k6y'),
+    // Datadog RUM — leave empty locally; set via NUXT_PUBLIC_DATADOG_RUM_* in k8s secrets.
+    datadogRumAppId: process.env.NUXT_PUBLIC_DATADOG_RUM_APP_ID || '',
+    datadogRumClientToken: process.env.NUXT_PUBLIC_DATADOG_RUM_CLIENT_TOKEN || '',
+    // Version is injected from the git tag at deploy time (e.g. "0.1.12").
+    datadogRumVersion: process.env.NUXT_PUBLIC_APP_VERSION || '',
   },
 };

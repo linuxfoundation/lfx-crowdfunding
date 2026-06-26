@@ -88,10 +88,14 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 }
 
 // flattenSponsors merges orgs and individuals from the cached sponsor list into a
-// single flat slice sorted by total descending.
+// single flat slice sorted by total descending.  Entries with a non-positive
+// total are expense-payout recipients, not donors, and are excluded.
 func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	sponsors := make([]models.Sponsor, 0, len(list.Orgs)+len(list.Individuals))
 	for _, o := range list.Orgs {
+		if o.Total <= 0 {
+			continue
+		}
 		avatarURL := o.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(o.ID, o.Name)
@@ -99,6 +103,9 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: avatarURL, TotalCents: o.Total})
 	}
 	for _, u := range list.Individuals {
+		if u.Total <= 0 {
+			continue
+		}
 		avatarURL := u.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(u.ID, u.Name)
@@ -196,6 +203,20 @@ func (s *InitiativeService) GetOwnerInfoBySlug(ctx context.Context, slug string)
 		return models.OwnerInfo{}, fmt.Errorf("get owner info by slug: %w", err)
 	}
 	return info, nil
+}
+
+// ListPublished returns the ID and Name of every published initiative.
+// Intended for M2M callers (e.g. Reimbursement Service initiative picker).
+func (s *InitiativeService) ListPublished(ctx context.Context) ([]models.InitiativeSummary, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ListPublished")
+	defer span.End()
+
+	results, err := s.repo.ListPublished(ctx)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list published initiatives: %w", err)
+	}
+	return results, nil
 }
 
 // GetForUser retrieves an initiative owned by the authenticated caller, by slug or
@@ -525,15 +546,8 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		existing.Slug = *input.Slug
 	}
 	if input.Status != nil {
-		if !input.Status.IsValid() {
-			return nil, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, *input.Status)
-		}
-		// published, declined, and pending are exclusively set by the approval workflow.
-		// Allowing owners to set these directly would bypass the review process.
-		switch *input.Status {
-		case models.StatusPublished, models.StatusDeclined, models.StatusPending:
-			return nil, fmt.Errorf("%w: status %q cannot be set directly; use the approval workflow",
-				domain.ErrForbidden, *input.Status)
+		if err := validateOwnerStatusTransition(existing.Status, *input.Status); err != nil {
+			return nil, err
 		}
 		existing.Status = *input.Status
 	}
@@ -699,6 +713,34 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	return processed, nil
 }
 
+// validateOwnerStatusTransition validates status changes requested through owner
+// update flows. The permitted transitions are:
+//
+//	submitted  → pending | declined
+//	pending    → declined
+//	published  → hidden
+//	hidden     → published
+func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
+	if !to.IsValid() {
+		return fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, to)
+	}
+
+	allowed := map[models.InitiativeStatus][]models.InitiativeStatus{
+		models.StatusSubmitted: {models.StatusPending, models.StatusDeclined},
+		models.StatusPending:   {models.StatusDeclined},
+		models.StatusPublished: {models.StatusHidden},
+		models.StatusHidden:    {models.StatusPublished},
+	}
+	for _, permitted := range allowed[from] {
+		if to.EqualFold(permitted) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w: status transition %q -> %q is not permitted for owners",
+		domain.ErrForbidden, from, to)
+}
+
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
@@ -714,6 +756,46 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts (e.g. SOS pays grants out of its fund). These are not
+	// donations and must not appear in the "Donations received" table.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data) // capture before filtering
+		// The ledger client encodes HasNext by adding list.Limit to TotalCount;
+		// if TotalCount > offset+fullPageLen the Ledger signalled more pages.
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+		// Adjust the Ledger's total estimate by the number of rows dropped
+		// from this page.  Two clamp rules keep the frontend's
+		// "nextOffset < totalCount" guard from stopping pagination early:
+		//
+		//  1. Normal case (some items kept): TotalCount ≥ offset+len(kept)
+		//     so the items already delivered are accounted for.
+		//
+		//  2. Entire page filtered out but HasNext=true: TotalCount must be
+		//     > nextOffset (offset+limit) or the frontend halts before
+		//     reaching later pages that may still contain positive entries
+		//     (e.g. the manual_from_lf $1M credit on SOS page 6, which sits
+		//     behind five all-negative disbursement pages).
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
@@ -776,7 +858,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 		}
 	}
 
-	users, err := repo.GetUsersByIDs(ctx, userIDs)
+	users, err := repo.GetUsersByLegacyIDs(ctx, userIDs)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
 		users = map[string]models.User{}
@@ -794,6 +876,9 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 				t.DonorName = org.Name
 				t.DonorLogoURL = org.AvatarURL
 			}
+			if t.DonorName == "" {
+				t.DonorName = "Anonymous"
+			}
 			if t.DonorLogoURL == "" {
 				t.DonorLogoURL = generatedAvatarURL(t.LedgerOrgID, t.DonorName)
 			}
@@ -803,6 +888,9 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 					t.DonorName = user.Name
 				}
 				t.DonorLogoURL = user.AvatarURL
+			}
+			if t.DonorName == "" {
+				t.DonorName = "Anonymous"
 			}
 			if t.DonorLogoURL == "" {
 				t.DonorLogoURL = generatedAvatarURL(t.LedgerUserID, t.DonorName)

@@ -6,12 +6,22 @@ package clients
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/core"
 	"go.opentelemetry.io/otel"
@@ -60,6 +70,12 @@ type ReimbursementClient interface {
 	// It is a no-op when the initiative is not published.
 	// Errors are non-fatal by convention — callers log at warn and continue.
 	SyncPolicy(ctx context.Context, initiative *models.Initiative, ownerUser *models.User) error
+
+	// ProcessExpenseAction submits an action (e.g. "approve", "reject") against
+	// the given expense report in the Reimbursement Service.
+	// Maps upstream 404 → domain.ErrExpenseReportNotFound so callers can
+	// distinguish missing reports from other upstream errors.
+	ProcessExpenseAction(ctx context.Context, action, reportID string) error
 }
 
 // ReimbursementConfig holds all connection settings for the Reimbursement Service.
@@ -77,13 +93,42 @@ type ReimbursementConfig struct {
 	// Used to construct the initiative's public URL in the policy payload.
 	FrontendBase string
 
-	// Timeout caps individual outbound HTTP calls.
+	// Timeout caps individual outbound HTTP calls, including Auth0 token
+	// fetches and Reimbursement Service API requests.
 	Timeout time.Duration
+
+	// --- Optional Auth0 private-key JWT (M2M) config ----------------------
+	// The API gateway in front of the RS requires a Bearer token on all routes.
+	// When all four fields below are set the client signs a JWT assertion with
+	// the RSA private key, exchanges it for an access token via the Auth0
+	// client_credentials grant, caches it, and attaches it as
+	// Authorization: Bearer on every RS call alongside X-API-KEY.
+	// Leave empty only if the gateway is configured to accept X-API-KEY alone.
+
+	// Auth0TokenURL is the token endpoint, e.g.
+	// https://linuxfoundation-dev.auth0.com/oauth/token
+	Auth0TokenURL string
+	// Auth0ClientID is the M2M application client ID.
+	Auth0ClientID string
+	// Auth0ClientPrivateKey is the PEM-encoded RSA private key used to sign
+	// the JWT assertion. Must be PKCS8 or PKCS1 PEM.
+	Auth0ClientPrivateKey string
+	// Auth0Audience is the resource server audience the gateway validates against,
+	// e.g. https://api-gw.dev.platform.linuxfoundation.org/
+	Auth0Audience string
 }
 
 type reimbursementHTTPClient struct {
-	cfg        ReimbursementConfig
-	httpClient *core.HTTPClient
+	cfg         ReimbursementConfig
+	httpClient  *core.HTTPClient
+	tokenClient *http.Client // used only for Auth0 token fetches
+	tokenMu     sync.Mutex
+	tokenVal    string
+	tokenExpiry time.Time
+	// private key is parsed once from Auth0ClientPrivateKey PEM on first use.
+	keyOnce    sync.Once
+	privateKey *rsa.PrivateKey
+	keyErr     error
 }
 
 // NewReimbursementClient creates a ReimbursementClient from the given config.
@@ -94,18 +139,160 @@ func NewReimbursementClient(cfg ReimbursementConfig) ReimbursementClient {
 		return nil
 	}
 	return &reimbursementHTTPClient{
-		cfg:        cfg,
-		httpClient: core.NewHTTPClient(cfg.Timeout),
+		cfg:         cfg,
+		httpClient:  core.NewHTTPClient(cfg.Timeout),
+		tokenClient: &http.Client{Timeout: cfg.Timeout},
 	}
 }
 
-// authHeaders returns the X-API-KEY header required on every RS API call.
-// The Reimbursement Service validates requests via a static pre-shared key only
-// (see checkAuthFromHeader in the service's handlers.go).
+// authHeaders returns the base X-API-KEY header. Used internally by gatewayHeaders.
 func (c *reimbursementHTTPClient) authHeaders() map[string]string {
 	return map[string]string{
 		"X-API-KEY": c.cfg.APIKey,
 	}
+}
+
+// gatewayHeaders returns auth headers for all RS API calls — X-API-KEY
+// plus a cached Auth0 Bearer token when M2M config is present.
+func (c *reimbursementHTTPClient) gatewayHeaders(ctx context.Context) (map[string]string, error) {
+	h := c.authHeaders()
+	tok, err := c.m2mToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if tok != "" {
+		h["Authorization"] = "Bearer " + tok
+	}
+	return h, nil
+}
+
+// auth0TokenResponse is the JSON body returned by the Auth0 token endpoint.
+type auth0TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
+// m2mToken returns a cached-or-freshly-fetched Auth0 Bearer token obtained via
+// the private-key JWT client_credentials grant. Returns "" (no error) when M2M
+// config is not set — callers treat this as "no Bearer needed".
+func (c *reimbursementHTTPClient) m2mToken(ctx context.Context) (string, error) {
+	if c.cfg.Auth0TokenURL == "" {
+		return "", nil
+	}
+	// Parse the private key once; subsequent calls reuse the cached result.
+	c.keyOnce.Do(func() {
+		c.privateKey, c.keyErr = parseRSAPrivateKey(c.cfg.Auth0ClientPrivateKey)
+	})
+	if c.keyErr != nil {
+		return "", fmt.Errorf("m2m: parse private key: %w", c.keyErr)
+	}
+
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	if c.tokenVal != "" && time.Now().Before(c.tokenExpiry) {
+		return c.tokenVal, nil
+	}
+
+	// Build JWT assertion — aud is the Auth0 tenant root derived from the token URL.
+	// Per RFC 7521 the assertion aud must identify the authorisation server.
+	assertionAud, err := tokenURLTenantRoot(c.cfg.Auth0TokenURL)
+	if err != nil {
+		return "", fmt.Errorf("m2m: derive assertion audience: %w", err)
+	}
+	jtiBytes := make([]byte, 16)
+	if _, err := rand.Read(jtiBytes); err != nil {
+		return "", fmt.Errorf("m2m: generate jti: %w", err)
+	}
+	now := time.Now()
+	claims := jwt.MapClaims{
+		"iss": c.cfg.Auth0ClientID,
+		"sub": c.cfg.Auth0ClientID,
+		"aud": assertionAud,
+		"exp": now.Add(60 * time.Second).Unix(),
+		"iat": now.Unix(),
+		"jti": fmt.Sprintf("%x", jtiBytes),
+	}
+	signedAssertion, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(c.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("m2m: sign assertion: %w", err)
+	}
+
+	// POST form-encoded token request using private-key JWT client assertion.
+	form := url.Values{
+		"grant_type":            {"client_credentials"},
+		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+		"client_assertion":      {signedAssertion},
+		"audience":              {c.cfg.Auth0Audience},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.Auth0TokenURL,
+		strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("m2m: build token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.tokenClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("m2m: token fetch: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body) // drain so the connection can be reused
+		return "", fmt.Errorf("m2m: auth0 returned %d", resp.StatusCode)
+	}
+	var tr auth0TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		return "", fmt.Errorf("m2m: decode token response: %w", err)
+	}
+	if tr.AccessToken == "" {
+		return "", fmt.Errorf("m2m: auth0 returned empty access_token")
+	}
+	// Cache with a safety buffer so we never hand a near-expired token to the
+	// downstream gateway. Clamp to half the TTL so short-lived tokens (≤120s)
+	// don't produce a negative or zero duration.
+	const bufferSec = 60
+	ttl := time.Duration(tr.ExpiresIn) * time.Second
+	buffer := time.Duration(bufferSec) * time.Second
+	if ttl <= 2*buffer {
+		buffer = ttl / 2
+	}
+	c.tokenVal = tr.AccessToken
+	c.tokenExpiry = time.Now().Add(ttl - buffer)
+	return c.tokenVal, nil
+}
+
+// parseRSAPrivateKey decodes a PEM block and parses either a PKCS8 or PKCS1
+// RSA private key, returning an error if the PEM is missing or the key is not RSA.
+func parseRSAPrivateKey(pemStr string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block found in private key")
+	}
+	// Try PKCS8 first (the standard modern format), then fall back to PKCS1.
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		rsaKey, pkcs1Err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if pkcs1Err != nil {
+			return nil, fmt.Errorf("parse private key: %w (PKCS8 err: %v)", pkcs1Err, err)
+		}
+		return rsaKey, nil
+	}
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("private key PEM is not an RSA key")
+	}
+	return rsaKey, nil
+}
+
+// tokenURLTenantRoot derives the Auth0 tenant root URL from the token endpoint URL,
+// e.g. https://linuxfoundation-dev.auth0.com/oauth/token → https://linuxfoundation-dev.auth0.com/
+// This is used as the `aud` claim in the JWT client assertion.
+func tokenURLTenantRoot(tokenURL string) (string, error) {
+	u, err := url.Parse(tokenURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid token URL %q: %w", tokenURL, err)
+	}
+	return u.Scheme + "://" + u.Host + "/", nil
 }
 
 // rsURL builds the full endpoint URL for a given initiative ID.
@@ -131,7 +318,10 @@ func (c *reimbursementHTTPClient) SyncPolicy(ctx context.Context, initiative *mo
 
 	update, create := c.buildPolicyPayload(initiative, ownerUser)
 
-	headers := c.authHeaders()
+	headers, err := c.gatewayHeaders(ctx)
+	if err != nil {
+		return fmt.Errorf("reimbursement: fetch auth headers: %w", err)
+	}
 	url := c.rsURL(initiative.ID)
 
 	// Attempt PATCH (update existing policy).
@@ -264,4 +454,42 @@ func categoryName(name string) string {
 		}
 	}
 	return strings.Join(words, "")
+}
+
+// ProcessExpenseAction submits an action (e.g. "approve", "reject") for the
+// given expense report via POST /expense/{action}/{reportId} on the
+// Reimbursement Service. Authenticated with X-API-KEY and a cached Auth0
+// client_credentials Bearer token (required by the API gateway).
+// A 404 response is translated to domain.ErrExpenseReportNotFound.
+func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID string) error {
+	ctx, span := reimbursementTracer.Start(ctx, "reimbursement.ProcessExpenseAction")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("expense.action", action),
+		attribute.String("expense.report_id", reportID),
+	)
+
+	endpoint := strings.TrimRight(c.cfg.APIURL, "/") +
+		"/expense/" + url.PathEscape(action) + "/" + url.PathEscape(reportID)
+
+	headers, err := c.gatewayHeaders(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: fetch auth headers for %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
+	}
+
+	err = c.httpClient.PostJSON(ctx, endpoint, headers, struct{}{}, nil, func(r *http.Response) error {
+		if r.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("%w: %s", domain.ErrExpenseReportNotFound, reportID)
+		}
+		return &rsHTTPError{code: r.StatusCode}
+	})
+	if err != nil {
+		var httpErr *rsHTTPError
+		if errors.As(err, &httpErr) {
+			return fmt.Errorf("%w: expense action %q on %s returned %d", domain.ErrUpstreamUnavailable, action, reportID, httpErr.code)
+		}
+		// Network / request-build failures are also upstream outages.
+		return fmt.Errorf("%w: expense action %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
+	}
+	return nil
 }

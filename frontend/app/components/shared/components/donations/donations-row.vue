@@ -11,27 +11,27 @@ SPDX-License-Identifier: MIT
       class="shrink-0"
     />
 
-    <div class="flex-1 min-w-0 flex flex-col">
-      <div class="flex items-start justify-between gap-2">
+    <div class="flex-1 min-w-0 flex items-start justify-between gap-2">
+      <div class="flex-1 min-w-0 flex flex-col">
         <span class="text-xs font-semibold text-neutral-900 leading-4 truncate">
           {{ donation.donorName }}
         </span>
-        <span class="text-xs text-neutral-900 leading-4 shrink-0">
-          {{ formatAmount(donation.amountCents) }}
-        </span>
+        <div class="flex items-center text-[10px] leading-[14px] min-w-0">
+          <template v-if="showInitiativeLink && donation.initiativeId && donation.initiativeName">
+            <NuxtLink
+              :to="`/initiatives/${donation.initiativeId}`"
+              class="text-accent-500 hover:text-accent-600 truncate shrink min-w-0"
+            >
+              {{ donation.initiativeName }}
+            </NuxtLink>
+            <span class="text-neutral-500 mx-0.5 shrink-0">・</span>
+          </template>
+          <span class="text-neutral-500 shrink-0">{{ formatTimeAgoFromUnix(donation.date) }}</span>
+        </div>
       </div>
-      <div class="flex items-center text-[10px] leading-[14px]">
-        <template v-if="showInitiativeLink && donation.initiativeId && donation.initiativeName">
-          <NuxtLink
-            :to="`/initiatives/${donation.initiativeId}`"
-            class="text-accent-500 hover:text-accent-600 truncate shrink min-w-0"
-          >
-            {{ donation.initiativeName }}
-          </NuxtLink>
-          <span class="text-neutral-500 mx-0.5 shrink-0">・</span>
-        </template>
-        <span class="text-neutral-500 shrink-0">{{ formatTimeAgoFromUnix(donation.date) }}</span>
-      </div>
+      <span class="text-xs text-neutral-900 leading-4 shrink-0">
+        {{ formatAmount(donation.amountCents) }}
+      </span>
     </div>
   </div>
 </template>

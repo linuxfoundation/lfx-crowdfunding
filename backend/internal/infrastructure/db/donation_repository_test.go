@@ -42,10 +42,10 @@ func TestDonationRepository_CreateAndGetByID(t *testing.T) {
 	repo := NewDonationRepository(testPool)
 
 	donation := &models.Donation{
-		UserID:               owner.ID,
-		InitiativeID:         initiative.ID,
-		CurrentAmountCents:   5000,
-		Status:               models.DonationStatusPending,
+		UserID:                owner.ID,
+		InitiativeID:          initiative.ID,
+		CurrentAmountCents:    5000,
+		Status:                models.DonationStatusPending,
 		StripePaymentIntentID: "pi_test_123",
 	}
 
