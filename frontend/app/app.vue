@@ -11,9 +11,11 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { onMounted, watch } from 'vue';
 import { authState, isAuthReady } from '~/composables/useAuth';
+import { useDatadogRum } from '~/composables/useDatadogRum';
 import { useIntercom } from '~/composables/useIntercom';
 
 const { boot, shutdown } = useIntercom();
+const { setUser: setDdUser, clearUser: clearDdUser } = useDatadogRum();
 
 // Guard against re-booting with identity on every auth state change.
 let intercomBootAttempted = false;
@@ -37,6 +39,12 @@ watch(
 
     if (isAuthenticated && user && !intercomBootAttempted) {
       const { username, intercomJwt, name, email } = user;
+
+      // Identify the user in Datadog RUM.
+      if (username) {
+        setDdUser({ id: username, email, name });
+      }
+
       if (username && intercomJwt) {
         intercomBootAttempted = true;
         boot({
@@ -54,10 +62,13 @@ watch(
           hasIntercomJwt: !!intercomJwt,
         });
       }
-    } else if (!isAuthenticated && intercomBootAttempted) {
-      shutdown();
-      intercomBootAttempted = false;
-      bootAnonymous();
+    } else if (!isAuthenticated) {
+      clearDdUser();
+      if (intercomBootAttempted) {
+        shutdown();
+        intercomBootAttempted = false;
+        bootAnonymous();
+      }
     }
   },
   { immediate: true },

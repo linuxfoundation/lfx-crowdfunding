@@ -216,8 +216,8 @@ func TestMapBalance(t *testing.T) {
 				AvailableBalance: 650,
 				FeeBalance:       -50,
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: "org-1"}, {ID: "org-2"}, {ID: "org-3"}},
-					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}, {ID: "auth0|u2"}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-1", Total: 100}, {ID: "org-2", Total: 200}, {ID: "org-3", Total: 300}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1", Total: 50}, {ID: "auth0|u2", Total: 75}},
 				},
 			},
 			wantTotalRaised:  1000,
@@ -225,41 +225,74 @@ func TestMapBalance(t *testing.T) {
 			wantTotalBalance: 700,
 			wantAvailable:    650,
 			wantFeeBalance:   50,
-			wantSupporters:   5, // 3 orgs + 2 individuals
+			wantSupporters:   5, // 3 orgs + 2 individuals (all positive totals)
 		},
 		{
 			name: "org-only donors counted as supporters",
 			raw: models.LedgerRawBalance{
-				ProjectID:   "sos",
+				ProjectID:   "proj",
 				TotalCredit: 72600000,
 				Backers:     1, // Ledger backers field only counts individuals
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: "org-google"}, {ID: "org-ms"}, {ID: "org-meta"}},
-					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-google", Total: 1000000}, {ID: "org-ms", Total: 500000}, {ID: "org-meta", Total: 250000}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1", Total: 100}},
 				},
 			},
 			wantTotalRaised: 72600000,
 			wantSupporters:  4, // 3 orgs + 1 individual (not raw.Backers=1)
 		},
 		{
-			name: "empty IDs are excluded from supporter count",
+			name: "expense recipients with negative totals are not counted as supporters",
 			raw: models.LedgerRawBalance{
+				ProjectID: "sos",
+				// TotalCredit = sum of all sponsor totals: 100000000 + (-50500) + (-100000) + 400 = 99849900
+				TotalCredit: 99849900,
+				Backers:     2,
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: ""}, {ID: "org-1"}},
-					Individuals: []models.LedgerRawSponsor{{ID: ""}, {ID: "auth0|u1"}},
+					// 1 donor org (positive) + 2 expense recipients (negative)
+					Orgs: []models.LedgerRawSponsor{
+						{ID: "org-google", Total: 100000000}, // donor ✓
+						{ID: "org-illia", Total: -50500},     // expense recipient ✗
+						{ID: "org-seth", Total: -100000},     // expense recipient ✗
+					},
+					// 1 donor individual (positive)
+					Individuals: []models.LedgerRawSponsor{
+						{ID: "auth0|michal", Total: 400}, // donor ✓
+					},
 				},
 			},
-			wantSupporters: 2, // empty IDs dropped; 1 org + 1 individual
+			// sponsorPositiveSum = 100000000 + 400 = 100000400
+			// totalRaised = max(99849900, 100000400) = 100000400
+			// negCreditAbs = 100000400 - 99849900 = 150500 (= 50500 + 100000)
+			wantTotalRaised:  100000400,
+			wantTotalDebited: 150500, // disbursements from negative credits
+			wantSupporters:   2,      // only positive-total entries: org-google + auth0|michal
+		},
+		{
+			name: "empty IDs are excluded from supporter count",
+			raw: models.LedgerRawBalance{
+				// TotalCredit = sum of all sponsor totals including empty-ID entries
+				TotalCredit: 400,
+				Sponsors: models.LedgerRawSponsors{
+					Orgs:        []models.LedgerRawSponsor{{ID: "", Total: 100}, {ID: "org-1", Total: 100}},
+					Individuals: []models.LedgerRawSponsor{{ID: "", Total: 100}, {ID: "auth0|u1", Total: 100}},
+				},
+			},
+			wantTotalRaised: 400,
+			wantSupporters:  2, // empty IDs dropped; 1 org + 1 individual
 		},
 		{
 			name: "duplicate IDs are counted once",
 			raw: models.LedgerRawBalance{
+				// TotalCredit = raw sum including duplicates as Ledger would compute it
+				TotalCredit: 400,
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: "org-1"}, {ID: "org-1"}},
-					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}, {ID: "auth0|u1"}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-1", Total: 100}, {ID: "org-1", Total: 100}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1", Total: 100}, {ID: "auth0|u1", Total: 100}},
 				},
 			},
-			wantSupporters: 2, // deduped: 1 unique org + 1 unique individual
+			wantTotalRaised: 400,
+			wantSupporters:  2, // deduped: 1 unique org + 1 unique individual
 		},
 		{
 			name: "already positive debit and fee are unchanged",
@@ -273,6 +306,74 @@ func TestMapBalance(t *testing.T) {
 		{
 			name: "zero fields remain zero",
 			raw:  models.LedgerRawBalance{},
+		},
+		{
+			// Edge case: negative totalCredit with no sponsors (e.g. no transactions
+			// attributed to any org/user). negSponsorAbs=0, so nothing can be recovered.
+			name: "negative totalCredit with no sponsors: zero raised, no disbursement data",
+			raw: models.LedgerRawBalance{
+				ProjectID:    "no-sponsors",
+				TotalCredit:  -4609,
+				TotalBalance: -4609,
+			},
+			wantTotalRaised:  0, // clamped: -4609 + 0 < 0
+			wantTotalDebited: 0, // no attributed negative sponsors to derive disbursements from
+			wantTotalBalance: -4609,
+		},
+		{
+			// Real-world case: 2023 Ukraine KCD — Ledger records disbursements to
+			// beneficiaries as negative-amount credit transactions, pulling
+			// totalCredit below zero even though $8,125 was genuinely donated.
+			name: "ukraine-kcd: negative credits are disbursements; real donations recovered from sponsors",
+			raw: models.LedgerRawBalance{
+				ProjectID:    "ukraine-kcd",
+				TotalCredit:  -4609, // 812500 donations + (-817109) disbursements
+				TotalBalance: -4609,
+				Sponsors: models.LedgerRawSponsors{
+					Orgs: []models.LedgerRawSponsor{
+						{ID: "org-msft", Total: 350000},  // real donor ✓
+						{ID: "org-lf-1", Total: -410859}, // disbursement recipient ✗
+						{ID: "org-lf-2", Total: -406250}, // disbursement recipient ✗
+					},
+					Individuals: []models.LedgerRawSponsor{
+						{ID: "auth0|donor1", Total: 462500}, // real donor ✓
+					},
+				},
+			},
+			// negSponsorAbs = 410859 + 406250 = 817109
+			// totalRaised   = -4609 + 817109  = 812500  ($8,125.00)
+			// totalDebit    = 0     + 817109  = 817109  ($8,171.09)
+			wantTotalRaised:  812500,
+			wantTotalDebited: 817109,
+			wantTotalBalance: -4609,
+			wantSupporters:   2, // org-msft + auth0|donor1
+		},
+		{
+			// Reviewer edge case: unattributed positive credits exist so
+			// raw.TotalCredit > sponsorPositiveSum.  The old sponsorPositiveSum
+			// approach would have left negCreditAbs ≤ 0 and lost both the
+			// gross-donations correction and the disbursement expense.
+			// The negSponsorAbs formula handles this correctly.
+			name: "unattributed positive credits plus negative-credit disbursement",
+			raw: models.LedgerRawBalance{
+				ProjectID: "mixed",
+				// gross = 1_000_000 positive credits (800_000 attributed + 200_000 anon)
+				// net   = 1_000_000 - 100_000 negative credit = 900_000
+				TotalCredit: 900000,
+				Sponsors: models.LedgerRawSponsors{
+					Orgs: []models.LedgerRawSponsor{
+						{ID: "org-a", Total: 800000},  // attributed donor ✓
+						{ID: "org-b", Total: -100000}, // disbursement ✗
+					},
+					// 200_000 in anonymous/unattributed credits not in sponsors list
+				},
+			},
+			// negSponsorAbs = 100_000
+			// totalRaised   = 900_000 + 100_000 = 1_000_000 (gross; old formula gave 900_000)
+			// totalDebit    = 0       + 100_000 = 100_000   (old formula gave 0)
+			wantTotalRaised:  1000000,
+			wantTotalDebited: 100000,
+			wantSupporters:   1, // org-a only
 		},
 	}
 
@@ -465,8 +566,8 @@ func TestSyncer_Run_upsertsWithEnrichedSponsors(t *testing.T) {
 				FeeBalance:       -20,
 				Backers:          3,
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: "org-1", Total: 600000}},
-					Individuals: []models.LedgerRawSponsor{{ID: "auth0|user1", Total: 780}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "org-1", Total: 700}},
+					Individuals: []models.LedgerRawSponsor{{ID: "auth0|user1", Total: 100}},
 				},
 			},
 		},
