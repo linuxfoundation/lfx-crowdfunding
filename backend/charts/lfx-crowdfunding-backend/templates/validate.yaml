@@ -8,3 +8,7 @@ No Kubernetes resource is rendered; this file only produces errors.
 {{- if not .Values.config.STRIPE_RETURN_URL }}
 {{- fail (printf "\n\nvalues.yaml: config.STRIPE_RETURN_URL is required.\nSet it to the frontend URL Stripe redirects to after a 3DS challenge, e.g.:\n  config:\n    STRIPE_RETURN_URL: \"https://crowdfunding.linuxfoundation.org/payment/complete\"\nLeaving it empty causes 3DS redirect-based payment challenges to fail in production.") }}
 {{- end }}
+
+{{- if and .Values.mentorshipSyncCronJob.enabled (not .Values.mentorshipSyncCronJob.image.tag) }}
+{{- fail (printf "\n\nvalues.yaml: mentorshipSyncCronJob.image.tag is required when mentorshipSyncCronJob.enabled is true.\nSet it to the mentorship-sync image tag to deploy, e.g.:\n  mentorshipSyncCronJob:\n    image:\n      tag: \"abc1234\"\nFalling back to the main API image tag would pull from the wrong image repository.") }}
+{{- end }}

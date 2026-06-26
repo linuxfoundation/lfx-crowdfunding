@@ -22,6 +22,7 @@ type configStripeClient struct {
 	onCreatePaymentIntent         func(context.Context, models.PaymentIntentRequest) (*models.PaymentIntent, error)
 	onCreateSubscription          func(context.Context, models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
 	onCancelSubscription          func(context.Context, string) error
+	onGetSubscriptionPeriodEnd    func(context.Context, string) (int64, error)
 	onUpdatePaymentIntentMetadata func(context.Context, string, map[string]string) error
 	onConstructWebhook            func([]byte, string, string) (stripe.Event, error)
 	onCreateCustomer              func(context.Context, string, string) (string, error)
@@ -67,6 +68,12 @@ func (c *configStripeClient) CancelSubscription(ctx context.Context, id string) 
 		return c.onCancelSubscription(ctx, id)
 	}
 	panic("CancelSubscription not expected")
+}
+func (c *configStripeClient) GetSubscriptionCurrentPeriodEnd(ctx context.Context, subscriptionID string) (int64, error) {
+	if c.onGetSubscriptionPeriodEnd != nil {
+		return c.onGetSubscriptionPeriodEnd(ctx, subscriptionID)
+	}
+	return 0, nil
 }
 func (c *configStripeClient) UpdatePaymentIntentMetadata(ctx context.Context, piID string, metadata map[string]string) error {
 	if c.onUpdatePaymentIntentMetadata != nil {
@@ -191,6 +198,7 @@ type testSubscriptionRepo struct {
 	onGetByID                      func(context.Context, string) (*models.Subscription, error)
 	onGetByIDForUser               func(context.Context, string, string) (*models.Subscription, error)
 	onGetActiveByUserAndInitiative func(context.Context, string, string) (*models.Subscription, error)
+	onListByUser                   func(context.Context, string, models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error)
 	onCreate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
 	onUpdate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
 	onUpdateByStripeSubscriptionID func(context.Context, string, string) error
@@ -217,7 +225,10 @@ func (r *testSubscriptionRepo) GetActiveByUserAndInitiative(ctx context.Context,
 func (r *testSubscriptionRepo) ListByInitiative(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }
-func (r *testSubscriptionRepo) ListByUser(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+func (r *testSubscriptionRepo) ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+	if r.onListByUser != nil {
+		return r.onListByUser(ctx, userID, filter)
+	}
 	return nil, nil, nil
 }
 func (r *testSubscriptionRepo) Create(ctx context.Context, s *models.Subscription) (*models.Subscription, error) {

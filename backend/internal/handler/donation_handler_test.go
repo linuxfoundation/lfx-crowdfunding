@@ -112,6 +112,9 @@ func (r *donationInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ s
 func (r *donationInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *donationInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *donationInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	if r.orgsByIDs != nil {
 		return r.orgsByIDs, nil
@@ -169,6 +172,9 @@ func (c *donationStripeClient) CreateSubscription(_ context.Context, _ models.St
 }
 func (c *donationStripeClient) CancelSubscription(_ context.Context, _ string) error {
 	return nil
+}
+func (c *donationStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ string) (int64, error) {
+	return 0, nil
 }
 func (c *donationStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil

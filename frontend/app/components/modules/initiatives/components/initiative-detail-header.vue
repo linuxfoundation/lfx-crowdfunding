@@ -26,9 +26,11 @@ SPDX-License-Identifier: MIT
                 @click="handleShare()"
               />
               <lfx-icon-button
+                v-if="initiative.githubURL"
                 type="outline"
                 icon="github"
                 icon-type="brands"
+                @click="openGitHub()"
               />
             </div>
           </div>
@@ -126,6 +128,7 @@ SPDX-License-Identifier: MIT
             icon-type="brands"
             icon-position="left"
             button-style="pill"
+            @click="openGitHub()"
           />
           <lfx-tooltip
             content="This initiative is not currently accepting donations"
@@ -206,6 +209,10 @@ watch(plainDescription, checkTruncation, { immediate: true });
 const { openDonateDrawer } = useDonateDrawerStore();
 const { openShareModal } = useShareModalStore();
 const { isAuthenticated, login } = useAuth();
+
+function openGitHub() {
+  window.open(props.initiative.githubURL, '_blank', 'noopener,noreferrer');
+}
 
 function handleShare() {
   openShareModal({

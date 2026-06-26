@@ -50,7 +50,7 @@ SPDX-License-Identifier: MIT
           </div>
 
           <!-- Right column -->
-          <div class="w-full lg:w-[340px] shrink-0 md:sticky md:top-21 relative">
+          <div class="w-full lg:w-[340px] shrink-0 md:sticky md:top-27 relative">
             <statistics-recent-donations />
           </div>
         </div>

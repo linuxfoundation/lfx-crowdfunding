@@ -87,6 +87,9 @@ func (m *mockInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (mo
 	}
 	return models.OwnerInfo{Email: m.ownerEmail, Name: m.ownerName}, nil
 }
+func (m *mockInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (m *mockInitiativeRepo) UpdateStripeProductID(ctx context.Context, id, productID string) error {
 	if m.onUpdateStripeProductID != nil {
 		return m.onUpdateStripeProductID(ctx, id, productID)
@@ -133,6 +136,9 @@ func (m *mockStripeClient) CreateSubscription(_ context.Context, _ models.Stripe
 	return nil, nil
 }
 func (m *mockStripeClient) CancelSubscription(_ context.Context, _ string) error { return nil }
+func (m *mockStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 func (m *mockStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }
@@ -263,6 +269,33 @@ func TestFlattenSponsors(t *testing.T) {
 	}
 }
 
+func TestFlattenSponsors_ExcludesNegativeAndZeroTotals(t *testing.T) {
+	// Expense payout recipients appear in the Ledger sponsor list with
+	// non-positive totals and must be excluded from the sponsors grid.
+	list := models.LedgerSponsorList{
+		Orgs: []models.LedgerSponsorOrg{
+			{ID: "google", Name: "Google", Total: 100_000_000_00}, // keep
+			{ID: "illia", Name: "Illia", Total: -50_500_00},       // expense recipient — drop
+			{ID: "seth", Name: "Seth", Total: -1_000_00},          // expense recipient — drop
+		},
+		Individuals: []models.LedgerSponsorUser{
+			{ID: "auth0|michal", Name: "Michal", Total: 400}, // keep
+			{ID: "auth0|zero", Name: "Zero", Total: 0},       // zero — drop
+		},
+	}
+
+	result := flattenSponsors(list)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 sponsors (positive totals only), got %d", len(result))
+	}
+	for _, s := range result {
+		if s.TotalCents <= 0 {
+			t.Errorf("sponsor %q with non-positive total %d slipped through", s.ID, s.TotalCents)
+		}
+	}
+}
+
 func TestFlattenSponsors_Empty(t *testing.T) {
 	result := flattenSponsors(models.LedgerSponsorList{})
 	if result == nil {
@@ -275,7 +308,7 @@ func TestFlattenSponsors_Empty(t *testing.T) {
 
 func TestFlattenSponsors_GeneratesAvatarWhenMissing(t *testing.T) {
 	list := models.LedgerSponsorList{
-		Orgs: []models.LedgerSponsorOrg{{ID: "org-1", Name: "Acme", AvatarURL: ""}},
+		Orgs: []models.LedgerSponsorOrg{{ID: "org-1", Name: "Acme", AvatarURL: "", Total: 100}},
 	}
 	result := flattenSponsors(list)
 	if result[0].AvatarURL == "" {
@@ -422,6 +455,9 @@ func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error           
 func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
 func (m *mockRepoForEnrich) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
+}
+func (m *mockRepoForEnrich) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
 }
 
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
@@ -820,23 +856,76 @@ func TestUpdate_ForbiddenForNonOwner(t *testing.T) {
 	}
 }
 
-func TestUpdate_CannotSetApprovalControlledStatus(t *testing.T) {
-	restricted := []models.InitiativeStatus{
-		models.StatusPublished,
-		models.StatusDeclined,
-		models.StatusPending,
+func TestUpdate_AllowedOwnerStatusTransitions(t *testing.T) {
+	allowed := []struct {
+		from models.InitiativeStatus
+		to   models.InitiativeStatus
+	}{
+		{models.StatusSubmitted, models.StatusPending},
+		{models.StatusSubmitted, models.StatusDeclined},
+		{models.StatusPending, models.StatusDeclined},
+		{models.StatusPublished, models.StatusHidden},
+		{models.StatusHidden, models.StatusPublished},
 	}
-	for _, s := range restricted {
-		s := s
-		t.Run(string(s), func(t *testing.T) {
+	for _, tt := range allowed {
+		tt := tt
+		t.Run(string(tt.from)+"_to_"+string(tt.to), func(t *testing.T) {
+			status := tt.to
 			repo := &mockInitiativeRepo{
-				initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+				initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Status: tt.from},
+			}
+			updated, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+				models.InitiativeUpdateInput{Status: &status},
+			)
+			if err != nil {
+				t.Fatalf("unexpected error for %q -> %q: %v", tt.from, tt.to, err)
+			}
+			if updated.Status != tt.to {
+				t.Fatalf("expected status %q, got %q", tt.to, updated.Status)
+			}
+		})
+	}
+}
+
+func TestUpdate_RejectsDisallowedDirectStatusTransitions(t *testing.T) {
+	tests := []struct {
+		from models.InitiativeStatus
+		to   models.InitiativeStatus
+	}{
+		// from submitted — only pending and declined are allowed
+		{models.StatusSubmitted, models.StatusPublished},
+		{models.StatusSubmitted, models.StatusHidden},
+		// from pending — only declined is allowed
+		{models.StatusPending, models.StatusSubmitted},
+		{models.StatusPending, models.StatusPublished},
+		{models.StatusPending, models.StatusHidden},
+		// from published — only hidden is allowed
+		{models.StatusPublished, models.StatusSubmitted},
+		{models.StatusPublished, models.StatusPending},
+		{models.StatusPublished, models.StatusDeclined},
+		// from hidden — only published is allowed
+		{models.StatusHidden, models.StatusSubmitted},
+		{models.StatusHidden, models.StatusPending},
+		{models.StatusHidden, models.StatusDeclined},
+		// from declined — no owner transitions allowed
+		{models.StatusDeclined, models.StatusSubmitted},
+		{models.StatusDeclined, models.StatusPending},
+		{models.StatusDeclined, models.StatusPublished},
+		{models.StatusDeclined, models.StatusHidden},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(string(tt.from)+"_to_"+string(tt.to), func(t *testing.T) {
+			status := tt.to
+			repo := &mockInitiativeRepo{
+				initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Status: tt.from},
 			}
 			_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
-				models.InitiativeUpdateInput{Status: &s},
+				models.InitiativeUpdateInput{Status: &status},
 			)
 			if !errors.Is(err, domain.ErrForbidden) {
-				t.Fatalf("expected ErrForbidden for status %q, got %v", s, err)
+				t.Fatalf("expected ErrForbidden for %q -> %q, got %v", tt.from, tt.to, err)
 			}
 		})
 	}
@@ -1559,5 +1648,172 @@ func TestGetOwnerInfoBySlug_NullEmail(t *testing.T) {
 	_, err := svc.GetOwnerInfoBySlug(context.Background(), "some-project")
 	if !errors.Is(err, domain.ErrProfileNotSynced) {
 		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
+	}
+}
+
+// txnMockLedgerClient is a minimal Ledger client stub for GetTransactions tests.
+// Set total to a non-zero value to simulate a Ledger-supplied TotalCount that
+// differs from the current page size (e.g. for offset-based pagination tests).
+// When total is 0, len(txns) is used as TotalCount.
+type txnMockLedgerClient struct {
+	mockLedgerClient
+	txns  []models.Transaction
+	total int
+}
+
+func (c *txnMockLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
+	tc := c.total
+	if tc == 0 {
+		tc = len(c.txns)
+	}
+	return &models.TransactionList{Data: c.txns, TotalCount: tc}, nil
+}
+
+func TestGetTransactions_NegativeAmountsFilteredForDonations(t *testing.T) {
+	t.Parallel()
+
+	ledger := &txnMockLedgerClient{txns: []models.Transaction{
+		{ID: "t1", AmountCents: 100000000, Type: "donation"}, // Google — keep
+		{ID: "t2", AmountCents: 400, Type: "donation"},       // Michal — keep
+		{ID: "t3", AmountCents: -8148000, Type: "donation"},  // grant payout stored as negative credit — drop
+		{ID: "t4", AmountCents: -1785000, Type: "donation"},  // another negative credit — drop
+	}}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 2 {
+		t.Fatalf("expected 2 positive-amount donations, got %d", len(list.Data))
+	}
+	// offset=0, Ledger TotalCount=4, dropped=2 → adjusted=4-2=2; clamp=max(2, 0+2)=2.
+	if list.TotalCount != 2 {
+		t.Errorf("TotalCount: want 2 (adjusted by dropped rows), got %d", list.TotalCount)
+	}
+	for _, txn := range list.Data {
+		if txn.AmountCents <= 0 {
+			t.Errorf("negative-amount transaction %q slipped through filter (amount=%d)", txn.ID, txn.AmountCents)
+		}
+	}
+}
+
+func TestGetTransactions_NegativeAmountsNotFilteredForExpenses(t *testing.T) {
+	t.Parallel()
+
+	// Expense (reimbursement) transactions legitimately have negative amounts;
+	// the filter must not apply to them.
+	ledger := &txnMockLedgerClient{txns: []models.Transaction{
+		{ID: "e1", AmountCents: -50500, Type: "reimbursement"},
+		{ID: "e2", AmountCents: -100000, Type: "reimbursement"},
+	}}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	list, err := svc.GetTransactions(context.Background(), "some-id", "reimbursement", 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 2 {
+		t.Fatalf("expected 2 expense transactions, got %d", len(list.Data))
+	}
+}
+
+func TestGetTransactions_TotalCountClampedByOffset(t *testing.T) {
+	t.Parallel()
+
+	// Simulate a mid-pagination page (offset=8) where the Ledger reports a
+	// TotalCount of 10 but the page contains mostly negative-amount rows.
+	// After filtering: kept=1, dropped=2 → adjusted = 10-2 = 8.
+	// But offset+len(kept) = 8+1 = 9 > 8, so the clamp must fire → TotalCount=9.
+	// Without the clamp the frontend's "nextOffset < totalCount" guard
+	// (9 < 8 = false) would incorrectly halt pagination.
+	ledger := &txnMockLedgerClient{
+		total: 10,
+		txns: []models.Transaction{
+			{ID: "t1", AmountCents: 400, Type: "donation"},      // keep
+			{ID: "t2", AmountCents: -8148000, Type: "donation"}, // drop
+			{ID: "t3", AmountCents: -1785000, Type: "donation"}, // drop
+		},
+	}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 8)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 1 {
+		t.Fatalf("expected 1 positive-amount donation, got %d", len(list.Data))
+	}
+	// adjusted=10-2=8 < clamp=8+1=9 → must be 9.
+	if list.TotalCount != 9 {
+		t.Errorf("TotalCount: want 9 (clamped to offset+kept), got %d", list.TotalCount)
+	}
+}
+
+func TestGetTransactions_AllNegativePageWithMorePages_PaginationContinues(t *testing.T) {
+	t.Parallel()
+
+	// Reproduces the SOS $1M bug: pages 2-5 of the Ledger are entirely
+	// negative-amount disbursement credits.  With offset=5, limit=5 and
+	// HasNext=true the ledger client sets TotalCount = 5+5+5 = 15.
+	// After filtering all 5 rows out: adjusted = 15-5 = 10.
+	// Old clamp (offset+kept = 5+0 = 5): adjusted stays 10.
+	// Frontend nextOffset = 5+5 = 10; guard 10 < 10 = false → stops early.
+	// New rule: when all rows are filtered AND hasMorePages, clamp to
+	// offset+limit+1 = 5+5+1 = 11, so nextOffset (10) < TotalCount (11) → continues.
+	ledger := &txnMockLedgerClient{
+		total: 15, // offset(5) + pageSize(5) + limit(5) — ledger client HasNext encoding
+		txns: []models.Transaction{
+			{ID: "n1", AmountCents: -1060500, Type: "donation"},
+			{ID: "n2", AmountCents: -300000, Type: "donation"},
+			{ID: "n3", AmountCents: -1900000, Type: "donation"},
+			{ID: "n4", AmountCents: -1002500, Type: "donation"},
+			{ID: "n5", AmountCents: -1301000, Type: "donation"},
+		},
+	}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	const reqOffset, reqLimit = 5, 5
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", reqLimit, reqOffset)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 0 {
+		t.Fatalf("expected 0 positive-amount donations, got %d", len(list.Data))
+	}
+	// Frontend computes nextOffset = requestedOffset + requestedLimit = 10.
+	// TotalCount must be > 10 or the infinite query halts before page 6.
+	nextOffset := reqOffset + reqLimit
+	if nextOffset >= list.TotalCount {
+		t.Errorf("pagination would stop: nextOffset(%d) >= TotalCount(%d); want TotalCount > %d",
+			nextOffset, list.TotalCount, nextOffset)
 	}
 }

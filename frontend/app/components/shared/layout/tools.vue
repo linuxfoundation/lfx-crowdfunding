@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 <template>
   <lfx-popover
     v-model:visibility="isOpen"
-    placement="bottom-end"
+    placement="bottom-start"
   >
     <lfx-menu-button
       class="!px-2"

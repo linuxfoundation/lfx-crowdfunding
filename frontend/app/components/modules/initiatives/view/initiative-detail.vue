@@ -10,9 +10,7 @@ SPDX-License-Identifier: MIT
       </div>
     </template>
 
-    <template v-else-if="error">
-      <div class="flex items-center justify-center py-24 text-neutral-500 text-sm">Failed to load initiative.</div>
-    </template>
+    <template v-else-if="error" />
 
     <template v-else-if="data">
       <initiative-detail-header
@@ -38,8 +36,11 @@ SPDX-License-Identifier: MIT
                 :initiative="data"
                 :donation-records="donationRecords"
                 :is-loading-donations="transactionsLoading"
+                :has-more-donations="donationsHasNextPage"
+                :is-loading-more-donations="donationsIsFetchingNextPage"
                 :expense-records="expenseRecords"
                 :is-loading-expenses="expensesLoading"
+                @load-more-donations="donationsFetchNextPage"
               />
               <initiative-detail-about
                 v-else-if="activeTab === 'about'"
@@ -71,6 +72,8 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import type { FetchError } from 'ofetch';
+import { showError, createError } from 'nuxt/app';
 import InitiativeDetailHeader from '../components/initiative-detail-header.vue';
 import InitiativeDetailOverview from '../components/details-overview/initiative-detail-overview.vue';
 import InitiativeDetailSponsors from '../components/details-overview/initiative-detail-sponsors.vue';
@@ -87,7 +90,25 @@ import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/type
 const props = defineProps<{ initiativeSlug: string }>();
 
 const { data, isLoading, error } = useInitiative(computed(() => props.initiativeSlug));
-const { data: txnData, isLoading: transactionsLoading } = useInitiativeTransactions(
+
+watch(
+  error,
+  (err) => {
+    if (!err) return;
+    const fetchErr = err as FetchError;
+    const status = fetchErr.statusCode ?? fetchErr.response?.status ?? 500;
+    showError(createError({ statusCode: status }));
+  },
+  { immediate: true },
+);
+
+const {
+  data: txnData,
+  isLoading: transactionsLoading,
+  hasNextPage: donationsHasNextPage,
+  isFetchingNextPage: donationsIsFetchingNextPage,
+  fetchNextPage: donationsFetchNextPage,
+} = useInitiativeTransactions(
   computed(() => props.initiativeSlug),
   'donations',
 );
@@ -98,7 +119,7 @@ const { data: expenseData, isLoading: expensesLoading } = useInitiativeTransacti
 );
 
 const recentDonations = computed<RecentDonation[]>(() =>
-  (txnData.value?.data ?? []).map((t) => ({
+  (txnData.value?.pages[0]?.data ?? []).map((t) => ({
     id: t.id,
     donorName: t.donorName ?? 'Anonymous',
     donorLogoUrl: t.donorLogoUrl,
@@ -109,7 +130,7 @@ const recentDonations = computed<RecentDonation[]>(() =>
 );
 
 const donationRecords = computed<DonationRecord[]>(() =>
-  (txnData.value?.data ?? []).map((t) => ({
+  (txnData.value?.pages.flatMap((p) => p.data) ?? []).map((t) => ({
     id: t.id,
     date: formatShortDate(t.date),
     supporterName: t.donorName ?? 'Anonymous',
@@ -121,7 +142,7 @@ const donationRecords = computed<DonationRecord[]>(() =>
 );
 
 const expenseRecords = computed<ExpenseRecord[]>(() =>
-  (expenseData.value?.data ?? []).map((t) => ({
+  (expenseData.value?.pages.flatMap((p) => p.data) ?? []).map((t) => ({
     id: t.id,
     date: formatShortDate(t.date),
     category: t.category ?? 'Other',

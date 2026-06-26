@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -19,12 +18,10 @@ import (
 	stripe "github.com/stripe/stripe-go/v85"
 )
 
-// ledgerSourceType and ledgerTxnType are the fixed values sent to the Ledger
-// service for all charges originating from this service.
-const (
-	ledgerSourceType = "stripe"
-	ledgerTxnType    = "credit"
-)
+// ledgerTxnType is the fixed transaction type sent to the Ledger service for
+// all charges originating from this service. The source type is the shared
+// domain.LedgerSourceTypeStripe constant.
+const ledgerTxnType = "credit"
 
 // WebhookHandler handles inbound Stripe webhook events.
 // Signature validation is ALWAYS performed before processing — never skip this check.
@@ -216,7 +213,7 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		UserID:          userID,
 		OrganizationID:  pi.Metadata["org_id"],
 		AccountEmail:    donorEmail,
-		SourceType:      ledgerSourceType,
+		SourceType:      domain.LedgerSourceTypeStripe,
 		SourceTxnID:     sourceTxnID,
 		SourceAccountID: customerID,
 		TxnType:         ledgerTxnType,
@@ -333,22 +330,17 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	}
 	h.logger.Info("invoice.payment_succeeded: subscription activated", "sub_id", subID)
 
-	// Only v2 charges (originated by this service) get Ledger + email treatment.
-	// v1 LFF subscriptions carry no version metadata and are handled by the
-	// Ledger-service's own webhook.
+	// Only v2 subscriptions (created by this service) get email treatment here.
+	// v1 LFF subscriptions carry no version metadata; the Ledger service handles
+	// all Ledger DB writes via its charge.succeeded webhook for both v1 and v2.
 	if subMeta["version"] != "v2" {
 		return nil
 	}
 	initiativeID := subMeta["initiative_id"]
-	userID := subMeta["user_id"]
-	if initiativeID == "" || userID == "" {
-		h.logger.Warn("invoice.payment_succeeded: missing required subscription metadata, skipping ledger post",
+	if initiativeID == "" {
+		h.logger.Warn("invoice.payment_succeeded: missing initiative_id in subscription metadata, skipping emails",
 			"sub_id", subID)
 		return nil
-	}
-	customerID := ""
-	if inv.Customer != nil {
-		customerID = inv.Customer.ID
 	}
 	amount := int(inv.AmountPaid)
 	// inv.CustomerEmail can be empty depending on how the Invoice was created.
@@ -357,29 +349,9 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	if donorEmail == "" {
 		donorEmail = subMeta["donor_email"]
 	}
-	txn := clients.LedgerTransaction{
-		ProjectID:       initiativeID,
-		UserID:          userID,
-		OrganizationID:  subMeta["org_id"],
-		AccountEmail:    donorEmail,
-		SourceType:      ledgerSourceType,
-		SourceTxnID:     inv.ID, // invoice ID is the stable unique key for subscription payments
-		SourceAccountID: customerID,
-		TxnType:         ledgerTxnType,
-		TxnCategory:     subMeta["category"],
-		Amount:          amount,
-		TxnDate:         inv.Created,
-	}
-	// Ledger post is best-effort: the DB is already marked active, so returning
-	// an error would cause Stripe to retry — but the retry hits ErrAlreadyProcessed
-	// and skips this path entirely. Log the failure and continue.
-	if err := h.ledgerClient.PostTransaction(r.Context(), txn); err != nil {
-		h.logger.Error("invoice.payment_succeeded: failed to post transaction to ledger",
-			"sub_id", subID, "error", err)
-	} else {
-		h.logger.Info("invoice.payment_succeeded: transaction posted to ledger",
-			"sub_id", subID, "initiative_id", initiativeID)
-	}
+	// The Ledger service posts to the Ledger DB via its own charge.succeeded
+	// webhook handler using the correct ch_xxx charge ID. We do not write to
+	// the Ledger here to avoid duplicate entries.
 
 	// Send emails — failures are logged but do not fail the webhook.
 	initiativeURL := ""
@@ -417,11 +389,13 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	return nil
 }
 
-// handleInvoiceFinalized stamps version=v2 metadata onto a subscription invoice's
-// PaymentIntent immediately after the invoice is finalized.
-// This ensures the Ledger service's charge.succeeded webhook sees the version flag
-// and skips posting — preventing the duplicate Ledger entry that would otherwise
-// be posted alongside our invoice.payment_succeeded handler.
+// handleInvoiceFinalized was previously used to stamp version=v2 metadata onto
+// a subscription invoice's PaymentIntent so that the Ledger service's
+// charge.succeeded webhook could skip posting (to avoid duplicates alongside our
+// own invoice.payment_succeeded Ledger write). Now that invoice.payment_succeeded
+// no longer writes to Ledger, the Ledger service's charge.succeeded is the sole
+// source of Ledger entries. This handler is retained as a no-op guard that returns
+// early for subscription invoices so no PI metadata is stamped.
 func (h *WebhookHandler) handleInvoiceFinalized(r *http.Request, event stripe.Event) error {
 	if event.Data == nil {
 		return fmt.Errorf("invoice.finalized: event.Data is nil (event_id=%s)", event.ID)
@@ -436,44 +410,9 @@ func (h *WebhookHandler) handleInvoiceFinalized(r *http.Request, event stripe.Ev
 	if inv.Parent == nil || inv.Parent.SubscriptionDetails == nil || inv.Parent.SubscriptionDetails.Subscription == nil {
 		return nil
 	}
-	// Only stamp v2 subscriptions.
-	subMeta := inv.Parent.SubscriptionDetails.Metadata
-	if subMeta == nil || subMeta["version"] != "v2" {
-		return nil
-	}
-	// Extract the PI ID. The webhook payload carries it as a bare string in
-	// "payment_intent", but stripe.Invoice doesn't map that field. Decode it
-	// from the raw bytes, then fall back to parsing confirmation_secret if absent.
-	var rawInv struct {
-		PaymentIntent string `json:"payment_intent"`
-	}
-	if err := json.Unmarshal(event.Data.Raw, &rawInv); err != nil {
-		h.logger.Error("invoice.finalized: raw unmarshal failed", "event_id", event.ID, "error", err)
-		return fmt.Errorf("invoice.finalized: raw unmarshal: %w", err)
-	}
-	piID := rawInv.PaymentIntent
-	// Fallback: derive PI ID from confirmation_secret client_secret (format: pi_xxx_secret_yyy).
-	if piID == "" && inv.ConfirmationSecret != nil && inv.ConfirmationSecret.ClientSecret != "" {
-		parts := strings.SplitN(inv.ConfirmationSecret.ClientSecret, "_secret_", 2)
-		if len(parts) == 2 && parts[0] != "" {
-			piID = parts[0]
-		}
-	}
-	if piID == "" {
-		h.logger.Warn("invoice.finalized: could not determine PI ID, skipping metadata stamp",
-			"invoice_id", inv.ID)
-		return nil
-	}
-	if err := h.stripeClient.UpdatePaymentIntentMetadata(r.Context(), piID, map[string]string{"version": "v2"}); err != nil {
-		// Best-effort: log but do not fail the webhook. If this is missed once,
-		// the Ledger service will post a duplicate — but that is recoverable.
-		// Failing here would cause Stripe to retry invoice.finalized indefinitely,
-		// which would block the subscription lifecycle.
-		h.logger.Warn("invoice.finalized: failed to stamp version=v2 on PI, Ledger may double-post",
-			"invoice_id", inv.ID, "pi_id", piID, "error", err)
-	}
-	h.logger.Info("invoice.finalized: stamped version=v2 on subscription PI",
-		"invoice_id", inv.ID, "pi_id", piID)
+	// The Ledger service's charge.succeeded handler is now the sole writer of
+	// Ledger entries for all subscriptions (v1 and v2). No PI metadata stamping
+	// is performed here.
 	return nil
 }
 
@@ -566,6 +505,28 @@ func (h *WebhookHandler) handleSubscriptionCanceled(r *http.Request, subID strin
 	}
 	h.logger.Info("subscription cancelled", "sub_id", subID)
 	return nil
+}
+
+// extractStringOrIDField extracts a string value from a json.RawMessage that is
+// either a JSON string ("ch_xxx") or an expanded object ({"id":"ch_xxx",...}).
+// Returns "" if raw is nil, null, or neither form.
+func extractStringOrIDField(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	// Try bare string first.
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	// Try expanded object: extract the "id" field.
+	var obj struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.ID
+	}
+	return ""
 }
 
 // donationTypeLabel maps a stored frequency metadata value to a human-readable

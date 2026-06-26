@@ -239,7 +239,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: frontend/
+          context: .
           file: frontend/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
