@@ -47,5 +47,10 @@ export default {
     githubOauthClientId: process.env.NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID || '',
     intercomAppId:
       process.env.NUXT_PUBLIC_INTERCOM_APP_ID || (isProduction ? 'w29sqomy' : 'mxl90k6y'),
+    // Datadog RUM — leave empty locally; set via NUXT_PUBLIC_DATADOG_RUM_* in k8s secrets.
+    datadogRumAppId: process.env.NUXT_PUBLIC_DATADOG_RUM_APP_ID || '',
+    datadogRumClientToken: process.env.NUXT_PUBLIC_DATADOG_RUM_CLIENT_TOKEN || '',
+    // Version is injected from the git tag at deploy time (e.g. "0.1.12").
+    datadogRumVersion: process.env.NUXT_PUBLIC_APP_VERSION || '',
   },
 };
