@@ -762,6 +762,11 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	// negative amounts (e.g. SOS pays grants out of its fund). These are not
 	// donations and must not appear in the "Donations received" table.
 	if txnType == "donation" {
+		fullPageLen := len(list.Data) // capture before filtering
+		// The ledger client encodes HasNext by adding list.Limit to TotalCount;
+		// if TotalCount > offset+fullPageLen the Ledger signalled more pages.
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
 		kept := list.Data[:0]
 		for _, t := range list.Data {
 			if t.AmountCents > 0 {
@@ -771,11 +776,23 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 		dropped := len(list.Data) - len(kept)
 		list.Data = kept
 		// Adjust the Ledger's total estimate by the number of rows dropped
-		// from this page.  Clamp to at least offset+len(kept) so the
-		// frontend's "nextOffset < totalCount" guard does not stop early
-		// when a page happens to contain mostly negative rows.
+		// from this page.  Two clamp rules keep the frontend's
+		// "nextOffset < totalCount" guard from stopping pagination early:
+		//
+		//  1. Normal case (some items kept): TotalCount ≥ offset+len(kept)
+		//     so the items already delivered are accounted for.
+		//
+		//  2. Entire page filtered out but HasNext=true: TotalCount must be
+		//     > nextOffset (offset+limit) or the frontend halts before
+		//     reaching later pages that may still contain positive entries
+		//     (e.g. the manual_from_lf $1M credit on SOS page 6, which sits
+		//     behind five all-negative disbursement pages).
 		adjusted := list.TotalCount - dropped
-		if minTotal := offset + len(kept); adjusted < minTotal {
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
 			adjusted = minTotal
 		}
 		list.TotalCount = adjusted
