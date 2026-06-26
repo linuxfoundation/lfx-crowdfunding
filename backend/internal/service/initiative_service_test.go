@@ -1770,3 +1770,50 @@ func TestGetTransactions_TotalCountClampedByOffset(t *testing.T) {
 		t.Errorf("TotalCount: want 9 (clamped to offset+kept), got %d", list.TotalCount)
 	}
 }
+
+func TestGetTransactions_AllNegativePageWithMorePages_PaginationContinues(t *testing.T) {
+	t.Parallel()
+
+	// Reproduces the SOS $1M bug: pages 2-5 of the Ledger are entirely
+	// negative-amount disbursement credits.  With offset=5, limit=5 and
+	// HasNext=true the ledger client sets TotalCount = 5+5+5 = 15.
+	// After filtering all 5 rows out: adjusted = 15-5 = 10.
+	// Old clamp (offset+kept = 5+0 = 5): adjusted stays 10.
+	// Frontend nextOffset = 5+5 = 10; guard 10 < 10 = false → stops early.
+	// New rule: when all rows are filtered AND hasMorePages, clamp to
+	// offset+limit+1 = 5+5+1 = 11, so nextOffset (10) < TotalCount (11) → continues.
+	ledger := &txnMockLedgerClient{
+		total: 15, // offset(5) + pageSize(5) + limit(5) — ledger client HasNext encoding
+		txns: []models.Transaction{
+			{ID: "n1", AmountCents: -1060500, Type: "donation"},
+			{ID: "n2", AmountCents: -300000, Type: "donation"},
+			{ID: "n3", AmountCents: -1900000, Type: "donation"},
+			{ID: "n4", AmountCents: -1002500, Type: "donation"},
+			{ID: "n5", AmountCents: -1301000, Type: "donation"},
+		},
+	}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	const reqOffset, reqLimit = 5, 5
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", reqLimit, reqOffset)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 0 {
+		t.Fatalf("expected 0 positive-amount donations, got %d", len(list.Data))
+	}
+	// Frontend computes nextOffset = requestedOffset + requestedLimit = 10.
+	// TotalCount must be > 10 or the infinite query halts before page 6.
+	nextOffset := reqOffset + reqLimit
+	if nextOffset >= list.TotalCount {
+		t.Errorf("pagination would stop: nextOffset(%d) >= TotalCount(%d); want TotalCount > %d",
+			nextOffset, list.TotalCount, nextOffset)
+	}
+}
