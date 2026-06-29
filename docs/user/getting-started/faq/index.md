@@ -39,6 +39,6 @@ Use the chat icon on any page to contact the LFX support team. For initiative-sp
 
 ## Related sections
 
-- [Initiatives](../initiatives/) — browse and understand active campaigns
-- [Donations](../donations/) — how to donate and manage your giving
-- [Create an Initiative](../initiatives/create-initiative/) — start a fundraiser for your project
+- [Initiatives](../../initiatives/) — browse and understand active campaigns
+- [Donations](../../donations/) — how to donate and manage your giving
+- [Create an Initiative](../../initiatives/create-initiative/) — start a fundraiser for your project

@@ -37,6 +37,6 @@ Cancellation takes effect immediately — you will not be charged again. The sub
 
 ## Related sections
 
-- [Making a Donation](./make-donation/) — how to make a new donation
-- [Payment Account](../payment-account/) — manage your saved card
-- [Backers](../backers/) — how your donations appear on initiative pages
+- [Making a Donation](../make-donation/) — how to make a new donation
+- [Payment Account](../../payment-account/) — manage your saved card
+- [Backers](../../backers/) — how your donations appear on initiative pages
