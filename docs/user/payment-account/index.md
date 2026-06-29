@@ -7,14 +7,27 @@ display_order: 5
 intercom_collection: LFX Crowdfunding
 ---
 
-This page applies to donors who have already completed at least one donation on LFX Crowdfunding.
+Managing your payment account lets you update or remove the card saved on LFX Crowdfunding. This applies to donors who have completed at least one donation.
 
-Payment account management — including updating or removing your saved card — is handled through the LFX platform. Visit [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations) to manage your payment details.
+## Before you begin
 
-## Saving a card
+You must have completed at least one donation — your card is saved automatically on your first payment. Sign in with your [LF ID](https://openprofile.dev/) before proceeding.
 
-Your card is saved automatically the first time you complete a donation. You do not need to set anything up in advance.
+## Steps
 
-## Updating your card
+1. Go to [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations).
 
-To update your saved card, visit [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations). Your new card will be used for all future donations and active monthly subscriptions.
+![Payment account management](/images/docs/screenshots/payment-account/payment-account-page.png)
+
+2. Locate the **Payment** section.
+3. Select **Update card** and enter your new card details.
+4. Select **Save** to confirm.
+
+## After completing
+
+Your new card will be used for all future one-time donations and any active monthly subscriptions.
+
+## Related sections
+
+- [Making a Donation](../donations/make-donation/) — how to make a donation
+- [Managing Your Donations](../donations/manage-donations/) — view history and cancel subscriptions

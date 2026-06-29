@@ -39,6 +39,10 @@ All donations are made to the Linux Foundation, a 501(c)(6) non-profit organisat
 
 Payments are processed by [Stripe](https://stripe.com). LFX Crowdfunding never stores your full card details.
 
+## After completing
+
+Once your donation is processed you will receive an email acknowledgement. You can view your giving history and manage subscriptions at [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations).
+
 ## Related sections
 
 - [Getting Started](../getting-started/) — overview of the platform

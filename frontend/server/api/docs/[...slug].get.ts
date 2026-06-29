@@ -15,7 +15,7 @@ import {
 } from '../../utils/doc-utils';
 import type { DocArticle } from '#shared/types/documentation.types';
 
-function buildRenderer(slugDir: string): Renderer {
+function buildRenderer(slugDir: string, baseUrl: string): Renderer {
   const renderer = new Renderer();
   renderer.link = ({ href, title, text }) => {
     const rewritten = rewriteDocLink(href ?? '', slugDir);
@@ -28,6 +28,11 @@ function buildRenderer(slugDir: string): Renderer {
       .filter(Boolean)
       .join(' ');
     return `<a ${attrs}>${text}</a>`;
+  };
+  renderer.image = ({ href, title, text }) => {
+    const src = href?.startsWith('/') ? `${baseUrl}${href}` : (href ?? '');
+    const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+    return `<img src="${escapeAttr(src)}" alt="${escapeAttr(text ?? '')}"${titleAttr}>`;
   };
   return renderer;
 }
@@ -73,9 +78,12 @@ export default defineEventHandler(async (event): Promise<DocArticle> => {
   // direct .md files (slug = 'donations/history') → slugDir = 'donations'
   const slugDir = isIndex ? normalised : normalised.split('/').slice(0, -1).join('/');
 
+  const {
+    public: { appUrl },
+  } = useRuntimeConfig();
   const { data: fm, content } = parseFrontmatter(raw);
   const renderedHtml = await marked.parse(content, {
-    renderer: buildRenderer(slugDir),
+    renderer: buildRenderer(slugDir, appUrl),
     async: true,
   });
   const bodyHtml = DOMPurify.sanitize(renderedHtml);

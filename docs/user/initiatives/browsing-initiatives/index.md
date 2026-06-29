@@ -7,27 +7,32 @@ display_order: 1
 intercom_collection: LFX Crowdfunding
 ---
 
-Go to the **Initiatives** page from the top navigation to see all active campaigns. You can search by name or filter by category.
+Browsing initiatives lets you find and explore active open source fundraising campaigns on LFX Crowdfunding.
 
-![Browse initiatives page](https://crowdfunding.linuxfoundation.org/images/docs/initiatives-browse.png)
+## Before you begin
 
-Each initiative card shows:
+No sign-in is required to browse initiatives. To donate to one, you will need an [LF ID](https://openprofile.dev/) account.
 
-- Project name and logo
-- Fundraising goal and amount raised so far
-- Number of supporters
+## Steps
 
-## Initiative detail page
+1. Select **Initiatives** from the top navigation.
 
-Click any initiative to view its full detail page.
+![Browse initiatives page](/images/docs/initiatives-browse.png)
 
-![Initiative detail page](https://crowdfunding.linuxfoundation.org/images/docs/initiatives-detail.png)
+2. Browse the list of active campaigns. Each card shows the project name and logo, fundraising goal, amount raised so far, and number of supporters.
+3. Enter a name in the search field or select a category filter to narrow results.
+4. Select any initiative card to open its detail page.
 
-The detail page includes:
+![Initiative detail page](/images/docs/initiatives-detail.png)
 
-- **Overview** — the project's mission and how funds will be used
-- **Financials** — a breakdown of income and expenses
-- **Supporters** — a list of donors (anonymised where requested)
+5. Review the initiative details:
+   - **Overview** — the project's mission and how funds will be used
+   - **Financials** — a breakdown of income and expenses
+   - **Supporters** — a list of donors
+
+## After completing
+
+Select **Donate** on any initiative page to make a contribution. See [Making a Donation](../../donations/make-donation/) for the full payment walkthrough.
 
 ## Initiative status
 
@@ -41,11 +46,8 @@ The detail page includes:
 
 Only **Published** initiatives are visible to the public.
 
-## Donating to an initiative
-
-Use the **Donate** button on any initiative page to make a contribution. See [Donations](../../donations/) for details on the donation process.
-
 ## Related sections
 
+- [Making a Donation](../../donations/make-donation/) — donate to an initiative
 - [Create an Initiative](../create-initiative/) — start your own campaign
 - [Backers](../../backers/) — how supporters are listed on initiative pages
