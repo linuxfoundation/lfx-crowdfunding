@@ -17,7 +17,7 @@ You must have completed at least one donation — your card is saved automatical
 
 1. Go to [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations).
 
-![Payment account management](/images/docs/screenshots/payment-account/payment-account-page.png)
+    ![Payment account management](/images/docs/screenshots/payment-account/payment-account-page.png)
 
 2. Locate the **Payment** section.
 3. Select **Update card** and enter your new card details.

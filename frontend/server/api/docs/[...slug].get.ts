@@ -30,7 +30,7 @@ function buildRenderer(slugDir: string, baseUrl: string): Renderer {
     return `<a ${attrs}>${text}</a>`;
   };
   renderer.image = ({ href, title, text }) => {
-    const src = href?.startsWith('/') ? `${baseUrl}${href}` : (href ?? '');
+    const src = href?.startsWith('/') ? `${baseUrl.replace(/\/$/, '')}${href}` : (href ?? '');
     const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
     return `<img src="${escapeAttr(src)}" alt="${escapeAttr(text ?? '')}"${titleAttr}>`;
   };

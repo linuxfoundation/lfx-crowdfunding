@@ -11,6 +11,10 @@ This section applies to initiative owners and beneficiaries claiming expenses ag
 
 Reimbursements allow initiative owners and their designated beneficiaries to claim expenses against initiative funds. The process is managed through an external expense service — LFX Crowdfunding handles the setup and approval flow.
 
+## Before you begin
+
+You must be listed as a beneficiary on a published initiative, or be the initiative owner. The initiative owner is added automatically. Contact your initiative owner or Linux Foundation programme manager if you need to be added.
+
 ## Who can submit expenses
 
 Anyone listed as a **beneficiary** on an initiative can submit expense reports. The initiative owner is automatically a beneficiary. Additional beneficiaries can be added during initiative creation or editing by providing their name and email address.

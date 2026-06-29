@@ -17,11 +17,11 @@ Your initiative must be approved and published. You must be signed in as the ini
 
 1. Go to [My Initiatives on LFX](https://app.lfx.dev/crowdfunding/initiatives).
 
-![My Initiatives list](/images/docs/screenshots/initiatives/manage-initiative-list.png)
+    ![My Initiatives list](/images/docs/screenshots/initiatives/manage-initiative-list.png)
 
 2. Select the initiative you want to update.
 
-![Initiative edit form](/images/docs/screenshots/initiatives/manage-initiative-edit.png)
+    ![Initiative edit form](/images/docs/screenshots/initiatives/manage-initiative-edit.png)
 
 3. Update any of the following fields and select **Save**:
    - Name, description, and logo

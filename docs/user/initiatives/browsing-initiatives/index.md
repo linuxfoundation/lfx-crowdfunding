@@ -17,13 +17,13 @@ No sign-in is required to browse initiatives. To donate to one, you will need an
 
 1. Select **Initiatives** from the top navigation.
 
-![Browse initiatives page](/images/docs/initiatives-browse.png)
+    ![Browse initiatives page](/images/docs/initiatives-browse.png)
 
 2. Browse the list of active campaigns. Each card shows the project name and logo, fundraising goal, amount raised so far, and number of supporters.
 3. Enter a name in the search field or select a category filter to narrow results.
 4. Select any initiative card to open its detail page.
 
-![Initiative detail page](/images/docs/initiatives-detail.png)
+    ![Initiative detail page](/images/docs/initiatives-detail.png)
 
 5. Review the initiative details:
    - **Overview** — the project's mission and how funds will be used
