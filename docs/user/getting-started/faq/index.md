@@ -23,7 +23,7 @@ Yes. There are no platform fees for donors or project owners. The Linux Foundati
 
 ## Who manages the funds?
 
-The Linux Foundation holds and disburses all funds. Project owners and designated beneficiaries can claim expenses through the reimbursement process. See [Reimbursements](../reimbursements/) for details.
+The Linux Foundation holds and disburses all funds. Project owners and designated beneficiaries can claim expenses through the reimbursement process. See [Reimbursements](../../reimbursements/) for details.
 
 ## What currencies are supported?
 
