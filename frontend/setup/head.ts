@@ -50,5 +50,11 @@ export default {
   ],
   script: [
     { src: 'https://kit.fontawesome.com/0c49a28643.js', crossorigin: 'anonymous', async: true },
+    // Privacy-friendly analytics by Plausible
+    { src: 'https://plausible.io/js/pa-Z7youDetgVMZFqKWkN7xd.js', async: true },
+    {
+      innerHTML:
+        'window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()',
+    },
   ],
 };
