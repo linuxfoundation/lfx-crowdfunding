@@ -24,7 +24,7 @@ import (
 // csvDownloaders is the comma-separated allowlist of LF SSO usernames that may
 // call the org-donors CSV export endpoint (GET /v1/me/donations/csv).
 // To grant access to additional users, append their username to this constant.
-const csvDownloaders = "lojile"
+const csvDownloaders = "lewisoj"
 
 // csvDownloaderSet is the parsed, O(1)-lookup form of csvDownloaders.
 var csvDownloaderSet = func() map[string]struct{} {
