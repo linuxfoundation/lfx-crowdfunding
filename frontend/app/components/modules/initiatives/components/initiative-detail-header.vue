@@ -242,6 +242,7 @@ defineEmits<{ (e: 'update:activeTab', value: string): void }>();
 const tabs = [
   { value: 'overview', label: 'Overview', icon: 'gauge-high' },
   { value: 'financials', label: 'Financials', icon: 'money-check-dollar' },
+  { value: 'announcements', label: 'Announcements', icon: 'megaphone' },
   { value: 'about', label: 'About', icon: 'memo' },
 ];
 
