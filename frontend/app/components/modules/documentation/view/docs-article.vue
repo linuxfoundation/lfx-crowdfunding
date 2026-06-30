@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="bg-white">
     <div class="container px-5 md:px-10">
-      <div class="flex gap-12 py-10">
+      <div class="flex gap-12 pt-10 pb-25">
         <!-- Sidebar -->
-        <aside class="hidden w-52 shrink-0 lg:block">
+        <aside class="hidden w-64 shrink-0 lg:block">
           <div class="sticky top-24">
             <NuxtLink
               to="/docs"
