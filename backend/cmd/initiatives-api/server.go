@@ -51,6 +51,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	statisticsRepo := db.NewStatisticsRepository(pool)
 	userRepo := db.NewUserRepository(pool)
 	orgRepo := db.NewOrganizationRepository(pool)
+	announcementRepo := db.NewAnnouncementRepository(pool)
 
 	// Clients
 	ledgerClient := clients.NewLedgerClient(clients.LedgerConfig{
@@ -109,6 +110,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 	orgSvc := service.NewOrganizationService(orgRepo, userRepo)
+	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)
 
 	// JWT authenticator
 	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
@@ -139,6 +141,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	uploadH := handler.NewUploadHandler(s3Client)
 	expenseH := handler.NewExpenseHandler(reimbursementClient)
 	orgH := handler.NewOrganizationHandler(orgSvc)
+	announcementH := handler.NewAnnouncementHandler(announcementSvc)
 
 	// UserInfo client — fetches full profile from Auth0 on login sync.
 	// In bypass mode (local dev) there is no real Auth0, so use a mock fetcher.
@@ -182,6 +185,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	r.Get("/v1/statistics/recent-donations", statisticsH.GetRecentDonations)
 	r.Get("/v1/initiatives", initiativeH.List)
 	r.Get("/v1/initiatives/{id}/transactions", initiativeH.GetTransactions)
+	r.Get("/v1/initiatives/{id}/announcements", announcementH.List)
 
 	// Initiative detail — public for published initiatives; approvers may also
 	// view non-published initiatives if a valid token is supplied.
@@ -231,6 +235,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Get("/initiatives/{id}/subscriptions", subscriptionH.List)
 		r.Post("/initiatives/{id}/subscriptions", subscriptionH.Create)
 		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
+
+		// Announcements on a specific initiative (caller must be the initiative owner).
+		r.Post("/initiatives/{id}/announcements", announcementH.Create)
+		r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
+		r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
 	})
 
 	// Approval route — caller is an approver (allowlist check), not the resource owner.

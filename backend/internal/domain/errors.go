@@ -32,4 +32,7 @@ var (
 	// ErrExpenseReportNotFound is returned when the Reimbursement Service responds
 	// with 404 for a given expense report ID.
 	ErrExpenseReportNotFound = errors.New("expense report not found")
+	// ErrAnnouncementNotFound is returned when an announcement does not exist or
+	// does not belong to the requested initiative.
+	ErrAnnouncementNotFound = errors.New("announcement not found")
 )

@@ -42,6 +42,10 @@ SPDX-License-Identifier: MIT
                 :is-loading-expenses="expensesLoading"
                 @load-more-donations="donationsFetchNextPage"
               />
+              <initiative-detail-announcements
+                v-else-if="activeTab === 'announcements'"
+                :initiative-slug="data.slug"
+              />
               <initiative-detail-about
                 v-else-if="activeTab === 'about'"
                 :initiative="data"
@@ -79,6 +83,7 @@ import InitiativeDetailOverview from '../components/details-overview/initiative-
 import InitiativeDetailSponsors from '../components/details-overview/initiative-detail-sponsors.vue';
 import InitiativeDetailFinancials from '../components/details-financials/initiative-detail-financials.vue';
 import InitiativeDetailAbout from '../components/details-about/initiative-detail-about.vue';
+import InitiativeDetailAnnouncements from '../components/details-announcements/initiative-detail-announcements.vue';
 import { useInitiative } from '~/composables/initiatives/useInitiative';
 import { useInitiativeTransactions } from '~/composables/initiatives/useInitiativeTransactions';
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';

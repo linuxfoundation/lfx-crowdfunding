@@ -170,3 +170,21 @@ type MentorshipRepository interface {
 	// Snowflake (not currently acted on, but useful for future reconciliation).
 	ListJobspringIDs(ctx context.Context) ([]string, error)
 }
+
+// AnnouncementRepository defines persistence operations for initiative announcements.
+type AnnouncementRepository interface {
+	// List returns paginated announcements for the given initiative,
+	// ordered by created_on descending (newest first).
+	List(ctx context.Context, initiativeID string, filter models.AnnouncementFilter) ([]models.Announcement, *models.PaginationMeta, error)
+
+	// Create inserts a new announcement and returns the persisted record.
+	Create(ctx context.Context, a *models.Announcement) (*models.Announcement, error)
+
+	// Update patches the title and description of an announcement identified by
+	// id and initiativeID. Returns ErrAnnouncementNotFound when no matching row exists.
+	Update(ctx context.Context, id, initiativeID string, input models.AnnouncementUpdateInput) (*models.Announcement, error)
+
+	// Delete removes an announcement by id scoped to initiativeID.
+	// Returns ErrAnnouncementNotFound when no matching row exists.
+	Delete(ctx context.Context, id, initiativeID string) error
+}
