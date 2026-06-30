@@ -38,7 +38,7 @@ SPDX-License-Identifier: MIT
                 v-for="n in 4"
                 :key="n"
                 height="9rem"
-                custom-class="rounded-xl"
+                custom-class="rounded-2xl"
               />
             </div>
           </template>
