@@ -11,25 +11,30 @@ This section applies to initiative owners and beneficiaries claiming expenses ag
 
 Reimbursements allow initiative owners and their designated beneficiaries to claim expenses against initiative funds. The process is managed through an external expense service — LFX Crowdfunding handles the setup and approval flow.
 
+## Before you begin
+
+You must be listed as a beneficiary on a published initiative, or be the initiative owner. The initiative owner is added automatically. Contact your initiative owner or Linux Foundation programme manager if you need to be added.
+
 ## Who can submit expenses
 
 Anyone listed as a **beneficiary** on an initiative can submit expense reports. The initiative owner is automatically a beneficiary. Additional beneficiaries can be added during initiative creation or editing by providing their name and email address.
 
-## Submitting an expense
+## Steps
 
-Expense submission is handled externally through the reimbursement service. Once you have been added as a beneficiary on a published initiative, you will receive access to submit expense reports outside of LFX Crowdfunding.
+### Submit an expense (beneficiary)
 
-Expenses are categorised based on the funding goals defined on the initiative (e.g. Development, Marketing, Travel).
+1. Wait to receive access to the external reimbursement service — this is sent automatically once you are added as a beneficiary on a published initiative.
+2. Submit your expense report through the reimbursement service outside of LFX Crowdfunding.
+3. Categorise the expense using the funding goals defined on the initiative (e.g. Development, Marketing, Travel).
 
-## Approving or rejecting expenses
+### Approve or reject an expense (initiative owner)
 
-When a beneficiary submits an expense report, the initiative owner receives an email with **Approve** and **Reject** links. Clicking either link processes the action immediately — no login is required.
+1. Open the approval email sent when a beneficiary submits an expense report.
+2. Select **Approve** or **Reject**. The action is processed immediately — no login is required.
 
-Approved expenses are reflected in the initiative's **Financials** tab under the expenses breakdown.
+## After completing
 
-## Viewing expenses
-
-All approved expenses are visible to anyone on the initiative's **Financials** tab, showing the date, category, description, and amount of each expense.
+Approved expenses are reflected in the initiative's **Financials** tab under the expenses breakdown. All approved expenses are visible to anyone visiting the initiative page, showing the date, category, description, and amount of each expense.
 
 ## Related sections
 

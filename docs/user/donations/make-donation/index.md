@@ -15,7 +15,7 @@ Open any published initiative page and click the **Donate** button. A drawer wil
 
 ## Step 1 — Choose an amount and frequency
 
-![Donation amount selection](https://crowdfunding.linuxfoundation.org/images/docs/donation-step-amount.png)
+![Donation amount selection](/images/docs/donation-step-amount.png)
 
 Select a preset amount or enter a custom amount in the input field.
 
@@ -28,7 +28,7 @@ Optionally, you can allocate your donation to a specific funding goal (e.g. Deve
 
 ## Step 2 — Payment
 
-![Donation payment step](https://crowdfunding.linuxfoundation.org/images/docs/donation-step-payment.png)
+![Donation payment step](/images/docs/donation-step-payment.png)
 
 Enter your card details:
 
@@ -48,6 +48,14 @@ LFX Crowdfunding does not currently offer a donor-selectable anonymous option. Y
 
 ## After donating
 
+![Donation confirmation screen](/images/docs/screenshots/donations/make-donation-confirmation.png)
+
 Once your payment is processed, you will see a confirmation screen with the initiative name and amount. From there you can share your donation on X or LinkedIn, or go to [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations) to view your giving history.
 
 An email acknowledgement is sent automatically after each successful payment.
+
+## Related sections
+
+- [Managing Your Donations](../manage-donations/) — view history and cancel subscriptions
+- [Backers](../../backers/) — how your name appears on the initiative page
+- [Payment Account](../../payment-account/) — update your saved card
