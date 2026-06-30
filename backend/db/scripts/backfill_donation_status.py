@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
 """
 Backfill status='succeeded' on legacy migrated donations whose status is NULL,
 using the Ledger DB's credit transactions as the source of truth.
