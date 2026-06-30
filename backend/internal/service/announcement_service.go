@@ -40,11 +40,16 @@ func (s *AnnouncementService) List(ctx context.Context, initiativeID string, fil
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.id", initiativeID))
 
-	// Verify the initiative exists so we return a proper 404 rather than an
-	// empty list when the initiativeID is bogus.
-	if _, err := s.initiativeRepo.GetByID(ctx, initiativeID); err != nil {
+	// Verify the initiative exists and is published. Non-published initiatives
+	// must not expose their announcements on the public endpoint; treat them
+	// as not-found to avoid leaking unpublished content.
+	initiative, err := s.initiativeRepo.GetByID(ctx, initiativeID)
+	if err != nil {
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("get initiative: %w", err)
+	}
+	if !initiative.Status.EqualFold(models.StatusPublished) {
+		return nil, nil, domain.ErrInitiativeNotFound
 	}
 
 	announcements, meta, err := s.repo.List(ctx, initiativeID, filter)
