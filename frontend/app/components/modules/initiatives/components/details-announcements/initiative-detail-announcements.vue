@@ -34,6 +34,14 @@ SPDX-License-Identifier: MIT
       </div>
     </template>
 
+    <!-- Error -->
+    <p
+      v-else-if="isError"
+      class="text-sm text-neutral-500"
+    >
+      Unable to load announcements. Please try again later.
+    </p>
+
     <!-- Empty -->
     <p
       v-else-if="!announcements.length"
@@ -89,7 +97,7 @@ import { formatShortDate } from '~/utils/date';
 
 const props = defineProps<{ initiativeSlug: string }>();
 
-const { data, isLoading } = useInitiativeAnnouncements(computed(() => props.initiativeSlug));
+const { data, isLoading, isError } = useInitiativeAnnouncements(computed(() => props.initiativeSlug));
 
 const announcements = computed(() => data.value?.data ?? []);
 </script>
