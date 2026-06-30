@@ -74,14 +74,16 @@ SPDX-License-Identifier: MIT
         <!-- Content -->
         <div class="flex flex-col gap-2 flex-1 min-w-0">
           <p class="text-xs text-neutral-500 leading-4">
-            {{ formatShortDate(announcement.publishedAt) }}
+            {{ formatShortDate(announcement.createdOn) }}
           </p>
           <p class="text-base font-semibold text-neutral-900 leading-6">
             {{ announcement.title }}
           </p>
-          <p class="text-sm text-neutral-600 leading-5">
-            {{ announcement.body }}
-          </p>
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <div
+            class="lfx-rich-text text-sm text-neutral-600 leading-5"
+            v-html="renderDescription(announcement.description)"
+          />
         </div>
       </div>
     </template>
@@ -91,6 +93,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useInitiativeAnnouncements } from '~/composables/initiatives/useInitiativeAnnouncements';
+import { useSanitize } from '~/composables/useSanitize';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import { formatShortDate } from '~/utils/date';
@@ -98,6 +101,7 @@ import { formatShortDate } from '~/utils/date';
 const props = defineProps<{ initiativeSlug: string }>();
 
 const { data, isLoading, isError } = useInitiativeAnnouncements(computed(() => props.initiativeSlug));
+const { renderDescription } = useSanitize();
 
 const announcements = computed(() => data.value?.data ?? []);
 </script>

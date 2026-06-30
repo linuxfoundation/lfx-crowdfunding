@@ -3,9 +3,12 @@
 
 export interface Announcement {
   id: string;
+  initiativeId: string;
+  createdBy: string;
   title: string;
-  body: string;
-  publishedAt: string; // ISO date string
+  description: string;
+  createdOn: string;
+  updatedOn: string;
 }
 
 export interface AnnouncementList {
