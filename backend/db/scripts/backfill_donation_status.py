@@ -329,7 +329,7 @@ def main():
 
     amount_mismatches = [m for m in matched if not m.amount_match]
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Matched (both charge ID + initiative agree):  {len(matched):,}")
     print(f"    of which amount differs between DBs:        {len(amount_mismatches):,}")
     print(f"  Initiative ID mismatch (charge found, wrong initiative): {len(mismatched):,}")
@@ -344,7 +344,7 @@ def main():
             print(f"    {m.donation_id}  {m.stripe_charge_id}  {d.amount}  {credit.amount}")
 
     if not_found:
-        print(f"\n  [INFO] First 10 charge IDs not in Ledger:")
+        print("\n  [INFO] First 10 charge IDs not in Ledger:")
         for d in not_found[:10]:
             print(f"    {d.stripe_charge_id}  (donation {d.id}, initiative {d.initiative_id})")
 
