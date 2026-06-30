@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="bg-white border border-neutral-200 rounded-2xl p-6 flex flex-col gap-8">
+  <div class="bg-white border border-neutral-200 rounded-2xl p-6 flex flex-col">
     <!-- Loading -->
     <template v-if="isLoading">
       <div
@@ -47,10 +47,10 @@ SPDX-License-Identifier: MIT
       <div
         v-for="(announcement, index) in announcements"
         :key="announcement.id"
-        class="flex gap-4 items-start relative"
+        class="flex gap-4 items-stretch pb-8 last:pb-0"
       >
         <!-- Timeline dot + line -->
-        <div class="flex flex-col items-center shrink-0 mt-1">
+        <div class="flex flex-col items-center shrink-0 mt-1 -mb-8">
           <lfx-icon
             name="circle-small"
             type="solid"
@@ -60,7 +60,6 @@ SPDX-License-Identifier: MIT
           <div
             v-if="index < announcements.length - 1"
             class="w-px flex-1 bg-neutral-200 mt-1"
-            style="min-height: 1.5rem"
           />
         </div>
 
