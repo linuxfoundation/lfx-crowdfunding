@@ -58,6 +58,10 @@ type DonationRepository interface {
 	Create(ctx context.Context, donation *models.Donation) (*models.Donation, error)
 	// UpdateByPaymentIntentID is called by the Stripe webhook to reconcile async 3DS results.
 	UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error
+	// ListOrgDonations returns all succeeded donations made by organisations,
+	// enriched with org name, initiative name, and donor display name.
+	// Used exclusively for the internal CSV export endpoint.
+	ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error)
 }
 
 // SubscriptionRepository defines persistence operations for subscriptions.
