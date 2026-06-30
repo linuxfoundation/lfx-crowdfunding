@@ -5,9 +5,14 @@
 package handler
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -15,6 +20,22 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
+
+// csvDownloaders is the comma-separated allowlist of LF SSO usernames that may
+// call the org-donors CSV export endpoint (GET /v1/me/donations/csv).
+// To grant access to additional users, append their username to this constant.
+const csvDownloaders = "lojile"
+
+// csvDownloaderSet is the parsed, O(1)-lookup form of csvDownloaders.
+var csvDownloaderSet = func() map[string]struct{} {
+	m := make(map[string]struct{})
+	for _, u := range strings.Split(csvDownloaders, ",") {
+		if trimmed := strings.TrimSpace(u); trimmed != "" {
+			m[trimmed] = struct{}{}
+		}
+	}
+	return m
+}()
 
 // DonationHandler holds Chi handlers for the /v1/initiatives/{id}/donations resource.
 type DonationHandler struct {
@@ -115,4 +136,112 @@ func (h *DonationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusCreated, created)
+}
+
+// ExportOrgCSV handles GET /v1/me/donations/csv — restricted to csvDownloaders.
+// Query param: type=detail (default) | type=summary
+//
+//   - detail  — one row per donation with org, initiative, donor, amount, date
+//   - summary — one row per organisation with total donation count and USD amount
+func (h *DonationHandler) ExportOrgCSV(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	if _, allowed := csvDownloaderSet[principal.Username]; !allowed {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	csvType := r.URL.Query().Get("type")
+	if csvType == "" {
+		csvType = "detail"
+	}
+	if csvType != "detail" && csvType != "summary" {
+		Error(w, fmt.Errorf("%w: type must be 'detail' or 'summary'", domain.ErrInvalidInput))
+		return
+	}
+
+	rows, err := h.svc.ListOrgDonations(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	filename := fmt.Sprintf("org-donations-%s-%s.csv", csvType, time.Now().UTC().Format("2006-01-02"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.WriteHeader(http.StatusOK)
+
+	wr := csv.NewWriter(w)
+
+	switch csvType {
+	case "detail":
+		_ = wr.Write([]string{
+			"organization_id", "organization_name", "initiative_name", "initiative_id",
+			"amount_usd", "donor_user_id", "donor_name", "donated_at", "status",
+		})
+		for _, row := range rows {
+			_ = wr.Write([]string{
+				row.OrganizationID,
+				sanitizeCSVField(row.OrganizationName),
+				sanitizeCSVField(row.InitiativeName),
+				row.InitiativeID,
+				fmt.Sprintf("%.2f", float64(row.AmountCents)/100.0),
+				row.DonorUserID,
+				sanitizeCSVField(row.DonorName),
+				row.DonatedAt.UTC().Format(time.RFC3339),
+				row.Status,
+			})
+		}
+
+	case "summary":
+		type orgEntry struct {
+			id    string
+			count int
+			total int64
+		}
+		order := make([]string, 0)
+		sumsByName := make(map[string]*orgEntry)
+		for _, row := range rows {
+			if _, seen := sumsByName[row.OrganizationName]; !seen {
+				sumsByName[row.OrganizationName] = &orgEntry{id: row.OrganizationID}
+				order = append(order, row.OrganizationName)
+			}
+			sumsByName[row.OrganizationName].count++
+			sumsByName[row.OrganizationName].total += row.AmountCents
+		}
+		_ = wr.Write([]string{"organization_id", "organization_name", "donation_count", "total_donated_usd"})
+		for _, name := range order {
+			e := sumsByName[name]
+			_ = wr.Write([]string{
+				e.id,
+				sanitizeCSVField(name),
+				strconv.Itoa(e.count),
+				fmt.Sprintf("%.2f", float64(e.total)/100.0),
+			})
+		}
+	}
+
+	wr.Flush()
+	if err := wr.Error(); err != nil {
+		// Headers already sent; log the error rather than returning an HTTP response.
+		slog.ErrorContext(r.Context(), "csv flush failed", "error", err)
+	}
+}
+
+// sanitizeCSVField prevents formula injection in spreadsheet applications by
+// prefixing cells whose first character is a recognised formula trigger
+// (=, +, -, @, tab, carriage-return) with a tab character. The data is
+// otherwise unchanged and remains valid UTF-8 text.
+func sanitizeCSVField(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "\t" + s
+	}
+	return s
 }

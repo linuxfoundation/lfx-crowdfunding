@@ -193,6 +193,10 @@ func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, st
 	return nil
 }
 
+func (r *testDonationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
+	return nil, nil
+}
+
 // testSubscriptionRepo is a configurable SubscriptionRepository.
 type testSubscriptionRepo struct {
 	onGetByID                      func(context.Context, string) (*models.Subscription, error)

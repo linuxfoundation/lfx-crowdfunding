@@ -73,3 +73,18 @@ type DonationSummary struct {
 	DonorAvatarURL string    `json:"donor_avatar_url,omitempty"`
 	CreatedOn      time.Time `json:"created_on"`
 }
+
+// OrgDonationRow is a flat projection joining donations, organizations,
+// initiatives, and users. Used exclusively for the org-donors CSV export
+// (GET /v1/me/donations/csv).
+type OrgDonationRow struct {
+	OrganizationID   string
+	OrganizationName string
+	InitiativeName   string
+	InitiativeID     string
+	AmountCents      int64
+	DonorUserID      string
+	DonorName        string
+	DonatedAt        time.Time
+	Status           string
+}

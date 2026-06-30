@@ -198,6 +198,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 		// Caller's own initiatives, donations, subscriptions, and organizations.
 		r.Get("/initiatives", initiativeH.ListForUser)
+		r.Get("/donations/csv", donationH.ExportOrgCSV)
 		r.Get("/donations", donationH.ListForUser)
 		r.Get("/subscriptions", subscriptionH.ListForUser)
 		r.Get("/subscriptions/{id}", subscriptionH.GetForUser)

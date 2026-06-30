@@ -122,6 +122,20 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 	return summaries
 }
 
+// ListOrgDonations returns all succeeded org donations enriched with org,
+// initiative, and donor names. Used exclusively for the CSV export endpoint.
+func (s *DonationService) ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error) {
+	ctx, span := donationSvcTracer.Start(ctx, "DonationService.ListOrgDonations")
+	defer span.End()
+
+	rows, err := s.repo.ListOrgDonations(ctx)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list org donations: %w", err)
+	}
+	return rows, nil
+}
+
 // ListByUser returns paginated donations for the authenticated user.
 func (s *DonationService) ListByUser(ctx context.Context, username string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
 	ctx, span := donationSvcTracer.Start(ctx, "DonationService.ListByUser")

@@ -201,6 +201,68 @@ func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, 
 	return nil
 }
 
+// ListOrgDonations returns all succeeded donations made by organisations,
+// enriched with org name, initiative name, and donor display name.
+// Used exclusively for the internal CSV export endpoint.
+func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error) {
+	ctx, span := donationTracer.Start(ctx, "db.donations.ListOrgDonations")
+	defer span.End()
+
+	const q = `
+		SELECT
+			CAST(o.id AS text),
+			o.name,
+			COALESCE(i.name, ''),
+			COALESCE(CAST(i.id AS text), ''),
+			d.current_amount_in_cents,
+			CAST(u.id AS text),
+			COALESCE(
+				NULLIF(u.name, ''),
+				NULLIF(TRIM(COALESCE(u.given_name, '') || ' ' || COALESCE(u.family_name, '')), '')
+			),
+			d.created_on,
+			d.status
+		FROM donations d
+		JOIN organizations o  ON o.id = d.organization_id
+		LEFT JOIN initiatives i ON i.id = d.initiative_id
+		JOIN users u           ON u.id = d.user_id
+		WHERE d.organization_id IS NOT NULL
+		  AND d.status = 'succeeded'
+		ORDER BY o.name ASC, d.created_on DESC`
+
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list org donations: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.OrgDonationRow
+	for rows.Next() {
+		var row models.OrgDonationRow
+		var donorName *string
+		if err := rows.Scan(
+			&row.OrganizationID,
+			&row.OrganizationName,
+			&row.InitiativeName,
+			&row.InitiativeID,
+			&row.AmountCents,
+			&row.DonorUserID,
+			&donorName,
+			&row.DonatedAt,
+			&row.Status,
+		); err != nil {
+			return nil, fmt.Errorf("scan org donation row: %w", err)
+		}
+		row.DonorName = derefString(donorName)
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate org donations: %w", err)
+	}
+	return result, nil
+}
+
 func scanDonation(row scanner) (*models.Donation, error) {
 	d := &models.Donation{}
 	var (
