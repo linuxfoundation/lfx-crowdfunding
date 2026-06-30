@@ -168,6 +168,10 @@ func (r *wbDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, stat
 	return nil
 }
 
+func (r *wbDonationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
+	return nil, nil
+}
+
 // wbSubscriptionRepo implements domain.SubscriptionRepository for webhook tests.
 type wbSubscriptionRepo struct {
 	onUpdateByStripeSubscriptionID func(ctx context.Context, subID, status string) error
