@@ -31,6 +31,11 @@
     @apply mb-4 space-y-1.5;
   }
 
+  // Inline images — light gray border, rounded corners, vertical spacing
+  img {
+    @apply rounded-2xl border border-neutral-200 my-6;
+  }
+
   // Callout blockquotes (e.g. "> **Note** — ...")
   blockquote {
     @apply not-italic border-l-4 border-brand-400 bg-brand-50 text-brand-900 px-4 py-3 my-5 rounded-r-md;

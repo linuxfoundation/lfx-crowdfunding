@@ -29,7 +29,7 @@ SPDX-License-Identifier: MIT
           :class="{ '!bg-brand-50 !text-brand-700': isExactActive(section.slug) }"
         >
           <lfx-icon
-            name="file-lines"
+            :name="getSectionIcon(section.slug)"
             type="light"
             :size="14"
             class="shrink-0 text-neutral-400"
@@ -60,6 +60,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'nuxt/app';
+import { getSectionIcon } from '../section-icons';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import { useDocumentationNav } from '~/composables/documentation/useDocumentationNav';
