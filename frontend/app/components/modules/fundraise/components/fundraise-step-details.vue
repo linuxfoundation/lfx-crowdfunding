@@ -38,6 +38,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { createDefaultDonationOptions } from '../config/donation-options.config';
 import FundraiseProjectSteps from './project-steps/fundraise-project-steps.vue';
 import FundraiseSecurityAuditSteps from './security-audit-steps/fundraise-security-audit-steps.vue';
 import FundraiseGeneralFundSteps from './general-fund-steps/fundraise-general-fund-steps.vue';
@@ -117,6 +118,7 @@ const createInitialProjectForm = (): ProjectFormData => ({
     annualFundingGoal: '',
     goals: DEFAULT_FUND_DISTRIBUTION.map((item) => ({ ...item })),
   },
+  donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
@@ -143,6 +145,7 @@ const createInitialSecurityAuditForm = (): SecurityAuditFormData => ({
   secondaryContact: createInitialContact(),
   technicalLead: createInitialContact(),
   fundingGoal: '',
+  donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
@@ -198,6 +201,7 @@ const createInitialEventForm = (): EventFormData => ({
   beneficiaries: [],
   sponsorshipGoal: '',
   budgetDistribution: DEFAULT_BUDGET_DISTRIBUTION.map((item) => ({ ...item })),
+  donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
@@ -209,6 +213,7 @@ const createInitialGeneralFundForm = (): GeneralFundFormData => ({
   logoUrl: '',
   beneficiaries: [],
   annualFundingGoal: '',
+  donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
@@ -220,11 +225,11 @@ const eventForm = ref<EventFormData>(createInitialEventForm());
 
 const totalSubSteps = computed(() => {
   if (props.initiativeType === 'project') {
-    return projectForm.value.hostingType === 'github' ? 4 : 3;
+    return projectForm.value.hostingType === 'github' ? 5 : 4;
   }
-  if (props.initiativeType === 'security_audit') return 2;
-  if (props.initiativeType === 'general_fund') return 2;
-  if (props.initiativeType === 'event') return 2;
+  if (props.initiativeType === 'security_audit') return 3;
+  if (props.initiativeType === 'general_fund') return 3;
+  if (props.initiativeType === 'event') return 3;
   return 1;
 });
 
@@ -242,11 +247,19 @@ const isCurrentSubStepValid = computed(() => {
     if (subStep.value === totalSubSteps.value - 1) {
       return projectForm.value.compliance.ofacConfirmed && projectForm.value.compliance.termsAccepted;
     }
+    if (subStep.value === totalSubSteps.value - 2) {
+      const { mode, tiers } = projectForm.value.donationOptions;
+      return mode === 'open' || tiers.filter((tier) => tier.enabled).every((tier) => tier.goal.trim() !== '');
+    }
     return true;
   }
   if (props.initiativeType === 'security_audit') {
     if (subStep.value === totalSubSteps.value - 1) {
       return securityAuditForm.value.compliance.ofacConfirmed && securityAuditForm.value.compliance.termsAccepted;
+    }
+    if (subStep.value === totalSubSteps.value - 2) {
+      const { mode, tiers } = securityAuditForm.value.donationOptions;
+      return mode === 'open' || tiers.filter((tier) => tier.enabled).every((tier) => tier.goal.trim() !== '');
     }
     return securityAuditForm.value.auditName.trim() !== '';
   }
@@ -254,11 +267,19 @@ const isCurrentSubStepValid = computed(() => {
     if (subStep.value === totalSubSteps.value - 1) {
       return generalFundForm.value.compliance.ofacConfirmed && generalFundForm.value.compliance.termsAccepted;
     }
+    if (subStep.value === totalSubSteps.value - 2) {
+      const { mode, tiers } = generalFundForm.value.donationOptions;
+      return mode === 'open' || tiers.filter((tier) => tier.enabled).every((tier) => tier.goal.trim() !== '');
+    }
     return generalFundForm.value.name.trim() !== '';
   }
   if (props.initiativeType === 'event') {
     if (subStep.value === totalSubSteps.value - 1) {
       return eventForm.value.compliance.ofacConfirmed && eventForm.value.compliance.termsAccepted;
+    }
+    if (subStep.value === totalSubSteps.value - 2) {
+      const { mode, tiers } = eventForm.value.donationOptions;
+      return mode === 'open' || tiers.filter((tier) => tier.enabled).every((tier) => tier.goal.trim() !== '');
     }
     return eventForm.value.name.trim() !== '';
   }

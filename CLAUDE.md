@@ -87,9 +87,10 @@ Nuxt 4 BFF — server-side auth with HTTP-only session cookies (OAuth2 PKCE, Aut
 
 - **DCO:** All commits require `--signoff` (`git commit --signoff`)
 - **License headers:** All `.go` files must start with `// SPDX-License-Identifier: MIT`
-- **Frontend UIKit:** When building any UI element, **always load the `uikit` skill first** to check whether an existing component covers the need before writing any HTML or creating a new component
+- **Frontend UIKit:** When building any UI element, **always load the `uikit` skill first** to check whether an existing component covers the need before writing any HTML or creating a new component. This applies even when editing/extending an existing `.vue` file, not just new ones — a raw `<button>`, `<i class="fa-...">`, or hand-rolled dropdown/spinner is almost always a uikit component (`lfx-button`, `lfx-icon-button`, `lfx-icon`, `lfx-dropdown`, `lfx-spinner`, etc.) that should be used instead.
 - **TypeScript:** Strict mode enforced; no `any` without justification
 - **CI:** MegaLinter runs on every PR; license header check enforced on every commit
 - **Frontend types:** Never define `type` or `interface` inline in `.vue` files, server API routes, or middleware. Place all types in a dedicated `*.types.ts` file:
   - App-level types (components, composables): `frontend/app/types/<domain>.types.ts` — import via `~/types/<domain>.types`
   - Server-side types (wire shapes, middleware interfaces): `frontend/server/types/<domain>.types.ts` — import via relative path
+- **Frontend constants:** Never define component-local constants (option arrays, label/color/icon lookup maps, default-value factories) inline in a `.vue` file's `<script setup>`, even when scoped to a single component. Place them in `frontend/app/components/modules/<module>/config/<feature>.config.ts` and import them (see `fundraise/config/initiative-types.config.ts` for the pattern). A precedent for inlining elsewhere in the codebase is not a reason to repeat it in new code.
