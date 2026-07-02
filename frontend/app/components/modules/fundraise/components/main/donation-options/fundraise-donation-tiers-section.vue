@@ -25,17 +25,17 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import FundraiseDonationTierCard from './fundraise-donation-tier-card.vue';
-import type { SponsorshipTier } from '~/types/fundraise.types';
+import type { SponsorshipTierConfig } from '~/types/fundraise.types';
 
 const props = defineProps<{
-  modelValue: SponsorshipTier[];
+  modelValue: SponsorshipTierConfig[];
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: SponsorshipTier[]): void;
+  (e: 'update:modelValue', value: SponsorshipTierConfig[]): void;
 }>();
 
-const updateTier = (index: number, tier: SponsorshipTier) => {
+const updateTier = (index: number, tier: SponsorshipTierConfig) => {
   emit(
     'update:modelValue',
     props.modelValue.map((t, i) => (i === index ? tier : t)),

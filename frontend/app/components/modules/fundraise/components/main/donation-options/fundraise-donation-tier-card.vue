@@ -76,18 +76,18 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { SPONSORSHIP_TIER_LABEL, SPONSORSHIP_TIER_ICON_GRADIENT } from '../../../config/donation-options.config';
-import type { SponsorshipTier } from '~/types/fundraise.types';
+import type { SponsorshipTierConfig } from '~/types/fundraise.types';
 import LfxCheckbox from '~/components/uikit/checkbox/checkbox.vue';
 import LfxInput from '~/components/uikit/input/input.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 
 const props = defineProps<{
-  modelValue: SponsorshipTier;
+  modelValue: SponsorshipTierConfig;
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: SponsorshipTier): void;
+  (e: 'update:modelValue', value: SponsorshipTierConfig): void;
 }>();
 
 const addBenefit = () => {

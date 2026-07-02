@@ -3,7 +3,10 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="border border-neutral-200 rounded-xl flex items-stretch overflow-hidden">
+  <div
+    v-if="modeOptions.length > 1"
+    class="border border-neutral-200 rounded-xl flex items-stretch overflow-hidden"
+  >
     <div
       v-for="(option, index) in modeOptions"
       :key="option.value"

@@ -7,8 +7,11 @@ SPDX-License-Identifier: MIT
     <div class="flex flex-col gap-1">
       <h2 class="text-base font-semibold text-neutral-900">Donation options</h2>
       <p class="text-sm text-neutral-600 leading-5">
-        Set up donation tiers to give contributors a clear choice of giving levels, or skip this and collect open-amount
-        donations only.
+        {{
+          isSponsorshipTiersEnabled()
+            ? 'Set up donation tiers to give contributors a clear choice of giving levels, or skip this and collect open-amount donations only.'
+            : 'Your fundraiser will collect open-amount donations.'
+        }}
       </p>
     </div>
 

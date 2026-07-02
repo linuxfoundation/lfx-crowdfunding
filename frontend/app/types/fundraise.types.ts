@@ -63,7 +63,7 @@ export interface ComplianceData {
 
 export type SponsorshipTierName = 'platinum' | 'gold' | 'silver' | 'bronze';
 
-export interface SponsorshipTier {
+export interface SponsorshipTierConfig {
   name: SponsorshipTierName;
   enabled: boolean;
   goal: string;
@@ -74,7 +74,7 @@ export type DonationOptionsMode = 'tiers' | 'open';
 
 export interface DonationOptionsData {
   mode: DonationOptionsMode;
-  tiers: SponsorshipTier[];
+  tiers: SponsorshipTierConfig[];
 }
 
 export interface ProjectFormData {

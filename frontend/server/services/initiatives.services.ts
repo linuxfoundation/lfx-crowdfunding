@@ -6,7 +6,7 @@ import type { InitiativeBase } from '#shared/types/initiative.types';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
 import type { SponsorshipTier } from '#shared/types/donate.types';
 
-// ponytail: no sponsorship tier data from the backend yet — mocked here until initiatives
+// TODO: no sponsorship tier data from the backend yet — mocked here until initiatives
 // can define their own tiers. Hidden in production via the NUXT_APP_ENV check below.
 const MOCK_SPONSORSHIP_TIERS: SponsorshipTier[] = [
   {
