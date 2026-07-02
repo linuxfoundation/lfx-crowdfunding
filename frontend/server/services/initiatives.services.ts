@@ -4,6 +4,46 @@
 import type { BackendInitiative } from '../types/initiatives.types';
 import type { InitiativeBase } from '#shared/types/initiative.types';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
+import type { SponsorshipTier } from '#shared/types/donate.types';
+
+// TODO: no sponsorship tier data from the backend yet — mocked here until initiatives
+// can define their own tiers. Hidden in production via the NUXT_APP_ENV check below.
+const MOCK_SPONSORSHIP_TIERS: SponsorshipTier[] = [
+  {
+    id: 'bronze',
+    name: 'Bronze',
+    amountCents: 50_000,
+    benefits: ['Name on supporters page', 'Quarterly newsletter'],
+  },
+  {
+    id: 'silver',
+    name: 'Silver',
+    amountCents: 500_000,
+    benefits: ['Bronze benefits', 'Logo on project page', 'Early access to audit reports'],
+  },
+  {
+    id: 'gold',
+    name: 'Gold',
+    amountCents: 2_500_000,
+    benefits: [
+      'Silver benefits',
+      'Logo on homepage',
+      'Direct access to audit team',
+      'Custom briefing',
+    ],
+  },
+  {
+    id: 'platinum',
+    name: 'Platinum',
+    amountCents: 10_000_000,
+    benefits: [
+      'Gold benefits',
+      'Advisory board seat',
+      'Co-branded announcements',
+      'Executive briefing',
+    ],
+  },
+];
 
 export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
   return {
@@ -68,5 +108,7 @@ export const mapToInitiativeDetail = (b: BackendInitiative): InitiativeDetail =>
     recentDonations: [],
     donationRecords: [],
     expenseRecords: [],
+    sponsorshipTiers:
+      process.env.NUXT_APP_ENV !== 'production' ? MOCK_SPONSORSHIP_TIERS : undefined,
   };
 };

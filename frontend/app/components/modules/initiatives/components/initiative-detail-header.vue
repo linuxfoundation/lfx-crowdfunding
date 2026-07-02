@@ -231,6 +231,7 @@ function handleDonate() {
       name: props.initiative.name,
       logoUrl: props.initiative.logoUrl,
       fundingGoals: props.initiative.fundingGoals,
+      sponsorshipTiers: props.initiative.sponsorshipTiers,
     });
   }
 }

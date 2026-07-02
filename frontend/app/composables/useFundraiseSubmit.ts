@@ -83,6 +83,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(projectForm?.details.annualFundingGoal),
         goals: projectForm?.details.goals?.length ? projectForm.details.goals : undefined,
+        donationOptions: projectForm?.donationOptions,
       };
     }
 
@@ -105,6 +106,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         primaryContact: securityAuditForm?.primaryContact,
         secondaryContact: securityAuditForm?.secondaryContact,
         technicalLead: securityAuditForm?.technicalLead,
+        donationOptions: securityAuditForm?.donationOptions,
       };
     }
 
@@ -126,6 +128,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         budgetDistribution: eventForm?.budgetDistribution?.length
           ? eventForm.budgetDistribution
           : undefined,
+        donationOptions: eventForm?.donationOptions,
       };
     }
 
@@ -141,6 +144,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? generalFundForm.beneficiaries
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(generalFundForm?.annualFundingGoal),
+        donationOptions: generalFundForm?.donationOptions,
       };
     }
   }
