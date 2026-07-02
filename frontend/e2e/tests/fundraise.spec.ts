@@ -54,7 +54,11 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
 
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
-    // Step 1b: compliance — scope checkboxes to each section to avoid matching unrelated inputs
+    // Step 1b: donation options — defaults to a valid state (no tiers enabled), just continue
+    await expect(authenticatedPage.getByText('Donation options')).toBeVisible();
+    await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
+
+    // Step 1c: compliance — scope checkboxes to each section to avoid matching unrelated inputs
     await expect(authenticatedPage.getByText('Compliance Confirmation')).toBeVisible();
 
     const ofacSection = authenticatedPage
@@ -95,6 +99,9 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
     await authenticatedPage.locator('input[placeholder="My project"]').fill('My Fund');
+    await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
+
+    await expect(authenticatedPage.getByText('Donation options')).toBeVisible();
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
     await expect(authenticatedPage.getByText('Compliance Confirmation')).toBeVisible();
