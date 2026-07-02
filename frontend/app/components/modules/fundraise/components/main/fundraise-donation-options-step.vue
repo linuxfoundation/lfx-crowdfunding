@@ -18,7 +18,7 @@ SPDX-License-Identifier: MIT
     />
 
     <fundraise-donation-tiers-section
-      v-if="modelValue.mode === 'tiers'"
+      v-if="modelValue.mode === 'tiers' && isSponsorshipTiersEnabled()"
       :model-value="modelValue.tiers"
       @update:model-value="emit('update:modelValue', { ...modelValue, tiers: $event })"
     />
@@ -29,6 +29,7 @@ SPDX-License-Identifier: MIT
 import FundraiseDonationModeSection from './donation-options/fundraise-donation-mode-section.vue';
 import FundraiseDonationTiersSection from './donation-options/fundraise-donation-tiers-section.vue';
 import type { DonationOptionsData } from '~/types/fundraise.types';
+import { isSponsorshipTiersEnabled } from '~/utils/feature-flags';
 
 defineProps<{
   modelValue: DonationOptionsData;

@@ -5,10 +5,12 @@ SPDX-License-Identifier: MIT
 <template>
   <div class="flex flex-col gap-6">
     <!-- Sponsorship tiers -->
-    <!-- <donate-sponsorship-tiers
+    <donate-sponsorship-tiers
+      v-if="showSponsorshipTiers"
+      :tiers="props.sponsorshipTiers ?? []"
       :selected-tier-id="form.tierId"
       @select="selectTier"
-    /> -->
+    />
 
     <!-- Custom amount -->
     <div>
@@ -89,19 +91,21 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { DonateAmountForm, DonationType } from '#shared/types/donate.types';
+import DonateSponsorshipTiers from './donate-sponsorship-tiers.vue';
+import type { DonateAmountForm, DonationType, SponsorshipTier } from '#shared/types/donate.types';
 import type { FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxInput from '~/components/uikit/input/input.vue';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
-// import DonateSponsorshipTiers from './donate-sponsorship-tiers.vue'; Hiding sponsorship tiers for now
+import { isSponsorshipTiersEnabled } from '~/utils/feature-flags';
 
 const QUICK_AMOUNTS = [5, 10, 25, 50, 150, 200];
 
 const props = defineProps<{
   modelValue: DonateAmountForm;
   fundingGoals?: FundingGoal[];
+  sponsorshipTiers?: SponsorshipTier[];
 }>();
 
 const emit = defineEmits<{
@@ -112,19 +116,22 @@ const form = computed(() => props.modelValue);
 
 const categoryOptions = computed(() => props.fundingGoals ?? []);
 
+const showSponsorshipTiers = computed(() => isSponsorshipTiersEnabled() && (props.sponsorshipTiers?.length ?? 0) > 0);
+
 const customAmountDisplay = computed(() => {
   if (form.value.tierId !== null) return '';
   return form.value.customAmountCents ? String(form.value.customAmountCents / 100) : '';
 });
 
-// const selectTier = (tier: SponsorshipTier) => {
-//   emit('update:modelValue', {
-//     tierId: tier.id,
-//     tierName: tier.name,
-//     customAmountCents: null,
-//     amountCents: tier.amountCents,
-//   });
-// };
+const selectTier = (tier: SponsorshipTier) => {
+  emit('update:modelValue', {
+    ...form.value,
+    tierId: tier.id,
+    tierName: tier.name,
+    customAmountCents: null,
+    amountCents: tier.amountCents,
+  });
+};
 
 const selectQuickAmount = (dollars: number) => {
   const cents = dollars * 100;

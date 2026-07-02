@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
     <p class="text-sm font-medium text-neutral-700 mb-4">Select a sponsorship tier</p>
     <div class="grid grid-cols-1 sm:grid-cols-4 rounded-xl border border-neutral-200 border-solid">
       <div
-        v-for="tier in SPONSORSHIP_TIERS"
+        v-for="tier in props.tiers"
         :key="tier.id"
         role="button"
         tabindex="0"
@@ -69,33 +69,6 @@ import type { SponsorshipTier } from '#shared/types/donate.types';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 
-const SPONSORSHIP_TIERS: SponsorshipTier[] = [
-  {
-    id: 'bronze',
-    name: 'Bronze',
-    amountCents: 50_000,
-    benefits: ['Name on supporters page', 'Quarterly newsletter'],
-  },
-  {
-    id: 'silver',
-    name: 'Silver',
-    amountCents: 500_000,
-    benefits: ['Bronze benefits', 'Logo on project page', 'Early access to audit reports'],
-  },
-  {
-    id: 'gold',
-    name: 'Gold',
-    amountCents: 2_500_000,
-    benefits: ['Silver benefits', 'Logo on homepage', 'Direct access to audit team', 'Custom briefing'],
-  },
-  {
-    id: 'platinum',
-    name: 'Platinum',
-    amountCents: 10_000_000,
-    benefits: ['Gold benefits', 'Advisory board seat', 'Co-branded announcements', 'Executive briefing'],
-  },
-];
-
 const TIER_BADGE_CLASSES: Record<string, string> = {
   bronze: 'bg-warning-100 text-warning-800',
   silver: 'bg-neutral-200 text-neutral-600',
@@ -104,6 +77,7 @@ const TIER_BADGE_CLASSES: Record<string, string> = {
 };
 
 const props = defineProps<{
+  tiers: SponsorshipTier[];
   selectedTierId: string | null;
 }>();
 

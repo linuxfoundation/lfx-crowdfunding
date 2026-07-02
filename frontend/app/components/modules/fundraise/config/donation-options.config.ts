@@ -6,6 +6,7 @@ import type {
   DonationOptionsMode,
   SponsorshipTierName,
 } from '~/types/fundraise.types';
+import { isSponsorshipTiersEnabled } from '~/utils/feature-flags';
 
 export interface DonationModeOption {
   value: DonationOptionsMode;
@@ -54,6 +55,6 @@ export const SPONSORSHIP_TIER_ICON_GRADIENT: Record<SponsorshipTierName, string>
 };
 
 export const createDefaultDonationOptions = (): DonationOptionsData => ({
-  mode: 'tiers',
+  mode: isSponsorshipTiersEnabled() ? 'tiers' : 'open',
   tiers: SPONSORSHIP_TIER_NAMES.map((name) => ({ name, enabled: false, goal: '', benefits: [] })),
 });
