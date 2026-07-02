@@ -55,7 +55,9 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
     // Step 1b: donation options — defaults to a valid state (no tiers enabled), just continue
-    await expect(authenticatedPage.getByText('Donation options')).toBeVisible();
+    await expect(
+      authenticatedPage.getByRole('heading', { name: 'Donation options' }),
+    ).toBeVisible();
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
     // Step 1c: compliance — scope checkboxes to each section to avoid matching unrelated inputs
@@ -101,7 +103,9 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
     await authenticatedPage.locator('input[placeholder="My project"]').fill('My Fund');
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
-    await expect(authenticatedPage.getByText('Donation options')).toBeVisible();
+    await expect(
+      authenticatedPage.getByRole('heading', { name: 'Donation options' }),
+    ).toBeVisible();
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
     await expect(authenticatedPage.getByText('Compliance Confirmation')).toBeVisible();
