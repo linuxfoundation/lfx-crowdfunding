@@ -43,6 +43,7 @@ import FundraiseProjectSteps from './project-steps/fundraise-project-steps.vue';
 import FundraiseSecurityAuditSteps from './security-audit-steps/fundraise-security-audit-steps.vue';
 import FundraiseGeneralFundSteps from './general-fund-steps/fundraise-general-fund-steps.vue';
 import FundraiseEventSteps from './event-steps/fundraise-event-steps.vue';
+import { parseDollarsToCents } from '~/utils/currency';
 import type {
   InitiativeType,
   ProjectFormData,
@@ -51,6 +52,7 @@ import type {
   ContactPerson,
   GeneralFundFormData,
   EventFormData,
+  DonationOptionsData,
 } from '~/types/fundraise.types';
 
 const props = defineProps<{
@@ -235,6 +237,14 @@ const totalSubSteps = computed(() => {
 
 const isLastSubStep = computed(() => subStep.value === totalSubSteps.value - 1);
 
+const isDonationOptionsStepValid = (donationOptions: DonationOptionsData): boolean => {
+  const { mode, tiers } = donationOptions;
+  return (
+    mode === 'open' ||
+    tiers.filter((tier) => tier.enabled).every((tier) => parseDollarsToCents(tier.goal) !== undefined)
+  );
+};
+
 const isCurrentSubStepValid = computed(() => {
   if (props.initiativeType === 'project') {
     if (subStep.value === 0) return projectForm.value.hostingType !== null;
@@ -248,8 +258,7 @@ const isCurrentSubStepValid = computed(() => {
       return projectForm.value.compliance.ofacConfirmed && projectForm.value.compliance.termsAccepted;
     }
     if (subStep.value === totalSubSteps.value - 2) {
-      const { mode, tiers } = projectForm.value.donationOptions;
-      return mode === 'open' || tiers.filter((tier) => tier.enabled).every((tier) => tier.goal.trim() !== '');
+      return isDonationOptionsStepValid(projectForm.value.donationOptions);
     }
     return true;
   }
@@ -258,8 +267,7 @@ const isCurrentSubStepValid = computed(() => {
       return securityAuditForm.value.compliance.ofacConfirmed && securityAuditForm.value.compliance.termsAccepted;
     }
     if (subStep.value === totalSubSteps.value - 2) {
-      const { mode, tiers } = securityAuditForm.value.donationOptions;
-      return mode === 'open' || tiers.filter((tier) => tier.enabled).every((tier) => tier.goal.trim() !== '');
+      return isDonationOptionsStepValid(securityAuditForm.value.donationOptions);
     }
     return securityAuditForm.value.auditName.trim() !== '';
   }
@@ -268,8 +276,7 @@ const isCurrentSubStepValid = computed(() => {
       return generalFundForm.value.compliance.ofacConfirmed && generalFundForm.value.compliance.termsAccepted;
     }
     if (subStep.value === totalSubSteps.value - 2) {
-      const { mode, tiers } = generalFundForm.value.donationOptions;
-      return mode === 'open' || tiers.filter((tier) => tier.enabled).every((tier) => tier.goal.trim() !== '');
+      return isDonationOptionsStepValid(generalFundForm.value.donationOptions);
     }
     return generalFundForm.value.name.trim() !== '';
   }
@@ -278,8 +285,7 @@ const isCurrentSubStepValid = computed(() => {
       return eventForm.value.compliance.ofacConfirmed && eventForm.value.compliance.termsAccepted;
     }
     if (subStep.value === totalSubSteps.value - 2) {
-      const { mode, tiers } = eventForm.value.donationOptions;
-      return mode === 'open' || tiers.filter((tier) => tier.enabled).every((tier) => tier.goal.trim() !== '');
+      return isDonationOptionsStepValid(eventForm.value.donationOptions);
     }
     return eventForm.value.name.trim() !== '';
   }

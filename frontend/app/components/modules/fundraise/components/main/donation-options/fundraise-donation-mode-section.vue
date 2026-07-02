@@ -10,12 +10,16 @@ SPDX-License-Identifier: MIT
     <div
       v-for="(option, index) in modeOptions"
       :key="option.value"
+      role="button"
+      tabindex="0"
       class="flex-1 flex gap-3 p-5 cursor-pointer"
       :class="[
         modelValue === option.value ? 'bg-accent-50' : 'bg-white hover:bg-neutral-50',
         index < modeOptions.length - 1 ? 'border-r border-neutral-200' : '',
       ]"
       @click="emit('update:modelValue', option.value)"
+      @keydown.enter="emit('update:modelValue', option.value)"
+      @keydown.space.prevent="emit('update:modelValue', option.value)"
     >
       <lfx-radio
         :model-value="modelValue"

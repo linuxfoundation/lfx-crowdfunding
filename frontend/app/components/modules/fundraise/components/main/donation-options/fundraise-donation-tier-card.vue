@@ -57,6 +57,7 @@ SPDX-License-Identifier: MIT
             icon="trash-can"
             type="transparent"
             size="small"
+            aria-label="Remove benefit"
             @click="removeBenefit(index)"
           />
         </div>

@@ -181,14 +181,17 @@ function buildDonationOptions(
   donationOptions: DonationOptionsInput | undefined,
 ): Record<string, unknown> | undefined {
   if (!donationOptions) return undefined;
+  if (donationOptions.mode === 'open') return { mode: 'open' };
   return {
     mode: donationOptions.mode,
-    tiers: donationOptions.tiers.map((tier) => ({
-      name: tier.name,
-      enabled: tier.enabled,
-      goal: tier.goal,
-      benefits: tier.benefits,
-    })),
+    tiers: donationOptions.tiers
+      .filter((tier) => tier.enabled)
+      .map((tier) => ({
+        name: tier.name,
+        enabled: tier.enabled,
+        goal: tier.goal,
+        benefits: tier.benefits.filter((benefit) => benefit.trim() !== ''),
+      })),
   };
 }
 
