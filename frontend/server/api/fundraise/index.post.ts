@@ -10,6 +10,7 @@ import type {
   FundraiseContactInput,
   SecurityAuditFundraisePayload,
   GoalItemInput,
+  DonationOptionsInput,
 } from '../../types/fundraise.types';
 
 export default defineEventHandler(async (event): Promise<FundraiseResult> => {
@@ -43,6 +44,8 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     industry: payload.industry || undefined,
     website_url: payload.websiteUrl || undefined,
     accept_funding: true,
+    // No backend field exists yet for this — sent as-is so it's ready once one lands.
+    donation_options: buildDonationOptions(payload.donationOptions),
   };
 
   switch (payload.initiativeType) {
@@ -172,6 +175,24 @@ function buildProjectGoals(
   });
 
   return result.length > 0 ? result : undefined;
+}
+
+function buildDonationOptions(
+  donationOptions: DonationOptionsInput | undefined,
+): Record<string, unknown> | undefined {
+  if (!donationOptions) return undefined;
+  if (donationOptions.mode === 'open') return { mode: 'open' };
+  return {
+    mode: donationOptions.mode,
+    tiers: donationOptions.tiers
+      .filter((tier) => tier.enabled)
+      .map((tier) => ({
+        name: tier.name,
+        enabled: tier.enabled,
+        goal: tier.goal,
+        benefits: tier.benefits.filter((benefit) => benefit.trim() !== ''),
+      })),
+  };
 }
 
 function buildBudgetDistributionItem(item: GoalItemInput): Record<string, unknown> {

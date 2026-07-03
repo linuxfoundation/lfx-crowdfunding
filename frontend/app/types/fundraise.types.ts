@@ -61,10 +61,27 @@ export interface ComplianceData {
   termsAccepted: boolean;
 }
 
+export type SponsorshipTierName = 'platinum' | 'gold' | 'silver' | 'bronze';
+
+export interface SponsorshipTierConfig {
+  name: SponsorshipTierName;
+  enabled: boolean;
+  goal: string;
+  benefits: string[];
+}
+
+export type DonationOptionsMode = 'tiers' | 'open';
+
+export interface DonationOptionsData {
+  mode: DonationOptionsMode;
+  tiers: SponsorshipTierConfig[];
+}
+
 export interface ProjectFormData {
   hostingType: ProjectHostingType | null;
   selectedRepo: string | null;
   details: ProjectDetailsData;
+  donationOptions: DonationOptionsData;
   compliance: ComplianceData;
 }
 
@@ -99,6 +116,7 @@ export interface SecurityAuditFormData {
   secondaryContact: ContactPerson;
   technicalLead: ContactPerson;
   fundingGoal: string;
+  donationOptions: DonationOptionsData;
   compliance: ComplianceData;
 }
 
@@ -121,6 +139,7 @@ export interface EventFormData {
   beneficiaries: Beneficiary[];
   sponsorshipGoal: string;
   budgetDistribution: GoalItem[];
+  donationOptions: DonationOptionsData;
   compliance: ComplianceData;
 }
 
@@ -132,6 +151,7 @@ export interface GeneralFundFormData {
   logoUrl: string;
   beneficiaries: Beneficiary[];
   annualFundingGoal: string;
+  donationOptions: DonationOptionsData;
   compliance: ComplianceData;
 }
 
