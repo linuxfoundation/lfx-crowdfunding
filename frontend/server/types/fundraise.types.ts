@@ -27,11 +27,12 @@ export interface FundraiseBeneficiaryInput {
 export type SponsorshipTierInput = {
   name: string;
   enabled: boolean;
-  goal: string;
+  goalCents?: number;
   benefits: string[];
 };
 
-// No backend schema exists yet for this — passed through unprocessed until one lands.
+// Matches the backend contract in docs/sponsorship-tiers-backend-requirements.md
+// (donation_mode + sponsorship_tiers[]) — not yet implemented server-side.
 export interface DonationOptionsInput {
   mode: 'tiers' | 'open';
   tiers: SponsorshipTierInput[];
