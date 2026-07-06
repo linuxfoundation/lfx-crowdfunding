@@ -34,6 +34,8 @@ type Donation struct {
 	PONumber           string `json:"po_number,omitempty"`
 	PaymentMethod      string `json:"payment_method,omitempty"`
 	Status             string `json:"status,omitempty"`
+	// DonationTier is the sponsorship tier the donor selected, or empty if no tier was chosen.
+	DonationTier string `json:"donation_tier,omitempty"`
 	// Stripe IDs are internal operational fields used by the webhook reconciliation
 	// flow. They are never serialised to API consumers.
 	StripePaymentIntentID string    `json:"-"`
@@ -57,6 +59,9 @@ type DonationCreateInput struct {
 	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.
 	// It is not decoded from the JSON body (json:"-").
 	IdempotencyKey string `json:"-"`
+	// DonationTier is the sponsorship tier name the donor wishes to donate under.
+	// Optional — if set the donation amount must meet that tier's minimum.
+	DonationTier string `json:"donation_tier,omitempty"`
 }
 
 // DonationSummary is the public-facing projection returned by the initiative
@@ -71,6 +76,7 @@ type DonationSummary struct {
 	DonorName      string    `json:"donor_name,omitempty"`
 	DonorType      string    `json:"donor_type,omitempty"` // "organization" | "individual"
 	DonorAvatarURL string    `json:"donor_avatar_url,omitempty"`
+	DonationTier   string    `json:"donation_tier,omitempty"`
 	CreatedOn      time.Time `json:"created_on"`
 }
 

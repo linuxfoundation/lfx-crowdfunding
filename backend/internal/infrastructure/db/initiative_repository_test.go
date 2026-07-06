@@ -46,6 +46,7 @@ func seedInitiative(t *testing.T, ctx context.Context, ownerID, name, slug strin
 		Name:           name,
 		Slug:           slug,
 		Status:         models.StatusPublished,
+		DonationMode:   models.DonationModeOpen,
 	}
 
 	created, err := initRepo.Create(ctx, initiative, input)
@@ -78,6 +79,7 @@ func TestInitiativeRepository_CreateAndGetByID(t *testing.T) {
 		Name:           "Test Project",
 		Slug:           "test-project",
 		Status:         models.StatusPublished,
+		DonationMode:   models.DonationModeOpen,
 	}
 
 	created, err := repo.Create(ctx, initiative, input)
@@ -131,6 +133,7 @@ func TestInitiativeRepository_GetByID_Hidden_ReturnsExpectedStatus(t *testing.T)
 		Name:           "Hidden Project",
 		Slug:           "hidden-project",
 		Status:         models.StatusHidden,
+		DonationMode:   models.DonationModeOpen,
 	}
 
 	created, err := repo.Create(ctx, initiative, input)
@@ -245,6 +248,7 @@ func TestInitiativeRepository_ListPublished(t *testing.T) {
 		Name:           "Hidden Initiative",
 		Slug:           "hidden-initiative",
 		Status:         models.StatusHidden,
+		DonationMode:   models.DonationModeOpen,
 	}
 	_, err := repo.Create(ctx, hiddenInit, models.InitiativeCreateInput{
 		InitiativeType: "project",

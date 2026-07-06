@@ -1466,9 +1466,10 @@ func TestCreate_PropagatesSponsorshipTiers(t *testing.T) {
 		Name:           "My Event",
 		Slug:           "my-event",
 		InitiativeType: "event",
+		DonationMode:   models.DonationModeTiers,
 		SponsorshipTiers: []models.SponsorshipTierInput{
-			{Name: "Gold", Minimum: 500000, SortOrder: 0},
-			{Name: "Silver", Minimum: 100000, SortOrder: 1},
+			{Name: "gold", Minimum: 500000, SortOrder: 0},
+			{Name: "silver", Minimum: 100000, SortOrder: 1},
 		},
 	})
 	if err != nil {
@@ -1478,10 +1479,10 @@ func TestCreate_PropagatesSponsorshipTiers(t *testing.T) {
 	if len(tiers) != 2 {
 		t.Fatalf("expected 2 sponsorship tiers, got %d", len(tiers))
 	}
-	if tiers[0].Name != "Gold" || tiers[0].Minimum != 500000 {
+	if tiers[0].Name != "gold" || tiers[0].Minimum != 500000 {
 		t.Errorf("tier[0] mismatch: %+v", tiers[0])
 	}
-	if tiers[1].Name != "Silver" || tiers[1].SortOrder != 1 {
+	if tiers[1].Name != "silver" || tiers[1].SortOrder != 1 {
 		t.Errorf("tier[1] mismatch: %+v", tiers[1])
 	}
 }
@@ -1815,5 +1816,208 @@ func TestGetTransactions_AllNegativePageWithMorePages_PaginationContinues(t *tes
 	if nextOffset >= list.TotalCount {
 		t.Errorf("pagination would stop: nextOffset(%d) >= TotalCount(%d); want TotalCount > %d",
 			nextOffset, list.TotalCount, nextOffset)
+	}
+}
+
+// ── donation_mode + sponsorship tiers — Create ────────────────────────────────
+
+func TestCreate_DonationMode_DefaultsToOpen(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		InitiativeType: "project",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastCreated.DonationMode != models.DonationModeOpen {
+		t.Errorf("DonationMode = %q, want %q", repo.lastCreated.DonationMode, models.DonationModeOpen)
+	}
+}
+
+func TestCreate_DonationMode_InvalidValue(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Project",
+			InitiativeType: "project",
+			DonationMode:   "monthly",
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unknown donation_mode, got %v", err)
+	}
+}
+
+func TestCreate_DonationMode_TiersMode_PropagatedToInitiative(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:             "My Event",
+		InitiativeType:   "event",
+		DonationMode:     models.DonationModeTiers,
+		SponsorshipTiers: []models.SponsorshipTierInput{{Name: "gold", Minimum: 500000}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastCreated.DonationMode != models.DonationModeTiers {
+		t.Errorf("DonationMode = %q, want %q", repo.lastCreated.DonationMode, models.DonationModeTiers)
+	}
+}
+
+func TestCreate_DonationMode_TiersMode_InvalidTierName(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Event",
+			InitiativeType: "event",
+			DonationMode:   models.DonationModeTiers,
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "diamond", Minimum: 100000},
+			},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unknown tier name, got %v", err)
+	}
+}
+
+func TestCreate_DonationMode_Open_TiersAreCleared(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	// Caller sends tiers with open mode — they must be discarded.
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		InitiativeType: "project",
+		DonationMode:   models.DonationModeOpen,
+		SponsorshipTiers: []models.SponsorshipTierInput{
+			{Name: "gold", Minimum: 500000},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastInput.SponsorshipTiers != nil {
+		t.Errorf("expected SponsorshipTiers to be nil in open mode, got %v", repo.lastInput.SponsorshipTiers)
+	}
+}
+
+func TestCreate_DonationMode_TiersMode_BlankBenefitsCleaned(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Event",
+		InitiativeType: "event",
+		DonationMode:   models.DonationModeTiers,
+		SponsorshipTiers: []models.SponsorshipTierInput{
+			{Name: "gold", Minimum: 500000, Benefits: []string{"Logo on site", "  ", "Custom briefing", ""}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	benefits := repo.lastInput.SponsorshipTiers[0].Benefits
+	if len(benefits) != 2 {
+		t.Fatalf("expected 2 non-blank benefits, got %d: %v", len(benefits), benefits)
+	}
+	if benefits[0] != "Logo on site" || benefits[1] != "Custom briefing" {
+		t.Errorf("unexpected benefits after cleaning: %v", benefits)
+	}
+}
+
+// ── donation_mode + sponsorship tiers — Update ────────────────────────────────
+
+func TestUpdate_DonationMode_InvalidValue(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	mode := models.DonationMode("quarterly")
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{DonationMode: &mode},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for invalid donation_mode, got %v", err)
+	}
+}
+
+func TestUpdate_DonationMode_SwitchToOpen_ClearsTiers(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeTiers},
+	}
+	mode := models.DonationModeOpen
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{DonationMode: &mode},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// SponsorshipTiers must be set to empty (not nil) so the repo performs the delete.
+	if repo.lastUpdateInput.SponsorshipTiers == nil {
+		t.Error("expected SponsorshipTiers to be non-nil empty slice so repo deletes existing rows")
+	}
+	if len(repo.lastUpdateInput.SponsorshipTiers) != 0 {
+		t.Errorf("expected 0 tiers after switching to open, got %d", len(repo.lastUpdateInput.SponsorshipTiers))
+	}
+}
+
+func TestUpdate_DonationMode_TiersMode_InvalidTierName(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeOpen},
+	}
+	mode := models.DonationModeTiers
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			DonationMode: &mode,
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "emerald", Minimum: 200000},
+			},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unknown tier name, got %v", err)
+	}
+}
+
+func TestUpdate_DonationMode_Open_IgnoresTiersSentWhileAlreadyOpen(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeOpen},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			// No DonationMode change — mode stays open.
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "gold", Minimum: 500000},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Tiers must be discarded (cleared to empty) when mode is open.
+	if repo.lastUpdateInput.SponsorshipTiers == nil {
+		t.Error("expected SponsorshipTiers to be non-nil empty (not nil) so repo clears any stale rows")
+	}
+	if len(repo.lastUpdateInput.SponsorshipTiers) != 0 {
+		t.Errorf("expected 0 tiers (mode is open), got %d", len(repo.lastUpdateInput.SponsorshipTiers))
+	}
+}
+
+func TestUpdate_DonationMode_TiersMode_BlankBenefitsCleaned(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeTiers},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "silver", Minimum: 100000, Benefits: []string{"", "Newsletter mention", "  "}},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	benefits := repo.lastUpdateInput.SponsorshipTiers[0].Benefits
+	if len(benefits) != 1 || benefits[0] != "Newsletter mention" {
+		t.Errorf("expected only non-blank benefit, got: %v", benefits)
 	}
 }

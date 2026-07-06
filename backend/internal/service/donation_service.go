@@ -98,11 +98,12 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 	summaries := make([]models.DonationSummary, 0, len(donations))
 	for _, d := range donations {
 		s := models.DonationSummary{
-			ID:          d.ID,
-			AmountCents: d.CurrentAmountCents,
-			Status:      d.Status,
-			Category:    d.Category,
-			CreatedOn:   d.CreatedOn,
+			ID:           d.ID,
+			AmountCents:  d.CurrentAmountCents,
+			Status:       d.Status,
+			Category:     d.Category,
+			DonationTier: d.DonationTier,
+			CreatedOn:    d.CreatedOn,
 		}
 		if d.OrganizationID != "" {
 			s.DonorType = donorTypeOrganization
@@ -202,6 +203,38 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		return nil, fmt.Errorf("%w: initiative does not accept funding", domain.ErrInvalidInput)
 	}
 
+	// Validate the selected sponsorship tier (optional).
+	if input.DonationTier != "" {
+		if !models.ValidTierNames[input.DonationTier] {
+			return nil, fmt.Errorf("%w: invalid donation_tier %q; must be one of platinum, gold, silver, bronze",
+				domain.ErrInvalidInput, input.DonationTier)
+		}
+		if initiative.DonationMode != models.DonationModeTiers {
+			return nil, fmt.Errorf("%w: donation_tier cannot be set — initiative does not use sponsorship tiers",
+				domain.ErrInvalidInput)
+		}
+		// Enforce the tier's minimum amount; also guard against selecting a disabled tier.
+		var tierFound bool
+		for _, t := range initiative.SponsorshipTiers {
+			if t.Name == input.DonationTier {
+				tierFound = true
+				if !t.Enabled {
+					return nil, fmt.Errorf("%w: donation_tier %q is not currently available",
+						domain.ErrInvalidInput, input.DonationTier)
+				}
+				if input.AmountCents < t.Minimum {
+					return nil, fmt.Errorf("%w: amount_cents %d is below the minimum for %q tier (%d cents)",
+						domain.ErrInvalidInput, input.AmountCents, input.DonationTier, t.Minimum)
+				}
+				break
+			}
+		}
+		if !tierFound {
+			return nil, fmt.Errorf("%w: donation_tier %q is not configured on this initiative",
+				domain.ErrInvalidInput, input.DonationTier)
+		}
+	}
+
 	// Resolve the Stripe customer for this user. Requires the user row to
 	// already exist — callers must have completed PATCH /me on login (REQ-P4).
 	// Email is sourced from the DB row, not from caller-supplied claims (REQ-P5).
@@ -285,6 +318,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		CurrentAmountCents: input.AmountCents,
 		PONumber:           input.PONumber,
 		PaymentMethod:      input.PaymentMethod,
+		DonationTier:       input.DonationTier,
 		// Always start as pending so the payment_intent.succeeded webhook can
 		// perform the pending→succeeded transition unconditionally and send
 		// emails. When Stripe confirms synchronously (no 3DS), the PI comes
