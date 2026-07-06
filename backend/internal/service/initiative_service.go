@@ -435,6 +435,32 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		seenContactTypes[c.ContactType] = struct{}{}
 	}
 
+	// Validate and default donation_mode.
+	if input.DonationMode == "" {
+		input.DonationMode = models.DonationModeOpen
+	}
+	input.DonationMode = models.DonationMode(strings.ToLower(string(input.DonationMode)))
+	if !input.DonationMode.IsValid() {
+		return nil, fmt.Errorf("%w: invalid donation_mode %q", domain.ErrInvalidInput, input.DonationMode)
+	}
+	if input.DonationMode == models.DonationModeTiers {
+		for idx, t := range input.SponsorshipTiers {
+			if t.Name != "" && !models.ValidTierNames[t.Name] {
+				return nil, fmt.Errorf("%w: sponsorship_tiers[%d]: invalid tier name %q", domain.ErrInvalidInput, idx, t.Name)
+			}
+			cleaned := []string{}
+			for _, b := range t.Benefits {
+				if strings.TrimSpace(b) != "" {
+					cleaned = append(cleaned, b)
+				}
+			}
+			input.SponsorshipTiers[idx].Benefits = cleaned
+		}
+	} else {
+		// Open mode: ignore any tiers the caller may have sent.
+		input.SponsorshipTiers = nil
+	}
+
 	// Pre-generate the UUID so the same ID is embedded in both the Stripe
 	// Product metadata and the DB INSERT — no follow-up UPDATE needed.
 	initiativeID := uuid.New().String()
@@ -475,6 +501,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		Status:          models.StatusSubmitted,
 		StripeProductID: productID,
 		CiiProjectID:    input.CiiProjectID,
+		DonationMode:    input.DonationMode,
 
 		// Entity-only display fields
 		EventbriteURL:  input.EventbriteURL,
@@ -600,6 +627,17 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	if input.IsOnline != nil {
 		existing.IsOnline = *input.IsOnline
 	}
+	if input.DonationMode != nil {
+		normalizedMode := models.DonationMode(strings.ToLower(string(*input.DonationMode)))
+		if !normalizedMode.IsValid() {
+			return nil, fmt.Errorf("%w: invalid donation_mode %q", domain.ErrInvalidInput, *input.DonationMode)
+		}
+		existing.DonationMode = normalizedMode
+		// Switching to open mode: ensure any existing tiers are cleared.
+		if normalizedMode == models.DonationModeOpen && input.SponsorshipTiers == nil {
+			input.SponsorshipTiers = []models.SponsorshipTierInput{}
+		}
+	}
 
 	// Validate required child-record fields before any DB calls.
 	seenGoalNames := make(map[string]struct{}, len(input.Goals))
@@ -626,6 +664,20 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 			return nil, fmt.Errorf("%w: contacts[%d]: duplicate contact_type %q (at most one per type)", domain.ErrInvalidInput, idx, c.ContactType)
 		}
 		seenContactTypes[c.ContactType] = struct{}{}
+	}
+	if existing.DonationMode == models.DonationModeTiers {
+		for idx, t := range input.SponsorshipTiers {
+			if t.Name != "" && !models.ValidTierNames[t.Name] {
+				return nil, fmt.Errorf("%w: sponsorship_tiers[%d]: invalid tier name %q", domain.ErrInvalidInput, idx, t.Name)
+			}
+			cleaned := []string{}
+			for _, b := range t.Benefits {
+				if strings.TrimSpace(b) != "" {
+					cleaned = append(cleaned, b)
+				}
+			}
+			input.SponsorshipTiers[idx].Benefits = cleaned
+		}
 	}
 
 	updated, err := s.repo.Update(ctx, existing, input)

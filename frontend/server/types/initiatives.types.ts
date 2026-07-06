@@ -10,6 +10,17 @@ export interface BackendGoal {
   spent_cents?: number;
 }
 
+export interface BackendSponsorshipTier {
+  id: string;
+  name: string;
+  enabled: boolean;
+  minimum: number;
+  benefits: string[];
+  description?: string;
+  color?: string;
+  icon?: string;
+}
+
 export interface BackendSponsor {
   id: string;
   name: string;
@@ -35,6 +46,8 @@ export interface BackendInitiative {
   event_start_date?: string;
   event_end_date?: string;
   accept_funding: boolean;
+  donation_mode?: 'tiers' | 'open';
+  sponsorship_tiers?: BackendSponsorshipTier[];
   created_on: string;
   updated_on: string;
   financials?: {

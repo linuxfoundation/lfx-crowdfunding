@@ -46,6 +46,7 @@ const initiativeSelect = `
 		i.cii_project_id, i.jobspring_project_id, i.stacks_identifier,
 		i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
 		i.country, i.city, i.is_online,
+		i.donation_mode,
 		i.created_on, i.updated_on,
 		COALESCE(ls.total_raised_cents, 0)      AS total_raised_cents,
 		COALESCE(ls.total_debited_cents, 0)     AS total_disbursed_cents,
@@ -340,9 +341,9 @@ const (
 		        description, color, logo_url, website_url, coc_url,
 		        stripe_plan_id, stripe_product_id, accept_funding, cii_project_id,
 		        eventbrite_url, application_url, event_start_date, event_end_date,
-		        country, city, is_online)
+		        country, city, is_online, donation_mode)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-		        $16,$17,$18,$19,$20,$21,$22,$23)`
+		        $16,$17,$18,$19,$20,$21,$22,$23,$24)`
 
 	insertGoal = `
 		INSERT INTO initiative_goals
@@ -388,8 +389,8 @@ const (
 
 	insertSponsorshipTier = `
 		INSERT INTO initiative_sponsorship_tiers
-		       (id, initiative_id, name, description, color, icon, minimum, sort_order)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)`
+		       (id, initiative_id, name, description, color, icon, minimum, sort_order, enabled, benefits)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	insertOSTIFDetail = `
 		INSERT INTO initiative_ostif_detail
@@ -445,7 +446,8 @@ const (
 		    event_end_date    = $16,
 		    country           = $17,
 		    city              = $18,
-		    is_online         = $19
+		    is_online         = $19,
+		    donation_mode     = $20
 		WHERE id = $1`
 )
 
@@ -479,6 +481,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		nullableString(i.EventbriteURL), nullableString(i.ApplicationURL),
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
+		string(i.DonationMode),
 	); err != nil {
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
@@ -571,7 +574,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		if _, err = tx.Exec(ctx, insertSponsorshipTier,
 			i.ID, nullableString(t.Name), nullableString(t.Description),
 			nullableString(t.Color), nullableString(t.Icon),
-			t.Minimum, t.SortOrder,
+			t.Minimum, t.SortOrder, t.Enabled, t.Benefits,
 		); err != nil {
 			return nil, fmt.Errorf("insert sponsorship tier %q: %w", t.Name, err)
 		}
@@ -655,6 +658,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		nullableString(i.EventbriteURL), nullableString(i.ApplicationURL),
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
+		string(i.DonationMode),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update initiative: %w", err)
@@ -776,7 +780,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 			if _, err = tx.Exec(ctx, insertSponsorshipTier,
 				i.ID, nullableString(t.Name), nullableString(t.Description),
 				nullableString(t.Color), nullableString(t.Icon),
-				t.Minimum, t.SortOrder,
+				t.Minimum, t.SortOrder, t.Enabled, t.Benefits,
 			); err != nil {
 				return nil, fmt.Errorf("insert sponsorship tier %q: %w", t.Name, err)
 			}
@@ -1171,7 +1175,7 @@ func (r *InitiativeRepository) loadProgramInfo(ctx context.Context, id string) (
 }
 
 func (r *InitiativeRepository) listSponsorshipTiers(ctx context.Context, id string) ([]models.SponsorshipTier, error) {
-	const q = `SELECT id, name, description, color, icon, minimum FROM initiative_sponsorship_tiers WHERE initiative_id = $1 ORDER BY sort_order ASC`
+	const q = `SELECT id, name, description, color, icon, minimum, enabled, benefits FROM initiative_sponsorship_tiers WHERE initiative_id = $1 ORDER BY sort_order ASC`
 	rows, err := r.pool.Query(ctx, q, id)
 	if err != nil {
 		return nil, fmt.Errorf("list sponsorship tiers: %w", err)
@@ -1181,13 +1185,16 @@ func (r *InitiativeRepository) listSponsorshipTiers(ctx context.Context, id stri
 	for rows.Next() {
 		var t models.SponsorshipTier
 		var name, description, color, icon *string
-		if err := rows.Scan(&t.ID, &name, &description, &color, &icon, &t.Minimum); err != nil {
+		if err := rows.Scan(&t.ID, &name, &description, &color, &icon, &t.Minimum, &t.Enabled, &t.Benefits); err != nil {
 			return nil, fmt.Errorf("scan sponsorship tier: %w", err)
 		}
 		t.Name = derefString(name)
 		t.Description = derefString(description)
 		t.Color = derefString(color)
 		t.Icon = derefString(icon)
+		if t.Benefits == nil {
+			t.Benefits = []string{}
+		}
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -1291,6 +1298,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		acceptFunding, isOnline                                       *bool
 		createdOn, updatedOn                                          *time.Time
 		sponsorsJSON                                                  []byte
+		donationMode                                                  string
 	)
 	err := row.Scan(
 		&i.ID, &i.InitiativeType, &sourceDynamoTable, &i.OwnerID,
@@ -1301,6 +1309,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		&ciiProjectID, &jobspringProjectID, &stacksIdentifier,
 		&eventbriteURL, &applicationURL, &i.EventStartDate, &i.EventEndDate,
 		&country, &city, &isOnline,
+		&donationMode,
 		&createdOn, &updatedOn,
 		&i.Financials.TotalRaisedCents,
 		&i.Financials.TotalDisbursedCents,
@@ -1340,6 +1349,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	i.ApplicationURL = derefString(applicationURL)
 	i.Country = derefString(country)
 	i.City = derefString(city)
+	i.DonationMode = models.DonationMode(donationMode)
 	if acceptFunding != nil {
 		i.AcceptFunding = *acceptFunding
 	}

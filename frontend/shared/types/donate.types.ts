@@ -4,6 +4,7 @@
 export interface SponsorshipTier {
   id: string;
   name: string;
+  enabled: boolean;
   amountCents: number;
   benefits: string[];
 }
