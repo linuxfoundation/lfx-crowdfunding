@@ -183,6 +183,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	r.Get("/v1/statistics/platform", statisticsH.GetPlatformDetails)
 	r.Get("/v1/statistics/monthly", statisticsH.GetPlatformMonthly)
 	r.Get("/v1/statistics/recent-donations", statisticsH.GetRecentDonations)
+	r.Get("/v1/statistics/org-donations", statisticsH.GetOrgDonations)
 	r.Get("/v1/initiatives", initiativeH.List)
 	r.Get("/v1/initiatives/{id}/transactions", initiativeH.GetTransactions)
 	r.Get("/v1/initiatives/{id}/announcements", announcementH.List)
