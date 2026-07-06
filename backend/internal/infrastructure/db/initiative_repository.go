@@ -574,7 +574,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		if _, err = tx.Exec(ctx, insertSponsorshipTier,
 			i.ID, nullableString(t.Name), nullableString(t.Description),
 			nullableString(t.Color), nullableString(t.Icon),
-			t.Minimum, t.SortOrder, t.Enabled, t.Benefits,
+			t.Minimum, t.SortOrder, derefBoolTrue(t.Enabled), t.Benefits,
 		); err != nil {
 			return nil, fmt.Errorf("insert sponsorship tier %q: %w", t.Name, err)
 		}
@@ -780,7 +780,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 			if _, err = tx.Exec(ctx, insertSponsorshipTier,
 				i.ID, nullableString(t.Name), nullableString(t.Description),
 				nullableString(t.Color), nullableString(t.Icon),
-				t.Minimum, t.SortOrder, t.Enabled, t.Benefits,
+				t.Minimum, t.SortOrder, derefBoolTrue(t.Enabled), t.Benefits,
 			); err != nil {
 				return nil, fmt.Errorf("insert sponsorship tier %q: %w", t.Name, err)
 			}
@@ -1507,6 +1507,15 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// derefBoolTrue returns the pointed-to value, or true when the pointer is nil.
+// Used for SponsorshipTierInput.Enabled whose DB column defaults to true.
+func derefBoolTrue(b *bool) bool {
+	if b == nil {
+		return true
+	}
+	return *b
 }
 
 func nullableString(s string) any {

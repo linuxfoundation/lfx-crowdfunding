@@ -732,6 +732,34 @@ func TestDonationService_Create_NoTier_Succeeds(t *testing.T) {
 	}
 }
 
+func TestDonationService_Create_TierNotConfiguredOnInitiative(t *testing.T) {
+	// Initiative only has silver, not gold.
+	initRepo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:            "init-1",
+			AcceptFunding: true,
+			DonationMode:  models.DonationModeTiers,
+			SponsorshipTiers: []models.SponsorshipTier{
+				{ID: "t1", Name: "silver", Minimum: 1000000, Enabled: true},
+			},
+		},
+	}
+	svc := newDonationSvc(&testDonationRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents:           2000000,
+		StripePaymentMethodID: "pm_test",
+		IdempotencyKey:        "key-notfound",
+		DonationTier:          "gold", // valid name but not configured on this initiative
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for tier not on initiative, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "not configured") {
+		t.Errorf("error message should mention 'not configured', got: %v", err)
+	}
+}
+
 func TestProjectDonationSummaries_PreservesDonationTier(t *testing.T) {
 	donations := []models.Donation{
 		{ID: "d1", UserID: "u1", CurrentAmountCents: 2500000, DonationTier: "gold"},

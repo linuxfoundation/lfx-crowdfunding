@@ -448,6 +448,11 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 			if t.Name != "" && !models.ValidTierNames[t.Name] {
 				return nil, fmt.Errorf("%w: sponsorship_tiers[%d]: invalid tier name %q", domain.ErrInvalidInput, idx, t.Name)
 			}
+			// Default nil Enabled to true — omitting the field means "enabled".
+			if input.SponsorshipTiers[idx].Enabled == nil {
+				enabled := true
+				input.SponsorshipTiers[idx].Enabled = &enabled
+			}
 			cleaned := []string{}
 			for _, b := range t.Benefits {
 				if strings.TrimSpace(b) != "" {
@@ -633,10 +638,12 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 			return nil, fmt.Errorf("%w: invalid donation_mode %q", domain.ErrInvalidInput, *input.DonationMode)
 		}
 		existing.DonationMode = normalizedMode
-		// Switching to open mode: ensure any existing tiers are cleared.
-		if normalizedMode == models.DonationModeOpen && input.SponsorshipTiers == nil {
-			input.SponsorshipTiers = []models.SponsorshipTierInput{}
-		}
+	}
+	// Open-mode invariant: tiers must never be written when mode is open.
+	// Always force-clear when mode is open, regardless of whether it just changed
+	// or was already open — this also discards tiers sent by accident.
+	if existing.DonationMode == models.DonationModeOpen {
+		input.SponsorshipTiers = []models.SponsorshipTierInput{}
 	}
 
 	// Validate required child-record fields before any DB calls.
@@ -669,6 +676,11 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		for idx, t := range input.SponsorshipTiers {
 			if t.Name != "" && !models.ValidTierNames[t.Name] {
 				return nil, fmt.Errorf("%w: sponsorship_tiers[%d]: invalid tier name %q", domain.ErrInvalidInput, idx, t.Name)
+			}
+			// Default nil Enabled to true — omitting the field means "enabled".
+			if input.SponsorshipTiers[idx].Enabled == nil {
+				enabled := true
+				input.SponsorshipTiers[idx].Enabled = &enabled
 			}
 			cleaned := []string{}
 			for _, b := range t.Benefits {

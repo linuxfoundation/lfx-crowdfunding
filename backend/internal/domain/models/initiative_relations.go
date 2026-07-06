@@ -72,14 +72,16 @@ type ProgramInfoInput struct {
 
 // SponsorshipTierInput represents one row in initiative_sponsorship_tiers (entity only).
 type SponsorshipTierInput struct {
-	Name        string   `json:"name,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Color       string   `json:"color,omitempty"`
-	Icon        string   `json:"icon,omitempty"`
-	Minimum     int64    `json:"goal_amount_cents"` // JSON alias for the minimum column
-	SortOrder   int      `json:"sort_order"`
-	Enabled     bool     `json:"enabled"`
-	Benefits    []string `json:"benefits,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Color       string `json:"color,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Minimum     int64  `json:"goal_amount_cents"` // JSON alias for the minimum column
+	SortOrder   int    `json:"sort_order"`
+	// Enabled defaults to true when omitted; use a pointer so that omitting the
+	// field is distinguishable from explicitly setting it to false.
+	Enabled  *bool    `json:"enabled,omitempty"`
+	Benefits []string `json:"benefits,omitempty"`
 }
 
 // OSTIFDetailInput holds OSTIF-specific funding detail for initiative_ostif_detail.

@@ -214,8 +214,10 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 				domain.ErrInvalidInput)
 		}
 		// Enforce the tier's minimum amount; also guard against selecting a disabled tier.
+		var tierFound bool
 		for _, t := range initiative.SponsorshipTiers {
 			if t.Name == input.DonationTier {
+				tierFound = true
 				if !t.Enabled {
 					return nil, fmt.Errorf("%w: donation_tier %q is not currently available",
 						domain.ErrInvalidInput, input.DonationTier)
@@ -226,6 +228,10 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 				}
 				break
 			}
+		}
+		if !tierFound {
+			return nil, fmt.Errorf("%w: donation_tier %q is not configured on this initiative",
+				domain.ErrInvalidInput, input.DonationTier)
 		}
 	}
 

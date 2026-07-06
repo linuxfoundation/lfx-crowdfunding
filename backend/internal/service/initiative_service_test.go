@@ -1978,6 +1978,30 @@ func TestUpdate_DonationMode_TiersMode_InvalidTierName(t *testing.T) {
 	}
 }
 
+func TestUpdate_DonationMode_Open_IgnoresTiersSentWhileAlreadyOpen(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeOpen},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			// No DonationMode change — mode stays open.
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "gold", Minimum: 500000},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Tiers must be discarded (cleared to empty) when mode is open.
+	if repo.lastUpdateInput.SponsorshipTiers == nil {
+		t.Error("expected SponsorshipTiers to be non-nil empty (not nil) so repo clears any stale rows")
+	}
+	if len(repo.lastUpdateInput.SponsorshipTiers) != 0 {
+		t.Errorf("expected 0 tiers (mode is open), got %d", len(repo.lastUpdateInput.SponsorshipTiers))
+	}
+}
+
 func TestUpdate_DonationMode_TiersMode_BlankBenefitsCleaned(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeTiers},
