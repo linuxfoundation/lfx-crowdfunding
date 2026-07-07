@@ -10,6 +10,7 @@ import type {
   SecurityAuditFormData,
   GeneralFundFormData,
   EventFormData,
+  DonationOptionsData,
 } from '~/types/fundraise.types';
 
 interface FundraiseFormData {
@@ -55,6 +56,23 @@ export const useFundraiseSubmit = () => {
   return { submitting, error, submitFundraise };
 };
 
+// Converts each tier's dollar-string goal to cents, matching every other
+// goal field's dollars→cents conversion in this file.
+function buildDonationOptionsPayload(
+  data: DonationOptionsData | undefined,
+): Record<string, unknown> | undefined {
+  if (!data) return undefined;
+  return {
+    mode: data.mode,
+    tiers: data.tiers.map((tier) => ({
+      name: tier.name,
+      enabled: tier.enabled,
+      goalCents: parseDollarsToCents(tier.goal),
+      benefits: tier.benefits,
+    })),
+  };
+}
+
 function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<string, unknown> {
   const { projectForm, securityAuditForm, generalFundForm, eventForm } = forms;
 
@@ -83,7 +101,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(projectForm?.details.annualFundingGoal),
         goals: projectForm?.details.goals?.length ? projectForm.details.goals : undefined,
-        donationOptions: projectForm?.donationOptions,
+        donationOptions: buildDonationOptionsPayload(projectForm?.donationOptions),
       };
     }
 
@@ -106,7 +124,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         primaryContact: securityAuditForm?.primaryContact,
         secondaryContact: securityAuditForm?.secondaryContact,
         technicalLead: securityAuditForm?.technicalLead,
-        donationOptions: securityAuditForm?.donationOptions,
+        donationOptions: buildDonationOptionsPayload(securityAuditForm?.donationOptions),
       };
     }
 
@@ -128,7 +146,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         budgetDistribution: eventForm?.budgetDistribution?.length
           ? eventForm.budgetDistribution
           : undefined,
-        donationOptions: eventForm?.donationOptions,
+        donationOptions: buildDonationOptionsPayload(eventForm?.donationOptions),
       };
     }
 
@@ -144,7 +162,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? generalFundForm.beneficiaries
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(generalFundForm?.annualFundingGoal),
-        donationOptions: generalFundForm?.donationOptions,
+        donationOptions: buildDonationOptionsPayload(generalFundForm?.donationOptions),
       };
     }
   }
