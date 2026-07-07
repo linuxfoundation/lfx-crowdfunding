@@ -300,6 +300,7 @@ const handleContinue = async () => {
         amountInCents: amountForm.value.amountCents,
         stripePaymentMethodId: paymentMethodId,
         ...(amountForm.value.category ? { category: amountForm.value.category } : {}),
+        ...(amountForm.value.tierName ? { donationTier: amountForm.value.tierName } : {}),
         ...orgPayload,
       });
     }
