@@ -72,6 +72,10 @@ type LedgerClient interface {
 	// GetPlatformRecentDonations returns the most recent platform-wide credit transactions.
 	GetPlatformRecentDonations(ctx context.Context) ([]LedgerRecentDonation, error)
 
+	// GetOrgDonations returns the sum of all credit transactions (amount > 0)
+	// for a fixed set of organisations, ordered by amount descending.
+	GetOrgDonations(ctx context.Context) ([]LedgerOrgDonation, error)
+
 	// PostTransaction records a completed charge in the Ledger service.
 	// Passing version="v2" instructs the Ledger service to skip its own email
 	// notifications because this service handles them.
@@ -300,6 +304,14 @@ type LedgerMonthlyBucket struct {
 	NewSupporters int64
 }
 
+// LedgerOrgDonation holds the summed credit amount for a single organisation
+// from GET /transactions/platform/org-donations.
+type LedgerOrgDonation struct {
+	OrgID         string `json:"orgId"`
+	Name          string `json:"name"`
+	AmountInCents int64  `json:"amount_in_cents"`
+}
+
 // LedgerRecentDonation is one entry from GET /transactions/platform/recent.
 type LedgerRecentDonation struct {
 	TxnID          string
@@ -459,6 +471,25 @@ func (c *ledgerHTTPClient) GetPlatformRecentDonations(ctx context.Context) ([]Le
 		})
 	}
 	return out, nil
+}
+
+// GetOrgDonations fetches org-level donation totals from GET /transactions/platform/org-donations.
+func (c *ledgerHTTPClient) GetOrgDonations(ctx context.Context) ([]LedgerOrgDonation, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetOrgDonations")
+	defer span.End()
+
+	endpoint := fmt.Sprintf("%s/transactions/platform/org-donations", c.baseURL)
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
+
+	var resp []LedgerOrgDonation
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger GET /transactions/platform/org-donations returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger org donations: %w", err)
+	}
+	return resp, nil
 }
 
 // GetAllBalances fetches the full bulk balance snapshot from the Ledger service.

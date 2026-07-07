@@ -120,6 +120,9 @@ func (m *mockLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 func (m *mockLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
+func (m *mockLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
+	return nil, nil
+}
 func (m *mockLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
 	return nil
 }
