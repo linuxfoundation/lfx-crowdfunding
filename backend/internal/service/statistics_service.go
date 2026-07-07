@@ -159,6 +159,19 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 	return out, nil
 }
 
+// GetOrgDonations returns the summed credit totals per organisation from the Ledger service.
+func (s *StatisticsService) GetOrgDonations(ctx context.Context) ([]clients.LedgerOrgDonation, error) {
+	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetOrgDonations")
+	defer span.End()
+
+	result, err := s.ledgerClient.GetOrgDonations(ctx)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get org donations: %w", err)
+	}
+	return result, nil
+}
+
 // GetRecentDonations returns the most recent platform-wide donations enriched
 // with donor names and avatars from the CF database.
 func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.RecentDonationsResponse, error) {
