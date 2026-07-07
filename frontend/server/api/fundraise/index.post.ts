@@ -44,8 +44,10 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     industry: payload.industry || undefined,
     website_url: payload.websiteUrl || undefined,
     accept_funding: true,
-    // No backend field exists yet for this — sent as-is so it's ready once one lands.
-    donation_options: buildDonationOptions(payload.donationOptions),
+    // Backend contract not implemented yet (see docs/sponsorship-tiers-backend-requirements.md)
+    // — shape matches the agreed API once it lands.
+    donation_mode: payload.donationOptions?.mode,
+    sponsorship_tiers: buildSponsorshipTiers(payload.donationOptions),
   };
 
   switch (payload.initiativeType) {
@@ -177,22 +179,20 @@ function buildProjectGoals(
   return result.length > 0 ? result : undefined;
 }
 
-function buildDonationOptions(
+function buildSponsorshipTiers(
   donationOptions: DonationOptionsInput | undefined,
-): Record<string, unknown> | undefined {
-  if (!donationOptions) return undefined;
-  if (donationOptions.mode === 'open') return { mode: 'open' };
-  return {
-    mode: donationOptions.mode,
-    tiers: donationOptions.tiers
-      .filter((tier) => tier.enabled)
-      .map((tier) => ({
-        name: tier.name,
-        enabled: tier.enabled,
-        goal: tier.goal,
-        benefits: tier.benefits.filter((benefit) => benefit.trim() !== ''),
-      })),
-  };
+): Array<Record<string, unknown>> | undefined {
+  if (!donationOptions || donationOptions.mode !== 'tiers') return undefined;
+  const tiers = donationOptions.tiers
+    .filter((tier) => tier.enabled)
+    .map((tier, index) => ({
+      name: tier.name,
+      enabled: tier.enabled,
+      goal_amount_cents: tier.goalCents,
+      benefits: tier.benefits.filter((benefit) => benefit.trim() !== ''),
+      sort_order: index,
+    }));
+  return tiers.length > 0 ? tiers : undefined;
 }
 
 function buildBudgetDistributionItem(item: GoalItemInput): Record<string, unknown> {
