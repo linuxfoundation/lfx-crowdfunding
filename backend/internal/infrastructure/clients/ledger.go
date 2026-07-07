@@ -310,6 +310,7 @@ type LedgerOrgDonation struct {
 	OrgID         string `json:"orgId"`
 	Name          string `json:"name"`
 	AmountInCents int64  `json:"amount_in_cents"`
+	AvatarURL     string `json:"avatar_url"`
 }
 
 // LedgerRecentDonation is one entry from GET /transactions/platform/recent.
