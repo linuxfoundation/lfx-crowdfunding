@@ -18,6 +18,7 @@ export interface DonationRequest {
   stripePaymentMethodId: string;
   category?: string;
   organizationId?: string;
+  donationTier?: string;
 }
 
 export interface DonationResult {

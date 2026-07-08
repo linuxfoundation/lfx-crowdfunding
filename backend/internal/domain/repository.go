@@ -58,6 +58,10 @@ type DonationRepository interface {
 	Create(ctx context.Context, donation *models.Donation) (*models.Donation, error)
 	// UpdateByPaymentIntentID is called by the Stripe webhook to reconcile async 3DS results.
 	UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error
+	// ListOrgDonations returns all succeeded donations made by organisations,
+	// enriched with org name, initiative name, and donor display name.
+	// Used exclusively for the internal CSV export endpoint.
+	ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error)
 }
 
 // SubscriptionRepository defines persistence operations for subscriptions.
@@ -165,4 +169,22 @@ type MentorshipRepository interface {
 	// mentorship initiatives. Used to detect programs that have been removed from
 	// Snowflake (not currently acted on, but useful for future reconciliation).
 	ListJobspringIDs(ctx context.Context) ([]string, error)
+}
+
+// AnnouncementRepository defines persistence operations for initiative announcements.
+type AnnouncementRepository interface {
+	// List returns paginated announcements for the given initiative,
+	// ordered by created_on descending (newest first).
+	List(ctx context.Context, initiativeID string, filter models.AnnouncementFilter) ([]models.Announcement, *models.PaginationMeta, error)
+
+	// Create inserts a new announcement and returns the persisted record.
+	Create(ctx context.Context, a *models.Announcement) (*models.Announcement, error)
+
+	// Update patches the title and description of an announcement identified by
+	// id and initiativeID. Returns ErrAnnouncementNotFound when no matching row exists.
+	Update(ctx context.Context, id, initiativeID string, input models.AnnouncementUpdateInput) (*models.Announcement, error)
+
+	// Delete removes an announcement by id scoped to initiativeID.
+	// Returns ErrAnnouncementNotFound when no matching row exists.
+	Delete(ctx context.Context, id, initiativeID string) error
 }

@@ -88,10 +88,14 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 }
 
 // flattenSponsors merges orgs and individuals from the cached sponsor list into a
-// single flat slice sorted by total descending.
+// single flat slice sorted by total descending.  Entries with a non-positive
+// total are expense-payout recipients, not donors, and are excluded.
 func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	sponsors := make([]models.Sponsor, 0, len(list.Orgs)+len(list.Individuals))
 	for _, o := range list.Orgs {
+		if o.Total <= 0 {
+			continue
+		}
 		avatarURL := o.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(o.ID, o.Name)
@@ -99,6 +103,9 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: avatarURL, TotalCents: o.Total})
 	}
 	for _, u := range list.Individuals {
+		if u.Total <= 0 {
+			continue
+		}
 		avatarURL := u.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(u.ID, u.Name)
@@ -428,6 +435,37 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		seenContactTypes[c.ContactType] = struct{}{}
 	}
 
+	// Validate and default donation_mode.
+	if input.DonationMode == "" {
+		input.DonationMode = models.DonationModeOpen
+	}
+	input.DonationMode = models.DonationMode(strings.ToLower(string(input.DonationMode)))
+	if !input.DonationMode.IsValid() {
+		return nil, fmt.Errorf("%w: invalid donation_mode %q", domain.ErrInvalidInput, input.DonationMode)
+	}
+	if input.DonationMode == models.DonationModeTiers {
+		for idx, t := range input.SponsorshipTiers {
+			if t.Name != "" && !models.ValidTierNames[t.Name] {
+				return nil, fmt.Errorf("%w: sponsorship_tiers[%d]: invalid tier name %q", domain.ErrInvalidInput, idx, t.Name)
+			}
+			// Default nil Enabled to true — omitting the field means "enabled".
+			if input.SponsorshipTiers[idx].Enabled == nil {
+				enabled := true
+				input.SponsorshipTiers[idx].Enabled = &enabled
+			}
+			cleaned := []string{}
+			for _, b := range t.Benefits {
+				if strings.TrimSpace(b) != "" {
+					cleaned = append(cleaned, b)
+				}
+			}
+			input.SponsorshipTiers[idx].Benefits = cleaned
+		}
+	} else {
+		// Open mode: ignore any tiers the caller may have sent.
+		input.SponsorshipTiers = nil
+	}
+
 	// Pre-generate the UUID so the same ID is embedded in both the Stripe
 	// Product metadata and the DB INSERT — no follow-up UPDATE needed.
 	initiativeID := uuid.New().String()
@@ -468,6 +506,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		Status:          models.StatusSubmitted,
 		StripeProductID: productID,
 		CiiProjectID:    input.CiiProjectID,
+		DonationMode:    input.DonationMode,
 
 		// Entity-only display fields
 		EventbriteURL:  input.EventbriteURL,
@@ -593,6 +632,19 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	if input.IsOnline != nil {
 		existing.IsOnline = *input.IsOnline
 	}
+	if input.DonationMode != nil {
+		normalizedMode := models.DonationMode(strings.ToLower(string(*input.DonationMode)))
+		if !normalizedMode.IsValid() {
+			return nil, fmt.Errorf("%w: invalid donation_mode %q", domain.ErrInvalidInput, *input.DonationMode)
+		}
+		existing.DonationMode = normalizedMode
+	}
+	// Open-mode invariant: tiers must never be written when mode is open.
+	// Always force-clear when mode is open, regardless of whether it just changed
+	// or was already open — this also discards tiers sent by accident.
+	if existing.DonationMode == models.DonationModeOpen {
+		input.SponsorshipTiers = []models.SponsorshipTierInput{}
+	}
 
 	// Validate required child-record fields before any DB calls.
 	seenGoalNames := make(map[string]struct{}, len(input.Goals))
@@ -619,6 +671,25 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 			return nil, fmt.Errorf("%w: contacts[%d]: duplicate contact_type %q (at most one per type)", domain.ErrInvalidInput, idx, c.ContactType)
 		}
 		seenContactTypes[c.ContactType] = struct{}{}
+	}
+	if existing.DonationMode == models.DonationModeTiers {
+		for idx, t := range input.SponsorshipTiers {
+			if t.Name != "" && !models.ValidTierNames[t.Name] {
+				return nil, fmt.Errorf("%w: sponsorship_tiers[%d]: invalid tier name %q", domain.ErrInvalidInput, idx, t.Name)
+			}
+			// Default nil Enabled to true — omitting the field means "enabled".
+			if input.SponsorshipTiers[idx].Enabled == nil {
+				enabled := true
+				input.SponsorshipTiers[idx].Enabled = &enabled
+			}
+			cleaned := []string{}
+			for _, b := range t.Benefits {
+				if strings.TrimSpace(b) != "" {
+					cleaned = append(cleaned, b)
+				}
+			}
+			input.SponsorshipTiers[idx].Benefits = cleaned
+		}
 	}
 
 	updated, err := s.repo.Update(ctx, existing, input)
@@ -749,6 +820,46 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts (e.g. SOS pays grants out of its fund). These are not
+	// donations and must not appear in the "Donations received" table.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data) // capture before filtering
+		// The ledger client encodes HasNext by adding list.Limit to TotalCount;
+		// if TotalCount > offset+fullPageLen the Ledger signalled more pages.
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+		// Adjust the Ledger's total estimate by the number of rows dropped
+		// from this page.  Two clamp rules keep the frontend's
+		// "nextOffset < totalCount" guard from stopping pagination early:
+		//
+		//  1. Normal case (some items kept): TotalCount ≥ offset+len(kept)
+		//     so the items already delivered are accounted for.
+		//
+		//  2. Entire page filtered out but HasNext=true: TotalCount must be
+		//     > nextOffset (offset+limit) or the frontend halts before
+		//     reaching later pages that may still contain positive entries
+		//     (e.g. the manual_from_lf $1M credit on SOS page 6, which sits
+		//     behind five all-negative disbursement pages).
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)

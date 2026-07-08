@@ -22,3 +22,6 @@ node_modules
 # Playwright
 playwright-report/
 test-results/
+
+# Generated docs search index
+public/assets/docs/search-index.json

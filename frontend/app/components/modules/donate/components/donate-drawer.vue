@@ -80,6 +80,7 @@ SPDX-License-Identifier: MIT
             v-if="step === 0"
             v-model="amountForm"
             :funding-goals="initiative.fundingGoals"
+            :sponsorship-tiers="initiative.sponsorshipTiers"
           />
           <donate-step-contact
             v-else-if="step === 1"
@@ -144,7 +145,7 @@ import DonateStepAmount from './donate-step-amount.vue';
 import DonateStepContact from './donate-step-contact.vue';
 import DonateStepPayment from './donate-step-payment.vue';
 import DonateStepSuccess from './donate-step-success.vue';
-import type { DonateAmountForm, DonateContactForm } from '#shared/types/donate.types';
+import type { DonateAmountForm, DonateContactForm, SponsorshipTier } from '#shared/types/donate.types';
 import type { FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
@@ -165,6 +166,7 @@ const props = defineProps<{
     name: string;
     logoUrl?: string;
     fundingGoals?: FundingGoal[];
+    sponsorshipTiers?: SponsorshipTier[];
   };
 }>();
 
@@ -298,6 +300,7 @@ const handleContinue = async () => {
         amountInCents: amountForm.value.amountCents,
         stripePaymentMethodId: paymentMethodId,
         ...(amountForm.value.category ? { category: amountForm.value.category } : {}),
+        ...(amountForm.value.tierName ? { donationTier: amountForm.value.tierName } : {}),
         ...orgPayload,
       });
     }

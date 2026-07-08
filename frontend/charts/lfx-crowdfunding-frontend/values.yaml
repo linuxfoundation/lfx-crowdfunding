@@ -94,7 +94,8 @@ config:
 # ── Secret environment variables ─────────────────────────────────────────────
 # Expected keys in the Secret (populated by ESO from AWS Secrets Manager):
 #   NUXT_AUTH0_CLIENT_SECRET, NUXT_JWT_SECRET, NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-#   NUXT_GITHUB_OAUTH_CLIENT_SECRET, NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID
+#   NUXT_GITHUB_OAUTH_CLIENT_SECRET, NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID,
+#   NUXT_PUBLIC_DATADOG_RUM_APP_ID, NUXT_PUBLIC_DATADOG_RUM_CLIENT_TOKEN
 secretName: lfx-crowdfunding-frontend-secrets
 
 # createPlaceholderSecret — same semantics as backend chart.

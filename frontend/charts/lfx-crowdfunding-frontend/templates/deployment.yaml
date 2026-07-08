@@ -41,6 +41,9 @@ spec:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
+          env:
+            - name: NUXT_PUBLIC_APP_VERSION
+              value: {{ .Values.image.tag | trimPrefix "v" | quote }}
           envFrom:
             - configMapRef:
                 name: {{ include "lfx-crowdfunding-frontend.fullname" . }}-config

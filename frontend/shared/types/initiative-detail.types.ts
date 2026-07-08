@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import type { InitiativeBase } from './initiative.types';
+import type { SponsorshipTier } from './donate.types';
 
 export interface SponsorEntry {
   id: string;
@@ -74,6 +75,7 @@ export interface InitiativeDetail extends InitiativeBase {
   projectHealthStats?: ProjectHealthStat[];
   projectHealthRating?: string;
   fundingGoals?: FundingGoal[];
+  sponsorshipTiers?: SponsorshipTier[];
   financialSummary?: FinancialSummary;
   donationRecords?: DonationRecord[];
   expenseRecords?: ExpenseRecord[];

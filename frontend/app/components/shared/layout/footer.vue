@@ -58,10 +58,18 @@ SPDX-License-Identifier: MIT
                     {{ link.name }}
                   </a>
                 </template>
+                <button
+                  v-else-if="link.intercom"
+                  type="button"
+                  class="text-sm leading-7 text-white hover:underline self-start text-left"
+                  @click="openIntercom"
+                >
+                  {{ link.name }}
+                </button>
                 <template v-else>
                   <button
                     type="button"
-                    class="text-sm leading-7 text-white hover:underline -ml-1 self-start text-left"
+                    class="text-sm leading-7 text-white hover:underline self-start text-left"
                     @click="link.action"
                   >
                     {{ link.name }}
@@ -90,10 +98,17 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
+import { useIntercom } from '~/composables/useIntercom';
 import { lfxFooterMenu } from '~/config/menu/footer';
 import { AppRoute } from '~/config/routes';
 
 const lfxFooterRef = ref<HTMLElement | null>(null);
+
+const { show } = useIntercom();
+
+function openIntercom() {
+  show();
+}
 
 onMounted(async () => {
   await nextTick();

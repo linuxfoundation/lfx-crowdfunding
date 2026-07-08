@@ -24,6 +24,7 @@ export default defineNuxtConfig({
     '~/plugins/lfx-ui-core.client.ts',
     '~/plugins/api.client.ts',
     '~/plugins/auth.client.ts',
+    '~/plugins/datadog-rum.client.ts',
   ],
   css: ['~/assets/styles/main.scss'],
   primevue,

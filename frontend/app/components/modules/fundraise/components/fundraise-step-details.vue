@@ -38,10 +38,12 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { createDefaultDonationOptions } from '../config/donation-options.config';
 import FundraiseProjectSteps from './project-steps/fundraise-project-steps.vue';
 import FundraiseSecurityAuditSteps from './security-audit-steps/fundraise-security-audit-steps.vue';
 import FundraiseGeneralFundSteps from './general-fund-steps/fundraise-general-fund-steps.vue';
 import FundraiseEventSteps from './event-steps/fundraise-event-steps.vue';
+import { parseDollarsToCents } from '~/utils/currency';
 import type {
   InitiativeType,
   ProjectFormData,
@@ -50,6 +52,7 @@ import type {
   ContactPerson,
   GeneralFundFormData,
   EventFormData,
+  DonationOptionsData,
 } from '~/types/fundraise.types';
 
 const props = defineProps<{
@@ -108,6 +111,7 @@ const createInitialProjectForm = (): ProjectFormData => ({
     projectName: '',
     elevatorPitch: '',
     topics: [],
+    repositoryUrl: '',
     websiteUrl: '',
     ciiProjectId: '',
     codeOfConductUrl: '',
@@ -116,6 +120,7 @@ const createInitialProjectForm = (): ProjectFormData => ({
     annualFundingGoal: '',
     goals: DEFAULT_FUND_DISTRIBUTION.map((item) => ({ ...item })),
   },
+  donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
@@ -142,6 +147,7 @@ const createInitialSecurityAuditForm = (): SecurityAuditFormData => ({
   secondaryContact: createInitialContact(),
   technicalLead: createInitialContact(),
   fundingGoal: '',
+  donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
@@ -197,6 +203,7 @@ const createInitialEventForm = (): EventFormData => ({
   beneficiaries: [],
   sponsorshipGoal: '',
   budgetDistribution: DEFAULT_BUDGET_DISTRIBUTION.map((item) => ({ ...item })),
+  donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
@@ -208,6 +215,7 @@ const createInitialGeneralFundForm = (): GeneralFundFormData => ({
   logoUrl: '',
   beneficiaries: [],
   annualFundingGoal: '',
+  donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
 });
 
@@ -219,15 +227,23 @@ const eventForm = ref<EventFormData>(createInitialEventForm());
 
 const totalSubSteps = computed(() => {
   if (props.initiativeType === 'project') {
-    return projectForm.value.hostingType === 'github' ? 4 : 3;
+    return projectForm.value.hostingType === 'github' ? 5 : 4;
   }
-  if (props.initiativeType === 'security_audit') return 2;
-  if (props.initiativeType === 'general_fund') return 2;
-  if (props.initiativeType === 'event') return 2;
+  if (props.initiativeType === 'security_audit') return 3;
+  if (props.initiativeType === 'general_fund') return 3;
+  if (props.initiativeType === 'event') return 3;
   return 1;
 });
 
 const isLastSubStep = computed(() => subStep.value === totalSubSteps.value - 1);
+
+const isDonationOptionsStepValid = (donationOptions: DonationOptionsData): boolean => {
+  const { mode, tiers } = donationOptions;
+  return (
+    mode === 'open' ||
+    tiers.filter((tier) => tier.enabled).every((tier) => parseDollarsToCents(tier.goal) !== undefined)
+  );
+};
 
 const isCurrentSubStepValid = computed(() => {
   if (props.initiativeType === 'project') {
@@ -235,8 +251,14 @@ const isCurrentSubStepValid = computed(() => {
     if (subStep.value === 1 && projectForm.value.hostingType === 'github') {
       return projectForm.value.selectedRepo !== null;
     }
+    if (subStep.value === 1 && projectForm.value.hostingType !== 'github') {
+      return projectForm.value.details.repositoryUrl.trim() !== '';
+    }
     if (subStep.value === totalSubSteps.value - 1) {
       return projectForm.value.compliance.ofacConfirmed && projectForm.value.compliance.termsAccepted;
+    }
+    if (subStep.value === totalSubSteps.value - 2) {
+      return isDonationOptionsStepValid(projectForm.value.donationOptions);
     }
     return true;
   }
@@ -244,17 +266,26 @@ const isCurrentSubStepValid = computed(() => {
     if (subStep.value === totalSubSteps.value - 1) {
       return securityAuditForm.value.compliance.ofacConfirmed && securityAuditForm.value.compliance.termsAccepted;
     }
+    if (subStep.value === totalSubSteps.value - 2) {
+      return isDonationOptionsStepValid(securityAuditForm.value.donationOptions);
+    }
     return securityAuditForm.value.auditName.trim() !== '';
   }
   if (props.initiativeType === 'general_fund') {
     if (subStep.value === totalSubSteps.value - 1) {
       return generalFundForm.value.compliance.ofacConfirmed && generalFundForm.value.compliance.termsAccepted;
     }
+    if (subStep.value === totalSubSteps.value - 2) {
+      return isDonationOptionsStepValid(generalFundForm.value.donationOptions);
+    }
     return generalFundForm.value.name.trim() !== '';
   }
   if (props.initiativeType === 'event') {
     if (subStep.value === totalSubSteps.value - 1) {
       return eventForm.value.compliance.ofacConfirmed && eventForm.value.compliance.termsAccepted;
+    }
+    if (subStep.value === totalSubSteps.value - 2) {
+      return isDonationOptionsStepValid(eventForm.value.donationOptions);
     }
     return eventForm.value.name.trim() !== '';
   }

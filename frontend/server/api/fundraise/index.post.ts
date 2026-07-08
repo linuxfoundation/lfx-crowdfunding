@@ -10,6 +10,7 @@ import type {
   FundraiseContactInput,
   SecurityAuditFundraisePayload,
   GoalItemInput,
+  DonationOptionsInput,
 } from '../../types/fundraise.types';
 
 export default defineEventHandler(async (event): Promise<FundraiseResult> => {
@@ -43,6 +44,10 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     industry: payload.industry || undefined,
     website_url: payload.websiteUrl || undefined,
     accept_funding: true,
+    // Backend contract not implemented yet (see docs/sponsorship-tiers-backend-requirements.md)
+    // — shape matches the agreed API once it lands.
+    donation_mode: payload.donationOptions?.mode,
+    sponsorship_tiers: buildSponsorshipTiers(payload.donationOptions),
   };
 
   switch (payload.initiativeType) {
@@ -172,6 +177,22 @@ function buildProjectGoals(
   });
 
   return result.length > 0 ? result : undefined;
+}
+
+function buildSponsorshipTiers(
+  donationOptions: DonationOptionsInput | undefined,
+): Array<Record<string, unknown>> | undefined {
+  if (!donationOptions || donationOptions.mode !== 'tiers') return undefined;
+  const tiers = donationOptions.tiers
+    .filter((tier) => tier.enabled)
+    .map((tier, index) => ({
+      name: tier.name,
+      enabled: tier.enabled,
+      goal_amount_cents: tier.goalCents,
+      benefits: tier.benefits.filter((benefit) => benefit.trim() !== ''),
+      sort_order: index,
+    }));
+  return tiers.length > 0 ? tiers : undefined;
 }
 
 function buildBudgetDistributionItem(item: GoalItemInput): Record<string, unknown> {

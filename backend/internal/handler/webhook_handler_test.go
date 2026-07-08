@@ -98,6 +98,9 @@ func (c *wbLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clients.
 func (c *wbLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
+func (c *wbLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
+	return nil, nil
+}
 func (c *wbLedgerClient) PostTransaction(ctx context.Context, txn clients.LedgerTransaction) error {
 	if c.onPostTransaction != nil {
 		return c.onPostTransaction(ctx, txn)
@@ -166,6 +169,10 @@ func (r *wbDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, stat
 		return r.onUpdateByPaymentIntentID(ctx, piID, status, chargeID)
 	}
 	return nil
+}
+
+func (r *wbDonationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
+	return nil, nil
 }
 
 // wbSubscriptionRepo implements domain.SubscriptionRepository for webhook tests.

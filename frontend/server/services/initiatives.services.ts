@@ -4,6 +4,7 @@
 import type { BackendInitiative } from '../types/initiatives.types';
 import type { InitiativeBase } from '#shared/types/initiative.types';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
+import type { SponsorshipTier } from '#shared/types/donate.types';
 
 export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
   return {
@@ -68,5 +69,19 @@ export const mapToInitiativeDetail = (b: BackendInitiative): InitiativeDetail =>
     recentDonations: [],
     donationRecords: [],
     expenseRecords: [],
+    sponsorshipTiers:
+      b.donation_mode === 'tiers' && b.sponsorship_tiers?.length
+        ? b.sponsorship_tiers
+            .filter((t) => t.enabled)
+            .map(
+              (t): SponsorshipTier => ({
+                id: t.id,
+                name: t.name,
+                enabled: t.enabled,
+                amountCents: t.minimum,
+                benefits: t.benefits,
+              }),
+            )
+        : undefined,
   };
 };

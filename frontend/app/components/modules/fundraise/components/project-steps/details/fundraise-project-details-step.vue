@@ -6,6 +6,7 @@ SPDX-License-Identifier: MIT
   <div class="flex flex-col gap-4">
     <fundraise-project-details-section
       :model-value="modelValue"
+      :show-repository-url="showRepositoryUrl"
       @update:model-value="$emit('update:modelValue', $event)"
     />
     <fundraise-project-compliance-section
@@ -37,6 +38,7 @@ import type { ProjectDetailsData } from '~/types/fundraise.types';
 
 defineProps<{
   modelValue: ProjectDetailsData;
+  showRepositoryUrl?: boolean;
 }>();
 
 defineEmits<{

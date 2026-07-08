@@ -67,6 +67,10 @@ func (r *donationRepo) UpdateByPaymentIntentID(_ context.Context, _, _, _ string
 	return r.updateByPIIDErr
 }
 
+func (r *donationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
+	return nil, nil
+}
+
 // donationInitiativeRepo is a minimal InitiativeRepository stub for donation tests.
 type donationInitiativeRepo struct {
 	initiative *models.Initiative

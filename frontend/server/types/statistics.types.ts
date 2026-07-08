@@ -57,3 +57,10 @@ export interface BackendRecentDonation {
 export interface BackendRecentDonationsResponse {
   data: BackendRecentDonation[];
 }
+
+export interface BackendOrgDonation {
+  orgId: string;
+  name: string;
+  amount_in_cents: number;
+  avatar_url?: string;
+}

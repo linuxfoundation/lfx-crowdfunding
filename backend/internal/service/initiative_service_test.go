@@ -120,6 +120,9 @@ func (m *mockLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 func (m *mockLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
+func (m *mockLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
+	return nil, nil
+}
 func (m *mockLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
 	return nil
 }
@@ -269,6 +272,33 @@ func TestFlattenSponsors(t *testing.T) {
 	}
 }
 
+func TestFlattenSponsors_ExcludesNegativeAndZeroTotals(t *testing.T) {
+	// Expense payout recipients appear in the Ledger sponsor list with
+	// non-positive totals and must be excluded from the sponsors grid.
+	list := models.LedgerSponsorList{
+		Orgs: []models.LedgerSponsorOrg{
+			{ID: "google", Name: "Google", Total: 100_000_000_00}, // keep
+			{ID: "illia", Name: "Illia", Total: -50_500_00},       // expense recipient — drop
+			{ID: "seth", Name: "Seth", Total: -1_000_00},          // expense recipient — drop
+		},
+		Individuals: []models.LedgerSponsorUser{
+			{ID: "auth0|michal", Name: "Michal", Total: 400}, // keep
+			{ID: "auth0|zero", Name: "Zero", Total: 0},       // zero — drop
+		},
+	}
+
+	result := flattenSponsors(list)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 sponsors (positive totals only), got %d", len(result))
+	}
+	for _, s := range result {
+		if s.TotalCents <= 0 {
+			t.Errorf("sponsor %q with non-positive total %d slipped through", s.ID, s.TotalCents)
+		}
+	}
+}
+
 func TestFlattenSponsors_Empty(t *testing.T) {
 	result := flattenSponsors(models.LedgerSponsorList{})
 	if result == nil {
@@ -281,7 +311,7 @@ func TestFlattenSponsors_Empty(t *testing.T) {
 
 func TestFlattenSponsors_GeneratesAvatarWhenMissing(t *testing.T) {
 	list := models.LedgerSponsorList{
-		Orgs: []models.LedgerSponsorOrg{{ID: "org-1", Name: "Acme", AvatarURL: ""}},
+		Orgs: []models.LedgerSponsorOrg{{ID: "org-1", Name: "Acme", AvatarURL: "", Total: 100}},
 	}
 	result := flattenSponsors(list)
 	if result[0].AvatarURL == "" {
@@ -1439,9 +1469,10 @@ func TestCreate_PropagatesSponsorshipTiers(t *testing.T) {
 		Name:           "My Event",
 		Slug:           "my-event",
 		InitiativeType: "event",
+		DonationMode:   models.DonationModeTiers,
 		SponsorshipTiers: []models.SponsorshipTierInput{
-			{Name: "Gold", Minimum: 500000, SortOrder: 0},
-			{Name: "Silver", Minimum: 100000, SortOrder: 1},
+			{Name: "gold", Minimum: 500000, SortOrder: 0},
+			{Name: "silver", Minimum: 100000, SortOrder: 1},
 		},
 	})
 	if err != nil {
@@ -1451,10 +1482,10 @@ func TestCreate_PropagatesSponsorshipTiers(t *testing.T) {
 	if len(tiers) != 2 {
 		t.Fatalf("expected 2 sponsorship tiers, got %d", len(tiers))
 	}
-	if tiers[0].Name != "Gold" || tiers[0].Minimum != 500000 {
+	if tiers[0].Name != "gold" || tiers[0].Minimum != 500000 {
 		t.Errorf("tier[0] mismatch: %+v", tiers[0])
 	}
-	if tiers[1].Name != "Silver" || tiers[1].SortOrder != 1 {
+	if tiers[1].Name != "silver" || tiers[1].SortOrder != 1 {
 		t.Errorf("tier[1] mismatch: %+v", tiers[1])
 	}
 }
@@ -1621,5 +1652,375 @@ func TestGetOwnerInfoBySlug_NullEmail(t *testing.T) {
 	_, err := svc.GetOwnerInfoBySlug(context.Background(), "some-project")
 	if !errors.Is(err, domain.ErrProfileNotSynced) {
 		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
+	}
+}
+
+// txnMockLedgerClient is a minimal Ledger client stub for GetTransactions tests.
+// Set total to a non-zero value to simulate a Ledger-supplied TotalCount that
+// differs from the current page size (e.g. for offset-based pagination tests).
+// When total is 0, len(txns) is used as TotalCount.
+type txnMockLedgerClient struct {
+	mockLedgerClient
+	txns  []models.Transaction
+	total int
+}
+
+func (c *txnMockLedgerClient) GetTransactions(_ context.Context, _ clients.TransactionFilter) (*models.TransactionList, error) {
+	tc := c.total
+	if tc == 0 {
+		tc = len(c.txns)
+	}
+	return &models.TransactionList{Data: c.txns, TotalCount: tc}, nil
+}
+
+func TestGetTransactions_NegativeAmountsFilteredForDonations(t *testing.T) {
+	t.Parallel()
+
+	ledger := &txnMockLedgerClient{txns: []models.Transaction{
+		{ID: "t1", AmountCents: 100000000, Type: "donation"}, // Google — keep
+		{ID: "t2", AmountCents: 400, Type: "donation"},       // Michal — keep
+		{ID: "t3", AmountCents: -8148000, Type: "donation"},  // grant payout stored as negative credit — drop
+		{ID: "t4", AmountCents: -1785000, Type: "donation"},  // another negative credit — drop
+	}}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 2 {
+		t.Fatalf("expected 2 positive-amount donations, got %d", len(list.Data))
+	}
+	// offset=0, Ledger TotalCount=4, dropped=2 → adjusted=4-2=2; clamp=max(2, 0+2)=2.
+	if list.TotalCount != 2 {
+		t.Errorf("TotalCount: want 2 (adjusted by dropped rows), got %d", list.TotalCount)
+	}
+	for _, txn := range list.Data {
+		if txn.AmountCents <= 0 {
+			t.Errorf("negative-amount transaction %q slipped through filter (amount=%d)", txn.ID, txn.AmountCents)
+		}
+	}
+}
+
+func TestGetTransactions_NegativeAmountsNotFilteredForExpenses(t *testing.T) {
+	t.Parallel()
+
+	// Expense (reimbursement) transactions legitimately have negative amounts;
+	// the filter must not apply to them.
+	ledger := &txnMockLedgerClient{txns: []models.Transaction{
+		{ID: "e1", AmountCents: -50500, Type: "reimbursement"},
+		{ID: "e2", AmountCents: -100000, Type: "reimbursement"},
+	}}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	list, err := svc.GetTransactions(context.Background(), "some-id", "reimbursement", 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 2 {
+		t.Fatalf("expected 2 expense transactions, got %d", len(list.Data))
+	}
+}
+
+func TestGetTransactions_TotalCountClampedByOffset(t *testing.T) {
+	t.Parallel()
+
+	// Simulate a mid-pagination page (offset=8) where the Ledger reports a
+	// TotalCount of 10 but the page contains mostly negative-amount rows.
+	// After filtering: kept=1, dropped=2 → adjusted = 10-2 = 8.
+	// But offset+len(kept) = 8+1 = 9 > 8, so the clamp must fire → TotalCount=9.
+	// Without the clamp the frontend's "nextOffset < totalCount" guard
+	// (9 < 8 = false) would incorrectly halt pagination.
+	ledger := &txnMockLedgerClient{
+		total: 10,
+		txns: []models.Transaction{
+			{ID: "t1", AmountCents: 400, Type: "donation"},      // keep
+			{ID: "t2", AmountCents: -8148000, Type: "donation"}, // drop
+			{ID: "t3", AmountCents: -1785000, Type: "donation"}, // drop
+		},
+	}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 8)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 1 {
+		t.Fatalf("expected 1 positive-amount donation, got %d", len(list.Data))
+	}
+	// adjusted=10-2=8 < clamp=8+1=9 → must be 9.
+	if list.TotalCount != 9 {
+		t.Errorf("TotalCount: want 9 (clamped to offset+kept), got %d", list.TotalCount)
+	}
+}
+
+func TestGetTransactions_AllNegativePageWithMorePages_PaginationContinues(t *testing.T) {
+	t.Parallel()
+
+	// Reproduces the SOS $1M bug: pages 2-5 of the Ledger are entirely
+	// negative-amount disbursement credits.  With offset=5, limit=5 and
+	// HasNext=true the ledger client sets TotalCount = 5+5+5 = 15.
+	// After filtering all 5 rows out: adjusted = 15-5 = 10.
+	// Old clamp (offset+kept = 5+0 = 5): adjusted stays 10.
+	// Frontend nextOffset = 5+5 = 10; guard 10 < 10 = false → stops early.
+	// New rule: when all rows are filtered AND hasMorePages, clamp to
+	// offset+limit+1 = 5+5+1 = 11, so nextOffset (10) < TotalCount (11) → continues.
+	ledger := &txnMockLedgerClient{
+		total: 15, // offset(5) + pageSize(5) + limit(5) — ledger client HasNext encoding
+		txns: []models.Transaction{
+			{ID: "n1", AmountCents: -1060500, Type: "donation"},
+			{ID: "n2", AmountCents: -300000, Type: "donation"},
+			{ID: "n3", AmountCents: -1900000, Type: "donation"},
+			{ID: "n4", AmountCents: -1002500, Type: "donation"},
+			{ID: "n5", AmountCents: -1301000, Type: "donation"},
+		},
+	}
+
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		nil, nil, nil,
+		slog.Default(),
+	)
+
+	const reqOffset, reqLimit = 5, 5
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", reqLimit, reqOffset)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 0 {
+		t.Fatalf("expected 0 positive-amount donations, got %d", len(list.Data))
+	}
+	// Frontend computes nextOffset = requestedOffset + requestedLimit = 10.
+	// TotalCount must be > 10 or the infinite query halts before page 6.
+	nextOffset := reqOffset + reqLimit
+	if nextOffset >= list.TotalCount {
+		t.Errorf("pagination would stop: nextOffset(%d) >= TotalCount(%d); want TotalCount > %d",
+			nextOffset, list.TotalCount, nextOffset)
+	}
+}
+
+// ── donation_mode + sponsorship tiers — Create ────────────────────────────────
+
+func TestCreate_DonationMode_DefaultsToOpen(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		InitiativeType: "project",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastCreated.DonationMode != models.DonationModeOpen {
+		t.Errorf("DonationMode = %q, want %q", repo.lastCreated.DonationMode, models.DonationModeOpen)
+	}
+}
+
+func TestCreate_DonationMode_InvalidValue(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Project",
+			InitiativeType: "project",
+			DonationMode:   "monthly",
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unknown donation_mode, got %v", err)
+	}
+}
+
+func TestCreate_DonationMode_TiersMode_PropagatedToInitiative(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:             "My Event",
+		InitiativeType:   "event",
+		DonationMode:     models.DonationModeTiers,
+		SponsorshipTiers: []models.SponsorshipTierInput{{Name: "gold", Minimum: 500000}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastCreated.DonationMode != models.DonationModeTiers {
+		t.Errorf("DonationMode = %q, want %q", repo.lastCreated.DonationMode, models.DonationModeTiers)
+	}
+}
+
+func TestCreate_DonationMode_TiersMode_InvalidTierName(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Event",
+			InitiativeType: "event",
+			DonationMode:   models.DonationModeTiers,
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "diamond", Minimum: 100000},
+			},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unknown tier name, got %v", err)
+	}
+}
+
+func TestCreate_DonationMode_Open_TiersAreCleared(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	// Caller sends tiers with open mode — they must be discarded.
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		InitiativeType: "project",
+		DonationMode:   models.DonationModeOpen,
+		SponsorshipTiers: []models.SponsorshipTierInput{
+			{Name: "gold", Minimum: 500000},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastInput.SponsorshipTiers != nil {
+		t.Errorf("expected SponsorshipTiers to be nil in open mode, got %v", repo.lastInput.SponsorshipTiers)
+	}
+}
+
+func TestCreate_DonationMode_TiersMode_BlankBenefitsCleaned(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Event",
+		InitiativeType: "event",
+		DonationMode:   models.DonationModeTiers,
+		SponsorshipTiers: []models.SponsorshipTierInput{
+			{Name: "gold", Minimum: 500000, Benefits: []string{"Logo on site", "  ", "Custom briefing", ""}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	benefits := repo.lastInput.SponsorshipTiers[0].Benefits
+	if len(benefits) != 2 {
+		t.Fatalf("expected 2 non-blank benefits, got %d: %v", len(benefits), benefits)
+	}
+	if benefits[0] != "Logo on site" || benefits[1] != "Custom briefing" {
+		t.Errorf("unexpected benefits after cleaning: %v", benefits)
+	}
+}
+
+// ── donation_mode + sponsorship tiers — Update ────────────────────────────────
+
+func TestUpdate_DonationMode_InvalidValue(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	mode := models.DonationMode("quarterly")
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{DonationMode: &mode},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for invalid donation_mode, got %v", err)
+	}
+}
+
+func TestUpdate_DonationMode_SwitchToOpen_ClearsTiers(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeTiers},
+	}
+	mode := models.DonationModeOpen
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{DonationMode: &mode},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// SponsorshipTiers must be set to empty (not nil) so the repo performs the delete.
+	if repo.lastUpdateInput.SponsorshipTiers == nil {
+		t.Error("expected SponsorshipTiers to be non-nil empty slice so repo deletes existing rows")
+	}
+	if len(repo.lastUpdateInput.SponsorshipTiers) != 0 {
+		t.Errorf("expected 0 tiers after switching to open, got %d", len(repo.lastUpdateInput.SponsorshipTiers))
+	}
+}
+
+func TestUpdate_DonationMode_TiersMode_InvalidTierName(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeOpen},
+	}
+	mode := models.DonationModeTiers
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			DonationMode: &mode,
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "emerald", Minimum: 200000},
+			},
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unknown tier name, got %v", err)
+	}
+}
+
+func TestUpdate_DonationMode_Open_IgnoresTiersSentWhileAlreadyOpen(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeOpen},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			// No DonationMode change — mode stays open.
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "gold", Minimum: 500000},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Tiers must be discarded (cleared to empty) when mode is open.
+	if repo.lastUpdateInput.SponsorshipTiers == nil {
+		t.Error("expected SponsorshipTiers to be non-nil empty (not nil) so repo clears any stale rows")
+	}
+	if len(repo.lastUpdateInput.SponsorshipTiers) != 0 {
+		t.Errorf("expected 0 tiers (mode is open), got %d", len(repo.lastUpdateInput.SponsorshipTiers))
+	}
+}
+
+func TestUpdate_DonationMode_TiersMode_BlankBenefitsCleaned(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", DonationMode: models.DonationModeTiers},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{
+			SponsorshipTiers: []models.SponsorshipTierInput{
+				{Name: "silver", Minimum: 100000, Benefits: []string{"", "Newsletter mention", "  "}},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	benefits := repo.lastUpdateInput.SponsorshipTiers[0].Benefits
+	if len(benefits) != 1 || benefits[0] != "Newsletter mention" {
+		t.Errorf("expected only non-blank benefit, got: %v", benefits)
 	}
 }
