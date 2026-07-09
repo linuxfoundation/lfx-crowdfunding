@@ -9,3 +9,8 @@ KSV014
 # AVD-KSV-01010 / sensitive ConfigMap keys: NITRO_PORT is a TCP port number,
 # not a secret. Trivy's heuristic false-positives on the "PORT" substring.
 AVD-KSV-01010
+
+# GO-2026-5932 / golang.org/x/crypto/openpgp unmaintained: golang.org/x/crypto
+# is an indirect dependency only; no code imports openpgp (or any x/crypto
+# subpackage). No fixed version exists — the package is permanently deprecated.
+GO-2026-5932
