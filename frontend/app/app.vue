@@ -12,7 +12,7 @@ SPDX-License-Identifier: MIT
 import { onMounted, watch } from 'vue';
 import { authState, isAuthReady } from '~/composables/useAuth';
 import { useDatadogRum } from '~/composables/useDatadogRum';
-import { identifyFeatureFlagUser } from '~/composables/useFeatureFlags';
+import { identifyFeatureFlagUser, resetFeatureFlagUser } from '~/composables/useFeatureFlags';
 import { useIntercom } from '~/composables/useIntercom';
 
 const { boot, shutdown } = useIntercom();
@@ -68,6 +68,9 @@ watch(
       }
     } else if (!isAuthenticated) {
       clearDdUser();
+      resetFeatureFlagUser().catch((err) => {
+        console.error('[App] Failed to reset feature flag user', err);
+      });
       if (intercomBootAttempted) {
         shutdown();
         intercomBootAttempted = false;
