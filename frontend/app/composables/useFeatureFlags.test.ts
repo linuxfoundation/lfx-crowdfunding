@@ -9,9 +9,12 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 const mockSetContext = vi.fn();
 const mockSetProviderAndWait = vi.fn();
-const mockGetProviderStatus = vi.fn();
 const mockGetBooleanValue = vi.fn();
 const handlers: Record<string, Array<(details?: unknown) => void>> = {};
+
+// The wrapper checks the provider *instance's* own `status`, not OpenFeature's wrapper
+// status (see useFeatureFlags.ts) — so the fake provider instance exposes its own status.
+let mockProviderStatus = 'READY';
 
 const mockClient = {
   getBooleanValue: (...args: unknown[]) => mockGetBooleanValue(...args),
@@ -25,7 +28,6 @@ vi.mock('@openfeature/web-sdk', () => ({
     setContext: (...args: unknown[]) => mockSetContext(...args),
     setProviderAndWait: (...args: unknown[]) => mockSetProviderAndWait(...args),
     getClient: () => mockClient,
-    getProviderStatus: () => mockGetProviderStatus(),
   },
   ProviderEvents: {
     ConfigurationChanged: 'configuration_changed',
@@ -36,7 +38,9 @@ vi.mock('@openfeature/web-sdk', () => ({
 }));
 
 vi.mock('@openfeature/launchdarkly-client-provider', () => ({
-  LaunchDarklyClientProvider: vi.fn(),
+  LaunchDarklyClientProvider: vi.fn().mockImplementation(function (this: { status: string }) {
+    this.status = mockProviderStatus;
+  }),
 }));
 
 async function loadModule() {
@@ -48,7 +52,7 @@ describe('useFeatureFlags', () => {
     vi.clearAllMocks();
     vi.resetModules();
     for (const key of Object.keys(handlers)) delete handlers[key];
-    mockGetProviderStatus.mockReturnValue('READY');
+    mockProviderStatus = 'READY';
     mockSetContext.mockResolvedValue(undefined);
     mockSetProviderAndWait.mockResolvedValue(undefined);
   });
@@ -84,8 +88,55 @@ describe('useFeatureFlags', () => {
     expect(mockSetContext).toHaveBeenCalledWith(expect.objectContaining({ anonymous: true }));
   });
 
+  it('applies a reset requested while init is still in flight', async () => {
+    const { initFeatureFlags, identifyFeatureFlagUser, resetFeatureFlagUser } = await loadModule();
+
+    await identifyFeatureFlagUser({ username: 'alice' });
+
+    let resolveWait!: () => void;
+    mockSetProviderAndWait.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveWait = resolve;
+      }),
+    );
+
+    const initPromise = initFeatureFlags('client-id');
+    await resetFeatureFlagUser(); // logout happens before the provider finishes initializing
+    resolveWait();
+    await initPromise;
+
+    const contexts = mockSetContext.mock.calls.map((call) => call[0]);
+    expect(contexts.at(-1)).toMatchObject({ anonymous: true });
+  });
+
+  it('falls back to an in-memory anonymous key when localStorage throws', async () => {
+    // @ts-expect-error — minimal window stub for a sandboxed/storage-blocked origin
+    globalThis.window = {
+      localStorage: {
+        getItem: () => {
+          throw new DOMException('blocked', 'SecurityError');
+        },
+        setItem: () => {
+          throw new DOMException('blocked', 'SecurityError');
+        },
+      },
+    };
+
+    try {
+      const { initFeatureFlags } = await loadModule();
+      await expect(initFeatureFlags('client-id')).resolves.toBeUndefined();
+
+      const context = mockSetContext.mock.calls[0]?.[0];
+      expect(context).toMatchObject({ anonymous: true });
+      expect(typeof context.targetingKey).toBe('string');
+    } finally {
+      // @ts-expect-error — restore to the default 'window is undefined' node environment
+      delete globalThis.window;
+    }
+  });
+
   it('throws and stays unready when the provider fails to initialize', async () => {
-    mockGetProviderStatus.mockReturnValue('ERROR');
+    mockProviderStatus = 'ERROR';
     const { initFeatureFlags, useFeatureFlags } = await loadModule();
 
     await expect(initFeatureFlags('client-id')).rejects.toThrow(/failed to initialize/i);

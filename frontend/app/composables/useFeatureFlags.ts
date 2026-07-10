@@ -27,17 +27,26 @@ export interface FeatureFlagUser {
   email?: string;
 }
 
+// In-memory fallback for the tab's lifetime when localStorage is unavailable/throws.
+let anonymousKeyFallback: string | undefined;
+
 // Persist one anonymous key per browser so anonymous visitors are distributed across
 // LaunchDarkly percentage rollouts instead of all hashing to the same targeting key.
 function getAnonymousKey(): string {
   if (typeof window === 'undefined') return 'anonymous';
 
-  const existing = window.localStorage.getItem(ANONYMOUS_KEY_STORAGE_KEY);
-  if (existing) return existing;
+  try {
+    const existing = window.localStorage.getItem(ANONYMOUS_KEY_STORAGE_KEY);
+    if (existing) return existing;
 
-  const generated = crypto.randomUUID();
-  window.localStorage.setItem(ANONYMOUS_KEY_STORAGE_KEY, generated);
-  return generated;
+    const generated = crypto.randomUUID();
+    window.localStorage.setItem(ANONYMOUS_KEY_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    // Storage blocked (sandboxed origin, privacy settings, etc.) — keep a stable
+    // key for this tab's session instead of falling through to init failure.
+    return (anonymousKeyFallback ??= crypto.randomUUID());
+  }
 }
 
 function toContext(user?: FeatureFlagUser): EvaluationContext {
@@ -59,23 +68,22 @@ export async function initFeatureFlags(clientId: string): Promise<void> {
   await OpenFeature.setContext(toContext(pendingUser));
   await OpenFeature.setProviderAndWait(provider);
 
-  // setProviderAndWait resolves even when the provider failed to initialize (it swallows
-  // the error and sets its own status to ERROR), so check status explicitly.
-  if (OpenFeature.getProviderStatus() !== ProviderStatus.READY) {
-    throw new Error(
-      `LaunchDarkly provider failed to initialize (status: ${OpenFeature.getProviderStatus()})`,
-    );
+  // setProviderAndWait resolves even when the provider failed to initialize — this LD
+  // provider catches its own waitForInitialization() failure internally and always
+  // resolves — so OpenFeature's wrapper status is unreliable here. Check the provider
+  // instance's own public status instead.
+  if (provider.status !== ProviderStatus.READY) {
+    throw new Error(`LaunchDarkly provider failed to initialize (status: ${provider.status})`);
   }
 
   client = OpenFeature.getClient();
   isReady.value = true;
   revision.value++;
 
-  // Re-apply in case identifyFeatureFlagUser was called while setProviderAndWait was in flight.
-  if (pendingUser) {
-    await OpenFeature.setContext(toContext(pendingUser));
-    revision.value++;
-  }
+  // Re-apply whatever was requested (a user, or nothing/reset) while setProviderAndWait
+  // was in flight, so an identify/reset call made mid-init is never lost.
+  await OpenFeature.setContext(toContext(pendingUser));
+  revision.value++;
 
   client.addHandler(ProviderEvents.ConfigurationChanged, () => revision.value++);
   client.addHandler(ProviderEvents.ContextChanged, () => revision.value++);
