@@ -15,6 +15,8 @@ let client: Client | null = null;
 const isReady = ref(false);
 // Bumped on every provider event so computed flag refs re-evaluate.
 const revision = ref(0);
+// Last user requested via identifyFeatureFlagUser before the client was ready; replayed once init finishes.
+let pendingUser: FeatureFlagUser | undefined;
 
 export interface FeatureFlagUser {
   username?: string;
@@ -38,20 +40,29 @@ export async function initFeatureFlags(clientId: string): Promise<void> {
   const { LaunchDarklyClientProvider } = await import('@openfeature/launchdarkly-client-provider');
   const provider = new LaunchDarklyClientProvider(clientId, { streaming: true });
 
-  await OpenFeature.setContext(toContext());
+  await OpenFeature.setContext(toContext(pendingUser));
   await OpenFeature.setProviderAndWait(provider);
 
   client = OpenFeature.getClient();
   isReady.value = true;
   revision.value++;
 
+  // Re-apply in case identifyFeatureFlagUser was called while setProviderAndWait was in flight.
+  if (pendingUser) {
+    await OpenFeature.setContext(toContext(pendingUser));
+    revision.value++;
+  }
+
   client.addHandler(ProviderEvents.ConfigurationChanged, () => revision.value++);
   client.addHandler(ProviderEvents.ContextChanged, () => revision.value++);
-  client.addHandler(ProviderEvents.Error, () => console.error('[FeatureFlags] Provider error'));
+  client.addHandler(ProviderEvents.Error, (details) =>
+    console.error('[FeatureFlags] Provider error', details),
+  );
 }
 
 // Call once the authenticated user is known, to move off the anonymous context.
 export async function identifyFeatureFlagUser(user: FeatureFlagUser): Promise<void> {
+  pendingUser = user;
   if (!client) return;
   await OpenFeature.setContext(toContext(user));
   revision.value++;
