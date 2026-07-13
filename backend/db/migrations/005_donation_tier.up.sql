@@ -6,3 +6,5 @@
 ALTER TABLE donations
   ADD COLUMN IF NOT EXISTS donation_tier TEXT NULL
     CHECK (donation_tier IN ('platinum', 'gold', 'silver', 'bronze'));
+
+COMMIT;

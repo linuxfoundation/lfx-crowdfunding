@@ -10,3 +10,5 @@ ALTER TABLE initiatives
 ALTER TABLE initiative_sponsorship_tiers
   ADD COLUMN IF NOT EXISTS enabled  BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS benefits TEXT[]  NOT NULL DEFAULT '{}';
+
+COMMIT;

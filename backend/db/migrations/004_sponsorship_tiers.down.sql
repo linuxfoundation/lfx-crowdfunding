@@ -7,3 +7,5 @@ ALTER TABLE initiative_sponsorship_tiers
 
 ALTER TABLE initiatives
   DROP COLUMN IF EXISTS donation_mode;
+
+COMMIT;
