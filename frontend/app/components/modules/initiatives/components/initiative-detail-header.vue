@@ -163,7 +163,6 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed, ref, nextTick, watch } from 'vue';
 import { useResizeObserver } from '@vueuse/core';
-import { useRuntimeConfig } from 'nuxt/app';
 import {
   initiativeTypeConfigMap,
   defaultInitiativeTypeConfig,
@@ -241,14 +240,10 @@ const isScrolled = computed(() => scrollTop.value > 10);
 
 defineEmits<{ (e: 'update:activeTab', value: string): void }>();
 
-const {
-  public: { appEnv },
-} = useRuntimeConfig();
-
 const tabs = computed(() => [
   { value: 'overview', label: 'Overview', icon: 'gauge-high' },
   { value: 'financials', label: 'Financials', icon: 'money-check-dollar' },
-  ...(appEnv !== 'production' ? [{ value: 'announcements', label: 'Announcements', icon: 'megaphone' }] : []),
+  { value: 'announcements', label: 'Announcements', icon: 'megaphone' },
   { value: 'about', label: 'About', icon: 'memo' },
 ]);
 

@@ -36,19 +36,15 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
 import { DONATION_MODE_OPTIONS } from '../../../config/donation-options.config';
 import type { DonationOptionsMode } from '~/types/fundraise.types';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
-import { isSponsorshipTiersEnabled } from '~/utils/feature-flags';
 
 defineProps<{
   modelValue: DonationOptionsMode;
 }>();
 
-const modeOptions = computed(() =>
-  isSponsorshipTiersEnabled() ? DONATION_MODE_OPTIONS : DONATION_MODE_OPTIONS.filter((o) => o.value !== 'tiers'),
-);
+const modeOptions = DONATION_MODE_OPTIONS;
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: DonationOptionsMode): void;
