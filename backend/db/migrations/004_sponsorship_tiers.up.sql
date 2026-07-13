@@ -1,6 +1,10 @@
 -- Copyright The Linux Foundation and each contributor to LFX.
 -- SPDX-License-Identifier: MIT
 
+BEGIN;
+
+SET LOCAL search_path TO crowdfunding, public;
+
 -- Add donation_mode to initiatives.
 ALTER TABLE initiatives
   ADD COLUMN IF NOT EXISTS donation_mode TEXT NOT NULL DEFAULT 'open'
