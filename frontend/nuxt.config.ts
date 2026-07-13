@@ -25,6 +25,7 @@ export default defineNuxtConfig({
     '~/plugins/api.client.ts',
     '~/plugins/auth.client.ts',
     '~/plugins/datadog-rum.client.ts',
+    '~/plugins/launch-darkly.client.ts',
   ],
   css: ['~/assets/styles/main.scss'],
   primevue,

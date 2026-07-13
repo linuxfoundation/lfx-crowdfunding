@@ -12,6 +12,7 @@ SPDX-License-Identifier: MIT
 import { onMounted, watch } from 'vue';
 import { authState, isAuthReady } from '~/composables/useAuth';
 import { useDatadogRum } from '~/composables/useDatadogRum';
+import { identifyFeatureFlagUser, resetFeatureFlagUser } from '~/composables/useFeatureFlags';
 import { useIntercom } from '~/composables/useIntercom';
 
 const { boot, shutdown } = useIntercom();
@@ -40,9 +41,12 @@ watch(
     if (isAuthenticated && user && !intercomBootAttempted) {
       const { username, intercomJwt, name, email } = user;
 
-      // Identify the user in Datadog RUM.
+      // Identify the user in Datadog RUM and LaunchDarkly.
       if (username) {
         setDdUser({ id: username, email, name });
+        identifyFeatureFlagUser({ username, name, email }).catch((err) => {
+          console.error('[App] Failed to identify feature flag user', err);
+        });
       }
 
       if (username && intercomJwt) {
@@ -64,6 +68,9 @@ watch(
       }
     } else if (!isAuthenticated) {
       clearDdUser();
+      resetFeatureFlagUser().catch((err) => {
+        console.error('[App] Failed to reset feature flag user', err);
+      });
       if (intercomBootAttempted) {
         shutdown();
         intercomBootAttempted = false;

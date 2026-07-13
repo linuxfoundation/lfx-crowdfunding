@@ -52,5 +52,7 @@ export default {
     datadogRumClientToken: process.env.NUXT_PUBLIC_DATADOG_RUM_CLIENT_TOKEN || '',
     // Version is injected from the git tag at deploy time (e.g. "0.1.12").
     datadogRumVersion: process.env.NUXT_PUBLIC_APP_VERSION || '',
+    // LaunchDarkly client-side ID — leave empty locally to disable feature flags.
+    launchDarklyClientId: process.env.NUXT_PUBLIC_LD_CLIENT_ID || '',
   },
 };
