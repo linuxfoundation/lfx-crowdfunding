@@ -161,6 +161,14 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Recoverer)
+	// otelhttp must sit inside Chi's Timeout middleware so that its
+	// RespWriterWrapper only ever sees one WriteHeader call. If otelhttp
+	// wraps the outer http.Server handler it observes both Chi's 504 timeout
+	// response AND the handler's own error write, causing a "superfluous
+	// response.WriteHeader" warning on every timed-out request.
+	r.Use(func(next http.Handler) http.Handler {
+		return otelhttp.NewHandler(next, "initiatives-api")
+	})
 	// Chi's context timeout must be shorter than the HTTP WriteTimeout so the
 	// handler has time to write a graceful 504 before the server closes the
 	// connection. 80% of WriteTimeout is a safe margin.
@@ -267,7 +275,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{
 		Addr:         addr,
-		Handler:      otelhttp.NewHandler(r, "initiatives-api"),
+		Handler:      r,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
