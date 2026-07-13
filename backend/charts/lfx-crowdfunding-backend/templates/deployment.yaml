@@ -6,6 +6,8 @@ kind: Deployment
 metadata:
   name: {{ include "lfx-v2-initiatives-service.fullname" . }}
   namespace: {{ .Release.Namespace }}
+  annotations:
+    reloader.stakater.com/auto: "true"
   labels:
     {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
 spec:
