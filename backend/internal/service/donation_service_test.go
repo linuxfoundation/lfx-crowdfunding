@@ -253,6 +253,169 @@ func newDonationSvc(
 	return NewDonationService(donRepo, initRepo, userRepo, stripe)
 }
 
+// --- ListByInitiative ---
+
+func TestDonationService_ListByInitiative(t *testing.T) {
+	donRepo := &testDonationRepo{
+		onListByInitiative: func(_ context.Context, initiativeID string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+			if initiativeID != "init-1" {
+				t.Errorf("ListByInitiative id = %q, want init-1", initiativeID)
+			}
+			return []models.Donation{
+					{ID: "d1", UserID: "u1", CurrentAmountCents: 1000, Status: "succeeded"},
+				},
+				&models.PaginationMeta{Total: 1, Limit: 20, Offset: 0}, nil
+		},
+	}
+	initRepo := &mockInitiativeRepo{}
+
+	svc := newDonationSvc(donRepo, initRepo, &testUserRepo{}, &configStripeClient{})
+	summaries, meta, err := svc.ListByInitiative(context.Background(), "init-1", models.DonationFilter{Limit: 20})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(summaries) != 1 || summaries[0].ID != "d1" {
+		t.Fatalf("unexpected summaries: %+v", summaries)
+	}
+	if meta == nil || meta.Total != 1 {
+		t.Fatalf("unexpected meta: %+v", meta)
+	}
+}
+
+func TestDonationService_ListByInitiative_RepoError(t *testing.T) {
+	repoErr := errors.New("query failed")
+	donRepo := &testDonationRepo{
+		onListByInitiative: func(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+			return nil, nil, repoErr
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, &testUserRepo{}, &configStripeClient{})
+	_, _, err := svc.ListByInitiative(context.Background(), "init-1", models.DonationFilter{})
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected repo error, got %v", err)
+	}
+}
+
+// --- ListByUser ---
+
+func TestDonationService_ListByUser(t *testing.T) {
+	donRepo := &testDonationRepo{
+		onListByUser: func(_ context.Context, userID string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+			if userID != "user-uuid-1" {
+				t.Errorf("ListByUser userID = %q, want user-uuid-1", userID)
+			}
+			return []models.Donation{{ID: "d1"}}, &models.PaginationMeta{Total: 1}, nil
+		},
+	}
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: "user-uuid-1"}, nil
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, userRepo, &configStripeClient{})
+	donations, meta, err := svc.ListByUser(context.Background(), "alice", models.DonationFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(donations) != 1 || donations[0].ID != "d1" {
+		t.Fatalf("unexpected donations: %+v", donations)
+	}
+	if meta == nil || meta.Total != 1 {
+		t.Fatalf("unexpected meta: %+v", meta)
+	}
+}
+
+func TestDonationService_ListByUser_UserNotFoundReturnsEmpty(t *testing.T) {
+	// A user with no DB record has never donated — return an empty list, not an error.
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return nil, domain.ErrUserNotFound
+		},
+	}
+
+	svc := newDonationSvc(&testDonationRepo{}, &mockInitiativeRepo{}, userRepo, &configStripeClient{})
+	donations, meta, err := svc.ListByUser(context.Background(), "ghost", models.DonationFilter{Limit: 10, Offset: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(donations) != 0 {
+		t.Errorf("expected empty donations, got %d", len(donations))
+	}
+	if meta == nil || meta.Limit != 10 || meta.Offset != 5 {
+		t.Errorf("expected meta echoing filter, got %+v", meta)
+	}
+}
+
+func TestDonationService_ListByUser_UserLookupError(t *testing.T) {
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return nil, errors.New("db down")
+		},
+	}
+
+	svc := newDonationSvc(&testDonationRepo{}, &mockInitiativeRepo{}, userRepo, &configStripeClient{})
+	_, _, err := svc.ListByUser(context.Background(), "alice", models.DonationFilter{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestDonationService_ListByUser_RepoError(t *testing.T) {
+	repoErr := errors.New("query failed")
+	donRepo := &testDonationRepo{
+		onListByUser: func(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+			return nil, nil, repoErr
+		},
+	}
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: "user-uuid-1"}, nil
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, userRepo, &configStripeClient{})
+	_, _, err := svc.ListByUser(context.Background(), "alice", models.DonationFilter{})
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected repo error, got %v", err)
+	}
+}
+
+// --- ListOrgDonations ---
+
+func TestDonationService_ListOrgDonations(t *testing.T) {
+	donRepo := &testDonationRepo{
+		onListOrgDonations: func(_ context.Context) ([]models.OrgDonationRow, error) {
+			return []models.OrgDonationRow{{OrganizationName: "Acme"}}, nil
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, &testUserRepo{}, &configStripeClient{})
+	rows, err := svc.ListOrgDonations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rows) != 1 || rows[0].OrganizationName != "Acme" {
+		t.Fatalf("unexpected rows: %+v", rows)
+	}
+}
+
+func TestDonationService_ListOrgDonations_RepoError(t *testing.T) {
+	repoErr := errors.New("export failed")
+	donRepo := &testDonationRepo{
+		onListOrgDonations: func(_ context.Context) ([]models.OrgDonationRow, error) {
+			return nil, repoErr
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, &testUserRepo{}, &configStripeClient{})
+	_, err := svc.ListOrgDonations(context.Background())
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected repo error, got %v", err)
+	}
+}
+
 func acceptingInitiative() *mockInitiativeRepo {
 	return &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: true, StripeProductID: "prod-test"}}
 }

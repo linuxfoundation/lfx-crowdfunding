@@ -83,6 +83,7 @@ type testLedgerClient struct {
 	platformBalance *clients.LedgerPlatformBalance
 	platformMonthly *clients.LedgerPlatformMonthly
 	recentDonations []clients.LedgerRecentDonation
+	orgDonations    []clients.LedgerOrgDonation
 	err             error
 }
 
@@ -105,7 +106,7 @@ func (c *testLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clie
 	return c.recentDonations, c.err
 }
 func (c *testLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
-	return nil, nil
+	return c.orgDonations, c.err
 }
 func (c *testLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
 	return nil
@@ -560,5 +561,64 @@ func TestGetRecentDonations_EnrichmentRepoError(t *testing.T) {
 	_, err := svc.GetRecentDonations(context.Background())
 	if err == nil {
 		t.Fatal("expected error from repo during enrichment, got nil")
+	}
+}
+
+// --- GetPlatformStatistics ---
+
+func TestGetPlatformStatistics_ReturnsRepoStats(t *testing.T) {
+	repo := &testStatisticsRepo{
+		stats: &models.PlatformStatistics{TotalInitiatives: 7, TotalRaisedCents: 1_500_000},
+	}
+	svc := newStatsSvc(repo, &testLedgerClient{})
+
+	stats, err := svc.GetPlatformStatistics(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stats.TotalInitiatives != 7 {
+		t.Errorf("TotalInitiatives = %d, want 7", stats.TotalInitiatives)
+	}
+	if stats.TotalRaisedCents != 1_500_000 {
+		t.Errorf("TotalRaisedCents = %d, want 1500000", stats.TotalRaisedCents)
+	}
+}
+
+func TestGetPlatformStatistics_RepoError(t *testing.T) {
+	repo := &testStatisticsRepo{err: errors.New("db down")}
+	svc := newStatsSvc(repo, &testLedgerClient{})
+
+	_, err := svc.GetPlatformStatistics(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+// --- GetOrgDonations ---
+
+func TestGetOrgDonations_ReturnsLedgerResult(t *testing.T) {
+	ledger := &testLedgerClient{
+		orgDonations: []clients.LedgerOrgDonation{
+			{OrgID: "org-1", Name: "Acme", AmountInCents: 250_000},
+		},
+	}
+	svc := newStatsSvc(&testStatisticsRepo{}, ledger)
+
+	result, err := svc.GetOrgDonations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 1 || result[0].OrgID != "org-1" || result[0].AmountInCents != 250_000 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestGetOrgDonations_LedgerError(t *testing.T) {
+	ledger := &testLedgerClient{err: errors.New("ledger down")}
+	svc := newStatsSvc(&testStatisticsRepo{}, ledger)
+
+	_, err := svc.GetOrgDonations(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }
