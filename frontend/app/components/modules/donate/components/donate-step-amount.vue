@@ -98,7 +98,6 @@ import LfxInput from '~/components/uikit/input/input.vue';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
-import { isSponsorshipTiersEnabled } from '~/utils/feature-flags';
 
 const QUICK_AMOUNTS = [5, 10, 25, 50, 150, 200];
 
@@ -116,7 +115,7 @@ const form = computed(() => props.modelValue);
 
 const categoryOptions = computed(() => props.fundingGoals ?? []);
 
-const showSponsorshipTiers = computed(() => isSponsorshipTiersEnabled() && (props.sponsorshipTiers?.length ?? 0) > 0);
+const showSponsorshipTiers = computed(() => (props.sponsorshipTiers?.length ?? 0) > 0);
 
 const customAmountDisplay = computed(() => {
   if (form.value.tierId !== null) return '';
