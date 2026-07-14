@@ -7,11 +7,8 @@ SPDX-License-Identifier: MIT
     <div class="flex flex-col gap-1">
       <h2 class="text-base font-semibold text-neutral-900">Donation options</h2>
       <p class="text-sm text-neutral-600 leading-5">
-        {{
-          isSponsorshipTiersEnabled()
-            ? 'Set up donation tiers to give contributors a clear choice of giving levels, or skip this and collect open-amount donations only.'
-            : 'Your fundraiser will collect open-amount donations.'
-        }}
+        Set up donation tiers to give contributors a clear choice of giving levels, or skip this and collect open-amount
+        donations only.
       </p>
     </div>
 
@@ -21,7 +18,7 @@ SPDX-License-Identifier: MIT
     />
 
     <fundraise-donation-tiers-section
-      v-if="modelValue.mode === 'tiers' && isSponsorshipTiersEnabled()"
+      v-if="modelValue.mode === 'tiers'"
       :model-value="modelValue.tiers"
       @update:model-value="emit('update:modelValue', { ...modelValue, tiers: $event })"
     />
@@ -32,7 +29,6 @@ SPDX-License-Identifier: MIT
 import FundraiseDonationModeSection from './donation-options/fundraise-donation-mode-section.vue';
 import FundraiseDonationTiersSection from './donation-options/fundraise-donation-tiers-section.vue';
 import type { DonationOptionsData } from '~/types/fundraise.types';
-import { isSponsorshipTiersEnabled } from '~/utils/feature-flags';
 
 defineProps<{
   modelValue: DonationOptionsData;
