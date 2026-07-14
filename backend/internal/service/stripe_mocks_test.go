@@ -169,15 +169,24 @@ func (r *testUserRepo) ClearStripePaymentMethod(ctx context.Context, userID stri
 type testDonationRepo struct {
 	onCreate                  func(context.Context, *models.Donation) (*models.Donation, error)
 	onUpdateByPaymentIntentID func(context.Context, string, string, string) error
+	onListByInitiative        func(context.Context, string, models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
+	onListByUser              func(context.Context, string, models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
+	onListOrgDonations        func(context.Context) ([]models.OrgDonationRow, error)
 }
 
 func (r *testDonationRepo) GetByID(_ context.Context, _ string) (*models.Donation, error) {
 	return nil, nil
 }
-func (r *testDonationRepo) ListByInitiative(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+func (r *testDonationRepo) ListByInitiative(ctx context.Context, initiativeID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+	if r.onListByInitiative != nil {
+		return r.onListByInitiative(ctx, initiativeID, filter)
+	}
 	return nil, nil, nil
 }
-func (r *testDonationRepo) ListByUser(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+func (r *testDonationRepo) ListByUser(ctx context.Context, userID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+	if r.onListByUser != nil {
+		return r.onListByUser(ctx, userID, filter)
+	}
 	return nil, nil, nil
 }
 func (r *testDonationRepo) Create(ctx context.Context, d *models.Donation) (*models.Donation, error) {
@@ -193,7 +202,10 @@ func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, st
 	return nil
 }
 
-func (r *testDonationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
+func (r *testDonationRepo) ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error) {
+	if r.onListOrgDonations != nil {
+		return r.onListOrgDonations(ctx)
+	}
 	return nil, nil
 }
 
