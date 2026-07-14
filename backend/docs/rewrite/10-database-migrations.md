@@ -18,8 +18,8 @@ removes the human-in-the-loop step entirely.
 | -------------------------------------- | -------- |
 | Go code / app startup (`golang-migrate` import) | ❌ not in `go.mod` |
 | `Makefile` (`migrate` target) | ❌ only `db-seed` (seed data, localhost-guarded) |
-| Dockerfile (ships `db/migrations/`) | ❌ files are **not** copied into the image |
-| Helm chart (migration Job / hook) | ❌ none |
+| Dockerfile (ships `backend/db/migrations/`) | ❌ files are **not** copied into the image |
+| Helm chart (migration Job / hook) | ❌ no migration Job/hook |
 | CI | ❌ none |
 
 Migration files follow the `golang-migrate` convention (`NNN_name.up.sql` /
@@ -96,17 +96,31 @@ Concretely:
          restartPolicy: Never
          containers:
            - name: migrate
-             image: {{ include "...image" . }}
+             image: "{{ .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
              command: ["/app/migrate"]
    ```
    Reuse the app's existing DB credentials block. ArgoCD runs it PreSync; a failure fails
    the sync and leaves current pods running.
 3. **Bake in the lock safety rails** (the direct lesson from the incident). The migrate
-   connection sets a short `lock_timeout` and a `statement_timeout`, e.g. DSN
-   `?options=-c%20lock_timeout%3D5s%20-c%20statement_timeout%3D30s`. If a migration can't
-   acquire its `ACCESS EXCLUSIVE` lock quickly (table busy with prod traffic), it **fails
-   fast and rolls back** instead of queuing and freezing the app. Fail-and-retry beats
-   hang. The `activeDeadlineSeconds: 120` is the outer backstop.
+   connection sets a short `lock_timeout` and a `statement_timeout`, plus an explicit
+   `search_path`, e.g. DSN
+   `?options=-c%20lock_timeout%3D5s%20-c%20statement_timeout%3D30s&search_path=crowdfunding,public`.
+   This is required: the app's `search_path` is set in Go (`NewPool` injects it into
+   `pgxpool`'s `RuntimeParams`, `internal/infrastructure/db/pool.go`), not via the DSN, and
+   `golang-migrate` opens its own connection and creates `schema_migrations` from that
+   connection's `CURRENT_SCHEMA()` before any migration runs — so without an explicit
+   `search_path` on the migrate DSN, tracking could end up in `public` instead of
+   `crowdfunding`. If a migration can't acquire its `ACCESS EXCLUSIVE` lock quickly (table
+   busy with prod traffic), it **fails fast and rolls back** instead of queuing and
+   freezing the app. Fail-and-retry beats hang. The `activeDeadlineSeconds: 120` is the
+   outer backstop.
+   `golang-migrate` marks the target version **dirty** before executing it, though —
+   a timeout-triggered rollback still leaves the version dirty, so the next Job retry
+   returns `ErrDirty` rather than automatically retrying the migration. Recovery is a
+   manual step: inspect whether anything was partially applied, then `migrate force
+   <version>` to match the actual schema before rerunning. This applies to the
+   transaction-wrapped migrations above; the non-transactional ones in §4
+   (`CREATE INDEX CONCURRENTLY`) aren't rolled back at all on failure.
 
 ### Why not pattern B (migrate on startup) for us
 
