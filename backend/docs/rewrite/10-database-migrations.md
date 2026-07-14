@@ -20,7 +20,7 @@ removes the human-in-the-loop step entirely.
 | `Makefile` (`migrate` target) | ❌ only `db-seed` (seed data, localhost-guarded) |
 | Dockerfile (ships `backend/db/migrations/`) | ❌ files are **not** copied into the image |
 | Helm chart (migration Job / hook) | ❌ no migration Job/hook |
-| CI | ❌ none |
+| CI | ⚠️ runs `.up.sql` against ephemeral test DBs only (`ci-backend.yml`, `ci-frontend.yml`) — does not deploy schemas to any runtime environment |
 
 Migration files follow the `golang-migrate` convention (`NNN_name.up.sql` /
 `NNN_name.down.sql`), and `CLAUDE.md` claims migrations run "via golang-migrate" —
@@ -144,18 +144,25 @@ and fail-closed behavior are worth the extra ~40 lines.
 
 ## 4. Prerequisites & open questions (need DevOps)
 
-1. **Baseline 001–003.** They are already applied to prod but there is no
+1. **Backward-compatible expand/contract migrations, always.** Since a PreSync migration
+   commits before the new Deployment rolls out (§2), every migration must remain
+   compatible with the *currently-running* old pods — additive/expand changes only
+   (new nullable columns, new tables) in the same migration as the code that depends on
+   them; drop/rename/tighten ("contract") only in a later migration, after the old code
+   path is gone. This is a hard requirement, not something the PreSync hook enforces on
+   its own.
+2. **Baseline 001–003.** They are already applied to prod but there is no
    `schema_migrations` tracking table. Before the first automated `up`, we must create the
    table and mark 001–003 as applied (`migrate force 3` after verifying the schema
    matches), or the first run will try to re-apply them. **This is a one-time, deliberate
    prod step** and must be done by/with DevOps.
-2. **Never automate `down` on prod.** Only 004/005 even have `.down.sql`. Wire **only
+3. **Never automate `down` on prod.** Only 004/005 even have `.down.sql`. Wire **only
    `up`** into automation; treat `down` as a local/testing aid. Prod rollbacks = forward-fix
    migrations, not `down`.
-3. **Network path & credentials for the Job.** The Job runs *inside* the cluster, so it
+4. **Network path & credentials for the Job.** The Job runs *inside* the cluster, so it
    reaches RDS directly (no tunnel/WARP needed) — but it needs the DB secret mounted the
    same way the app gets it. Confirm the ArgoCD-managed values wire this.
-4. **Heavy/locking migrations still need care.** The constant-default *`ADD COLUMN`* part
+5. **Heavy/locking migrations still need care.** The constant-default *`ADD COLUMN`* part
    of our 004/005 is cheap (metadata-only). But both add an inline **validated `CHECK`
    constraint** (`donation_mode IN (...)`, `donation_tier IN (...)`), and validating a
    `CHECK` makes PostgreSQL **scan every existing row while holding `ACCESS EXCLUSIVE`** —
@@ -169,7 +176,7 @@ and fail-closed behavior are worth the extra ~40 lines.
    directive** for this; the documented approach is to put such a statement in its **own
    dedicated migration file** (with multi-statement mode off, which is the default) so it
    is not wrapped in a transaction.
-5. **Separately: tighten `idle_in_transaction_session_timeout`.** Prod is currently `1d`
+6. **Separately: tighten `idle_in_transaction_session_timeout`.** Prod is currently `1d`
    (24h) with `lock_timeout=0`. Even with automated migrations, a per-role
    `ALTER ROLE crowdfunding SET idle_in_transaction_session_timeout = '120s'` would have
    auto-killed the incident's stuck session. Platform-level change — raise with DevOps.
