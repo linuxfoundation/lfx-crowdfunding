@@ -40,8 +40,13 @@ ArgoCD onto the shared v2 cluster). They represent the **two viable patterns**:
   resource **before** applying the Deployment.
 - The migration binary/CLI + migration files ship **inside the app image**, so the Job
   runs the exact migrations that match the app version being deployed.
-- **Fail-closed:** if the Job fails, the ArgoCD sync fails and the **old pods keep
-  running**. A bad migration never rolls out a broken app.
+- **Fails the deploy on a bad migration:** if the Job fails, the ArgoCD sync fails and
+  the **old pods keep running** — a broken migration doesn't roll out new code on top of
+  itself. This is *not* full protection, though: a PreSync migration is **committed before
+  the new Deployment is applied**, so a schema change that is incompatible with the
+  currently-running (old) pods can break production the moment it commits, and stays
+  committed even if the subsequent rollout fails. The hook alone does not prevent this —
+  see the expand/contract requirement in §4.
 - Documented in `lfx-changelog/docs/database-migrations.md`. (Tool there is Prisma, but
   the mechanism is tool-agnostic.)
 
@@ -69,10 +74,14 @@ This is a deliberate blend of the two precedents:
 
 Concretely:
 
-1. **Ship migrations in the image.** Add a tiny `cmd/migrate` binary that embeds
-   `db/migrations/*.sql` via `//go:embed` and runs `m.Up()` — copy
-   `lfx-sanctions-screening/internal/store/migrations.go` almost verbatim. Update the
-   Dockerfile to build it (the app image already exists; add one binary).
+1. **Ship migrations in the image.** `//go:embed` is relative to the package that
+   declares it and cannot reach across directories with `..`, so the embed must live in a
+   package that *contains* `migrations/` as a subdirectory. Put the embed + `RunMigrations`
+   in a `db` package alongside the SQL (e.g. `db/migrate.go` with
+   `//go:embed migrations/*.sql`) — mirroring how `lfx-sanctions-screening` does it
+   (`internal/store/migrations.go` embeds its sibling `migrations/`). Then add a tiny
+   `cmd/migrate` binary that imports that package and calls `RunMigrations()` / `m.Up()`.
+   Update the Dockerfile to build the binary (the app image already exists; add one binary).
 2. **Add a Helm hook Job** (`templates/migrate-job.yaml`) modeled on changelog's:
    ```yaml
    annotations:
@@ -132,11 +141,20 @@ and fail-closed behavior are worth the extra ~40 lines.
 3. **Network path & credentials for the Job.** The Job runs *inside* the cluster, so it
    reaches RDS directly (no tunnel/WARP needed) — but it needs the DB secret mounted the
    same way the app gets it. Confirm the ArgoCD-managed values wire this.
-4. **Heavy/locking migrations still need care.** Constant-default `ADD COLUMN` (our 004/005)
-   is cheap. Future volatile-default columns or non-`CONCURRENTLY` indexes will still take
-   long locks; `lock_timeout` limits the damage but such migrations should use
-   `CREATE INDEX CONCURRENTLY` (which cannot run in a transaction — `golang-migrate`
-   needs the no-transaction directive for those files).
+4. **Heavy/locking migrations still need care.** The constant-default *`ADD COLUMN`* part
+   of our 004/005 is cheap (metadata-only). But both add an inline **validated `CHECK`
+   constraint** (`donation_mode IN (...)`, `donation_tier IN (...)`), and validating a
+   `CHECK` makes PostgreSQL **scan every existing row while holding `ACCESS EXCLUSIVE`** —
+   on a large table that recreates the exact blocking condition this proposal is trying to
+   prevent. For constraints on large tables, add them in two steps: `ADD CONSTRAINT ...
+   NOT VALID` (fast, takes a brief lock) then `VALIDATE CONSTRAINT` (scans without the
+   exclusive lock) in a later statement/migration. Similarly, future volatile-default
+   columns or non-concurrent indexes take long locks; `lock_timeout` limits the damage,
+   and indexes should use `CREATE INDEX CONCURRENTLY`. Note `CREATE INDEX CONCURRENTLY`
+   cannot run inside a transaction — `golang-migrate`'s postgres driver has **no per-file
+   directive** for this; the documented approach is to put such a statement in its **own
+   dedicated migration file** (with multi-statement mode off, which is the default) so it
+   is not wrapped in a transaction.
 5. **Separately: tighten `idle_in_transaction_session_timeout`.** Prod is currently `1d`
    (24h) with `lock_timeout=0`. Even with automated migrations, a per-role
    `ALTER ROLE crowdfunding SET idle_in_transaction_session_timeout = '120s'` would have
