@@ -8,10 +8,10 @@ import { initFeatureFlags } from '~/composables/useFeatureFlags';
 
 export default defineNuxtPlugin(() => {
   const {
-    public: { launchDarklyClientId },
+    public: { ldClientId },
   } = useRuntimeConfig();
 
-  const clientId = launchDarklyClientId as string;
+  const clientId = ldClientId as string;
   if (!clientId) return;
 
   initFeatureFlags(clientId).catch((err) => {
