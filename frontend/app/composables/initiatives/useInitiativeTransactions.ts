@@ -3,7 +3,7 @@
 
 import { useInfiniteQuery } from '@tanstack/vue-query';
 import type { MaybeRef } from 'vue';
-import { computed, toValue } from 'vue';
+import { computed, onServerPrefetch, toValue } from 'vue';
 import type { TransactionList } from '#shared/types/transaction.types';
 
 export function useInitiativeTransactions(
@@ -11,7 +11,7 @@ export function useInitiativeTransactions(
   type: 'donations' | 'expenses' = 'donations',
   limit = 5,
 ) {
-  return useInfiniteQuery<TransactionList>({
+  const query = useInfiniteQuery<TransactionList>({
     queryKey: ['initiative-transactions', slug, type, limit] as const,
     queryFn: ({ pageParam }) =>
       $fetch<TransactionList>(`/api/initiatives/${toValue(slug)}/transactions`, {
@@ -24,4 +24,10 @@ export function useInitiativeTransactions(
     },
     enabled: computed(() => !!toValue(slug)),
   });
+
+  onServerPrefetch(async () => {
+    await query.suspense().catch(() => {});
+  });
+
+  return query;
 }
