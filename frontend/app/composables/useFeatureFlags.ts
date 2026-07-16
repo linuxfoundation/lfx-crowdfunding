@@ -54,8 +54,8 @@ function toContext(user?: FeatureFlagUser): EvaluationContext {
     kind: 'user',
     targetingKey: user?.username || getAnonymousKey(),
     anonymous: !user?.username,
-    name: user?.name,
-    email: user?.email,
+    name: user?.name ?? '',
+    email: user?.email ?? '',
   };
 }
 
