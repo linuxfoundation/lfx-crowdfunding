@@ -274,6 +274,17 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		orderCol = "COALESCE(ls.total_raised_cents, 0)"
 	case "name":
 		orderCol = "LOWER(i.name)"
+	case "trending":
+		// "Trending" = number of supports (donations + subscriptions) started
+		// in the last 30 days, per LFXV2-2533. Uses the local donations/
+		// subscriptions tables (v2-era only) rather than the all-time Ledger-
+		// synced supporters count.
+		orderCol = `((SELECT COUNT(*) FROM donations d
+				WHERE d.initiative_id = i.id AND d.status = 'succeeded'
+					AND d.created_on >= NOW() - INTERVAL '30 days')
+			+ (SELECT COUNT(*) FROM subscriptions s
+				WHERE s.initiative_id = i.id AND s.status = 'active'
+					AND s.created_on >= NOW() - INTERVAL '30 days'))`
 	}
 	orderDir := "DESC"
 	if filter.SortDir == "asc" {
@@ -285,8 +296,14 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	// deterministic pagination. When using the default created_on sort, i.id alone
 	// is sufficient to break ties (avoids repeating the same column).
 	secondarySort := ", i.created_on DESC, i.id"
-	if filter.SortBy == "" || filter.SortBy == "created_on" {
+	switch filter.SortBy {
+	case "", "created_on":
 		secondarySort = ", i.id"
+	case "trending":
+		// Quiet periods (few/no supports in the window) fall back to all-time
+		// popularity instead of pure recency, so the trending section doesn't
+		// look empty or arbitrary between bursts of activity.
+		secondarySort = ", COALESCE(ls.supporters, 0) DESC, i.created_on DESC, i.id"
 	}
 	dataQuery := fmt.Sprintf("%s %s ORDER BY %s %s%s LIMIT $%d OFFSET $%d",
 		initiativeSelect, where, orderCol, orderDir, secondarySort, argN, argN+1)

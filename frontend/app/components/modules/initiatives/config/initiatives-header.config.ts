@@ -19,6 +19,11 @@ export interface SortOption {
 
 export const DEFAULT_SORT_OPTION: SortOption = { value: 'supporters', label: 'Most supporters' };
 
+// Ranks by number of supports (donations + subscriptions) in the last 30 days.
+// Landing page "Trending initiatives" only — not offered in the sort dropdown,
+// so it can't be confused with "Most supporters" (all-time).
+export const TRENDING_SORT_VALUE = 'trending';
+
 export const INITIATIVE_SORT_OPTIONS: SortOption[] = [
   DEFAULT_SORT_OPTION,
   { value: 'total_raised', label: 'Most funded' },
