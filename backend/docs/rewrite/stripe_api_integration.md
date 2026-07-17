@@ -308,7 +308,7 @@ The body is limited to 64 KiB. Configure the endpoint secret via
 |---|---|
 | `payment_intent.succeeded` | Sets `donations.status = 'succeeded'`, stores `stripe_charge_id` from `latest_charge.id` |
 | `payment_intent.payment_failed` | Sets `donations.status = 'failed'` |
-| `invoice.payment_succeeded` | Sets `subscriptions.status = 'active'` for the related subscription |
+| `invoice.payment_succeeded` | Sets `subscriptions.status = 'active'` for the related subscription and inserts an idempotent `donations` row keyed by `stripe_invoice_id` |
 | `invoice.payment_failed` | Sets `subscriptions.status = 'past_due'` for the related subscription |
 | `customer.subscription.deleted` | Sets `subscriptions.status = 'canceled'` (fired by Stripe after too many failed invoices or a Dashboard cancellation) |
 

@@ -266,7 +266,7 @@ A narrow read-only M2M endpoint for RS to replace its OpenSearch reads of CF-own
 
 `POST /v1/stripe/webhook` — handles `customer.subscription.deleted` → cancel subscription in Postgres. Stripe signature verification required.
 
-`invoice.payment_succeeded` is handled by the Ledger Service's own Stripe webhook. This does not change.
+`invoice.payment_succeeded` activates the subscription in Crowdfunding and records a donation row keyed by the Stripe invoice ID; Ledger posting still remains with the Ledger Service's own Stripe webhook.
 
 ### Mentorship sync — Snowflake CronJob
 
