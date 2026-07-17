@@ -935,6 +935,36 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_PopulatesOrganizationIDFromMe
 	}
 }
 
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_LeavesOrganizationIDEmptyWhenMetadataMissing(t *testing.T) {
+	var gotOrganizationID string
+
+	dr := &wbDonationRepo{
+		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
+			gotOrganizationID = d.OrganizationID
+			return d, nil
+		},
+	}
+	invJSON := `{
+		"id":"in_v2_no_org","amount_paid":2500,"charge":"ch_v2_no_org",
+		"parent":{"subscription_details":{
+			"subscription":{"id":"sub_v2_no_org"},
+			"metadata":{"version":"v2","initiative_id":"init_001","user_id":"usr_001"}
+		}}
+	}`
+	event := buildEvent("invoice.payment_succeeded", invJSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, dr, &wbSubscriptionRepo{}, &wbLedgerClient{}, &wbEmailService{}), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotOrganizationID != "" {
+		t.Errorf("donation OrganizationID = %q, want empty string when org_id metadata is missing", gotOrganizationID)
+	}
+}
+
 func TestWebhookHandler_InvoicePaymentSucceeded_V2_SendsEmails(t *testing.T) {
 	var gotConfirmTo, gotAdminOwner string
 	ledgerCalled := false

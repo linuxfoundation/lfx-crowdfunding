@@ -353,8 +353,9 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 		t.Fatalf("seed subscription: %v", err)
 	}
 
-	// Build invoice.payment_succeeded event - activates the subscription
-	// The invoice includes a parent.subscription_details.subscription reference
+	// Build invoice.payment_succeeded event. The nested subscription reference is
+	// what activates the subscription, while the invoice-level amount_paid and
+	// charge plus the subscription metadata are what the donation insert uses.
 	invoiceObjectJSON := map[string]any{
 		"id":             "in_int_test_001",
 		"object":         "invoice",
