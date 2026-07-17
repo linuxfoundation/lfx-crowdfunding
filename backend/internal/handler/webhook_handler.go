@@ -594,28 +594,6 @@ func (h *WebhookHandler) handleSubscriptionCanceled(r *http.Request, subID strin
 	return nil
 }
 
-// extractStringOrIDField extracts a string value from a json.RawMessage that is
-// either a JSON string ("ch_xxx") or an expanded object ({"id":"ch_xxx",...}).
-// Returns "" if raw is nil, null, or neither form.
-func extractStringOrIDField(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	// Try bare string first.
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		return s
-	}
-	// Try expanded object: extract the "id" field.
-	var obj struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(raw, &obj); err == nil {
-		return obj.ID
-	}
-	return ""
-}
-
 // donationTypeLabel maps a stored frequency metadata value to a human-readable
 // label for the Mandrill template TYPE field.
 // Old subscriptions created before frequency was stored in metadata default to
