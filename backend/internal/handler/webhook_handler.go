@@ -5,6 +5,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -321,8 +322,8 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 		Charge string `json:"charge"`
 	}
 	if err := json.Unmarshal(event.Data.Raw, &invoicePayload); err != nil {
-		h.logger.Error("invoice.payment_succeeded: raw payload unmarshal failed", "event_id", event.ID, "error", err)
-		return fmt.Errorf("invoice.payment_succeeded: raw payload unmarshal: %w", err)
+		h.logger.Error("invoice.payment_succeeded: failed to unmarshal invoice payload for charge extraction", "event_id", event.ID, "error", err)
+		return fmt.Errorf("invoice.payment_succeeded: unmarshal invoice payload for charge extraction: %w", err)
 	}
 	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, models.SubscriptionStatusActive); err != nil {
 		if errors.Is(err, domain.ErrAlreadyProcessed) {
@@ -409,6 +410,11 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	return nil
 }
 
+// recordSubscriptionInvoiceDonation creates an idempotent succeeded donation row
+// for a subscription invoice. It returns (true, nil) when a donation row was
+// inserted, (false, nil) when required metadata is missing and insertion is
+// skipped, and a non-nil error when the repository call fails or the invoice
+// was already recorded.
 func (h *WebhookHandler) recordSubscriptionInvoiceDonation(ctx context.Context, inv stripe.Invoice, chargeID string, subMeta map[string]string) (bool, error) {
 	userID := subMeta["user_id"]
 	initiativeID := subMeta["initiative_id"]
