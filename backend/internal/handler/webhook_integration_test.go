@@ -306,6 +306,15 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 	if _, err := handlerTestPool.Exec(ctx, "DELETE FROM crowdfunding.donations WHERE stripe_invoice_id = 'in_int_test_001'"); err != nil {
 		t.Fatalf("cleanup donations: %v", err)
 	}
+	var existingDonationCount int
+	if err := handlerTestPool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM crowdfunding.donations WHERE stripe_invoice_id = 'in_int_test_001'
+	`).Scan(&existingDonationCount); err != nil {
+		t.Fatalf("verify donation cleanup: %v", err)
+	}
+	if existingDonationCount != 0 {
+		t.Fatalf("donation cleanup left %d rows, want 0", existingDonationCount)
+	}
 	if _, err := handlerTestPool.Exec(ctx, "DELETE FROM crowdfunding.subscriptions WHERE stripe_subscription_id = 'sub_int_test_001'"); err != nil {
 		t.Fatalf("cleanup subscriptions: %v", err)
 	}

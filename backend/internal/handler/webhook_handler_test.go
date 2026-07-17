@@ -912,6 +912,29 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_CreatesDonation(t *testing.T)
 	}
 }
 
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_PopulatesOrganizationIDFromMetadata(t *testing.T) {
+	var gotOrganizationID string
+
+	dr := &wbDonationRepo{
+		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
+			gotOrganizationID = d.OrganizationID
+			return d, nil
+		},
+	}
+	event := buildEvent("invoice.payment_succeeded", invV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, dr, &wbSubscriptionRepo{}, &wbLedgerClient{}, &wbEmailService{}), "t=1,v1=sig", `{}`)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotOrganizationID != "org_001" {
+		t.Errorf("donation OrganizationID = %q, want org_001", gotOrganizationID)
+	}
+}
+
 func TestWebhookHandler_InvoicePaymentSucceeded_V2_SendsEmails(t *testing.T) {
 	var gotConfirmTo, gotAdminOwner string
 	ledgerCalled := false
