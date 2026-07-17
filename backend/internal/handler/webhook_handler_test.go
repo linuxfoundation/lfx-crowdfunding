@@ -874,7 +874,7 @@ func TestWebhookHandler_PaymentIntentSucceeded_V2_AlreadyProcessed_SkipsLedgerAn
 // TestWebhookHandler_InvoicePaymentSucceeded_V2_SendsEmails verifies that
 // a v2 invoice.payment_succeeded event sends donor + admin emails and does NOT
 // write to Ledger (the Ledger service handles that via charge.succeeded).
-func TestWebhookHandler_InvoicePaymentSucceeded_V2_CreatesDonation(t *testing.T) {
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_CreatesDonationWithLegacyUserIDResolution(t *testing.T) {
 	var gotDonation *models.Donation
 	const resolvedUserID = "00000000-0000-0000-0000-000000000001"
 

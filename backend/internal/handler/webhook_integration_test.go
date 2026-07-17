@@ -327,10 +327,10 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 
 	// Seed a user
 	userID := uuid.New()
-	const legacyUserID = "auth0|test_int_user_002"
+	const auth0SubjectID = "auth0|test_int_user_002"
 	if _, err := handlerTestPool.Exec(ctx, `
 		INSERT INTO crowdfunding.users (id, username, legacy_user_id, email) VALUES ($1, $2, $3, $4)
-	`, userID, "test_int_user_002", legacyUserID, "test-sub@int-test.example.com"); err != nil {
+	`, userID, "test_int_user_002", auth0SubjectID, "test-sub@int-test.example.com"); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 
@@ -374,7 +374,7 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 					"initiative_id":   initiativeID.String(),
 					"initiative_slug": "int-test-sub-init",
 					"initiative_name": "Integration Test Sub Initiative",
-					"user_id":         legacyUserID,
+					"user_id":         auth0SubjectID,
 					"donor_email":     "test-sub@int-test.example.com",
 					"owner_email":     "test-sub@int-test.example.com",
 					"owner_name":      "Integration Owner",
