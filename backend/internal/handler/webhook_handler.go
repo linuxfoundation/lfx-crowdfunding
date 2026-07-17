@@ -31,10 +31,16 @@ type WebhookHandler struct {
 	ledgerClient     clients.LedgerClient
 	donationRepo     domain.DonationRepository
 	subscriptionRepo domain.SubscriptionRepository
+	userLookup       LegacyUserLookup
 	emailService     domain.EmailService
 	webhookSecret    string
 	logger           *slog.Logger
 	ackUnimplemented bool // when true, reply 200 for known-but-unimplemented events
+}
+
+// LegacyUserLookup resolves crowdfunding users by their legacy Auth0 subject.
+type LegacyUserLookup interface {
+	GetByLegacyUserID(ctx context.Context, legacyUserID string) (*models.User, error)
 }
 
 // NewWebhookHandler creates a WebhookHandler.
@@ -58,6 +64,13 @@ func NewWebhookHandler(
 		logger:           logger,
 		ackUnimplemented: ackUnimplemented,
 	}
+}
+
+// WithLegacyUserLookup configures legacy_user_id → users.id resolution for
+// subscription invoice donations.
+func (h *WebhookHandler) WithLegacyUserLookup(userLookup LegacyUserLookup) *WebhookHandler {
+	h.userLookup = userLookup
+	return h
 }
 
 // Handle handles POST /v1/stripe/webhook
@@ -416,12 +429,23 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 // skipped, and a non-nil error when the repository call fails or the invoice
 // was already recorded.
 func (h *WebhookHandler) recordSubscriptionInvoiceDonation(ctx context.Context, inv stripe.Invoice, chargeID string, subMeta map[string]string) (bool, error) {
-	userID := subMeta["user_id"]
+	legacyUserID := subMeta["user_id"]
 	initiativeID := subMeta["initiative_id"]
-	if inv.ID == "" || userID == "" || initiativeID == "" {
+	if inv.ID == "" || legacyUserID == "" || initiativeID == "" {
 		h.logger.Warn("invoice.payment_succeeded: missing donation metadata, skipping donation insert",
-			"invoice_id", inv.ID, "user_id", userID, "initiative_id", initiativeID)
+			"invoice_id", inv.ID, "user_id", legacyUserID, "initiative_id", initiativeID)
 		return false, nil
+	}
+
+	userID := legacyUserID
+	if h.userLookup != nil {
+		user, err := h.userLookup.GetByLegacyUserID(ctx, legacyUserID)
+		if err != nil {
+			h.logger.Error("invoice.payment_succeeded: failed to resolve donation user UUID",
+				"invoice_id", inv.ID, "legacy_user_id", legacyUserID, "error", err)
+			return false, fmt.Errorf("resolve donation user UUID: %w", err)
+		}
+		userID = user.ID
 	}
 
 	paymentMethod := subMeta["payment_method"]

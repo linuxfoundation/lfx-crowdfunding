@@ -212,6 +212,17 @@ func (r *wbSubscriptionRepo) UpdateByStripeSubscriptionID(ctx context.Context, s
 	return nil
 }
 
+type wbLegacyUserLookup struct {
+	onGetByLegacyUserID func(ctx context.Context, legacyUserID string) (*models.User, error)
+}
+
+func (l *wbLegacyUserLookup) GetByLegacyUserID(ctx context.Context, legacyUserID string) (*models.User, error) {
+	if l.onGetByLegacyUserID != nil {
+		return l.onGetByLegacyUserID(ctx, legacyUserID)
+	}
+	return nil, domain.ErrUserNotFound
+}
+
 // discardLogger creates a slog.Logger that discards all output.
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -865,6 +876,7 @@ func TestWebhookHandler_PaymentIntentSucceeded_V2_AlreadyProcessed_SkipsLedgerAn
 // write to Ledger (the Ledger service handles that via charge.succeeded).
 func TestWebhookHandler_InvoicePaymentSucceeded_V2_CreatesDonation(t *testing.T) {
 	var gotDonation *models.Donation
+	const resolvedUserID = "00000000-0000-0000-0000-000000000001"
 
 	dr := &wbDonationRepo{
 		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
@@ -878,7 +890,17 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_CreatesDonation(t *testing.T)
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
 	}
 
-	rr := postWebhook(t, newTestWebhookHandlerFull(sc, dr, &wbSubscriptionRepo{}, &wbLedgerClient{}, &wbEmailService{}), "t=1,v1=sig", `{}`)
+	h := newTestWebhookHandlerFull(sc, dr, &wbSubscriptionRepo{}, &wbLedgerClient{}, &wbEmailService{}).
+		WithLegacyUserLookup(&wbLegacyUserLookup{
+			onGetByLegacyUserID: func(_ context.Context, legacyUserID string) (*models.User, error) {
+				if legacyUserID != "usr_001" {
+					t.Fatalf("legacy user lookup arg = %q, want usr_001", legacyUserID)
+				}
+				return &models.User{ID: resolvedUserID, LegacyUserID: legacyUserID}, nil
+			},
+		})
+
+	rr := postWebhook(t, h, "t=1,v1=sig", `{}`)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rr.Code)
@@ -886,8 +908,8 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_CreatesDonation(t *testing.T)
 	if gotDonation == nil {
 		t.Fatal("expected donation to be created")
 	}
-	if gotDonation.UserID != "usr_001" {
-		t.Errorf("donation UserID = %q, want usr_001", gotDonation.UserID)
+	if gotDonation.UserID != resolvedUserID {
+		t.Errorf("donation UserID = %q, want %s", gotDonation.UserID, resolvedUserID)
 	}
 	if gotDonation.InitiativeID != "init_001" {
 		t.Errorf("donation InitiativeID = %q, want init_001", gotDonation.InitiativeID)

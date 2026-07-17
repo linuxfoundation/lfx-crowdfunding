@@ -85,6 +85,32 @@ func TestUserRepository_GetByID_NotFound(t *testing.T) {
 	}
 }
 
+func TestUserRepository_GetByLegacyUserID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.users")
+
+	repo := NewUserRepository(testPool)
+	user, err := repo.Upsert(ctx, &models.User{
+		Username:     "legacy-user-lookup",
+		LegacyUserID: "auth0|legacy-user-lookup",
+		Email:        "legacy-user-lookup@example.com",
+	})
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	got, err := repo.GetByLegacyUserID(ctx, user.LegacyUserID)
+	if err != nil {
+		t.Fatalf("GetByLegacyUserID() error = %v", err)
+	}
+	if got.ID != user.ID {
+		t.Errorf("GetByLegacyUserID ID = %q, want %q", got.ID, user.ID)
+	}
+}
+
 func TestUserRepository_UpdateStripeInfo(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DB integration test")

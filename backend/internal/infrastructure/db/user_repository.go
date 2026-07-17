@@ -71,6 +71,24 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 	return u, nil
 }
 
+// GetByLegacyUserID retrieves a user by their Auth0 subject stored in legacy_user_id.
+func (r *UserRepository) GetByLegacyUserID(ctx context.Context, legacyUserID string) (*models.User, error) {
+	ctx, span := userTracer.Start(ctx, "db.users.GetByLegacyUserID")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.user.legacy_user_id", legacyUserID))
+
+	q := "SELECT " + userColumns + " FROM users WHERE legacy_user_id = $1"
+	u, err := scanUser(r.pool.QueryRow(ctx, q, legacyUserID))
+	if err != nil {
+		if !errors.Is(err, domain.ErrUserNotFound) {
+			span.RecordError(err)
+			err = fmt.Errorf("get user by legacy user id: %w", err)
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
 // Upsert inserts or updates a user row identified by username (LF SSO username).
 // Used by payment/donation/subscription services to ensure a minimal users row
 // exists before persisting Stripe customer info via UpdateStripeInfo.

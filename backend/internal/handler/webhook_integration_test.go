@@ -327,9 +327,10 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 
 	// Seed a user
 	userID := uuid.New()
+	const legacyUserID = "auth0|test_int_user_002"
 	if _, err := handlerTestPool.Exec(ctx, `
-		INSERT INTO crowdfunding.users (id, username, email) VALUES ($1, $2, $3)
-	`, userID, "test_int_user_002", "test-sub@int-test.example.com"); err != nil {
+		INSERT INTO crowdfunding.users (id, username, legacy_user_id, email) VALUES ($1, $2, $3, $4)
+	`, userID, "test_int_user_002", legacyUserID, "test-sub@int-test.example.com"); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 
@@ -373,7 +374,7 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 					"initiative_id":   initiativeID.String(),
 					"initiative_slug": "int-test-sub-init",
 					"initiative_name": "Integration Test Sub Initiative",
-					"user_id":         userID.String(),
+					"user_id":         legacyUserID,
 					"donor_email":     "test-sub@int-test.example.com",
 					"owner_email":     "test-sub@int-test.example.com",
 					"owner_name":      "Integration Owner",
@@ -401,7 +402,8 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 	sc := &intStripeClient{}
 	dr := db.NewDonationRepository(handlerTestPool)
 	sr := db.NewSubscriptionRepository(handlerTestPool)
-	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false)
+	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false).
+		WithLegacyUserLookup(db.NewUserRepository(handlerTestPool))
 
 	rr := postSignedWebhook(t, h, payloadBytes, webhookSecret)
 
