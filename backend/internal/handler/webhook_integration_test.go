@@ -303,6 +303,9 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 	const webhookSecret = "whsec_test_integration_002"
 
 	// Clean up before test
+	if _, err := handlerTestPool.Exec(ctx, "DELETE FROM crowdfunding.donations WHERE stripe_invoice_id = 'in_int_test_001'"); err != nil {
+		t.Fatalf("cleanup donations: %v", err)
+	}
 	if _, err := handlerTestPool.Exec(ctx, "DELETE FROM crowdfunding.subscriptions WHERE stripe_subscription_id = 'sub_int_test_001'"); err != nil {
 		t.Fatalf("cleanup subscriptions: %v", err)
 	}
@@ -344,13 +347,29 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 	// Build invoice.payment_succeeded event - activates the subscription
 	// The invoice includes a parent.subscription_details.subscription reference
 	invoiceObjectJSON := map[string]any{
-		"id":     "in_int_test_001",
-		"object": "invoice",
-		"status": "paid",
+		"id":             "in_int_test_001",
+		"object":         "invoice",
+		"status":         "paid",
+		"amount_paid":    2500,
+		"charge":         "ch_int_test_001",
+		"customer_email": "test-sub@int-test.example.com",
 		"parent": map[string]any{
 			"subscription_details": map[string]any{
 				"subscription": map[string]string{
 					"id": subID,
+				},
+				"metadata": map[string]string{
+					"version":         "v2",
+					"initiative_id":   initiativeID.String(),
+					"initiative_slug": "int-test-sub-init",
+					"initiative_name": "Integration Test Sub Initiative",
+					"user_id":         userID.String(),
+					"donor_email":     "test-sub@int-test.example.com",
+					"owner_email":     "test-sub@int-test.example.com",
+					"owner_name":      "Integration Owner",
+					"category":        "fund",
+					"payment_method":  "stripe",
+					"frequency":       "monthly",
 				},
 			},
 		},
@@ -392,7 +411,54 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 		t.Errorf("subscription status = %q, want active", status)
 	}
 
+	var donationCount int
+	if err := handlerTestPool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM crowdfunding.donations WHERE stripe_invoice_id = $1
+	`, "in_int_test_001").Scan(&donationCount); err != nil {
+		t.Fatalf("query donation count: %v", err)
+	}
+	if donationCount != 1 {
+		t.Fatalf("donation count = %d, want 1", donationCount)
+	}
+
+	var donationStatus, donationUserID, donationInitiativeID string
+	var donationAmount int64
+	if err := handlerTestPool.QueryRow(ctx, `
+		SELECT status, user_id::text, initiative_id::text, current_amount_in_cents
+		FROM crowdfunding.donations
+		WHERE stripe_invoice_id = $1
+	`, "in_int_test_001").Scan(&donationStatus, &donationUserID, &donationInitiativeID, &donationAmount); err != nil {
+		t.Fatalf("query donation row: %v", err)
+	}
+	if donationStatus != "succeeded" {
+		t.Errorf("donation status = %q, want succeeded", donationStatus)
+	}
+	if donationUserID != userID.String() {
+		t.Errorf("donation user_id = %q, want %q", donationUserID, userID.String())
+	}
+	if donationInitiativeID != initiativeID.String() {
+		t.Errorf("donation initiative_id = %q, want %q", donationInitiativeID, initiativeID.String())
+	}
+	if donationAmount != 2500 {
+		t.Errorf("donation amount = %d, want 2500", donationAmount)
+	}
+
+	// Duplicate delivery must not create a second donation row.
+	rr = postSignedWebhook(t, h, payloadBytes, webhookSecret)
+	if rr.Code != http.StatusOK {
+		t.Errorf("duplicate webhook status = %d, want 200; body: %s", rr.Code, rr.Body.String())
+	}
+	if err := handlerTestPool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM crowdfunding.donations WHERE stripe_invoice_id = $1
+	`, "in_int_test_001").Scan(&donationCount); err != nil {
+		t.Fatalf("query duplicate donation count: %v", err)
+	}
+	if donationCount != 1 {
+		t.Errorf("donation count after duplicate = %d, want 1", donationCount)
+	}
+
 	// Clean up after test (already deleted in cleanup before)
+	_, _ = handlerTestPool.Exec(ctx, "DELETE FROM crowdfunding.donations WHERE stripe_invoice_id = $1", "in_int_test_001")
 	_, _ = handlerTestPool.Exec(ctx, "DELETE FROM crowdfunding.subscriptions WHERE stripe_subscription_id = $1", subID)
 	_, _ = handlerTestPool.Exec(ctx, "DELETE FROM crowdfunding.initiatives WHERE id = $1", initiativeID)
 	_, _ = handlerTestPool.Exec(ctx, "DELETE FROM crowdfunding.users WHERE id = $1", userID)

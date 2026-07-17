@@ -317,18 +317,38 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	if subMeta == nil {
 		subMeta = map[string]string{}
 	}
+	var invoicePayload struct {
+		Charge string `json:"charge"`
+	}
+	if err := json.Unmarshal(event.Data.Raw, &invoicePayload); err != nil {
+		h.logger.Error("invoice.payment_succeeded: raw payload unmarshal failed", "event_id", event.ID, "error", err)
+		return fmt.Errorf("invoice.payment_succeeded: raw payload unmarshal: %w", err)
+	}
 	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, models.SubscriptionStatusActive); err != nil {
 		if errors.Is(err, domain.ErrAlreadyProcessed) {
-			h.logger.Debug("invoice.payment_succeeded: already processed, skipping", "sub_id", subID)
+			h.logger.Debug("invoice.payment_succeeded: subscription already active, continuing invoice reconciliation", "sub_id", subID)
+		} else {
+			if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+				h.logger.Error("invoice.payment_succeeded: DB update failed",
+					"sub_id", subID, "error", err)
+			}
+			return fmt.Errorf("invoice.payment_succeeded: db update: %w", err)
+		}
+	} else {
+		h.logger.Info("invoice.payment_succeeded: subscription activated", "sub_id", subID)
+	}
+
+	donationRecorded, err := h.recordSubscriptionInvoiceDonation(r.Context(), inv, invoicePayload.Charge, subMeta)
+	if err != nil {
+		if errors.Is(err, domain.ErrAlreadyProcessed) {
+			h.logger.Debug("invoice.payment_succeeded: invoice already recorded, skipping", "invoice_id", inv.ID, "sub_id", subID)
 			return nil
 		}
-		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
-			h.logger.Error("invoice.payment_succeeded: DB update failed",
-				"sub_id", subID, "error", err)
-		}
-		return fmt.Errorf("invoice.payment_succeeded: db update: %w", err)
+		return fmt.Errorf("invoice.payment_succeeded: record donation: %w", err)
 	}
-	h.logger.Info("invoice.payment_succeeded: subscription activated", "sub_id", subID)
+	if !donationRecorded {
+		return nil
+	}
 
 	// Only v2 subscriptions (created by this service) get email treatment here.
 	// v1 LFF subscriptions carry no version metadata; the Ledger service handles
@@ -387,6 +407,43 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 			"sub_id", subID, "error", adminErr)
 	}
 	return nil
+}
+
+func (h *WebhookHandler) recordSubscriptionInvoiceDonation(ctx context.Context, inv stripe.Invoice, chargeID string, subMeta map[string]string) (bool, error) {
+	userID := subMeta["user_id"]
+	initiativeID := subMeta["initiative_id"]
+	if inv.ID == "" || userID == "" || initiativeID == "" {
+		h.logger.Warn("invoice.payment_succeeded: missing donation metadata, skipping donation insert",
+			"invoice_id", inv.ID, "user_id", userID, "initiative_id", initiativeID)
+		return false, nil
+	}
+
+	paymentMethod := subMeta["payment_method"]
+	if paymentMethod == "" {
+		paymentMethod = models.PaymentMethodStripe
+	}
+
+	_, err := h.donationRepo.Create(ctx, &models.Donation{
+		UserID:             userID,
+		InitiativeID:       initiativeID,
+		OrganizationID:     subMeta["org_id"],
+		Category:           subMeta["category"],
+		CurrentAmountCents: inv.AmountPaid,
+		PaymentMethod:      paymentMethod,
+		Status:             models.DonationStatusSucceeded,
+		StripeInvoiceID:    inv.ID,
+		StripeChargeID:     chargeID,
+	})
+	if err != nil {
+		if !errors.Is(err, domain.ErrAlreadyProcessed) {
+			h.logger.Error("invoice.payment_succeeded: failed to create donation",
+				"invoice_id", inv.ID, "error", err)
+		}
+		return false, err
+	}
+
+	h.logger.Info("invoice.payment_succeeded: donation recorded", "invoice_id", inv.ID, "initiative_id", initiativeID)
+	return true, nil
 }
 
 // handleInvoiceFinalized was previously used to stamp version=v2 metadata onto

@@ -39,6 +39,7 @@ type Donation struct {
 	// Stripe IDs are internal operational fields used by the webhook reconciliation
 	// flow. They are never serialised to API consumers.
 	StripePaymentIntentID string    `json:"-"`
+	StripeInvoiceID       string    `json:"-"`
 	StripeChargeID        string    `json:"-"`
 	CreatedOn             time.Time `json:"created_on"`
 	UpdatedOn             time.Time `json:"updated_on"`

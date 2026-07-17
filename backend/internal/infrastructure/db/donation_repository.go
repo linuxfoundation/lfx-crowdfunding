@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -40,7 +41,7 @@ func (r *DonationRepository) GetByID(ctx context.Context, id string) (*models.Do
 	const q = `
 		SELECT id, user_id, initiative_id, organization_id, category,
 		       current_amount_in_cents, po_number, payment_method,
-		       status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on
+		       status, stripe_payment_intent_id, stripe_invoice_id, stripe_charge_id, donation_tier, created_on, updated_on
 		FROM donations WHERE id = $1`
 
 	row := r.pool.QueryRow(ctx, q, id)
@@ -103,7 +104,7 @@ func (r *DonationRepository) listDonations(ctx context.Context, col, val string,
 	dataQ := fmt.Sprintf(`
 		SELECT d.id, d.user_id, d.initiative_id, i.name, d.organization_id, d.category,
 		       d.current_amount_in_cents, d.po_number, d.payment_method,
-		       d.status, d.stripe_payment_intent_id, d.stripe_charge_id, d.donation_tier, d.created_on, d.updated_on
+		       d.status, d.stripe_payment_intent_id, d.stripe_invoice_id, d.stripe_charge_id, d.donation_tier, d.created_on, d.updated_on
 		FROM donations d
 		LEFT JOIN initiatives i ON i.id = d.initiative_id
 		WHERE %s
@@ -138,22 +139,26 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 		INSERT INTO donations
 		       (user_id, initiative_id, organization_id, category,
 		        current_amount_in_cents, po_number, payment_method,
-		        status, stripe_payment_intent_id, stripe_charge_id, donation_tier)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		        status, stripe_payment_intent_id, stripe_invoice_id, stripe_charge_id, donation_tier)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		RETURNING id, user_id, initiative_id, organization_id, category,
 		          current_amount_in_cents, po_number, payment_method,
-		          status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on`
+		          status, stripe_payment_intent_id, stripe_invoice_id, stripe_charge_id, donation_tier, created_on, updated_on`
 
 	row := r.pool.QueryRow(ctx, q,
 		d.UserID, d.InitiativeID, nullableString(d.OrganizationID),
 		nullableString(d.Category), d.CurrentAmountCents,
 		nullableString(d.PONumber), nullableString(d.PaymentMethod),
 		nullableString(d.Status), nullableString(d.StripePaymentIntentID),
-		nullableString(d.StripeChargeID), nullableString(d.DonationTier),
+		nullableString(d.StripeInvoiceID), nullableString(d.StripeChargeID), nullableString(d.DonationTier),
 	)
 	created, err := scanDonation(row)
 	if err != nil {
 		span.RecordError(err)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "donations_stripe_invoice_id_key" {
+			return nil, domain.ErrAlreadyProcessed
+		}
 		return nil, fmt.Errorf("create donation: %w", err)
 	}
 	return created, nil
@@ -268,14 +273,15 @@ func scanDonation(row scanner) (*models.Donation, error) {
 	var (
 		initiativeID, organizationID, category *string
 		poNumber, paymentMethod, status        *string
-		stripePaymentIntentID, stripeChargeID  *string
+		stripePaymentIntentID, stripeInvoiceID *string
+		stripeChargeID                         *string
 		donationTier                           *string
 		createdOn, updatedOn                   *time.Time
 	)
 	err := row.Scan(
 		&d.ID, &d.UserID, &initiativeID, &organizationID, &category,
 		&d.CurrentAmountCents, &poNumber, &paymentMethod,
-		&status, &stripePaymentIntentID, &stripeChargeID, &donationTier, &createdOn, &updatedOn,
+		&status, &stripePaymentIntentID, &stripeInvoiceID, &stripeChargeID, &donationTier, &createdOn, &updatedOn,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -290,6 +296,7 @@ func scanDonation(row scanner) (*models.Donation, error) {
 	d.PaymentMethod = derefString(paymentMethod)
 	d.Status = derefString(status)
 	d.StripePaymentIntentID = derefString(stripePaymentIntentID)
+	d.StripeInvoiceID = derefString(stripeInvoiceID)
 	d.StripeChargeID = derefString(stripeChargeID)
 	d.DonationTier = derefString(donationTier)
 	if createdOn != nil {
@@ -309,14 +316,15 @@ func scanDonationWithInitiative(row scanner) (*models.Donation, error) {
 	var (
 		initiativeID, initiativeName, organizationID, category *string
 		poNumber, paymentMethod, status                        *string
-		stripePaymentIntentID, stripeChargeID                  *string
+		stripePaymentIntentID, stripeInvoiceID                 *string
+		stripeChargeID                                         *string
 		donationTier                                           *string
 		createdOn, updatedOn                                   *time.Time
 	)
 	err := row.Scan(
 		&d.ID, &d.UserID, &initiativeID, &initiativeName, &organizationID, &category,
 		&d.CurrentAmountCents, &poNumber, &paymentMethod,
-		&status, &stripePaymentIntentID, &stripeChargeID, &donationTier, &createdOn, &updatedOn,
+		&status, &stripePaymentIntentID, &stripeInvoiceID, &stripeChargeID, &donationTier, &createdOn, &updatedOn,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -332,6 +340,7 @@ func scanDonationWithInitiative(row scanner) (*models.Donation, error) {
 	d.PaymentMethod = derefString(paymentMethod)
 	d.Status = derefString(status)
 	d.StripePaymentIntentID = derefString(stripePaymentIntentID)
+	d.StripeInvoiceID = derefString(stripeInvoiceID)
 	d.StripeChargeID = derefString(stripeChargeID)
 	d.DonationTier = derefString(donationTier)
 	if createdOn != nil {

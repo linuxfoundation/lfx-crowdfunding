@@ -47,6 +47,7 @@ func TestDonationRepository_CreateAndGetByID(t *testing.T) {
 		CurrentAmountCents:    5000,
 		Status:                models.DonationStatusPending,
 		StripePaymentIntentID: "pi_test_123",
+		StripeInvoiceID:       "in_test_123",
 	}
 
 	created, err := repo.Create(ctx, donation)
@@ -71,6 +72,9 @@ func TestDonationRepository_CreateAndGetByID(t *testing.T) {
 	}
 	if got.StripePaymentIntentID != "pi_test_123" {
 		t.Errorf("StripePaymentIntentID = %q, want %q", got.StripePaymentIntentID, "pi_test_123")
+	}
+	if got.StripeInvoiceID != "in_test_123" {
+		t.Errorf("StripeInvoiceID = %q, want %q", got.StripeInvoiceID, "in_test_123")
 	}
 	if got.Status != models.DonationStatusPending {
 		t.Errorf("Status = %q, want %q", got.Status, models.DonationStatusPending)
@@ -148,6 +152,48 @@ func TestDonationRepository_UpdateByPaymentIntentID_NotFound(t *testing.T) {
 	}
 	if !isNotFound(err, domain.ErrDonationNotFound) {
 		t.Errorf("error = %v, want ErrDonationNotFound", err)
+	}
+}
+
+func TestDonationRepository_Create_DuplicateStripeInvoiceID_ReturnsAlreadyProcessed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.donations", "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "test-owner-dup-invoice")
+	initiative := seedInitiative(t, ctx, owner.ID, "Test Initiative Dup Invoice", "test-initiative-dup-invoice")
+
+	repo := NewDonationRepository(testPool)
+
+	first := &models.Donation{
+		UserID:             owner.ID,
+		InitiativeID:       initiative.ID,
+		CurrentAmountCents: 2500,
+		Status:             models.DonationStatusSucceeded,
+		StripeInvoiceID:    "in_duplicate_001",
+	}
+	if _, err := repo.Create(ctx, first); err != nil {
+		t.Fatalf("first Create() error = %v", err)
+	}
+
+	second := &models.Donation{
+		UserID:             owner.ID,
+		InitiativeID:       initiative.ID,
+		CurrentAmountCents: 2500,
+		Status:             models.DonationStatusSucceeded,
+		StripeInvoiceID:    "in_duplicate_001",
+	}
+	err := func() error {
+		_, err := repo.Create(ctx, second)
+		return err
+	}()
+	if err == nil {
+		t.Fatal("second Create() expected ErrAlreadyProcessed, got nil")
+	}
+	if !isNotFound(err, domain.ErrAlreadyProcessed) {
+		t.Errorf("error = %v, want ErrAlreadyProcessed", err)
 	}
 }
 

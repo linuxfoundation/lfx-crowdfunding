@@ -149,6 +149,7 @@ func (e *wbEmailService) InitiativeURL(slug string) string {
 
 // wbDonationRepo implements domain.DonationRepository for webhook tests.
 type wbDonationRepo struct {
+	onCreate                  func(ctx context.Context, d *models.Donation) (*models.Donation, error)
 	onUpdateByPaymentIntentID func(ctx context.Context, piID, status, chargeID string) error
 }
 
@@ -161,7 +162,10 @@ func (r *wbDonationRepo) ListByInitiative(_ context.Context, _ string, _ models.
 func (r *wbDonationRepo) ListByUser(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }
-func (r *wbDonationRepo) Create(_ context.Context, d *models.Donation) (*models.Donation, error) {
+func (r *wbDonationRepo) Create(ctx context.Context, d *models.Donation) (*models.Donation, error) {
+	if r.onCreate != nil {
+		return r.onCreate(ctx, d)
+	}
 	return d, nil
 }
 func (r *wbDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error {
@@ -735,7 +739,7 @@ const invV2JSON = `{
 			"version":"v2","initiative_id":"init_001","initiative_slug":"test-slug",
 			"initiative_name":"Test Initiative","user_id":"usr_001",
 			"donor_name":"Jane Doe","donor_email":"jane@example.com",
-			"owner_email":"owner@example.com","owner_name":"Bob Owner",
+			"owner_email":"owner@example.com","owner_name":"Bob Owner","org_id":"org_001",
 			"category":"fund","org_name":"Acme Corp","payment_method":"stripe",
 			"frequency":"monthly"
 		}
@@ -859,6 +863,55 @@ func TestWebhookHandler_PaymentIntentSucceeded_V2_AlreadyProcessed_SkipsLedgerAn
 // TestWebhookHandler_InvoicePaymentSucceeded_V2_SendsEmails verifies that
 // a v2 invoice.payment_succeeded event sends donor + admin emails and does NOT
 // write to Ledger (the Ledger service handles that via charge.succeeded).
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_CreatesDonation(t *testing.T) {
+	var gotDonation *models.Donation
+
+	dr := &wbDonationRepo{
+		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
+			copy := *d
+			gotDonation = &copy
+			return d, nil
+		},
+	}
+	event := buildEvent("invoice.payment_succeeded", invV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, dr, &wbSubscriptionRepo{}, &wbLedgerClient{}, &wbEmailService{}), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotDonation == nil {
+		t.Fatal("expected donation to be created")
+	}
+	if gotDonation.UserID != "usr_001" {
+		t.Errorf("donation UserID = %q, want usr_001", gotDonation.UserID)
+	}
+	if gotDonation.InitiativeID != "init_001" {
+		t.Errorf("donation InitiativeID = %q, want init_001", gotDonation.InitiativeID)
+	}
+	if gotDonation.OrganizationID != "org_001" {
+		t.Errorf("donation OrganizationID = %q, want org_001", gotDonation.OrganizationID)
+	}
+	if gotDonation.CurrentAmountCents != 2500 {
+		t.Errorf("donation CurrentAmountCents = %d, want 2500", gotDonation.CurrentAmountCents)
+	}
+	if gotDonation.PaymentMethod != models.PaymentMethodStripe {
+		t.Errorf("donation PaymentMethod = %q, want %q", gotDonation.PaymentMethod, models.PaymentMethodStripe)
+	}
+	if gotDonation.Status != models.DonationStatusSucceeded {
+		t.Errorf("donation Status = %q, want %q", gotDonation.Status, models.DonationStatusSucceeded)
+	}
+	if gotDonation.StripeInvoiceID != "in_v2_001" {
+		t.Errorf("donation StripeInvoiceID = %q, want in_v2_001", gotDonation.StripeInvoiceID)
+	}
+	if gotDonation.StripeChargeID != "ch_v2_001" {
+		t.Errorf("donation StripeChargeID = %q, want ch_v2_001", gotDonation.StripeChargeID)
+	}
+}
+
 func TestWebhookHandler_InvoicePaymentSucceeded_V2_SendsEmails(t *testing.T) {
 	var gotConfirmTo, gotAdminOwner string
 	ledgerCalled := false
@@ -905,6 +958,11 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_AlreadyProcessed_SkipsLedgerA
 			return domain.ErrAlreadyProcessed
 		},
 	}
+	dr := &wbDonationRepo{
+		onCreate: func(_ context.Context, _ *models.Donation) (*models.Donation, error) {
+			return nil, domain.ErrAlreadyProcessed
+		},
+	}
 	lc := &wbLedgerClient{
 		onPostTransaction: func(_ context.Context, _ clients.LedgerTransaction) error {
 			ledgerCalled = true
@@ -919,7 +977,7 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_AlreadyProcessed_SkipsLedgerA
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
 	}
 
-	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, sr, lc, es), "t=1,v1=sig", `{}`)
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, dr, sr, lc, es), "t=1,v1=sig", `{}`)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rr.Code)
@@ -929,6 +987,43 @@ func TestWebhookHandler_InvoicePaymentSucceeded_V2_AlreadyProcessed_SkipsLedgerA
 	}
 	if emailCalled {
 		t.Error("email must not be sent when ErrAlreadyProcessed")
+	}
+}
+
+func TestWebhookHandler_InvoicePaymentSucceeded_V2_RenewalWhileAlreadyActive_CreatesDonationAndSendsEmails(t *testing.T) {
+	var gotDonation *models.Donation
+	var gotConfirmTo string
+
+	sr := &wbSubscriptionRepo{
+		onUpdateByStripeSubscriptionID: func(_ context.Context, _, _ string) error {
+			return domain.ErrAlreadyProcessed
+		},
+	}
+	dr := &wbDonationRepo{
+		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
+			copy := *d
+			gotDonation = &copy
+			return d, nil
+		},
+	}
+	es := &wbEmailService{
+		onConfirmation: func(toEmail, _, _, _, _ string) { gotConfirmTo = toEmail },
+	}
+	event := buildEvent("invoice.payment_succeeded", invV2JSON)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, dr, sr, &wbLedgerClient{}, es), "t=1,v1=sig", `{}`)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+	if gotDonation == nil {
+		t.Fatal("expected renewal invoice to create a donation even when subscription is already active")
+	}
+	if gotConfirmTo != "jane@example.com" {
+		t.Errorf("confirmation email to = %q, want jane@example.com", gotConfirmTo)
 	}
 }
 
