@@ -340,7 +340,7 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 	}
 	if err := h.subscriptionRepo.UpdateByStripeSubscriptionID(r.Context(), subID, models.SubscriptionStatusActive); err != nil {
 		if errors.Is(err, domain.ErrAlreadyProcessed) {
-			h.logger.Debug("invoice.payment_succeeded: subscription already active, continuing invoice reconciliation", "sub_id", subID)
+			h.logger.Debug("invoice.payment_succeeded: subscription already active, continuing with donation recording", "sub_id", subID)
 		} else {
 			if !errors.Is(err, domain.ErrSubscriptionNotFound) {
 				h.logger.Error("invoice.payment_succeeded: DB update failed",
@@ -433,7 +433,7 @@ func (h *WebhookHandler) recordSubscriptionInvoiceDonation(ctx context.Context, 
 	initiativeID := subMeta["initiative_id"]
 	if inv.ID == "" || legacyUserID == "" || initiativeID == "" {
 		h.logger.Warn("invoice.payment_succeeded: missing donation metadata, skipping donation insert",
-			"invoice_id", inv.ID, "user_id", legacyUserID, "initiative_id", initiativeID)
+			"invoice_id", inv.ID, "legacy_user_id", legacyUserID, "initiative_id", initiativeID)
 		return false, nil
 	}
 
