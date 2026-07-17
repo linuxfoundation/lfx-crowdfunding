@@ -5,8 +5,11 @@
 
 ---
 
-**Status:** Exploratory research only. No decision has been made to build this; this document
-exists to inform a future discussion, not to spec an implementation.
+**Status:** Exploratory research with an agreed direction (§5) — not yet a spec or implementation
+plan. Summary of the direction: every initiative belongs to a parent LF project; a single flat
+project-level editor role, checked against the platform's OpenFGA store via `lfx-v2-fga-sync`,
+grants management of all the project's initiatives; the creator always retains edit access to
+their own initiative. Remaining open items are in §6.
 
 This document compares the role-based access model used in **LFX Self Serve (SS)** against the
 current authorization model in **LFX Crowdfunding (CF)**, and outlines what it would take to bring
@@ -18,9 +21,9 @@ an SS-style role model to CF.
 
 CF currently has no concept of shared ownership or delegated access to an initiative — a single
 `owner_id` decides who can manage it, plus a small hardcoded list of platform "approvers." SS has a
-more mature multi-person, multi-role access model for orgs and projects. This doc surveys that SS
-model as a reference point for what CF would need if it ever supports things like co-owners or
-staff on an initiative.
+more mature multi-person, multi-role access model for orgs and projects. CF has confirmed it needs
+multiple users to be owner/editor per initiative, so this doc surveys the SS model as a reference
+point for how CF's version of that could work.
 
 ---
 
@@ -118,25 +121,90 @@ server-side by the Go API; the frontend simply reflects what the API returns or 
 | Frontend awareness | Yes — signals gate UI capabilities | No — frontend has no auth logic |
 | Policy engine (FGA/ACS) | Not called directly; upstream services encapsulate it | Not used at all |
 
-**Bottom line:** SS's model solves a problem CF doesn't have yet — multiple people sharing
-management of one resource, with different capability levels, across an org hierarchy. Porting it
-to CF is not a small delta; it means introducing a concept (shared/delegated initiative access)
-that doesn't exist in CF's domain model today, plus a resolution service and (if CF wants
-parity) a caching layer.
+**Bottom line:** CF has confirmed it needs multiple owner/editors per initiative — a concept that
+doesn't exist in its domain model today. SS's full model (tiered roles, org hierarchy, cascading
+inheritance) is more than CF currently needs. The direction: each initiative belongs to a parent
+**LF project**, and a single flat editor role at the **project level** — checked against the
+platform's OpenFGA store via `lfx-v2-fga-sync`, not member-service — grants management of all
+initiatives under that project, with the creator retaining edit access to their own initiative.
+The main structural prerequisite is the project relationship itself: CF initiatives have no
+parent-project column today, so this direction requires a schema change and backfill before any
+role resolution can be keyed on it (see §5).
 
 ---
 
-## 5. Open questions (for a future decision, not resolved here)
+## 5. Direction so far
 
-1. Does CF actually need multi-person access per initiative, or does the single-owner model cover
-   real usage? (i.e., is this a solution looking for a problem, or has co-ownership been requested?)
-2. If needed, would CF model it per-initiative (like SS's project staff: `view`/`manage`) rather
-   than adopting SS's full org-hierarchy/cascading model, which assumes an org structure CF's
-   domain doesn't have?
-3. Would CF source roles from an upstream service (mirroring SS's member-service pattern) or store
-   them locally (a `initiative_staff` table), given CF already keeps ownership as a local column?
-4. Does the `allowedApprovers` env-var allowlist get folded into any new role model, or stay a
-   separate platform-admin concept?
+These points were resolved in discussion (July 2026). They are direction, not a spec — each still
+needs validation with the platform team before implementation.
+
+### Access model
+
+1. **Multi-person access is a confirmed requirement.** CF needs multiple users to be owner/editor
+   per initiative — not speculative.
+2. **Every initiative belongs to a parent LF project.** New relationship: CF initiatives today
+   have no parent-project column — only `cii_project_id` (CII badge lookup) and
+   `jobspring_project_id` (mentorship sync), neither of which is a parent link. Requires a schema
+   change plus a **data backfill mapping every existing initiative to an LF project**, including
+   General Fund and Event types.
+3. **One flat editor role, granted at the project level.** Anyone with the editor/writer role on
+   the LF project can manage **every initiative under that project**. No per-initiative grants, no
+   view-only tier (can be added later if a real need surfaces). This deliberately skips SS's org
+   hierarchy and cascading inheritance, which assume an org structure CF's domain doesn't have.
+4. **Access rule: project editor OR creator.** `owner_id` becomes the record of who created the
+   initiative and no longer carries general access semantics — with one narrow exception: the
+   creator always retains edit access to their own initiative. Without this exception, open
+   creation (below) would let a non-editor create an initiative they can never edit again.
+   Consequence worth stating: other project editors' access comes and goes with their project
+   role; only the creator's access is permanent.
+5. **Creation stays open to everyone.** Any authenticated user can create an initiative; the
+   "LF Project" field becomes mandatory, with a soft warning ("make sure you are part of that
+   project"). Nothing prevents attaching an initiative to a project the creator has no role in —
+   the existing approver flow is the backstop against abuse.
+
+### Authorization source: platform OpenFGA, not member-service
+
+An earlier draft of this doc pointed at member-service (by analogy with SS). That analogy was
+wrong: per the platform FGA inventory (`lfx-v2-fga-sync/docs/fga-protected-types.md`),
+**member-service owns `b2b_org`** — org roles, which is what SS's `OrgRoleGrantsService` reads —
+plus only a narrow `project_membership.key_contact` relation. The **`project` authorization object
+is owned by `lfx-v2-project-service`**, and platform services check it through
+**`lfx-v2-fga-sync`**: a NATS request/reply ("is user U a writer on project P?") backed by
+OpenFGA, with a cache-first JetStream layer built in.
+
+**Recommendation:** CF should ask the question through that platform FGA path rather than reading
+role lists from any service's data API:
+
+- It is the canonical enforcement source — it captures grants CF can't see in raw data reads
+  (committee-derived access, inheritance).
+- CF already runs in the LFX v2 shared cluster, so in-cluster NATS is reachable in principle.
+- It is the integration every other v2 service uses, so it's the pattern the platform team
+  supports.
+
+Fallback if NATS access turns out to be blocked for CF: an HTTP read of project-service's
+writer/auditor settings — workable, but weaker (a data read, not an authorization check). Either
+way, CF should hide the choice behind a small `ProjectRoleResolver` interface in the domain layer
+so the upstream can be swapped without touching business logic.
+
+### Caching
+
+**Recommendation: none on day one.** fga-sync is already cache-first (JetStream KV), so CF does
+not need its own SS-style per-username TTL cache initially. Add an in-process cache only if
+measured latency demands it. One rule regardless: **fail closed** — if the upstream check is
+unavailable, deny management access rather than allow it.
+
+## 6. Still open
+
+- **NATS/FGA access for CF.** Confirm with the platform team that CF (outside Heimdall) can use
+  the fga-sync access-check path, and what onboarding it requires (see
+  `lfx-v2-fga-sync/docs/fga-catalog.md` for service-owner onboarding).
+- **Backfill ownership.** Someone has to produce the initiative → LF project mapping for all
+  existing initiatives, including General Fund and Event types. This is a data exercise, not just
+  a migration.
+- **`allowedApprovers`.** Does the env-var allowlist get folded into the new model (e.g. a
+  platform-level FGA relation), or stay a separate platform-admin concept?
+- **Frontend gating.** The Nuxt frontend currently has no role awareness; it will need to know
+  "can this user manage this initiative" to show/hide management UI (server-enforced either way).
 
 ---
 
