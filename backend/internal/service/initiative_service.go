@@ -807,8 +807,10 @@ func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
 
 // GetMyTransactions fetches transactions for the given initiative that belong to the
 // specified user (identified by their Auth0 subject / legacy_user_id). The userID
-// filter is sent to Ledger as a query param; a client-side pass is also applied as a
-// safety net in case the Ledger API does not support the param.
+// filter is forwarded to the Ledger API. If the Ledger returns rows that belong to
+// other users the param was ignored server-side — the request fails rather than
+// returning incorrect pagination metadata. The same negative-donation post-processing
+// applied by GetTransactions is also applied here.
 func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, limit, offset int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyTransactions")
 	defer span.End()
@@ -824,14 +826,46 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 		return nil, err
 	}
 
-	// Client-side safety filter: keep only transactions belonging to this user.
-	kept := list.Data[:0]
+	// Detect whether the Ledger API applied the userID filter server-side.
+	// If any returned row belongs to a different user the param was ignored and
+	// we cannot produce a valid TotalCount — fail rather than expose another
+	// user's contributions or return misleading pagination metadata.
 	for _, t := range list.Data {
-		if t.LedgerUserID == userID {
-			kept = append(kept, t)
+		if t.LedgerUserID != userID {
+			span.RecordError(fmt.Errorf("ledger returned foreign rows for userID filter"))
+			return nil, fmt.Errorf(
+				"ledger returned rows for other users (server-side userID filtering unavailable): %w",
+				domain.ErrUpstreamUnavailable,
+			)
 		}
 	}
-	list.Data = kept
+
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts. Apply the same post-processing as GetTransactions so
+	// both endpoints have identical transaction-type semantics.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data)
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
 	return list, nil

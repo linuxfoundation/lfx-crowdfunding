@@ -317,15 +317,16 @@ func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Req
 		return
 	}
 	etag := etagOf(body)
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	// Identity-scoped — must not be shared-cacheable.
+	// Identity-scoped: set cache metadata before evaluating If-None-Match so that
+	// 304 responses also carry Vary, Cache-Control, and ETag (RFC 9110 §15.4.5).
 	w.Header().Set("Vary", "Authorization")
 	w.Header().Set("Cache-Control", "private, max-age=60")
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Content-Type", "application/json")
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
 }
