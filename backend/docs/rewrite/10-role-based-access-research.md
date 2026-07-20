@@ -108,7 +108,7 @@ flowchart LR
         API --> RES[EntityRoleResolver]
     end
 
-    RES -->|NATS<br/>lfx.access_check.*| FGASYNC[fga-sync]
+    RES <-->|NATS request/reply<br/>lfx.access_check.*| FGASYNC[fga-sync]
 
     subgraph PLATFORM[LFX v2 platform]
         FGASYNC --> KV[(JetStream KV<br/>cache)]
