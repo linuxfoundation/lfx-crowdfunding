@@ -1,215 +1,260 @@
 <!-- Copyright The Linux Foundation and each contributor to LFX. -->
 <!-- SPDX-License-Identifier: MIT -->
 
-# Role-Based Access: Self Serve Model vs. Crowdfunding — Research
+# Initiative Attribution & Role-Based Access
 
 ---
 
-**Status:** Exploratory research with an agreed direction (§5) — not yet a spec or implementation
-plan. Summary of the direction: every initiative belongs to a parent LF project; a single flat
-project-level editor role, checked against the platform's OpenFGA store via `lfx-v2-fga-sync`,
-grants management of all the project's initiatives; the creator always retains edit access to
-their own initiative. Remaining open items are in §6.
+**Status:** Agreed direction from exploratory research (July 2026) — not yet a spec or
+implementation plan. Related story:
+[LFXV2-2537](https://linuxfoundation.atlassian.net/browse/LFXV2-2537) *"Initiatives on behalf of
+projects and/or organizations"* (status: Requirements Needed).
 
-This document compares the role-based access model used in **LFX Self Serve (SS)** against the
-current authorization model in **LFX Crowdfunding (CF)**, and outlines what it would take to bring
-an SS-style role model to CF.
+**TL;DR.** Today a Crowdfunding (CF) initiative is manageable by exactly one user (`owner_id`).
+The proposal: each initiative carries an **attribution** — *personal* (default), *organization*
+(`b2b_org` UID), or *project* (LF project UID) — and one flat access rule follows it:
 
----
+> **A user may manage an initiative if they are its creator, OR a `writer` on the attributed
+> entity** (checked against the platform's OpenFGA store via `fga-sync`).
 
-## 1. Why this came up
-
-CF currently has no concept of shared ownership or delegated access to an initiative — a single
-`owner_id` decides who can manage it, plus a small hardcoded list of platform "approvers." SS has a
-more mature multi-person, multi-role access model for orgs and projects. CF has confirmed it needs
-multiple users to be owner/editor per initiative, so this doc surveys the SS model as a reference
-point for how CF's version of that could work.
+The same attribution field drives the details-page source label and the Self Serve (SS) lens
+"Initiatives" pages. Existing initiatives default to *personal* — **no data backfill**.
 
 ---
 
-## 2. SS role model (current state)
+## 1. Problem
 
-SS's model is **org/project-centric**, backed by the upstream **member-service**, not a
-CF-style DB column, and not a direct FGA/ACS call at request time.
+Three confirmed needs, one root cause — CF has no relationship between initiatives and the
+platform's real orgs and projects:
 
-### 2.1 Two role types, two scopes
+1. **Multi-person management.** Only the single `owner_id` can manage an initiative. Teams,
+   foundations, and companies running fundraisers need shared access.
+2. **Attribution (LFXV2-2537).** An initiative can't be marked as run *on behalf of* a company or
+   project; visitors can't tell official project fundraisers from personal ones, and SS lenses
+   have no "Initiatives" page for their org/project.
+3. **Organization donations.** CF's `organizations` table
+   ([001_initial.up.sql:53-61](../../db/migrations/001_initial.up.sql)) is free-form per-user
+   (name + avatar + creator), with no uniqueness constraint and no external identifier — two users
+   donating for the same company create two unrelated rows that can never be reconciled with the
+   orgs SS manages.
 
-| Scope | Roles | Notes |
+### Current access model (for contrast)
+
+| Mechanism | Behavior |
+|---|---|
+| Ownership | `initiative.owner_id == principal` — anything else returns 404 (`ErrInitiativeNotFound`, deliberately not 403) |
+| Approvers | Hardcoded username allowlist from an env var (`allowedApprovers`) gates approve/decline |
+
+`Principal` (from the JWT) carries identity and OAuth2 scope only — no role fields. The frontend
+has no role awareness; all enforcement is server-side.
+
+---
+
+## 2. Proposed model
+
+### 2.1 Attribution
+
+Each initiative carries exactly one attribution, chosen at creation in a new fundraise-form step
+(per LFXV2-2537 — picked from the user's real affiliations, never free text):
+
+| Attribution | Entity reference | Managed by |
 |---|---|---|
-| Org | `writer` (full edit), `auditor` (read-only) | Direct assignment, stored in `b2b_org_settings` upstream |
-| Org (cascading) | `auditor` only | Inherited top-down from parent org to child orgs. **Writer never cascades** — this is an explicit FGA-model design choice, not an oversight |
-| Project | `manage` (writer-equivalent), `view` (auditor-equivalent) | Per-project staff list, binary role, stored in upstream project-service |
+| `personal` (default) | none | creator only — today's behavior |
+| `organization` | `b2b_org` UID (canonical platform org, owned by member-service, backed by Salesforce Accounts) | creator + org writers |
+| `project` | LF project UID (owned by project-service) | creator + project writers |
 
-### 2.2 Backend: `OrgRoleGrantsService`
+One field, three consumers: **access control**, the **details-page source label**, and the **SS
+lens listing pages**. Existing initiatives default to `personal` and behave exactly as today.
 
-`lfx-self-serve/apps/lfx-one/src/server/services/org-role-grants.service.ts` is the single source
-of truth for "what can this user do":
+### 2.2 Access decision
 
-1. Queries member-service for the caller's role grants, tagged by `member:<username>`.
-2. Classifies each grant as `writer` or `auditor` from the org's members list (writer wins if a
-   user appears as both — matches the indexer's dedupe rule). Only `accepted` invites count.
-3. Separately fetches cascading children for any org the user directly manages, to build the
-   inherited-auditor set.
-4. Returns four sets: `writers[]`, `auditors[]`, `cascadingWriters[]`, `cascadingAuditors[]`.
-5. Caches the resolved result per-username for 5 minutes, to avoid recomputing the full
-   settings/cascading fan-out on every debounced typeahead request.
+```mermaid
+flowchart TD
+    A[Manage request on initiative] --> B{Caller is creator?<br/>owner_id == principal}
+    B -- yes --> ALLOW([Allow])
+    B -- no --> C{Attribution}
+    C -- personal --> DENY([Deny — 404])
+    C -- "organization (b2b_org UID)" --> D[fga-sync check:<br/>b2b_org:UID#writer@user]
+    C -- "project (LF project UID)" --> E[fga-sync check:<br/>project:UID#writer@user]
+    D -- writer --> ALLOW
+    E -- writer --> ALLOW
+    D -- "not writer / upstream error" --> DENY
+    E -- "not writer / upstream error" --> DENY
+```
 
-### 2.3 Frontend gating
+Design rules:
 
-`lfx-self-serve/apps/lfx-one/src/app/shared/services/org-role-grants.service.ts` mirrors this
-server-side shape into signals: `writerSet` / `auditorSet` (direct-only) and separate
-`inheritedWriterSet` / `inheritedAuditorSet`. **Capability gates (`canWrite`) only ever check the
-direct sets** — inherited/cascading roles are shown as badges in the UI (e.g. dropdowns, tooltips)
-but never grant write access. This separation is called out explicitly in SS's spec notes (FR-011a)
-as a deliberate design constraint, not an accident.
-
-Project-level staff management is a separate, simpler service
-(`app/shared/services/permissions.service.ts`) that fetches a project's `auditors[]`/`writers[]`
-list and renders a staff table with `view`/`manage` roles.
-
-### 2.4 What SS does *not* do
-
-- No direct FGA or ACS API calls in the request path — authorization data lives in member-service,
-  and SS treats it as an upstream read, not a live permission check against a policy engine.
-- No role hierarchy beyond the two-level (org → child org) cascade.
-- Auth middleware in SS is authentication-only (valid session / valid token) — role checks are a
-  separate, later step performed by the services above, not baked into route middleware.
+- **One flat capability.** No view-only tier, no per-initiative grants. Either can be added later
+  if a real need surfaces.
+- **The creator always retains access.** `owner_id` stays as "created by" and guarantees the
+  creator can always edit — without this, a user could create an initiative attributed to an
+  entity they're not a writer on and be locked out immediately. Everyone else's access comes and
+  goes with their writer role on the attributed entity.
+- **Fail closed.** If the upstream check errors, deny management access.
+- **CF stores no roles.** No membership tables, no role columns — CF stores one entity reference
+  and asks the platform the membership question at request time.
 
 ---
 
-## 3. CF current model
+## 3. Architecture
 
-CF's authorization model is intentionally minimal — see
-[`08-self-serve-auth.md`](./08-self-serve-auth.md) for how identity itself flows from SS to CF.
-This section is about what CF does with that identity once authenticated.
+```mermaid
+flowchart LR
+    SS[Self Serve<br/>lens pages] -->|HTTP /v1/me/*| API
+    FE[CF frontend<br/>Nuxt BFF] -->|HTTP| API
 
-### 3.1 Principal has no role field
+    subgraph CF[Crowdfunding Go API]
+        API[Handlers / Services] --> DB[(Postgres<br/>initiatives.attributed_to)]
+        API --> RES[EntityRoleResolver]
+    end
 
-`backend/internal/domain/models/filters.go` (`Principal` struct) carries `UserID`, `Username`,
-`Scope`, and profile claims (email, name) — no role or permission field. `Scope` is the OAuth2
-scope from the token (e.g. `access:me`), not an app-level role.
+    RES -->|NATS<br/>lfx.access_check.*| FGASYNC[fga-sync]
 
-### 3.2 Two access mechanisms, both binary
+    subgraph PLATFORM[LFX v2 platform]
+        FGASYNC --> KV[(JetStream KV<br/>cache)]
+        FGASYNC --> FGA[(OpenFGA store)]
+        PS[project-service] -.->|project tuples| FGASYNC
+        MS[member-service] -.->|b2b_org tuples| FGASYNC
+    end
+```
 
-| Mechanism | Where | Behavior |
+### 3.1 Why fga-sync (and not the alternatives)
+
+| Alternative | Why not |
+|---|---|
+| Copy SS's model (read role lists from member-service) | SS's `OrgRoleGrantsService` reads **org** roles (`b2b_org`) — the wrong axis for project attribution. It also re-implements resolution (cascading, dedup, 5-min cache) that FGA already computes. |
+| Call OpenFGA directly | Not the platform pattern — v2 services go through fga-sync, which provides one shared cache with invalidation (per `lfx-v2-fga-sync/docs/fga-sync-contract.md`). |
+| Local role tables in CF | CF would own org/project membership it can't keep correct; the platform already maintains it. |
+| Literal org ownership (transfer `owner_id` to an org) | Forces CF to answer "who is in the org" — inventing membership. Attribution + FGA-derived access stores one UID instead. |
+
+fga-sync is the canonical enforcement source (it captures committee-derived and inherited grants
+that raw data reads miss), CF already runs in the LFX v2 shared cluster so NATS is reachable in
+principle, and it's the integration every other v2 service uses. Both `project` and `b2b_org`
+live in the same OpenFGA store, so **one integration covers both attribution kinds**.
+
+Two NATS subjects cover everything CF needs:
+
+| Subject | Use |
+|---|---|
+| `lfx.access_check.request` | Batch yes/no checks (`entity:UID#writer@user`) — the edit-access gate |
+| `lfx.access_check.read_tuples` | Enumerate a user's relations per object type — feeds the fundraise-form dropdowns |
+
+**Fallback** if direct NATS access is not granted to CF: `lfx-v2-access-check` exposes an HTTP
+wrapper over the same check. Either way, the integration hides behind a small
+`EntityRoleResolver` interface (entity type + UID + username → can manage?) so the transport can
+be swapped without touching business logic.
+
+**Caching:** none in CF on day one — fga-sync is already cache-first. Add an in-process cache only
+if measured latency demands it.
+
+### 3.2 Flow: edit access check
+
+```mermaid
+sequenceDiagram
+    participant U as User (SS or CF frontend)
+    participant API as CF Go API
+    participant DB as Postgres
+    participant FS as fga-sync (NATS)
+
+    U->>API: PATCH /v1/me/initiatives/{id}
+    API->>DB: load initiative (owner_id, attribution)
+    alt caller is creator
+        API-->>U: 200 OK
+    else attributed to org or project
+        API->>FS: lfx.access_check.request<br/>entity:UID#writer@user
+        Note over FS: cache-first (JetStream KV),<br/>OpenFGA on miss
+        FS-->>API: true / false
+        alt writer
+            API-->>U: 200 OK
+        else not writer or upstream error
+            API-->>U: 404 (fail closed)
+        end
+    end
+```
+
+### 3.3 Flow: attribution options in the fundraise form
+
+```mermaid
+sequenceDiagram
+    participant FE as Fundraise form
+    participant API as CF Go API
+    participant FS as fga-sync (NATS)
+
+    FE->>API: GET attribution options
+    API->>FS: lfx.access_check.read_tuples<br/>{user, object_type: "project"}
+    API->>FS: lfx.access_check.read_tuples<br/>{user, object_type: "b2b_org"}
+    FS-->>API: writer tuples (paginated)
+    API-->>FE: eligible projects + organizations
+    Note over FE: user picks Personal (default),<br/>an org, or a project — no free text
+```
+
+---
+
+## 4. Organization donations (separable)
+
+Independent of attribution/access, CF's free-form `organizations` table needs linking to canonical
+platform orgs. Donations and subscriptions FK to these rows, so the table can't be dropped. The
+fix:
+
+1. Add a `b2b_org` UID column to `organizations`.
+2. Replace free-text org creation in the donation flow with a canonical-org picker.
+3. Dedup existing rows against Salesforce Accounts (data exercise).
+
+Verified *affiliation* is likely unnecessary here — donating on behalf of a company is far
+lower-risk than controlling its fundraiser; a canonical-org picker alone may satisfy the
+requirement.
+
+---
+
+## 5. Milestones
+
+Each independently shippable; M3 can move ahead of M1/M2.
+
+| # | Scope | Delivers |
 |---|---|---|
-| Ownership | `internal/service/initiative_service.go` (`GetForUser`, `ResolveOwnedInitiativeID`) | `initiative.OwnerID == principal.UserID` — anything else returns `ErrInitiativeNotFound` (not `403`, to avoid confirming existence) |
-| Approver allowlist | `internal/handler/initiative_handler.go` (`isApprover`, `allowedApprovers` field) | Static list of usernames from an env var, checked before approve/decline actions |
+| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID), form step with affiliation pickers (`read_tuples`), details-page source label. No access changes. | Most of LFXV2-2537 |
+| M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, SS lens "Initiatives" pages | Multi-person management |
+| M3 | **Org donations cleanup** — `b2b_org` link, canonical-org picker, dedup | Reconciled org donors |
 
-There is no concept of:
-- Multiple people managing the same initiative (co-owners, staff, delegated editors)
-- Any inherited or cascading access
-- Any caching layer for permission resolution (each request re-checks ownership directly against
-  the DB row already loaded)
-
-### 3.3 Frontend
-
-The Nuxt frontend has no role-based UI gating today — access decisions are entirely enforced
-server-side by the Go API; the frontend simply reflects what the API returns or rejects.
+Scope-reduction levers: ship the Project lens page before the Organization lens page (the
+maintainer story is the strongest); drop verified affiliation for donations.
 
 ---
 
-## 4. Gap analysis
+## 6. Open questions
 
-| Aspect | SS | CF |
-|---|---|---|
-| Role granularity | writer / auditor (org), manage / view (project) | owner / not-owner, plus approver allowlist |
-| Multiple people per resource | Yes (org members, project staff) | No — single `owner_id` |
-| Inheritance | Yes — auditor cascades parent→child org | No hierarchy exists |
-| Data source | Upstream member-service / project-service | Local `owner_id` column |
-| Caching | Per-username, 5-minute TTL | None — checked per request |
-| Frontend awareness | Yes — signals gate UI capabilities | No — frontend has no auth logic |
-| Policy engine (FGA/ACS) | Not called directly; upstream services encapsulate it | Not used at all |
-
-**Bottom line:** CF has confirmed it needs multiple owner/editors per initiative — a concept that
-doesn't exist in its domain model today. SS's full model (tiered roles, org hierarchy, cascading
-inheritance) is more than CF currently needs. The direction: each initiative belongs to a parent
-**LF project**, and a single flat editor role at the **project level** — checked against the
-platform's OpenFGA store via `lfx-v2-fga-sync`, not member-service — grants management of all
-initiatives under that project, with the creator retaining edit access to their own initiative.
-The main structural prerequisite is the project relationship itself: CF initiatives have no
-parent-project column today, so this direction requires a schema change and backfill before any
-role resolution can be keyed on it (see §5).
+1. **PM: benefit vs. attribution axis.** A company-attributed initiative has no LF project
+   relation. If finance/reporting needs "which project does this money benefit" independent of
+   "who runs the fundraiser," a separate optional benefit-project field is required — attribution
+   cannot carry both.
+2. **Eligibility vs. access populations.** LFXV2-2537 lets users attribute to entities they're
+   *affiliated* with; edit access flows from the *writer* relation. These differ — a contributor
+   may be affiliated with a project without being a writer. Confirm which relation feeds the form
+   dropdown vs. the access check.
+3. **Platform onboarding.** Confirm CF (outside Heimdall) can consume the fga-sync NATS subjects,
+   and what onboarding requires (`lfx-v2-fga-sync/docs/fga-catalog.md`).
+4. **FGA user identifier.** FGA tuples key users as e.g. `user:auth0|alice`; CF's canonical
+   identifier is the LF SSO username. Confirm the identifier CF must send in checks.
+5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
+   platform-admin concept?
+6. **Frontend gating.** The Nuxt frontend needs a "can manage" signal to show/hide management UI
+   (server-enforced regardless).
 
 ---
 
-## 5. Direction so far
+## Appendix: how Self Serve does it (reference)
 
-These points were resolved in discussion (July 2026). They are direction, not a spec — each still
-needs validation with the platform team before implementation.
-
-### Access model
-
-1. **Multi-person access is a confirmed requirement.** CF needs multiple users to be owner/editor
-   per initiative — not speculative.
-2. **Every initiative belongs to a parent LF project.** New relationship: CF initiatives today
-   have no parent-project column — only `cii_project_id` (CII badge lookup) and
-   `jobspring_project_id` (mentorship sync), neither of which is a parent link. Requires a schema
-   change plus a **data backfill mapping every existing initiative to an LF project**, including
-   General Fund and Event types.
-3. **One flat editor role, granted at the project level.** Anyone with the editor/writer role on
-   the LF project can manage **every initiative under that project**. No per-initiative grants, no
-   view-only tier (can be added later if a real need surfaces). This deliberately skips SS's org
-   hierarchy and cascading inheritance, which assume an org structure CF's domain doesn't have.
-4. **Access rule: project editor OR creator.** `owner_id` becomes the record of who created the
-   initiative and no longer carries general access semantics — with one narrow exception: the
-   creator always retains edit access to their own initiative. Without this exception, open
-   creation (below) would let a non-editor create an initiative they can never edit again.
-   Consequence worth stating: other project editors' access comes and goes with their project
-   role; only the creator's access is permanent.
-5. **Creation stays open to everyone.** Any authenticated user can create an initiative; the
-   "LF Project" field becomes mandatory, with a soft warning ("make sure you are part of that
-   project"). Nothing prevents attaching an initiative to a project the creator has no role in —
-   the existing approver flow is the backstop against abuse.
-
-### Authorization source: platform OpenFGA, not member-service
-
-An earlier draft of this doc pointed at member-service (by analogy with SS). That analogy was
-wrong: per the platform FGA inventory (`lfx-v2-fga-sync/docs/fga-protected-types.md`),
-**member-service owns `b2b_org`** — org roles, which is what SS's `OrgRoleGrantsService` reads —
-plus only a narrow `project_membership.key_contact` relation. The **`project` authorization object
-is owned by `lfx-v2-project-service`**, and platform services check it through
-**`lfx-v2-fga-sync`**: a NATS request/reply ("is user U a writer on project P?") backed by
-OpenFGA, with a cache-first JetStream layer built in.
-
-**Recommendation:** CF should ask the question through that platform FGA path rather than reading
-role lists from any service's data API:
-
-- It is the canonical enforcement source — it captures grants CF can't see in raw data reads
-  (committee-derived access, inheritance).
-- CF already runs in the LFX v2 shared cluster, so in-cluster NATS is reachable in principle.
-- It is the integration every other v2 service uses, so it's the pattern the platform team
-  supports.
-
-Fallback if NATS access turns out to be blocked for CF: an HTTP read of project-service's
-writer/auditor settings — workable, but weaker (a data read, not an authorization check). Either
-way, CF should hide the choice behind a small `ProjectRoleResolver` interface in the domain layer
-so the upstream can be swapped without touching business logic.
-
-### Caching
-
-**Recommendation: none on day one.** fga-sync is already cache-first (JetStream KV), so CF does
-not need its own SS-style per-username TTL cache initially. Add an in-process cache only if
-measured latency demands it. One rule regardless: **fail closed** — if the upstream check is
-unavailable, deny management access rather than allow it.
-
-## 6. Still open
-
-- **NATS/FGA access for CF.** Confirm with the platform team that CF (outside Heimdall) can use
-  the fga-sync access-check path, and what onboarding it requires (see
-  `lfx-v2-fga-sync/docs/fga-catalog.md` for service-owner onboarding).
-- **Backfill ownership.** Someone has to produce the initiative → LF project mapping for all
-  existing initiatives, including General Fund and Event types. This is a data exercise, not just
-  a migration.
-- **`allowedApprovers`.** Does the env-var allowlist get folded into the new model (e.g. a
-  platform-level FGA relation), or stay a separate platform-admin concept?
-- **Frontend gating.** The Nuxt frontend currently has no role awareness; it will need to know
-  "can this user manage this initiative" to show/hide management UI (server-enforced either way).
-
----
+SS's role model was the starting reference but is **not** what CF adopts. In short: SS reads
+**org** roles (writer/auditor, with auditor-only parent→child cascading) from member-service
+(`OrgRoleGrantsService`, per-username 5-min cache), and per-project staff (`view`/`manage`) from
+project-service; capability gates only ever use *direct* roles, inherited ones are display-only.
+It is a data-read model, not a live policy check. CF instead needs project- *and* org-scoped
+access with one mechanism — which is what the FGA check path provides without re-implementing
+SS's resolution logic.
 
 ## Related Documents
 
 - [`08-self-serve-auth.md`](./08-self-serve-auth.md) — how SS authenticates to CF (identity, not authorization)
-- [`02-decisions.md`](./02-decisions.md) — prior architecture decisions
-- [`03-open-questions.md`](./03-open-questions.md) — existing open-questions log
+- [`../../../docs/authentication-architecture.md`](../../../docs/authentication-architecture.md) — canonical CF authentication design; its "Known Deviations" section anticipates OpenFGA for multi-owner initiatives
+- `lfx-v2-fga-sync/docs/fga-sync-contract.md` — access-check subjects, tuple formats, cache behavior
+- [`02-decisions.md`](./02-decisions.md), [`03-open-questions.md`](./03-open-questions.md)
