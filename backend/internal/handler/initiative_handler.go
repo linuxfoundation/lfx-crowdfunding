@@ -256,6 +256,80 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	h.writeTransactions(w, r, initiativeID, "public, max-age=60, stale-while-revalidate=300")
 }
 
+// GetMyTransactions handles GET /v1/me/initiatives/{id}/my-transactions — requires JWT.
+// Returns transactions on the given published initiative that belong to the authenticated
+// caller, identified by their Auth0 subject (principal.UserID = legacy_user_id in Ledger).
+func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.UserID == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	value := chi.URLParam(r, "id")
+	var initiativeID string
+	if uuidPattern.MatchString(value) {
+		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = value
+	} else {
+		id, err := h.svc.GetIDBySlug(r.Context(), value)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		initiativeID = id
+	}
+
+	txnTypeParam := strings.ToLower(r.URL.Query().Get("type"))
+	var ledgerTxnType string
+	switch txnTypeParam {
+	case "donations":
+		ledgerTxnType = "donation"
+	case "expenses":
+		ledgerTxnType = "reimbursement"
+	}
+
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
+	if limit <= 0 {
+		limit = defaultTransactionPageSize
+	} else if limit > maxTransactionPageSize {
+		limit = maxTransactionPageSize
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	list, err := h.svc.GetMyTransactions(r.Context(), initiativeID, principal.UserID, ledgerTxnType, limit, offset)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	body, err := json.Marshal(list)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	etag := etagOf(body)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	// Identity-scoped — must not be shared-cacheable.
+	w.Header().Set("Vary", "Authorization")
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
 // GetTransactionsForUser handles GET /v1/me/initiatives/{id}/transactions — requires
 // JWT with access:me scope. Returns transactions for the caller's own initiative in
 // any status, so owners can view their non-published initiative's transactions (the

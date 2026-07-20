@@ -234,6 +234,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// non-published initiatives from non-approvers).
 		r.Get("/initiatives/{id}", initiativeH.GetForUser)
 		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactionsForUser)
+		r.Get("/initiatives/{id}/my-transactions", initiativeH.GetMyTransactions)
 		r.Post("/initiatives", initiativeH.Create)
 		r.Patch("/initiatives/{id}", initiativeH.Update)
 		r.Delete("/initiatives/{id}", initiativeH.Delete)

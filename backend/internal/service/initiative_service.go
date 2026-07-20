@@ -805,6 +805,38 @@ func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
 		domain.ErrForbidden, from, to)
 }
 
+// GetMyTransactions fetches transactions for the given initiative that belong to the
+// specified user (identified by their Auth0 subject / legacy_user_id). The userID
+// filter is sent to Ledger as a query param; a client-side pass is also applied as a
+// safety net in case the Ledger API does not support the param.
+func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		ProjectID: initiativeID,
+		TxnType:   txnType,
+		UserID:    userID,
+		Limit:     limit,
+		Offset:    offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Client-side safety filter: keep only transactions belonging to this user.
+	kept := list.Data[:0]
+	for _, t := range list.Data {
+		if t.LedgerUserID == userID {
+			kept = append(kept, t)
+		}
+	}
+	list.Data = kept
+
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	return list, nil
+}
+
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
