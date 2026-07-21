@@ -16,9 +16,10 @@ overrides:
   launch-editor: ">=2.14.1"
   tar: ">=7.5.19"
   vite: ">=7.3.5"
-  "brace-expansion@1": "1.1.16"
-  "brace-expansion@2": "2.1.2"
-  "brace-expansion@5": "5.0.7"
+  "brace-expansion@^1.1.7": ">=1.1.16 <2"
+  "brace-expansion@^2.0.1": ">=2.1.2 <3"
+  "brace-expansion@^2.0.2": ">=2.1.2 <3"
+  "brace-expansion@^5.0.5": ">=5.0.7 <6"
 allowBuilds:
   "@parcel/watcher": true
   esbuild: true
