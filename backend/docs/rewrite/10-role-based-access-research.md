@@ -66,6 +66,16 @@ Each initiative carries exactly one attribution, chosen at creation in a new fun
 One field, three consumers: **access control**, the **details-page source label**, and the **SS
 lens listing pages**. Existing initiatives default to `personal` and behave exactly as today.
 
+**Eligibility is strict — affiliated entities only.** The org/project pickers list only entities
+the user is already affiliated with (per LFXV2-2537's functional requirements: no free text, and
+a disabled option with an explanation when the user has none). "Any existing org" is deliberately
+rejected: attribution is a public claim of representation — the org's name and logo on a
+fundraising page — and under the access rule it would also hand the org's writers edit access to
+(and lens visibility of) an initiative nobody at the org sanctioned. Escape hatches **deep-link
+out of the form** rather than inlining platform workflows: "can't find your org" links to the
+platform's org-creation flow; "org exists but I'm not listed" links to where affiliations are
+managed. Users with multiple affiliations simply see them all in the single-select.
+
 ### 2.2 Access decision
 
 ```mermaid
@@ -197,12 +207,19 @@ platform orgs. Donations and subscriptions FK to these rows, so the table can't 
 fix:
 
 1. Add a `b2b_org` UID column to `organizations`.
-2. Replace free-text org creation in the donation flow with a canonical-org picker.
-3. Dedup existing rows against Salesforce Accounts (data exercise).
+2. Replace free-text org creation in the donation flow with a **hybrid picker**: typeahead against
+   canonical platform orgs first; if the donor's org isn't found, free text still works and
+   creates a **local, unlinked CF row** (flagged `unlinked`) — never a platform/Salesforce org
+   from a checkout. A donation is never blocked on data plumbing.
+3. Reconcile asynchronously: a back-office task matches `unlinked` rows against Salesforce
+   Accounts and links or escalates them. This is the same mechanism as the dedup of existing rows,
+   so the escape hatch adds no new machinery.
 
-Verified *affiliation* is likely unnecessary here — donating on behalf of a company is far
-lower-risk than controlling its fundraiser; a canonical-org picker alone may satisfy the
-requirement.
+No *affiliation* check for donating — attribution and donation carry different risk and get
+different gates: attributing an initiative **claims authority** to raise money in the org's name
+(strict, affiliated-only, §2.1), while donating **gives** money in its name (lenient, hybrid
+picker). Accepted consequence: unlinked-org donations don't appear in the SS Organization lens
+until reconciled — correct behavior, not a bug.
 
 ---
 
@@ -216,8 +233,8 @@ Each independently shippable; M3 can move ahead of M1/M2.
 | M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, SS lens "Initiatives" pages | Multi-person management |
 | M3 | **Org donations cleanup** — `b2b_org` link, canonical-org picker, dedup | Reconciled org donors |
 
-Scope-reduction levers: ship the Project lens page before the Organization lens page (the
-maintainer story is the strongest); drop verified affiliation for donations.
+Scope-reduction lever: ship the Project lens page before the Organization lens page (the
+maintainer story is the strongest).
 
 ---
 
@@ -229,8 +246,10 @@ maintainer story is the strongest); drop verified affiliation for donations.
    cannot carry both.
 2. **Eligibility vs. access populations.** LFXV2-2537 lets users attribute to entities they're
    *affiliated* with; edit access flows from the *writer* relation. These differ — a contributor
-   may be affiliated with a project without being a writer. Confirm which relation feeds the form
-   dropdown vs. the access check.
+   may be affiliated with a project without being a writer. Consequence: someone can put an org's
+   name on an initiative that no org *writer* approved (the org's writers do gain edit access and
+   lens visibility, so they can react — but after the fact). If the PM wants org sign-off *before*
+   the name appears, the eligibility gate must be *writer*, not *affiliated*. Confirm with PM.
 3. **Platform onboarding.** Confirm CF (outside Heimdall) can consume the fga-sync NATS subjects,
    and what onboarding requires (`lfx-v2-fga-sync/docs/fga-catalog.md`).
 4. **FGA user identifier.** FGA tuples key users as e.g. `user:auth0|alice`; CF's canonical
