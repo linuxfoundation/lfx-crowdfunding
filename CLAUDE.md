@@ -29,6 +29,7 @@ make deploy-kind   # Deploy to local Kind cluster with Helm
 ```
 
 Entry points:
+
 - `cmd/initiatives-api/` — HTTP API server (port 8080, `GET /livez` for health)
 - `cmd/ledger-stats-sync/` — CronJob that syncs financial data hourly from ledger service
 
@@ -73,12 +74,14 @@ Nuxt 4 BFF — server-side auth with HTTP-only session cookies (OAuth2 PKCE, Aut
 ## Environment Setup
 
 **Backend** — create `backend/.env`:
+
 - `DATABASE_URL` — e.g. `postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - `LEDGER_BASE_URL`, `LEDGER_API_KEY`
 - `JWKS_URL` — Auth0 JWKS (or use `DISABLED_MOCK_LOCAL_PRINCIPAL=true` to skip JWT validation locally)
 
 **Frontend** — create `frontend/.env` from `frontend/.env.example`:
+
 - `NUXT_PUBLIC_AUTH0_CLIENT_ID`, `NUXT_AUTH0_CLIENT_SECRET`
 - `NUXT_JWT_SECRET` — random string for session signing
 - Auth0 domain defaults to `linuxfoundation-dev.auth0.com` when `NUXT_APP_ENV=development`
