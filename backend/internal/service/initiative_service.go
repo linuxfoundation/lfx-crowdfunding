@@ -805,18 +805,86 @@ func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
 		domain.ErrForbidden, from, to)
 }
 
+// GetMyTransactions fetches transactions for the given initiative that belong to the
+// specified user (identified by their Auth0 subject / legacy_user_id). The userID
+// filter is forwarded to the Ledger API. If the Ledger returns rows that belong to
+// other users the param was ignored server-side — the request fails rather than
+// returning incorrect pagination metadata. The same negative-donation post-processing
+// applied by GetTransactions is also applied here.
+func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		UserID:           userID,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Detect whether the Ledger API applied the userID filter server-side.
+	// If any returned row belongs to a different user the param was ignored and
+	// we cannot produce a valid TotalCount — fail rather than expose another
+	// user's contributions or return misleading pagination metadata.
+	for _, t := range list.Data {
+		if t.LedgerUserID != userID {
+			span.RecordError(fmt.Errorf("ledger returned foreign rows for userID filter"))
+			return nil, fmt.Errorf(
+				"ledger returned rows for other users (server-side userID filtering unavailable): %w",
+				domain.ErrUpstreamUnavailable,
+			)
+		}
+	}
+
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts. Apply the same post-processing as GetTransactions so
+	// both endpoints have identical transaction-type semantics.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data)
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
+
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	return list, nil
+}
+
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
-func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, limit, offset int) (*models.TransactionList, error) {
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
 	defer span.End()
 
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
-		ProjectID: initiativeID,
-		TxnType:   txnType,
-		Limit:     limit,
-		Offset:    offset,
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
 	})
 	if err != nil {
 		return nil, err

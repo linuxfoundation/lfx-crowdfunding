@@ -40,10 +40,12 @@ type LedgerBalance struct {
 
 // TransactionFilter holds query parameters for the Ledger paginate endpoint.
 type TransactionFilter struct {
-	ProjectID string
-	TxnType   string // "donation" | "reimbursement" — empty = all
-	Limit     int    // page size; 0 defaults to 10
-	Offset    int    // number of records to skip; negative treated as 0
+	ProjectID        string
+	TxnType          string // "donation" | "reimbursement" — empty = all
+	UserID           string // Auth0 subject (legacy_user_id) — empty = all users
+	SubscriptionOnly bool   // when true, appends subscriptionOnly=true to filter recurring charges only
+	Limit            int    // page size; 0 defaults to 10
+	Offset           int    // number of records to skip; negative treated as 0
 }
 
 // LedgerClient is the interface consumed by the service layer and the
@@ -216,6 +218,12 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 		default:
 			q.Set("txnType", filter.TxnType)
 		}
+	}
+	if filter.UserID != "" {
+		q.Set("userID", filter.UserID)
+	}
+	if filter.SubscriptionOnly {
+		q.Set("subscriptionOnly", "true")
 	}
 
 	endpoint := fmt.Sprintf("%s/transactions?%s", c.baseURL, q.Encode())
