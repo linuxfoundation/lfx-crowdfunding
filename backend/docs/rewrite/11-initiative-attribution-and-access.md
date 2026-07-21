@@ -274,10 +274,3 @@ project-service; capability gates only ever use *direct* roles, inherited ones a
 It is a data-read model, not a live policy check. CF instead needs project- *and* org-scoped
 access with one mechanism — which is what the FGA check path provides without re-implementing
 SS's resolution logic.
-
-## Related Documents
-
-- [`08-self-serve-auth.md`](./08-self-serve-auth.md) — how SS authenticates to CF (identity, not authorization)
-- [`../../../docs/authentication-architecture.md`](../../../docs/authentication-architecture.md) — canonical CF authentication design; its "Known Deviations" section anticipates OpenFGA for multi-owner initiatives
-- `lfx-v2-fga-sync/docs/fga-sync-contract.md` — access-check subjects, tuple formats, cache behavior
-- [`02-decisions.md`](./02-decisions.md), [`03-open-questions.md`](./03-open-questions.md)
