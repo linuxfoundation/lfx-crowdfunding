@@ -230,7 +230,7 @@ Each independently shippable; M3 can move ahead of M1/M2.
 | # | Scope | Delivers |
 |---|---|---|
 | M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID), form step with affiliation pickers (`read_tuples`), details-page source label. No access changes. | Most of LFXV2-2537 |
-| M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, SS lens "Initiatives" pages | Multi-person management |
+| M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, SS lens "Initiatives" pages. Note: the lens listing is an *authorization-aware* query, not a public search — entity writers should also see unpublished/pending initiatives attributed to their entity (spotting claims made in their name before they go live), which requires the access check on the listing endpoint. | Multi-person management |
 | M3 | **Org donations cleanup** — `b2b_org` link, canonical-org picker, dedup | Reconciled org donors |
 
 Scope-reduction lever: ship the Project lens page before the Organization lens page (the
