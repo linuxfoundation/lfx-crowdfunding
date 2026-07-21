@@ -1691,7 +1691,7 @@ func TestGetTransactions_NegativeAmountsFilteredForDonations(t *testing.T) {
 		slog.Default(),
 	)
 
-	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 0)
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1727,7 +1727,7 @@ func TestGetTransactions_NegativeAmountsNotFilteredForExpenses(t *testing.T) {
 		slog.Default(),
 	)
 
-	list, err := svc.GetTransactions(context.Background(), "some-id", "reimbursement", 10, 0)
+	list, err := svc.GetTransactions(context.Background(), "some-id", "reimbursement", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1762,7 +1762,7 @@ func TestGetTransactions_TotalCountClampedByOffset(t *testing.T) {
 		slog.Default(),
 	)
 
-	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 8)
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", false, 10, 8)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1806,7 +1806,7 @@ func TestGetTransactions_AllNegativePageWithMorePages_PaginationContinues(t *tes
 	)
 
 	const reqOffset, reqLimit = 5, 5
-	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", reqLimit, reqOffset)
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", false, reqLimit, reqOffset)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
