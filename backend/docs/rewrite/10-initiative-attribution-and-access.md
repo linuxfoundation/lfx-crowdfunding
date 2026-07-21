@@ -5,10 +5,11 @@
 
 ---
 
-**Status:** Agreed direction from exploratory research (July 2026) — not yet a spec or
+**Status:** Design proposal, July 2026 — **pending architecture review**. Not yet a spec or
 implementation plan. Related story:
 [LFXV2-2537](https://linuxfoundation.atlassian.net/browse/LFXV2-2537) *"Initiatives on behalf of
-projects and/or organizations"* (status: Requirements Needed).
+projects and/or organizations"*; epic
+[LFXV2-2759](https://linuxfoundation.atlassian.net/browse/LFXV2-2759).
 
 **TL;DR.** Today a Crowdfunding (CF) initiative is manageable by exactly one user (`owner_id`).
 The proposal: each initiative carries an **attribution** — *personal* (default), *organization*
@@ -147,7 +148,7 @@ Two NATS subjects cover everything CF needs:
 | Subject | Use |
 |---|---|
 | `lfx.access_check.request` | Batch yes/no checks (`entity:UID#writer@user`) — the edit-access gate |
-| `lfx.access_check.read_tuples` | Enumerate a user's relations per object type — feeds the fundraise-form dropdowns |
+| `lfx.access_check.read_tuples` | Enumerate a user's FGA relations per object type — feeds the fundraise-form dropdowns **if** the eligibility gate is the `writer` relation (open question 2) |
 
 **Fallback** if direct NATS access is not granted to CF: `lfx-v2-access-check` exposes an HTTP
 wrapper over the same check. Either way, the integration hides behind a small
@@ -198,6 +199,11 @@ sequenceDiagram
     Note over FE: user picks Personal (default),<br/>an org, or a project — no free text
 ```
 
+This flow assumes the eligibility gate is the `writer` relation. If the PM instead chooses
+*affiliation* (open question 2), the dropdown source is affiliation data — which is not an FGA
+relation and would come from the platform's profile/affiliation source, not `read_tuples`. The
+edit-access check (§3.2) is unaffected either way.
+
 ---
 
 ## 4. Organization donations (separable)
@@ -229,8 +235,8 @@ Each independently shippable; M3 can move ahead of M1/M2.
 
 | # | Scope | Delivers |
 |---|---|---|
-| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID), form step with affiliation pickers (`read_tuples`), details-page source label. No access changes. | Most of LFXV2-2537 |
-| M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, SS lens "Initiatives" pages. Note: the lens listing is an *authorization-aware* query, not a public search — entity writers should also see unpublished/pending initiatives attributed to their entity (spotting claims made in their name before they go live), which requires the access check on the listing endpoint. | Multi-person management |
+| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID), form step with eligibility pickers (source per open question 2), details-page source label. No access changes. | Most of LFXV2-2537 |
+| M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages. The lens listing is an *authorization-aware* query: entity writers also see unpublished initiatives attributed to their entity, so the listing endpoint needs the access check too. | Multi-person management |
 | M3 | **Org donations cleanup** — `b2b_org` link, canonical-org picker, dedup | Reconciled org donors |
 
 Scope-reduction lever: ship the Project lens page before the Organization lens page (the
@@ -256,8 +262,6 @@ maintainer story is the strongest).
    identifier is the LF SSO username. Confirm the identifier CF must send in checks.
 5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
-6. **Frontend gating.** The Nuxt frontend needs a "can manage" signal to show/hide management UI
-   (server-enforced regardless).
 
 ---
 
