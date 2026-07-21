@@ -89,6 +89,26 @@ func txn(userID string, amountCents int64) models.Transaction {
 
 // --- Tests ---
 
+// TestGetMyTransactions_ForwardsSubscriptionOnly verifies that SubscriptionOnly
+// is set in the TransactionFilter forwarded to the Ledger client.
+func TestGetMyTransactions_ForwardsSubscriptionOnly(t *testing.T) {
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{
+			Data:  []models.Transaction{txn(testUserID, 300)},
+			Limit: 10,
+		},
+	}
+	svc := newMyTxnSvc(t, ledger)
+
+	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "", true, 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ledger.lastFilter.SubscriptionOnly {
+		t.Error("TransactionFilter.SubscriptionOnly should be true when subscriptionOnly=true is passed")
+	}
+}
+
 // TestGetMyTransactions_ForwardsUserID verifies that UserID is set in the
 // TransactionFilter forwarded to the Ledger client.
 func TestGetMyTransactions_ForwardsUserID(t *testing.T) {

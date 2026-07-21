@@ -1822,6 +1822,33 @@ func TestGetTransactions_AllNegativePageWithMorePages_PaginationContinues(t *tes
 	}
 }
 
+func TestGetTransactions_SubscriptionOnly_ForwardsFlag(t *testing.T) {
+	// Verify that SubscriptionOnly=true propagates from the service call to the
+	// Ledger client. txnMockLedgerClient discards its filter, so we use the
+	// capturingLedger from initiative_service_transactions_test.go instead.
+	txn := models.Transaction{ID: "s1", AmountCents: 300, Type: "donation"}
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{Data: []models.Transaction{txn}, TotalCount: 1},
+	}
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		&mockStripeClient{},
+		&mockEmailService{},
+		nil,
+		slog.Default(),
+	)
+
+	_, err := svc.GetTransactions(context.Background(), "proj-1", "donation", true, 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ledger.lastFilter.SubscriptionOnly {
+		t.Error("TransactionFilter.SubscriptionOnly should be true when subscriptionOnly=true is passed")
+	}
+}
+
 // ── donation_mode + sponsorship tiers — Create ────────────────────────────────
 
 func TestCreate_DonationMode_DefaultsToOpen(t *testing.T) {
