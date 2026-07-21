@@ -563,6 +563,38 @@ func TestGetTransactions_Published_Returns200(t *testing.T) {
 	}
 }
 
+func TestGetTransactions_SubscriptionOnly_ForwardsFlag(t *testing.T) {
+	// Verify that ?subscriptionOnly=true is parsed by the handler and reaches
+	// the Ledger client as TransactionFilter.SubscriptionOnly = true.
+	initiativeID := "77777778-7777-7777-7777-777777777777"
+	capture := &filterCapturingLedger{
+		list: &models.TransactionList{
+			Data:       []models.Transaction{{ID: "txn-s", AmountCents: 500}},
+			TotalCount: 1,
+		},
+	}
+	repo := &initiativeRepo{
+		initiative: &models.Initiative{
+			ID:     initiativeID,
+			Status: models.StatusPublished,
+		},
+	}
+	svc := service.NewInitiativeService(repo, &initiativeUserRepo{}, capture, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
+	h := NewInitiativeHandler(svc, nil, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?subscriptionOnly=true", nil)
+	req = withURLParam(req, "id", initiativeID)
+	w := httptest.NewRecorder()
+	h.GetTransactions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !capture.lastFilter.SubscriptionOnly {
+		t.Error("TransactionFilter.SubscriptionOnly should be true when ?subscriptionOnly=true is sent")
+	}
+}
+
 func TestGetTransactions_NotPublished_Returns404(t *testing.T) {
 	initiativeID := "88888888-8888-8888-8888-888888888888"
 	repo := &initiativeRepo{
