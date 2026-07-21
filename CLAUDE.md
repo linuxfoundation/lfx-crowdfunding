@@ -29,6 +29,7 @@ make deploy-kind   # Deploy to local Kind cluster with Helm
 ```
 
 Entry points:
+
 - `cmd/initiatives-api/` — HTTP API server (port 8080, `GET /livez` for health)
 - `cmd/ledger-stats-sync/` — CronJob that syncs financial data hourly from ledger service
 
@@ -73,12 +74,14 @@ Nuxt 4 BFF — server-side auth with HTTP-only session cookies (OAuth2 PKCE, Aut
 ## Environment Setup
 
 **Backend** — create `backend/.env`:
+
 - `DATABASE_URL` — e.g. `postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - `LEDGER_BASE_URL`, `LEDGER_API_KEY`
 - `JWKS_URL` — Auth0 JWKS (or use `DISABLED_MOCK_LOCAL_PRINCIPAL=true` to skip JWT validation locally)
 
 **Frontend** — create `frontend/.env` from `frontend/.env.example`:
+
 - `NUXT_PUBLIC_AUTH0_CLIENT_ID`, `NUXT_AUTH0_CLIENT_SECRET`
 - `NUXT_JWT_SECRET` — random string for session signing
 - Auth0 domain defaults to `linuxfoundation-dev.auth0.com` when `NUXT_APP_ENV=development`
@@ -94,3 +97,4 @@ Nuxt 4 BFF — server-side auth with HTTP-only session cookies (OAuth2 PKCE, Aut
   - App-level types (components, composables): `frontend/app/types/<domain>.types.ts` — import via `~/types/<domain>.types`
   - Server-side types (wire shapes, middleware interfaces): `frontend/server/types/<domain>.types.ts` — import via relative path
 - **Frontend constants:** Never define component-local constants (option arrays, label/color/icon lookup maps, default-value factories) inline in a `.vue` file's `<script setup>`, even when scoped to a single component. Place them in `frontend/app/components/modules/<module>/config/<feature>.config.ts` and import them (see `fundraise/config/initiative-types.config.ts` for the pattern). A precedent for inlining elsewhere in the codebase is not a reason to repeat it in new code.
+- **User docs:** When a change adds or materially alters a user-facing feature, update the matching page(s) under `docs/user/` (or add a new one, following the pattern of existing pages — frontmatter, screenshot placeholders under `frontend/public/images/docs/screenshots/<section>/`, "Related sections" cross-links). Don't ship the feature without also updating its docs.
