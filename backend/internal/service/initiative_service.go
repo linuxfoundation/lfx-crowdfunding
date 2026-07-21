@@ -811,16 +811,17 @@ func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
 // other users the param was ignored server-side — the request fails rather than
 // returning incorrect pagination metadata. The same negative-donation post-processing
 // applied by GetTransactions is also applied here.
-func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, limit, offset int) (*models.TransactionList, error) {
+func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyTransactions")
 	defer span.End()
 
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
-		ProjectID: initiativeID,
-		TxnType:   txnType,
-		UserID:    userID,
-		Limit:     limit,
-		Offset:    offset,
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		UserID:           userID,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
 	})
 	if err != nil {
 		return nil, err
@@ -874,15 +875,16 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
-func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, limit, offset int) (*models.TransactionList, error) {
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
 	defer span.End()
 
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
-		ProjectID: initiativeID,
-		TxnType:   txnType,
-		Limit:     limit,
-		Offset:    offset,
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
 	})
 	if err != nil {
 		return nil, err

@@ -1691,7 +1691,7 @@ func TestGetTransactions_NegativeAmountsFilteredForDonations(t *testing.T) {
 		slog.Default(),
 	)
 
-	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 0)
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1727,7 +1727,7 @@ func TestGetTransactions_NegativeAmountsNotFilteredForExpenses(t *testing.T) {
 		slog.Default(),
 	)
 
-	list, err := svc.GetTransactions(context.Background(), "some-id", "reimbursement", 10, 0)
+	list, err := svc.GetTransactions(context.Background(), "some-id", "reimbursement", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1762,7 +1762,7 @@ func TestGetTransactions_TotalCountClampedByOffset(t *testing.T) {
 		slog.Default(),
 	)
 
-	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", 10, 8)
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", false, 10, 8)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1806,7 +1806,7 @@ func TestGetTransactions_AllNegativePageWithMorePages_PaginationContinues(t *tes
 	)
 
 	const reqOffset, reqLimit = 5, 5
-	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", reqLimit, reqOffset)
+	list, err := svc.GetTransactions(context.Background(), "some-id", "donation", false, reqLimit, reqOffset)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1819,6 +1819,33 @@ func TestGetTransactions_AllNegativePageWithMorePages_PaginationContinues(t *tes
 	if nextOffset >= list.TotalCount {
 		t.Errorf("pagination would stop: nextOffset(%d) >= TotalCount(%d); want TotalCount > %d",
 			nextOffset, list.TotalCount, nextOffset)
+	}
+}
+
+func TestGetTransactions_SubscriptionOnly_ForwardsFlag(t *testing.T) {
+	// Verify that SubscriptionOnly=true propagates from the service call to the
+	// Ledger client. txnMockLedgerClient discards its filter, so we use the
+	// capturingLedger from initiative_service_transactions_test.go instead.
+	txn := models.Transaction{ID: "s1", AmountCents: 300, Type: "donation"}
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{Data: []models.Transaction{txn}, TotalCount: 1},
+	}
+	svc := NewInitiativeService(
+		&mockInitiativeRepo{},
+		&mockUserRepository{},
+		ledger,
+		&mockStripeClient{},
+		&mockEmailService{},
+		nil,
+		slog.Default(),
+	)
+
+	_, err := svc.GetTransactions(context.Background(), "proj-1", "donation", true, 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ledger.lastFilter.SubscriptionOnly {
+		t.Error("TransactionFilter.SubscriptionOnly should be true when subscriptionOnly=true is passed")
 	}
 }
 

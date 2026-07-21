@@ -305,7 +305,9 @@ func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Req
 		offset = 0
 	}
 
-	list, err := h.svc.GetMyTransactions(r.Context(), initiativeID, principal.UserID, ledgerTxnType, limit, offset)
+	subscriptionOnly := r.URL.Query().Get("subscriptionOnly") == "true"
+
+	list, err := h.svc.GetMyTransactions(r.Context(), initiativeID, principal.UserID, ledgerTxnType, subscriptionOnly, limit, offset)
 	if err != nil {
 		Error(w, err)
 		return
@@ -382,7 +384,9 @@ func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Req
 		offset = 0
 	}
 
-	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, limit, offset)
+	subscriptionOnly := r.URL.Query().Get("subscriptionOnly") == "true"
+
+	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, subscriptionOnly, limit, offset)
 	if err != nil {
 		Error(w, err)
 		return

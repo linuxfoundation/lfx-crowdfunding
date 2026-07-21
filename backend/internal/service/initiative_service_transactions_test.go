@@ -89,13 +89,33 @@ func txn(userID string, amountCents int64) models.Transaction {
 
 // --- Tests ---
 
+// TestGetMyTransactions_ForwardsSubscriptionOnly verifies that SubscriptionOnly
+// is set in the TransactionFilter forwarded to the Ledger client.
+func TestGetMyTransactions_ForwardsSubscriptionOnly(t *testing.T) {
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{
+			Data:  []models.Transaction{txn(testUserID, 300)},
+			Limit: 10,
+		},
+	}
+	svc := newMyTxnSvc(t, ledger)
+
+	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "", true, 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ledger.lastFilter.SubscriptionOnly {
+		t.Error("TransactionFilter.SubscriptionOnly should be true when subscriptionOnly=true is passed")
+	}
+}
+
 // TestGetMyTransactions_ForwardsUserID verifies that UserID is set in the
 // TransactionFilter forwarded to the Ledger client.
 func TestGetMyTransactions_ForwardsUserID(t *testing.T) {
 	ledger := &capturingLedger{resp: &models.TransactionList{Limit: 10}}
 	svc := newMyTxnSvc(t, ledger)
 
-	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "", 10, 0)
+	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,7 +139,7 @@ func TestGetMyTransactions_HappyPath(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "", 10, 0)
+	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,7 +161,7 @@ func TestGetMyTransactions_ForeignRowsError(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", 10, 0)
+	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, 10, 0)
 	if err == nil {
 		t.Fatal("expected error for foreign rows, got nil")
 	}
@@ -162,7 +182,7 @@ func TestGetMyTransactions_AllForeignRowsError(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", 2, 0)
+	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, 2, 0)
 	if err == nil {
 		t.Fatal("expected error for all-foreign page, got nil")
 	}
@@ -186,7 +206,7 @@ func TestGetMyTransactions_ExcludesNegativeDonations(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", 10, 0)
+	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -222,7 +242,7 @@ func TestGetMyTransactions_NegativeDonationsPaginationClamp(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", limit, offset)
+	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, limit, offset)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -242,7 +262,7 @@ func TestGetMyTransactions_EmptyPage(t *testing.T) {
 	ledger := &capturingLedger{resp: &models.TransactionList{Limit: 10}}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", 10, 0)
+	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
