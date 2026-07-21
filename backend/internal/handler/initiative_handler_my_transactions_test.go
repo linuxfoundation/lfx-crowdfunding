@@ -291,6 +291,43 @@ func TestGetMyTransactions_304IncludesCacheHeaders(t *testing.T) {
 	}
 }
 
+func TestGetMyTransactions_SubscriptionOnly_ForwardsFlag(t *testing.T) {
+	// Verify that ?subscriptionOnly=true is parsed and forwarded to the Ledger
+	// client as TransactionFilter.SubscriptionOnly = true.
+	initiativeID := "e7e7e7e7-e7e7-e7e7-e7e7-e7e7e7e7e7e7"
+	callerUserID := "auth0|sub-filter-user"
+
+	capture := &filterCapturingLedger{
+		list: &models.TransactionList{
+			Data: []models.Transaction{
+				{ID: "t1", AmountCents: 300, LedgerUserID: callerUserID},
+			},
+			TotalCount: 1,
+			Limit:      10,
+		},
+	}
+	repo := &initiativeRepo{
+		initiative: &models.Initiative{
+			ID:     initiativeID,
+			Status: models.StatusPublished,
+		},
+	}
+	h := newMyTxnHandler(repo, capture)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions?subscriptionOnly=true", nil)
+	req = withURLParam(req, "id", initiativeID)
+	req = withPrincipal(req, &models.Principal{UserID: callerUserID})
+	w := httptest.NewRecorder()
+	h.GetMyTransactions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !capture.lastFilter.SubscriptionOnly {
+		t.Error("TransactionFilter.SubscriptionOnly should be true when ?subscriptionOnly=true is sent")
+	}
+}
+
 func TestGetMyTransactions_Returns200WithData(t *testing.T) {
 	initiativeID := "e6e6e6e6-e6e6-e6e6-e6e6-e6e6e6e6e6e6"
 	callerUserID := "auth0|happy-user"
