@@ -5,7 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  dompurify: ">=3.4.11"
+  dompurify: ">=3.4.12"
+  immutable: ">=5.1.8"
+  svgo: ">=4.0.2"
   undici: 7.28.0
   ws: ">=8.21.0 <9"
   devalue: ^5.8.1
@@ -6007,10 +6009,10 @@ packages:
       }
     engines: { node: ">= 4" }
 
-  dompurify@3.4.11:
+  dompurify@3.4.12:
     resolution:
       {
-        integrity: sha512-zhlUV12GsaRzMsf9q5M254YhA4+VuF0fG+QFqu6aYpoGlKtz+w8//jBcGVYBgQkR5GHjUomejY84AV+/uPbWdw==,
+        integrity: sha512-zQvGet8Z2sWbQhCmfFz/T5QWH2oBmjnqK3qvOjaqaNLrLEF912WamU+ohnTp0TCep/MFVHpdJuCZEdFOdTnEFg==,
       }
 
   domutils@3.2.2:
@@ -7428,10 +7430,10 @@ packages:
         integrity: sha512-3MOLanc3sb3LNGWQl1RlQlNWURE5g32aUphrDyFeCsxBTk08iE3VNe4CwsUZ0Qs1X+EfX0+r29Sxdpza4B+yRA==,
       }
 
-  immutable@5.1.5:
+  immutable@5.1.9:
     resolution:
       {
-        integrity: sha512-t7xcm2siw+hlUM68I+UEOK+z84RzmN59as9DZ7P1l0994DKUWV7UXBMQZVxaoMSRQ+PBZbHCOoBt7a2wxOMt+A==,
+        integrity: sha512-m8nVez3rwrgmWxtLMt1ZYXB2Lv7OKYn/disyxAlSDYAlKSlFoPPfIAmAM/M5xqL4m4C/wAPw7S2/CNaUii1Hxg==,
       }
 
   import-fresh@3.3.1:
@@ -10902,10 +10904,10 @@ packages:
       }
     engines: { node: ">= 0.4" }
 
-  svgo@4.0.1:
+  svgo@4.0.2:
     resolution:
       {
-        integrity: sha512-XDpWUOPC6FEibaLzjfe0ucaV0YrOjYotGJO1WpF0Zd+n6ZGEQUsSugaoLq9QkEZtAfQIxT42UChcssDVPP3+/w==,
+        integrity: sha512-ekx94z1rRc5LDi6oSUaeRnYhd0UOJxdtQCL2rF8xpWxD3TPAsISWOrxezqGovqS38GRZOdpDfvQe3ts6F7nsng==,
       }
     engines: { node: ">=16" }
     hasBin: true
@@ -16268,7 +16270,7 @@ snapshots:
     dependencies:
       domelementtype: 2.3.0
 
-  dompurify@3.4.11:
+  dompurify@3.4.12:
     optionalDependencies:
       "@types/trusted-types": 2.0.7
 
@@ -17284,7 +17286,7 @@ snapshots:
 
   image-meta@0.2.2: {}
 
-  immutable@5.1.5: {}
+  immutable@5.1.9: {}
 
   import-fresh@3.3.1:
     dependencies:
@@ -17523,7 +17525,7 @@ snapshots:
 
   isomorphic-dompurify@2.36.0:
     dependencies:
-      dompurify: 3.4.11
+      dompurify: 3.4.12
       jsdom: 28.1.0
     transitivePeerDependencies:
       - "@noble/hashes"
@@ -19082,7 +19084,7 @@ snapshots:
     dependencies:
       postcss: 8.5.15
       postcss-value-parser: 4.2.0
-      svgo: 4.0.1
+      svgo: 4.0.2
 
   postcss-unique-selectors@8.0.1(postcss@8.5.15):
     dependencies:
@@ -19479,7 +19481,7 @@ snapshots:
   sass@1.99.0:
     dependencies:
       chokidar: 4.0.3
-      immutable: 5.1.5
+      immutable: 5.1.9
       source-map-js: 1.2.1
     optionalDependencies:
       "@parcel/watcher": 2.5.6
@@ -19824,7 +19826,7 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  svgo@4.0.1:
+  svgo@4.0.2:
     dependencies:
       commander: 11.1.0
       css-select: 5.2.2
