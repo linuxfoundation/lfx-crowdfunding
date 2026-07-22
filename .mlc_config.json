@@ -20,6 +20,10 @@
     {
       "pattern": "^https://crowdfunding\\.linuxfoundation\\.org/images/docs/",
       "comment": "Docs screenshot images served from the production LFX Crowdfunding site — not yet available in CI (site not yet deployed to production)"
+    },
+    {
+      "pattern": "^https://app\\.lfx\\.dev/",
+      "comment": "Requires Auth0 SSO login — unreachable by an unauthenticated link checker"
     }
   ],
   "timeout": "20s",
