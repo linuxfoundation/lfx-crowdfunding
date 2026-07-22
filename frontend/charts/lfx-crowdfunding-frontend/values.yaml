@@ -82,7 +82,7 @@ topologySpreadConstraints: []
 
 # ── Non-secret environment variables ─────────────────────────────────────────
 config:
-  NUXT_APP_ENV: "production"
+  NUXT_PUBLIC_APP_ENV: "production"
   NUXT_APP_URL: "" # set per environment, e.g. https://funding.platform.linuxfoundation.org
   NUXT_AUTH0_COOKIE_DOMAIN: "" # set per environment, e.g. platform.linuxfoundation.org
   NUXT_PUBLIC_AUTH0_CLIENT_ID: ""

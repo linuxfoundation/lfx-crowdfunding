@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-const appEnv = process.env.NUXT_APP_ENV || 'development';
+const appEnv = process.env.NUXT_PUBLIC_APP_ENV || 'development';
 const isProduction = appEnv === 'production';
 
 if (isProduction) {
