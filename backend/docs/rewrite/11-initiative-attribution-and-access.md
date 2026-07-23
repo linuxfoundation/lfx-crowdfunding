@@ -104,6 +104,8 @@ Design rules:
 - **Fail closed.** If the upstream check errors, deny management access.
 - **CF stores no roles.** No membership tables, no role columns — CF stores one entity reference
   and asks the platform the membership question at request time.
+- **Who made a given change is out of scope here.** M2 lets multiple writers manage the same
+  initiative, but this proposal doesn't add per-change attribution — see open question 6.
 
 ---
 
@@ -262,6 +264,15 @@ maintainer story is the strongest).
    identifier is the LF SSO username. Confirm the identifier CF must send in checks.
 5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
+6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
+   `initiative_announcements` tracks *which* writer made a given change today — `initiatives` has
+   no `updated_by`, and `initiative_announcements.created_by` is stamped once at creation and never
+   revisited by later `PUT`s, so an announcement edited by a second writer still displays the
+   original author. That's harmless while an initiative has exactly one manager; once M2 lets
+   multiple org/project writers manage the same initiative, "who changed this" becomes answerable
+   only from the last `updated_on` timestamp, not a which-writer record. Decide before M2 ships
+   whether that's acceptable or whether initiatives and announcements need a minimal `updated_by`
+   column (not a full audit/edit-history log unless a real need surfaces). Confirm with PM.
 
 ---
 
