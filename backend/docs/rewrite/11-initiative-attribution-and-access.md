@@ -131,7 +131,7 @@ Design rules:
 
 ```mermaid
 flowchart LR
-    SS[Self Serve<br/>lens pages] -->|HTTP /v1/me/*<br/>see §3.2 note| API
+    SS[Self Serve<br/>lens pages] -->|HTTP /v1/me/*| API
     FE[CF frontend<br/>Nuxt BFF] -->|HTTP| API
 
     subgraph CF[Crowdfunding Go API]
@@ -148,17 +148,6 @@ flowchart LR
         MS[member-service] -.->|b2b_org tuples| FGASYNC
     end
 ```
-
-> **Architecture decision to reconcile (SS → CF runtime dependency).**
-> [`02-decisions.md`](./02-decisions.md) (the "LFX Self Serve integration" section) states that SS
-> reads CF data from **Snowflake via Fivetran**, with *no runtime dependency between SS and the CF
-> API service* — accepting a 24h sync delay for summary widgets. The lens "Initiatives" pages here
-> are different: they show **authorization-sensitive unpublished data** (an entity writer seeing
-> drafts attributed to their org/project before they go live), which a 24h Snowflake copy cannot
-> gate per-viewer. That requires a **live** SS → CF `/v1/me/*` call, contradicting the earlier
-> decision *for this surface only*. This must be resolved in architecture review: either accept the
-> runtime dependency for lens pages (superseding `02-decisions.md` for this case) or drop
-> unpublished visibility and keep lenses on the Snowflake path.
 
 ### 3.1 Why fga-sync (and not the alternatives)
 
