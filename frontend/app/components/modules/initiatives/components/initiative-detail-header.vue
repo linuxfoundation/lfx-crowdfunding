@@ -203,8 +203,14 @@ const checkTruncation = async () => {
   }
 };
 
-// Recompute on element resize (viewport changes, font load, etc.)
-useResizeObserver(descRef, checkTruncation);
+// Recompute on element resize (viewport changes, font load, etc.).
+// Deferred via rAF: checkTruncation toggles the "Read more" button inside the
+// observed element, and mutating the DOM synchronously in the observer callback
+// re-triggers it in the same delivery cycle, causing the browser to emit
+// "ResizeObserver loop completed with undelivered notifications".
+useResizeObserver(descRef, () => {
+  requestAnimationFrame(checkTruncation);
+});
 // Also recompute when the description text changes (e.g. async loads) since
 // ResizeObserver won't fire if the clamped element's border-box stays the same.
 // `immediate: true` covers the initial mount run.
