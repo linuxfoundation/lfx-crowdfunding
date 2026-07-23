@@ -5,7 +5,9 @@ packages:
   - "."
 
 overrides:
-  dompurify: ">=3.4.11"
+  dompurify: ">=3.4.12"
+  immutable: ">=5.1.8"
+  svgo: ">=4.0.2"
   undici: "7.28.0"
   ws: ">=8.21.0 <9"
   devalue: "^5.8.1"

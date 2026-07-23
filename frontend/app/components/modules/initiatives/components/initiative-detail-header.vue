@@ -73,13 +73,17 @@ SPDX-License-Identifier: MIT
                   >
                     {{ plainDescription }}
                   </p>
-                  <lfx-button
-                    v-if="isTruncated"
-                    label="Read more"
-                    type="transparent"
-                    size="small"
-                    @click="$emit('update:activeTab', 'about')"
-                  />
+                  <!-- SSR can't measure scrollHeight/clientHeight, so whether this
+                       button should show is only known client-side (LFXV2-2700). -->
+                  <client-only>
+                    <lfx-button
+                      v-if="isTruncated"
+                      label="Read more"
+                      type="transparent"
+                      size="small"
+                      @click="$emit('update:activeTab', 'about')"
+                    />
+                  </client-only>
                 </div>
               </div>
             </div>

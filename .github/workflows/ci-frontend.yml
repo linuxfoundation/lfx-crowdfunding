@@ -167,7 +167,7 @@ jobs:
         working-directory: frontend
         run: pnpm dev &
         env:
-          NUXT_APP_ENV: "development"
+          NUXT_PUBLIC_APP_ENV: "development"
           NUXT_API_BASE_URL: "http://localhost:8080"
           NUXT_JWT_SECRET: "e2e-test-jwt-secret-not-used-for-real-auth"
           NUXT_PUBLIC_AUTH0_CLIENT_ID: "placeholder"
