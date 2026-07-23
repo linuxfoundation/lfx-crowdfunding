@@ -13,6 +13,7 @@ type Transaction struct {
 	AmountCents int64     `json:"amount_cents"`
 	Date        time.Time `json:"date"`
 	Category    string    `json:"category,omitempty"`
+	Recurring   bool      `json:"recurring"`
 
 	DonorName     string `json:"donor_name,omitempty"`
 	DonorType     string `json:"donor_type,omitempty"` // "organization" | "individual"

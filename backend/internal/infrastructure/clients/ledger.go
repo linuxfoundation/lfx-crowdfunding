@@ -167,8 +167,9 @@ type ledgerTransactionRaw struct {
 	SubmitterName  string `json:"submitterName"`
 	TxnType        string `json:"txnType"` // "credit" | "debit"
 	TxnCategory    string `json:"txnCategory"`
-	Amount         int64  `json:"amount"`  // cents
-	TxnDate        int64  `json:"txnDate"` // unix seconds
+	Amount         int64  `json:"amount"`         // cents
+	TxnDate        int64  `json:"txnDate"`        // unix seconds
+	SubscriptionID string `json:"subscriptionID"` // non-empty for recurring charges
 }
 
 type ledgerTransactionsResponse struct {
@@ -256,6 +257,7 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			Category:     raw.TxnCategory,
 			DonorType:    donorType,
 			DonorName:    raw.SubmitterName,
+			Recurring:    raw.SubscriptionID != "",
 			LedgerUserID: raw.UserID,
 			LedgerOrgID:  raw.OrganizationID,
 		})
