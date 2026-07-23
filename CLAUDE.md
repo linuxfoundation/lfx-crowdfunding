@@ -84,7 +84,7 @@ Nuxt 4 BFF — server-side auth with HTTP-only session cookies (OAuth2 PKCE, Aut
 
 - `NUXT_PUBLIC_AUTH0_CLIENT_ID`, `NUXT_AUTH0_CLIENT_SECRET`
 - `NUXT_JWT_SECRET` — random string for session signing
-- Auth0 domain defaults to `linuxfoundation-dev.auth0.com` when `NUXT_APP_ENV=development`
+- Auth0 domain defaults to `linuxfoundation-dev.auth0.com` when `NUXT_PUBLIC_APP_ENV=development`
 
 ## Conventions
 

@@ -191,7 +191,7 @@ pnpm dev
 | `NUXT_AUTH0_CLIENT_SECRET` | Auth0 client secret for the dev tenant |
 | `NUXT_JWT_SECRET` | Any random string for local session signing |
 
-Auth0 domain is set automatically to `linuxfoundation-dev.auth0.com` when `NUXT_APP_ENV=development` (the default).
+Auth0 domain is set automatically to `linuxfoundation-dev.auth0.com` when `NUXT_PUBLIC_APP_ENV=development` (the default).
 
 ## Contributing
 

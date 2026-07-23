@@ -1,10 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-const isProduction = process.env.NUXT_APP_ENV === 'production';
-const isDevelopment = process.env.NODE_ENV === 'development';
-
-export default {
-  // Allow crawling on production and local dev; block all other environments (staging/preview).
-  disallow: isProduction || isDevelopment ? [] : ['/'],
-};
+// The actual per-environment disallow decision is made at request time in
+// server/plugins/robots.ts, since this file is evaluated at build time and
+// the same built image is deployed to multiple environments (LFXV2-2700).
+export default {};
