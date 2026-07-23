@@ -8,13 +8,12 @@ import "time"
 
 // Transaction represents a single donation or disbursement returned by the Ledger service.
 type Transaction struct {
-	ID             string    `json:"id"`
-	Type           string    `json:"type"` // "donation" | "reimbursement"
-	AmountCents    int64     `json:"amount_cents"`
-	Date           time.Time `json:"date"`
-	Category       string    `json:"category,omitempty"`
-	Recurring      bool      `json:"recurring"`
-	InitiativeName string    `json:"initiative_name,omitempty"`
+	ID          string    `json:"id"`
+	Type        string    `json:"type"` // "donation" | "reimbursement"
+	AmountCents int64     `json:"amount_cents"`
+	Date        time.Time `json:"date"`
+	Category    string    `json:"category,omitempty"`
+	Recurring   bool      `json:"recurring"`
 
 	DonorName     string `json:"donor_name,omitempty"`
 	DonorType     string `json:"donor_type,omitempty"` // "organization" | "individual"
@@ -28,8 +27,9 @@ type Transaction struct {
 
 // TransactionList wraps a paginated list of transactions.
 type TransactionList struct {
-	Data       []Transaction `json:"data"`
-	TotalCount int           `json:"total_count"`
-	Limit      int           `json:"limit"`
-	Offset     int           `json:"offset"`
+	Data           []Transaction `json:"data"`
+	InitiativeName string        `json:"initiative_name,omitempty"`
+	TotalCount     int           `json:"total_count"`
+	Limit          int           `json:"limit"`
+	Offset         int           `json:"offset"`
 }
