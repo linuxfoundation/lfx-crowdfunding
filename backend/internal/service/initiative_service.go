@@ -869,6 +869,11 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	if initiative, err := s.repo.GetByID(ctx, initiativeID); err == nil && initiative != nil {
+		for i := range list.Data {
+			list.Data[i].InitiativeName = initiative.Name
+		}
+	}
 	return list, nil
 }
 
@@ -931,6 +936,11 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	if initiative, err := s.repo.GetByID(ctx, initiativeID); err == nil && initiative != nil {
+		for i := range list.Data {
+			list.Data[i].InitiativeName = initiative.Name
+		}
+	}
 	return list, nil
 }
 

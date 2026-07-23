@@ -8,12 +8,13 @@ import "time"
 
 // Transaction represents a single donation or disbursement returned by the Ledger service.
 type Transaction struct {
-	ID          string    `json:"id"`
-	Type        string    `json:"type"` // "donation" | "reimbursement"
-	AmountCents int64     `json:"amount_cents"`
-	Date        time.Time `json:"date"`
-	Category    string    `json:"category,omitempty"`
-	Recurring   bool      `json:"recurring"`
+	ID             string    `json:"id"`
+	Type           string    `json:"type"` // "donation" | "reimbursement"
+	AmountCents    int64     `json:"amount_cents"`
+	Date           time.Time `json:"date"`
+	Category       string    `json:"category,omitempty"`
+	Recurring      bool      `json:"recurring"`
+	InitiativeName string    `json:"initiative_name,omitempty"`
 
 	DonorName     string `json:"donor_name,omitempty"`
 	DonorType     string `json:"donor_type,omitempty"` // "organization" | "individual"
