@@ -76,6 +76,9 @@ func (r *apprInitiativeRepo) ListPublished(_ context.Context) ([]models.Initiati
 func (r *apprInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
+func (r *apprInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
+}
 
 // apprLedgerClient is a no-op LedgerClient stub.
 type apprLedgerClient struct{}

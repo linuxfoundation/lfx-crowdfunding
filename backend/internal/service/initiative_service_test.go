@@ -81,6 +81,9 @@ func (m *mockInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) 
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
 }
+func (m *mockInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
+}
 func (m *mockInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	if m.ownerEmailErr != nil {
 		return models.OwnerInfo{}, m.ownerEmailErr
@@ -461,6 +464,9 @@ func (m *mockRepoForEnrich) GetOwnerInfoBySlug(_ context.Context, _ string) (mod
 }
 func (m *mockRepoForEnrich) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
 	return nil, nil
+}
+func (m *mockRepoForEnrich) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
 }
 
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {

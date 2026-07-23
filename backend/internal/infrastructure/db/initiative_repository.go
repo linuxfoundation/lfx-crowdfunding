@@ -1481,6 +1481,40 @@ func (r *InitiativeRepository) GetUsersByLegacyIDs(ctx context.Context, legacyID
 	return result, nil
 }
 
+// GetInitiativesByIDs returns a map of initiative UUID → Initiative for the given IDs.
+// IDs not found in the DB are silently omitted from the result.
+func (r *InitiativeRepository) GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetInitiativesByIDs")
+	defer span.End()
+
+	result := make(map[string]*models.Initiative, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, name FROM initiatives WHERE id = ANY($1::uuid[])`
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get initiatives by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var i models.Initiative
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan initiative: %w", err)
+		}
+		result[i.ID] = &i
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return result, fmt.Errorf("iterate initiatives: %w", err)
+	}
+	return result, nil
+}
+
 // GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs provided.
 // Missing IDs are absent from the map.
 func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {

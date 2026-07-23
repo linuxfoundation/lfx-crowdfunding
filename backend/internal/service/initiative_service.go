@@ -870,7 +870,9 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
 	if initiative, err := s.repo.GetByID(ctx, initiativeID); err == nil && initiative != nil {
-		list.InitiativeName = initiative.Name
+		for i := range list.Data {
+			list.Data[i].InitiativeName = initiative.Name
+		}
 	}
 	return list, nil
 }
@@ -935,8 +937,89 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
 	if initiative, err := s.repo.GetByID(ctx, initiativeID); err == nil && initiative != nil {
-		list.InitiativeName = initiative.Name
+		for i := range list.Data {
+			list.Data[i].InitiativeName = initiative.Name
+		}
 	}
+	return list, nil
+}
+
+// GetAllMyTransactions fetches all transactions for the authenticated user across
+// every initiative by omitting the projectID filter on the Ledger API.
+// initiative_name is enriched per-item from the CF DB using the projectID returned
+// by each Ledger row.
+func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetAllMyTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		TxnType:          txnType,
+		UserID:           userID,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Detect whether the Ledger API applied the userID filter server-side.
+	for _, t := range list.Data {
+		if t.LedgerUserID != userID {
+			span.RecordError(fmt.Errorf("ledger returned foreign rows for userID filter"))
+			return nil, fmt.Errorf(
+				"ledger returned rows for other users (server-side userID filtering unavailable): %w",
+				domain.ErrUpstreamUnavailable,
+			)
+		}
+	}
+
+	if txnType == "donation" {
+		fullPageLen := len(list.Data)
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
+
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+
+	// Collect unique project IDs from the page, then batch-fetch initiative names.
+	projectIDs := make([]string, 0, len(list.Data))
+	seen := map[string]bool{}
+	for _, t := range list.Data {
+		if t.LedgerProjectID != "" && !seen[t.LedgerProjectID] {
+			seen[t.LedgerProjectID] = true
+			projectIDs = append(projectIDs, t.LedgerProjectID)
+		}
+	}
+	if len(projectIDs) > 0 {
+		initiatives, batchErr := s.repo.GetInitiativesByIDs(ctx, projectIDs)
+		if batchErr == nil {
+			for i := range list.Data {
+				if ini, ok := initiatives[list.Data[i].LedgerProjectID]; ok {
+					list.Data[i].InitiativeName = ini.Name
+				}
+			}
+		}
+	}
+
 	return list, nil
 }
 

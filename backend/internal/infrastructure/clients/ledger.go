@@ -250,16 +250,17 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			donorType = "organization"
 		}
 		txns = append(txns, models.Transaction{
-			ID:           raw.TxnID,
-			Type:         txnType,
-			AmountCents:  raw.Amount,
-			Date:         time.Unix(raw.TxnDate, 0).UTC(),
-			Category:     raw.TxnCategory,
-			DonorType:    donorType,
-			DonorName:    raw.SubmitterName,
-			Recurring:    raw.SubscriptionID != "",
-			LedgerUserID: raw.UserID,
-			LedgerOrgID:  raw.OrganizationID,
+			ID:              raw.TxnID,
+			Type:            txnType,
+			AmountCents:     raw.Amount,
+			Date:            time.Unix(raw.TxnDate, 0).UTC(),
+			Category:        raw.TxnCategory,
+			DonorType:       donorType,
+			DonorName:       raw.SubmitterName,
+			Recurring:       raw.SubscriptionID != "",
+			LedgerUserID:    raw.UserID,
+			LedgerOrgID:     raw.OrganizationID,
+			LedgerProjectID: raw.ProjectID,
 		})
 	}
 
