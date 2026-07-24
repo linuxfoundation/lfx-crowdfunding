@@ -173,10 +173,11 @@ type ledgerTransactionRaw struct {
 }
 
 type ledgerTransactionsResponse struct {
-	TransactionsPerPage int                    `json:"transactionsPerPage"`
-	CurrentPage         int                    `json:"currentPage"`
-	HasNext             bool                   `json:"hasNext"`
-	Transactions        []ledgerTransactionRaw `json:"transactions"`
+	TotalTransactionCount int                    `json:"totalTransactionCount"`
+	TransactionsPerPage   int                    `json:"transactionsPerPage"`
+	CurrentPage           int                    `json:"currentPage"`
+	HasNext               bool                   `json:"hasNext"`
+	Transactions          []ledgerTransactionRaw `json:"transactions"`
 }
 
 // GetTransactions fetches a paginated list of transactions for an initiative
@@ -264,11 +265,7 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 		})
 	}
 
-	// Ledger doesn't return a total count on this endpoint; use HasNext to estimate.
-	totalCount := offset + len(txns)
-	if resp.HasNext {
-		totalCount += limit // at least one more page
-	}
+	totalCount := resp.TotalTransactionCount
 
 	return &models.TransactionList{
 		Data:       txns,
