@@ -333,6 +333,63 @@ func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Req
 	_, _ = w.Write(body)
 }
 
+// GetAllMyTransactions handles GET /v1/me/transactions — requires JWT.
+// Returns all Ledger transactions for the authenticated user across every initiative.
+func (h *InitiativeHandler) GetAllMyTransactions(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.UserID == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	txnTypeParam := strings.ToLower(r.URL.Query().Get("type"))
+	var ledgerTxnType string
+	switch txnTypeParam {
+	case "donations":
+		ledgerTxnType = "donation"
+	case "expenses":
+		ledgerTxnType = "reimbursement"
+	}
+
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
+	if limit <= 0 {
+		limit = defaultTransactionPageSize
+	} else if limit > maxTransactionPageSize {
+		limit = maxTransactionPageSize
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	subscriptionOnly := r.URL.Query().Get("subscriptionOnly") == "true"
+
+	list, err := h.svc.GetAllMyTransactions(r.Context(), principal.UserID, ledgerTxnType, subscriptionOnly, limit, offset)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	body, err := json.Marshal(list)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	etag := etagOf(body)
+	w.Header().Set("Vary", "Authorization")
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Content-Type", "application/json")
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
 // GetTransactionsForUser handles GET /v1/me/initiatives/{id}/transactions — requires
 // JWT with access:me scope. Returns transactions for the caller's own initiative in
 // any status, so owners can view their non-published initiative's transactions (the

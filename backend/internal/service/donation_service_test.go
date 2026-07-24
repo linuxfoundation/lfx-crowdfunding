@@ -67,6 +67,9 @@ func (r *summaryInitiativeRepo) GetOrganizationsByIDs(ctx context.Context, ids [
 	}
 	return map[string]models.Organization{}, nil
 }
+func (r *summaryInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
+}
 
 // --- projectDonationSummaries ---
 

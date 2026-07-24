@@ -100,6 +100,9 @@ func (m *mockInitiativeRepoForAnn) GetUsersByLegacyIDs(_ context.Context, _ []st
 func (m *mockInitiativeRepoForAnn) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
+func (m *mockInitiativeRepoForAnn) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
+}
 func (m *mockInitiativeRepoForAnn) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
