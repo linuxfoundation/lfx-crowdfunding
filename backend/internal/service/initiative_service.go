@@ -968,6 +968,9 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 	}
 
 	// Detect whether the Ledger API applied the userID filter server-side.
+	// If any returned row belongs to a different user the param was ignored and
+	// we cannot produce valid results — fail rather than expose another user's
+	// transactions or return misleading pagination metadata.
 	for _, t := range list.Data {
 		if t.LedgerUserID != userID {
 			span.RecordError(fmt.Errorf("ledger returned foreign rows for userID filter"))
@@ -978,6 +981,9 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 		}
 	}
 
+	// The Ledger stores some grant disbursements as credit-type rows with negative
+	// amounts. Exclude them when type=donation, matching GetTransactions and
+	// GetMyTransactions semantics.
 	if txnType == "donation" {
 		fullPageLen := len(list.Data)
 		hasMorePages := list.TotalCount > offset+fullPageLen

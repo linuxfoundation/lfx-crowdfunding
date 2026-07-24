@@ -319,7 +319,7 @@ func TestGetAllMyTransactions_ForeignRowsError(t *testing.T) {
 
 // TestGetAllMyTransactions_ExcludesNegativeDonations verifies that negative-amount
 // credit rows (grant disbursements) are excluded when type=donation, matching the
-// behavior of the per-initiative GetTransactions method.
+// behaviour of GetTransactions and GetMyTransactions.
 func TestGetAllMyTransactions_ExcludesNegativeDonations(t *testing.T) {
 	rows := []models.Transaction{
 		txn(testUserID, 500),
@@ -335,6 +335,7 @@ func TestGetAllMyTransactions_ExcludesNegativeDonations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// Negative row must be stripped.
 	if len(list.Data) != 2 {
 		t.Errorf("len(Data) = %d, want 2 (negative row removed)", len(list.Data))
 	}

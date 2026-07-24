@@ -1488,6 +1488,7 @@ func (r *InitiativeRepository) GetInitiativesByIDs(ctx context.Context, ids []st
 	defer span.End()
 
 	result := make(map[string]*models.Initiative, len(ids))
+	ids = filterValidUUIDs(ids)
 	if len(ids) == 0 {
 		return result, nil
 	}
