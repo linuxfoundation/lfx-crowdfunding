@@ -869,9 +869,11 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
-	if initiative, err := s.repo.GetByID(ctx, initiativeID); err == nil && initiative != nil {
-		for i := range list.Data {
-			list.Data[i].InitiativeName = initiative.Name
+	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
+		if ini, ok := initiatives[initiativeID]; ok {
+			for i := range list.Data {
+				list.Data[i].InitiativeName = ini.Name
+			}
 		}
 	}
 	return list, nil
@@ -936,9 +938,11 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
-	if initiative, err := s.repo.GetByID(ctx, initiativeID); err == nil && initiative != nil {
-		for i := range list.Data {
-			list.Data[i].InitiativeName = initiative.Name
+	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
+		if ini, ok := initiatives[initiativeID]; ok {
+			for i := range list.Data {
+				list.Data[i].InitiativeName = ini.Name
+			}
 		}
 	}
 	return list, nil
@@ -1011,7 +1015,9 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 	}
 	if len(projectIDs) > 0 {
 		initiatives, batchErr := s.repo.GetInitiativesByIDs(ctx, projectIDs)
-		if batchErr == nil {
+		if batchErr != nil {
+			slog.WarnContext(ctx, "failed to look up initiative names", "error", batchErr)
+		} else {
 			for i := range list.Data {
 				if ini, ok := initiatives[list.Data[i].LedgerProjectID]; ok {
 					list.Data[i].InitiativeName = ini.Name

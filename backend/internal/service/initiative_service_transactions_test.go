@@ -270,3 +270,136 @@ func TestGetMyTransactions_EmptyPage(t *testing.T) {
 		t.Errorf("len(Data) = %d, want 0", len(list.Data))
 	}
 }
+
+// ── GetAllMyTransactions ──────────────────────────────────────────────────────
+
+// TestGetAllMyTransactions_OmitsProjectIDFilter verifies that the Ledger is
+// called without a ProjectID so transactions across all initiatives are returned.
+func TestGetAllMyTransactions_OmitsProjectIDFilter(t *testing.T) {
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{
+			Data:  []models.Transaction{txn(testUserID, 300)},
+			Limit: 10,
+		},
+	}
+	svc := newMyTxnSvc(t, ledger)
+
+	_, err := svc.GetAllMyTransactions(context.Background(), testUserID, "", false, 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ledger.lastFilter.ProjectID != "" {
+		t.Errorf("ProjectID in filter = %q, want empty (cross-initiative endpoint)", ledger.lastFilter.ProjectID)
+	}
+	if ledger.lastFilter.UserID != testUserID {
+		t.Errorf("UserID in filter = %q, want %q", ledger.lastFilter.UserID, testUserID)
+	}
+}
+
+// TestGetAllMyTransactions_ForeignRowsError verifies that when the Ledger returns
+// any row belonging to a different user, the method returns ErrUpstreamUnavailable.
+func TestGetAllMyTransactions_ForeignRowsError(t *testing.T) {
+	rows := []models.Transaction{
+		txn(testUserID, 500),
+		txn(testOtherUserID, 300), // foreign row — Ledger ignored userID param
+	}
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{Data: rows, TotalCount: 20, Limit: 10},
+	}
+	svc := newMyTxnSvc(t, ledger)
+
+	_, err := svc.GetAllMyTransactions(context.Background(), testUserID, "donation", false, 10, 0)
+	if err == nil {
+		t.Fatal("expected error for foreign rows, got nil")
+	}
+	if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("error = %v, want to wrap domain.ErrUpstreamUnavailable", err)
+	}
+}
+
+// TestGetAllMyTransactions_ExcludesNegativeDonations verifies that negative-amount
+// credit rows (grant disbursements) are excluded when type=donation, matching the
+// behavior of the per-initiative GetTransactions method.
+func TestGetAllMyTransactions_ExcludesNegativeDonations(t *testing.T) {
+	rows := []models.Transaction{
+		txn(testUserID, 500),
+		{ID: "grant", Type: "donation", AmountCents: -1000, LedgerUserID: testUserID},
+		txn(testUserID, 300),
+	}
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{Data: rows, TotalCount: 3, Limit: 10},
+	}
+	svc := newMyTxnSvc(t, ledger)
+
+	list, err := svc.GetAllMyTransactions(context.Background(), testUserID, "donation", false, 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Data) != 2 {
+		t.Errorf("len(Data) = %d, want 2 (negative row removed)", len(list.Data))
+	}
+	if list.TotalCount != 2 {
+		t.Errorf("TotalCount = %d, want 2 (adjusted by dropped row)", list.TotalCount)
+	}
+	for _, d := range list.Data {
+		if d.AmountCents <= 0 {
+			t.Errorf("negative-amount row %q leaked into result (amount=%d)", d.ID, d.AmountCents)
+		}
+	}
+}
+
+// TestGetAllMyTransactions_EnrichesInitiativeNames verifies that when Ledger rows
+// carry distinct LedgerProjectIDs, the per-item InitiativeName is populated from
+// a single batch call to GetInitiativesByIDs (no N+1).
+func TestGetAllMyTransactions_EnrichesInitiativeNames(t *testing.T) {
+	const (
+		proj1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+		proj2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	)
+
+	rows := []models.Transaction{
+		{ID: "t1", AmountCents: 100, LedgerUserID: testUserID, LedgerProjectID: proj1},
+		{ID: "t2", AmountCents: 200, LedgerUserID: testUserID, LedgerProjectID: proj2},
+		{ID: "t3", AmountCents: 300, LedgerUserID: testUserID, LedgerProjectID: proj1},
+	}
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{Data: rows, TotalCount: 3, Limit: 10},
+	}
+
+	initiativeMap := map[string]*models.Initiative{
+		proj1: {ID: proj1, Name: "Alpha Project"},
+		proj2: {ID: proj2, Name: "Beta Fund"},
+	}
+	batchCallCount := 0
+	repo := &mockInitiativeRepo{
+		onGetInitiativesByIDs: func(_ context.Context, ids []string) (map[string]*models.Initiative, error) {
+			batchCallCount++
+			result := make(map[string]*models.Initiative, len(ids))
+			for _, id := range ids {
+				if ini, ok := initiativeMap[id]; ok {
+					result[id] = ini
+				}
+			}
+			return result, nil
+		},
+	}
+
+	svc := NewInitiativeService(repo, &mockUserRepository{}, ledger, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
+
+	list, err := svc.GetAllMyTransactions(context.Background(), testUserID, "", false, 10, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Exactly one batch DB call regardless of the number of distinct project IDs.
+	if batchCallCount != 1 {
+		t.Errorf("GetInitiativesByIDs called %d time(s), want exactly 1 (no N+1)", batchCallCount)
+	}
+
+	for _, txnItem := range list.Data {
+		want := initiativeMap[txnItem.LedgerProjectID].Name
+		if txnItem.InitiativeName != want {
+			t.Errorf("txn %q: InitiativeName = %q, want %q", txnItem.ID, txnItem.InitiativeName, want)
+		}
+	}
+}
