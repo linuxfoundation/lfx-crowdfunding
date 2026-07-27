@@ -5,8 +5,11 @@
 
 ---
 
-**Status:** Design proposal, July 2026 — **pending architecture review**. Not yet a spec or
-implementation plan. Related story:
+**Status:** Design proposal, July 2026 — **revised after the July architecture sync**. The sync
+raised two decisions: **(1)** how CF reaches the platform's FGA checks (token exchange vs.
+privileged HTTP vs. NATS — owned by the platform team, see §3.1); **(2)** these hybrid per-entity
+checks vs. an idiomatic `crowdfunding_initiative` FGA type — resolved here as **hybrid now,
+idiomatic as the target state** (§3.4). Not yet a spec or implementation plan. Related story:
 [LFXV2-2537](https://linuxfoundation.atlassian.net/browse/LFXV2-2537) *"Initiatives on behalf of
 projects and/or organizations"*; epic
 [LFXV2-2759](https://linuxfoundation.atlassian.net/browse/LFXV2-2759).
@@ -20,6 +23,11 @@ The proposal: each initiative carries an **attribution** — *personal* (default
 
 The same attribution field drives the details-page source label and the Self Serve (SS) lens
 "Initiatives" pages. Existing initiatives default to *personal* — **no data backfill**.
+
+Attribution is exclusive, so this is **at most one FGA check per request** (zero for personal
+initiatives) — not a fan-out union of checks. The idiomatic alternative (a new
+`crowdfunding_initiative` FGA type) is documented as the target state for when CF moves behind
+the API gateway (§3.4).
 
 ---
 
@@ -112,10 +120,14 @@ Design rules:
 
 - **One flat capability.** No view-only tier, no per-initiative grants. Either can be added later
   if a real need surfaces.
+- **At most one FGA check per request.** Attribution is exclusive, so the resolver checks only
+  the attributed entity's branch; personal initiatives make no FGA call at all.
 - **The creator always retains access.** `owner_id` (the creator's CF user row) stays as
   "created by" and guarantees the creator can always edit — without this, a user could create an
   initiative attributed to an entity they're not a writer on and be locked out immediately.
-  Everyone else's access comes and goes with their writer role on the attributed entity.
+  Everyone else's access comes and goes with their writer role on the attributed entity. This
+  deliberately keeps one access decision (creator) in CF code while entity decisions defer to
+  FGA — the trade is discussed in §3.4.
 - **Fail closed, but distinguish the reason.** A *definitive* non-writer result denies as 404
   (consistent with today's read concealment). A *resolver error* (NATS/OpenFGA unavailable) also
   denies, but returns **503** — never a false 404 — so the outage is visible and clients can
@@ -180,13 +192,19 @@ for deleted/missing entities. Net: if eligibility must match actual management r
 should enumerate candidates then batch-verify them via `access_check.request`, rather than trust
 `read_tuples` alone (ties to open question 2).
 
-**Fallback** if direct NATS access is not granted to CF: `lfx-v2-access-check` exposes an HTTP
-wrapper over the same check — **but it is not a drop-in.** It expects a Heimdall-minted JWT and
-derives the principal from it, whereas CF sits outside Heimdall and validates Auth0 tokens. Using
-it requires a token-exchange / service-auth bridge (open question 3); without one it would fail
-auth or check the wrong identity. Either way, the integration hides behind a small
-`EntityRoleResolver` interface (entity type + UID + principal → can manage?) so the transport can
-be swapped without touching business logic.
+**Transit — how CF reaches the check (platform decision pending).** The architecture sync framed
+three options: **(A)** token exchange — swap the CF-audience user token for an LFX v2 token and
+call the public `/access-check` HTTP endpoint (the MCP-server precedent; the wrapper is not a
+drop-in otherwise, since it expects a Heimdall-minted JWT and derives the principal from it);
+**(B)** a new privileged `/user-access-check` HTTP endpoint that accepts arbitrary users,
+authorized for specific machine clients via an LFX v2 M2M token; **(C)** direct on-network NATS
+access to the fga-sync subjects above. This proposal recommends **C**: it is the only option that
+also covers tuple *writes* (`lfx.fga-sync.update_access` has no HTTP equivalent), which the §3.4
+target state needs — picking A or B now would leave CF running a second transport later. C's
+prerequisite, flagged at the sync, is prioritizing **NATS access control** so on-network access is
+authenticated rather than implicit (open question 3). Whichever option lands, the integration
+hides behind a small `EntityRoleResolver` interface (entity type + UID + principal → can manage?)
+so the transport can be swapped without touching business logic.
 
 **Caching:** none in CF on day one — fga-sync is already cache-first. Add an in-process cache only
 if measured latency demands it.
@@ -246,6 +264,41 @@ This whole flow assumes eligibility = the `writer` relation. If the PM instead c
 *affiliation* (open question 2), the candidate source is affiliation data — not an FGA relation, so
 it comes from the platform's profile/affiliation source rather than `read_tuples`. The edit-access
 check (§3.2) is unaffected either way.
+
+### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
+
+The architecture sync proposed the idiomatic alternative: add a `crowdfunding_initiative` type to
+the platform model — `define writer: [user] or writer from project or writer from b2b_org`
+(`project_membership` in `model.yaml` is an existing precedent for the shape) — have CF emit
+`update_access`/`delete_access` tuples on create/attribution-change/delete (including the creator
+as a direct `writer` tuple, so *all* access decisions move to FGA), backfill existing initiatives,
+and reduce every runtime check to one `crowdfunding_initiative:{id}#writer` query. A future
+`crowdfunding_group` type could model multi-manager non-LF entities.
+
+**This is the right target state, but not the right first step while CF sits outside the API
+gateway:**
+
+- **The platform's own contract assumes gateway enforcement.** Per `fga-sync-contract.md`, a new
+  model object type ships with Heimdall `openfga_check` rules in the same PR cycle. CF has no
+  gateway routes to attach rules to, so `crowdfunding_initiative` would be the first type
+  maintained and checked entirely from outside the platform. The only existing external-consumer
+  precedent (the MCP server) does read-only brokered checks — exactly this proposal's hybrid.
+- **Tuple writes force the transit decision.** `update_access` is NATS-only, so going idiomatic
+  today pre-decides option C (§3.1) before NATS access control exists.
+- **It copies CF-local facts into FGA to read them back.** Creator and attribution live in CF's
+  Postgres; the genuinely *external* facts are only "who is a writer on this project/org," which
+  the hybrid reads directly. Duplicating local facts adds a sync failure mode (a missed publish
+  locks the creator out of their own initiative) whose natural mitigation — falling back to the
+  local `owner_id` check — reintroduces the hybrid anyway.
+- **Model changes are the platform's most expensive kind.** Relation renames are breaking
+  (per the model-evolution policy in `fga-sync-contract.md`); freezing CF's access model into
+  `lfx-v2-helm` before the non-LF-initiative design exists is premature.
+
+**Deferral is cheap by design.** The `EntityRoleResolver` seam is the migration path: when CF
+moves behind the gateway, the resolver's implementation swaps to a single
+`crowdfunding_initiative:{id}#writer@user:{id}` check, CF adds tuple emission plus a one-time
+backfill, and handlers/services don't change. The model addition and its Heimdall ruleset then
+land together, as the platform contract expects.
 
 ---
 
@@ -317,8 +370,11 @@ maintainer story is the strongest).
    name on an initiative that no org *writer* approved (the org's writers do gain edit access and
    lens visibility, so they can react — but after the fact). If the PM wants org sign-off *before*
    the name appears, the eligibility gate must be *writer*, not *affiliated*. Confirm with PM.
-3. **Platform onboarding.** Confirm CF (outside Heimdall) can consume the fga-sync NATS subjects,
-   and what onboarding requires (`lfx-v2-fga-sync/docs/fga-catalog.md`).
+3. **Transit (A/B/C) — pending platform decision.** The platform team is aligning on how CF
+   reaches the check: token exchange (A), privileged `/user-access-check` (B), or direct NATS (C)
+   — see §3.1. This proposal recommends C because it also covers the §3.4 target state's tuple
+   writes; its prerequisite is NATS access control. Onboarding requirements per
+   `lfx-v2-fga-sync/docs/fga-catalog.md`.
 4. **FGA user identifier.** FGA tuples key users as e.g. `user:auth0|alice`; CF's canonical
    identifier is the LF SSO username. Confirm the identifier CF must send in checks.
 5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
