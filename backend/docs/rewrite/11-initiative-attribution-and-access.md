@@ -284,8 +284,15 @@ the platform model — `define writer: [user] or writer from project or writer f
 (`project_membership` in `model.yaml` is an existing precedent for the shape) — have CF emit
 `update_access`/`delete_access` tuples on create/attribution-change/delete (including the creator
 as a direct `writer` tuple, so *all* access decisions move to FGA), backfill existing initiatives,
-and reduce every runtime check to one `crowdfunding_initiative:{id}#writer` query. A future
-`crowdfunding_group` type could model multi-manager non-LF entities.
+and reduce every runtime check to one `crowdfunding_initiative:{id}#writer` query.
+
+**Non-LF initiatives are the simple case, not a driver.** There is no requirement (nor a timeline
+for one) to model a non-LF *project entity* with multiple managers. If non-LF support ever lands,
+the scope is the trivial one Eric identified: an initiative with no `project`/`b2b_org` attribution,
+managed by its owner only — which today's `personal` attribution already covers, and which the
+idiomatic type would cover via the creator's direct `writer` tuple. The more complex path (a CF-
+defined non-LF project with its own multi-user membership, e.g. a future `crowdfunding_group` type)
+is explicitly out of scope until such a requirement is real.
 
 **This is the right target state, but not the right first step while CF sits outside the API
 gateway:**
