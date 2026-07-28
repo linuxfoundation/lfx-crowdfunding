@@ -263,6 +263,13 @@ edit-access check (§3.2) is unaffected either way.
 
 ### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
 
+> **Read vs. write — the key difference from the hybrid.** Everything above (§2.2, §3.1) is
+> **read-only**: CF only *asks* FGA "is this user a writer on this project/org?" and stores its own
+> data (creator, attribution) in Postgres. The idiomatic alternative below is the only part that
+> would have CF **write** to FGA — because FGA would then own "who can manage this initiative," so
+> CF must keep those tuples in sync. That write-sync burden is one reason it's deferred, not the
+> plan.
+
 The architecture sync proposed the idiomatic alternative: add a `crowdfunding_initiative` type to
 the platform model — `define writer: [user] or writer from project or writer from b2b_org`
 (`project_membership` in `model.yaml` is an existing precedent for the shape) — have CF emit
