@@ -9,5 +9,18 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import StatisticsView from '~/components/modules/statistics/view/statistics.vue';
 
-useHead({ title: 'Statistics' });
+const title = 'Statistics';
+const description =
+  'Explore real-time funding statistics across all open source initiatives on LFX Crowdfunding — total donations, active supporters, and funded projects.';
+
+useHead({ title });
+useSeoMeta({
+  description,
+  ogTitle: `${title} | LFX Crowdfunding`,
+  ogDescription: description,
+  ogType: 'website',
+  twitterCard: 'summary_large_image',
+  twitterTitle: `${title} | LFX Crowdfunding`,
+  twitterDescription: description,
+});
 </script>

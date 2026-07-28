@@ -13,6 +13,7 @@ export interface AuthUser {
   picture?: string;
   email_verified?: boolean;
   username?: string;
+  intercomJwt?: string;
 }
 
 export interface AuthState {

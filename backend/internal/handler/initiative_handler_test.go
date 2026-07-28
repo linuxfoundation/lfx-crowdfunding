@@ -24,18 +24,20 @@ import (
 
 // initiativeRepo is a configurable InitiativeRepository stub.
 type initiativeRepo struct {
-	initiative    *models.Initiative
-	initiatives   []*models.Initiative
-	meta          *models.PaginationMeta
-	getErr        error
-	listErr       error
-	createErr     error
-	updateErr     error
-	deleteErr     error
-	lastUpdated   *models.Initiative
-	deletedID     string
-	ownerEmail    string
-	ownerEmailErr error
+	initiative          *models.Initiative
+	initiatives         []*models.Initiative
+	meta                *models.PaginationMeta
+	getErr              error
+	listErr             error
+	createErr           error
+	updateErr           error
+	deleteErr           error
+	lastUpdated         *models.Initiative
+	deletedID           string
+	ownerEmail          string
+	ownerEmailErr       error
+	listPublishedResult []models.InitiativeSummary
+	listPublishedErr    error
 }
 
 func (r *initiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -102,8 +104,14 @@ func (r *initiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models
 	}
 	return models.OwnerInfo{Email: r.ownerEmail}, nil
 }
+func (r *initiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return r.listPublishedResult, r.listPublishedErr
+}
 func (r *initiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
+}
+func (r *initiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
 }
 
 // initiativeUserRepo is a configurable UserRepository stub for initiative handler tests.
@@ -555,6 +563,38 @@ func TestGetTransactions_Published_Returns200(t *testing.T) {
 	}
 	if len(got.Data) != 1 {
 		t.Errorf("expected 1 transaction, got %d", len(got.Data))
+	}
+}
+
+func TestGetTransactions_SubscriptionOnly_ForwardsFlag(t *testing.T) {
+	// Verify that ?subscriptionOnly=true is parsed by the handler and reaches
+	// the Ledger client as TransactionFilter.SubscriptionOnly = true.
+	initiativeID := "77777778-7777-7777-7777-777777777777"
+	capture := &filterCapturingLedger{
+		list: &models.TransactionList{
+			Data:       []models.Transaction{{ID: "txn-s", AmountCents: 500}},
+			TotalCount: 1,
+		},
+	}
+	repo := &initiativeRepo{
+		initiative: &models.Initiative{
+			ID:     initiativeID,
+			Status: models.StatusPublished,
+		},
+	}
+	svc := service.NewInitiativeService(repo, &initiativeUserRepo{}, capture, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
+	h := NewInitiativeHandler(svc, nil, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?subscriptionOnly=true", nil)
+	req = withURLParam(req, "id", initiativeID)
+	w := httptest.NewRecorder()
+	h.GetTransactions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !capture.lastFilter.SubscriptionOnly {
+		t.Error("TransactionFilter.SubscriptionOnly should be true when ?subscriptionOnly=true is sent")
 	}
 }
 

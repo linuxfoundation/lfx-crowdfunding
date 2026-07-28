@@ -55,13 +55,20 @@ SPDX-License-Identifier: MIT
         />
       </div>
 
-      <!-- Repository URL (optional) -->
+      <!-- Repository URL (optional or required) -->
       <div
         v-if="showRepositoryUrl"
         class="flex flex-col gap-3"
       >
         <div class="flex flex-col gap-1">
-          <label class="text-xs font-medium text-neutral-900">Repository URL</label>
+          <label class="text-xs font-medium text-neutral-900">
+            Repository URL
+            <span
+              v-if="repositoryUrlRequired"
+              class="text-negative-500"
+              >*</span
+            >
+          </label>
           <p class="text-xs text-neutral-600 leading-4">
             This URL will be used to display repository statistics on your LFX Crowdfunding page.
           </p>
@@ -97,6 +104,7 @@ const props = defineProps<{
   title: string;
   nameLabel: string;
   showRepositoryUrl?: boolean;
+  repositoryUrlRequired?: boolean;
 }>();
 
 const emit = defineEmits<{

@@ -10,6 +10,7 @@ import type {
   FundraiseContactInput,
   SecurityAuditFundraisePayload,
   GoalItemInput,
+  DonationOptionsInput,
 } from '../../types/fundraise.types';
 
 export default defineEventHandler(async (event): Promise<FundraiseResult> => {
@@ -43,6 +44,10 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     industry: payload.industry || undefined,
     website_url: payload.websiteUrl || undefined,
     accept_funding: true,
+    // Backend contract not implemented yet (see docs/sponsorship-tiers-backend-requirements.md)
+    // — shape matches the agreed API once it lands.
+    donation_mode: payload.donationOptions?.mode,
+    sponsorship_tiers: buildSponsorshipTiers(payload.donationOptions),
   };
 
   switch (payload.initiativeType) {
@@ -146,13 +151,16 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
 // Distribution items are mapped to initiative_goals: label → name,
 // category → allocation, description → description, and amount_cents is
 // derived from the item's percentage share of annualFundingGoalCents.
-function buildProjectGoals(
+export function buildProjectGoals(
   annualFundingGoalCents: number | undefined,
   goals: GoalItemInput[] | undefined,
 ): Array<Record<string, unknown>> | undefined {
   const result: Array<Record<string, unknown>> = [];
+  const enabledItems = goals?.filter((item) => item.enabled) ?? [];
 
-  if (annualFundingGoalCents) {
+  // Enabled distribution items are a breakdown of the total, not additional
+  // goals — only fall back to a standalone total row when nothing is enabled.
+  if (annualFundingGoalCents && enabledItems.length === 0) {
     result.push({
       name: 'Annual Funding Goal',
       amount_cents: annualFundingGoalCents,
@@ -160,7 +168,6 @@ function buildProjectGoals(
     });
   }
 
-  const enabledItems = goals?.filter((item) => item.enabled) ?? [];
   enabledItems.forEach((item, index) => {
     result.push({
       name: item.label,
@@ -172,6 +179,22 @@ function buildProjectGoals(
   });
 
   return result.length > 0 ? result : undefined;
+}
+
+function buildSponsorshipTiers(
+  donationOptions: DonationOptionsInput | undefined,
+): Array<Record<string, unknown>> | undefined {
+  if (!donationOptions || donationOptions.mode !== 'tiers') return undefined;
+  const tiers = donationOptions.tiers
+    .filter((tier) => tier.enabled)
+    .map((tier, index) => ({
+      name: tier.name,
+      enabled: tier.enabled,
+      goal_amount_cents: tier.goalCents,
+      benefits: tier.benefits.filter((benefit) => benefit.trim() !== ''),
+      sort_order: index,
+    }));
+  return tiers.length > 0 ? tiers : undefined;
 }
 
 function buildBudgetDistributionItem(item: GoalItemInput): Record<string, unknown> {

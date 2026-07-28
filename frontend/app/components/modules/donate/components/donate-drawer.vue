@@ -80,10 +80,10 @@ SPDX-License-Identifier: MIT
             v-if="step === 0"
             v-model="amountForm"
             :funding-goals="initiative.fundingGoals"
+            :sponsorship-tiers="initiative.sponsorshipTiers"
           />
           <donate-step-contact
             v-else-if="step === 1"
-            ref="contactStepRef"
             v-model="contactForm"
           />
           <donate-step-payment
@@ -145,7 +145,7 @@ import DonateStepAmount from './donate-step-amount.vue';
 import DonateStepContact from './donate-step-contact.vue';
 import DonateStepPayment from './donate-step-payment.vue';
 import DonateStepSuccess from './donate-step-success.vue';
-import type { DonateAmountForm, DonateContactForm } from '#shared/types/donate.types';
+import type { DonateAmountForm, DonateContactForm, SponsorshipTier } from '#shared/types/donate.types';
 import type { FundingGoal } from '#shared/types/initiative-detail.types';
 import LfxDrawer from '~/components/uikit/drawer/drawer.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
@@ -166,6 +166,7 @@ const props = defineProps<{
     name: string;
     logoUrl?: string;
     fundingGoals?: FundingGoal[];
+    sponsorshipTiers?: SponsorshipTier[];
   };
 }>();
 
@@ -185,7 +186,6 @@ const submitting = ref(false);
 const submitted = ref(false);
 const paymentComplete = ref(false);
 
-const contactStepRef = ref<InstanceType<typeof DonateStepContact> | null>(null);
 const paymentStepRef = ref<InstanceType<typeof DonateStepPayment> | null>(null);
 
 const amountForm = ref<DonateAmountForm>({
@@ -199,23 +199,20 @@ const amountForm = ref<DonateAmountForm>({
 
 const contactForm = ref<DonateContactForm>({
   donorType: 'individual',
-  fullName: '',
-  companyName: '',
-  contactName: '',
-  email: '',
-  needsInvoice: false,
-  poNumber: '',
+  organizationId: null,
 });
 
 const hasSelection = computed(() => amountForm.value.amountCents > 0);
 
+const contactFormValid = computed(() => {
+  const f = contactForm.value;
+  if (f.donorType === 'individual') return true;
+  return !!f.organizationId;
+});
+
 const isCurrentStepValid = computed(() => {
   if (step.value === 0) return hasSelection.value;
-  if (step.value === 1) {
-    const f = contactForm.value;
-    if (f.donorType === 'individual') return f.fullName.trim().length > 0 && f.email.trim().length > 0;
-    return f.companyName.trim().length > 0 && f.contactName.trim().length > 0 && f.email.trim().length > 0;
-  }
+  if (step.value === 1) return contactFormValid.value;
   return paymentComplete.value;
 });
 
@@ -252,12 +249,7 @@ const close = () => {
   };
   contactForm.value = {
     donorType: 'individual',
-    fullName: '',
-    companyName: '',
-    contactName: '',
-    email: '',
-    needsInvoice: false,
-    poNumber: '',
+    organizationId: null,
   };
 };
 
@@ -270,10 +262,6 @@ const handleContinue = async () => {
   if (!hasSelection.value) return;
 
   if (!isLastStep.value) {
-    if (step.value === 1 && contactStepRef.value?.$v) {
-      contactStepRef.value.$v.$touch();
-      if (contactStepRef.value.$v.$invalid) return;
-    }
     step.value++;
     return;
   }
@@ -294,18 +282,26 @@ const handleContinue = async () => {
       paymentMethodId = card.value!.paymentMethodId;
     }
 
+    const orgPayload =
+      contactForm.value.donorType === 'organization' && contactForm.value.organizationId
+        ? { organizationId: contactForm.value.organizationId }
+        : {};
+
     if (amountForm.value.donationType === 'monthly') {
       await subscribe(props.initiative.id, {
         amountInCents: amountForm.value.amountCents,
         frequency: 'monthly',
         stripePaymentMethodId: paymentMethodId,
         ...(amountForm.value.category ? { category: amountForm.value.category } : {}),
+        ...orgPayload,
       });
     } else {
       await donate(props.initiative.id, {
         amountInCents: amountForm.value.amountCents,
         stripePaymentMethodId: paymentMethodId,
         ...(amountForm.value.category ? { category: amountForm.value.category } : {}),
+        ...(amountForm.value.tierName ? { donationTier: amountForm.value.tierName } : {}),
+        ...orgPayload,
       });
     }
 

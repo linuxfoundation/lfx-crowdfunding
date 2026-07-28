@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 <template>
   <NuxtLink
     :to="`/initiatives/${initiative.slug}`"
-    class="flex flex-col justify-between border border-neutral-200 rounded-2xl p-6 h-[400px]"
+    class="flex flex-col justify-between border border-neutral-200 rounded-2xl p-6 h-full min-h-[400px] transition-shadow duration-200 hover:shadow-lg"
     :style="{ backgroundImage: typeConfig.gradient }"
   >
     <!-- Top section -->
@@ -46,19 +46,40 @@ SPDX-License-Identifier: MIT
           class="flex flex-wrap gap-2"
         >
           <lfx-chip
-            v-for="tag in tags"
+            v-for="tag in visibleTags"
             :key="tag"
             type="bordered"
             size="xsmall"
           >
             {{ tag }}
           </lfx-chip>
+          <lfx-tooltip
+            v-if="overflowTags.length"
+            placement="top"
+            class="inline-flex"
+          >
+            <lfx-chip
+              type="bordered"
+              size="xsmall"
+            >
+              +{{ overflowTags.length }}
+            </lfx-chip>
+            <template #content>
+              <div class="flex flex-col gap-1 text-xs">
+                <span
+                  v-for="tag in overflowTags"
+                  :key="tag"
+                  >{{ tag }}</span
+                >
+              </div>
+            </template>
+          </lfx-tooltip>
         </div>
       </div>
     </div>
 
     <!-- Bottom funding section -->
-    <div class="flex flex-col gap-2 w-full">
+    <div class="flex flex-col gap-2 w-full pt-6">
       <div class="flex items-center justify-between text-sm">
         <span>
           <span class="font-semibold text-neutral-900">{{ amountRaisedFormatted }}</span>
@@ -86,6 +107,7 @@ import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
+import LfxTooltip from '~/components/uikit/tooltip/tooltip.vue';
 import { useSanitize } from '~/composables/useSanitize';
 
 const props = defineProps<{ initiative: Initiative }>();
@@ -106,6 +128,11 @@ const tags = computed(() => {
     .map((t) => t.trim())
     .filter(Boolean);
 });
+
+const MAX_VISIBLE_TAGS = 8;
+
+const visibleTags = computed(() => tags.value.slice(0, MAX_VISIBLE_TAGS));
+const overflowTags = computed(() => tags.value.slice(MAX_VISIBLE_TAGS));
 
 const progressPercent = computed(() => {
   const goal = props.initiative.fundingStatus?.goalsTotalCents ?? 0;

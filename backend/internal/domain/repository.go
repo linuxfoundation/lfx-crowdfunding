@@ -41,9 +41,17 @@ type InitiativeRepository interface {
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
 	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
 
+	// GetInitiativesByIDs returns a map of initiative UUID → Initiative for the given IDs.
+	// IDs not found in the DB are silently omitted from the result.
+	GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error)
+
 	// GetOwnerInfoBySlug returns the email and display name of the owner of the
 	// initiative with the given slug, regardless of initiative status. Used by M2M callers.
 	GetOwnerInfoBySlug(ctx context.Context, slug string) (models.OwnerInfo, error)
+
+	// ListPublished returns the ID and Name of every published initiative.
+	// Intended for M2M callers only (e.g. Reimbursement Service).
+	ListPublished(ctx context.Context) ([]models.InitiativeSummary, error)
 }
 
 // DonationRepository defines persistence operations for donations.
@@ -54,11 +62,19 @@ type DonationRepository interface {
 	Create(ctx context.Context, donation *models.Donation) (*models.Donation, error)
 	// UpdateByPaymentIntentID is called by the Stripe webhook to reconcile async 3DS results.
 	UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error
+	// ListOrgDonations returns all succeeded donations made by organisations,
+	// enriched with org name, initiative name, and donor display name.
+	// Used exclusively for the internal CSV export endpoint.
+	ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error)
 }
 
 // SubscriptionRepository defines persistence operations for subscriptions.
 type SubscriptionRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Subscription, error)
+	// GetByIDForUser returns a single subscription by ID that belongs to the given user,
+	// enriched with initiative name and logo. Returns ErrSubscriptionNotFound when the
+	// subscription does not exist or belongs to a different user.
+	GetByIDForUser(ctx context.Context, id, userID string) (*models.Subscription, error)
 	// GetActiveByUserAndInitiative returns any subscription for the given user+initiative
 	// that is not in a terminal state (i.e. status is active, incomplete, or past_due).
 	// Returns ErrSubscriptionNotFound when no such subscription exists.
@@ -75,6 +91,9 @@ type SubscriptionRepository interface {
 type OrganizationRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Organization, error)
 	ListByOwner(ctx context.Context, ownerID string) ([]models.Organization, error)
+	Create(ctx context.Context, ownerID string, input models.OrganizationCreateInput) (*models.Organization, error)
+	Update(ctx context.Context, id string, ownerID string, input models.OrganizationUpdateInput) (*models.Organization, error)
+	Delete(ctx context.Context, id string, ownerID string) error
 }
 
 // UserRepository defines persistence operations for users.
@@ -138,4 +157,38 @@ type LedgerStatsRepository interface {
 	// GetUsersByIDs returns a map of user UUID → User for all
 	// IDs in the slice.  Missing IDs are simply absent from the map.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
+}
+
+// MentorshipRepository defines persistence operations used by mentorship-sync.
+// All methods are scoped to the batch upsert pattern of that CronJob.
+type MentorshipRepository interface {
+	// UpsertProgram creates or updates the initiative row for a mentorship program,
+	// ensures the fixed mentee funding goal exists, and replaces beneficiaries,
+	// skills, and mentors — all in a single transaction.
+	// nil slice fields are skipped; non-nil (including empty) replace the existing rows.
+	// The upsert key is the program's UUID (initiatives.id). Returns the initiative UUID.
+	UpsertProgram(ctx context.Context, p models.MentorshipProgram) (string, error)
+
+	// ListJobspringIDs returns the jobspring_project_id values for all existing
+	// mentorship initiatives. Used to detect programs that have been removed from
+	// Snowflake (not currently acted on, but useful for future reconciliation).
+	ListJobspringIDs(ctx context.Context) ([]string, error)
+}
+
+// AnnouncementRepository defines persistence operations for initiative announcements.
+type AnnouncementRepository interface {
+	// List returns paginated announcements for the given initiative,
+	// ordered by created_on descending (newest first).
+	List(ctx context.Context, initiativeID string, filter models.AnnouncementFilter) ([]models.Announcement, *models.PaginationMeta, error)
+
+	// Create inserts a new announcement and returns the persisted record.
+	Create(ctx context.Context, a *models.Announcement) (*models.Announcement, error)
+
+	// Update patches the title and description of an announcement identified by
+	// id and initiativeID. Returns ErrAnnouncementNotFound when no matching row exists.
+	Update(ctx context.Context, id, initiativeID string, input models.AnnouncementUpdateInput) (*models.Announcement, error)
+
+	// Delete removes an announcement by id scoped to initiativeID.
+	// Returns ErrAnnouncementNotFound when no matching row exists.
+	Delete(ctx context.Context, id, initiativeID string) error
 }

@@ -58,11 +58,17 @@ func (r *summaryInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ st
 func (r *summaryInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *summaryInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *summaryInitiativeRepo) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
 	if r.onGetOrganizationsByIDs != nil {
 		return r.onGetOrganizationsByIDs(ctx, ids)
 	}
 	return map[string]models.Organization{}, nil
+}
+func (r *summaryInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
 }
 
 // --- projectDonationSummaries ---
@@ -248,6 +254,169 @@ func newDonationSvc(
 	stripe *configStripeClient,
 ) *DonationService {
 	return NewDonationService(donRepo, initRepo, userRepo, stripe)
+}
+
+// --- ListByInitiative ---
+
+func TestDonationService_ListByInitiative(t *testing.T) {
+	donRepo := &testDonationRepo{
+		onListByInitiative: func(_ context.Context, initiativeID string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+			if initiativeID != "init-1" {
+				t.Errorf("ListByInitiative id = %q, want init-1", initiativeID)
+			}
+			return []models.Donation{
+					{ID: "d1", UserID: "u1", CurrentAmountCents: 1000, Status: "succeeded"},
+				},
+				&models.PaginationMeta{Total: 1, Limit: 20, Offset: 0}, nil
+		},
+	}
+	initRepo := &mockInitiativeRepo{}
+
+	svc := newDonationSvc(donRepo, initRepo, &testUserRepo{}, &configStripeClient{})
+	summaries, meta, err := svc.ListByInitiative(context.Background(), "init-1", models.DonationFilter{Limit: 20})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(summaries) != 1 || summaries[0].ID != "d1" {
+		t.Fatalf("unexpected summaries: %+v", summaries)
+	}
+	if meta == nil || meta.Total != 1 {
+		t.Fatalf("unexpected meta: %+v", meta)
+	}
+}
+
+func TestDonationService_ListByInitiative_RepoError(t *testing.T) {
+	repoErr := errors.New("query failed")
+	donRepo := &testDonationRepo{
+		onListByInitiative: func(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+			return nil, nil, repoErr
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, &testUserRepo{}, &configStripeClient{})
+	_, _, err := svc.ListByInitiative(context.Background(), "init-1", models.DonationFilter{})
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected repo error, got %v", err)
+	}
+}
+
+// --- ListByUser ---
+
+func TestDonationService_ListByUser(t *testing.T) {
+	donRepo := &testDonationRepo{
+		onListByUser: func(_ context.Context, userID string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+			if userID != "user-uuid-1" {
+				t.Errorf("ListByUser userID = %q, want user-uuid-1", userID)
+			}
+			return []models.Donation{{ID: "d1"}}, &models.PaginationMeta{Total: 1}, nil
+		},
+	}
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: "user-uuid-1"}, nil
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, userRepo, &configStripeClient{})
+	donations, meta, err := svc.ListByUser(context.Background(), "alice", models.DonationFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(donations) != 1 || donations[0].ID != "d1" {
+		t.Fatalf("unexpected donations: %+v", donations)
+	}
+	if meta == nil || meta.Total != 1 {
+		t.Fatalf("unexpected meta: %+v", meta)
+	}
+}
+
+func TestDonationService_ListByUser_UserNotFoundReturnsEmpty(t *testing.T) {
+	// A user with no DB record has never donated — return an empty list, not an error.
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return nil, domain.ErrUserNotFound
+		},
+	}
+
+	svc := newDonationSvc(&testDonationRepo{}, &mockInitiativeRepo{}, userRepo, &configStripeClient{})
+	donations, meta, err := svc.ListByUser(context.Background(), "ghost", models.DonationFilter{Limit: 10, Offset: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(donations) != 0 {
+		t.Errorf("expected empty donations, got %d", len(donations))
+	}
+	if meta == nil || meta.Limit != 10 || meta.Offset != 5 {
+		t.Errorf("expected meta echoing filter, got %+v", meta)
+	}
+}
+
+func TestDonationService_ListByUser_UserLookupError(t *testing.T) {
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return nil, errors.New("db down")
+		},
+	}
+
+	svc := newDonationSvc(&testDonationRepo{}, &mockInitiativeRepo{}, userRepo, &configStripeClient{})
+	_, _, err := svc.ListByUser(context.Background(), "alice", models.DonationFilter{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestDonationService_ListByUser_RepoError(t *testing.T) {
+	repoErr := errors.New("query failed")
+	donRepo := &testDonationRepo{
+		onListByUser: func(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+			return nil, nil, repoErr
+		},
+	}
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
+			return &models.User{ID: "user-uuid-1"}, nil
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, userRepo, &configStripeClient{})
+	_, _, err := svc.ListByUser(context.Background(), "alice", models.DonationFilter{})
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected repo error, got %v", err)
+	}
+}
+
+// --- ListOrgDonations ---
+
+func TestDonationService_ListOrgDonations(t *testing.T) {
+	donRepo := &testDonationRepo{
+		onListOrgDonations: func(_ context.Context) ([]models.OrgDonationRow, error) {
+			return []models.OrgDonationRow{{OrganizationName: "Acme"}}, nil
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, &testUserRepo{}, &configStripeClient{})
+	rows, err := svc.ListOrgDonations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rows) != 1 || rows[0].OrganizationName != "Acme" {
+		t.Fatalf("unexpected rows: %+v", rows)
+	}
+}
+
+func TestDonationService_ListOrgDonations_RepoError(t *testing.T) {
+	repoErr := errors.New("export failed")
+	donRepo := &testDonationRepo{
+		onListOrgDonations: func(_ context.Context) ([]models.OrgDonationRow, error) {
+			return nil, repoErr
+		},
+	}
+
+	svc := newDonationSvc(donRepo, &mockInitiativeRepo{}, &testUserRepo{}, &configStripeClient{})
+	_, err := svc.ListOrgDonations(context.Background())
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected repo error, got %v", err)
+	}
 }
 
 func acceptingInitiative() *mockInitiativeRepo {
@@ -568,5 +737,210 @@ func TestDonationService_Create_EmptyEmail_RequiresProfileSync(t *testing.T) {
 	}
 	if customerCreated {
 		t.Error("CreateCustomer must not be called when user email is empty")
+	}
+}
+
+// ── donation_tier validation ───────────────────────────────────────────────────
+
+// tieredInitiative returns a repo that serves an initiative in tiers mode with
+// gold (min 2500000 cents) and silver (min 1000000 cents) configured.
+func tieredInitiative() *mockInitiativeRepo {
+	return &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:            "init-1",
+			AcceptFunding: true,
+			DonationMode:  models.DonationModeTiers,
+			SponsorshipTiers: []models.SponsorshipTier{
+				{ID: "t1", Name: "gold", Minimum: 2500000, Enabled: true},
+				{ID: "t2", Name: "silver", Minimum: 1000000, Enabled: true},
+			},
+		},
+	}
+}
+
+func TestDonationService_Create_InvalidDonationTier(t *testing.T) {
+	svc := newDonationSvc(&testDonationRepo{}, tieredInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents:           3000000,
+		StripePaymentMethodID: "pm_test",
+		IdempotencyKey:        "key-1",
+		DonationTier:          "diamond",
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for unknown tier name, got %v", err)
+	}
+}
+
+func TestDonationService_Create_DonationTierOnOpenModeInitiative(t *testing.T) {
+	openInit := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:            "init-1",
+			AcceptFunding: true,
+			DonationMode:  models.DonationModeOpen,
+		},
+	}
+	svc := newDonationSvc(&testDonationRepo{}, openInit, &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents:           500000,
+		StripePaymentMethodID: "pm_test",
+		IdempotencyKey:        "key-2",
+		DonationTier:          "gold",
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for tier on open-mode initiative, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "does not use sponsorship tiers") {
+		t.Errorf("error message should mention sponsorship tiers, got: %v", err)
+	}
+}
+
+func TestDonationService_Create_TierBelowMinimum(t *testing.T) {
+	svc := newDonationSvc(&testDonationRepo{}, tieredInitiative(), &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents:           999999, // 1 cent below silver minimum
+		StripePaymentMethodID: "pm_test",
+		IdempotencyKey:        "key-3",
+		DonationTier:          "silver",
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput when amount is below tier minimum, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "below the minimum") {
+		t.Errorf("error message should mention minimum, got: %v", err)
+	}
+}
+
+func TestDonationService_Create_TierAtMinimum_Succeeds(t *testing.T) {
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, u string) (*models.User, error) {
+			return &models.User{ID: "u1", Username: u, Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
+		},
+	}
+	stripe := &configStripeClient{
+		onCreatePaymentIntent: func(_ context.Context, req models.PaymentIntentRequest) (*models.PaymentIntent, error) {
+			return &models.PaymentIntent{ID: "pi_ok", Status: "succeeded"}, nil
+		},
+	}
+	svc := newDonationSvc(&testDonationRepo{}, tieredInitiative(), userRepo, stripe)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents:           1000000, // exactly at silver minimum
+		StripePaymentMethodID: "pm_test",
+		IdempotencyKey:        "key-4",
+		DonationTier:          "silver",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error at exactly the tier minimum: %v", err)
+	}
+}
+
+func TestDonationService_Create_DonationTierStoredOnDonation(t *testing.T) {
+	var storedTier string
+	donRepo := &testDonationRepo{
+		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
+			storedTier = d.DonationTier
+			return d, nil
+		},
+	}
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, u string) (*models.User, error) {
+			return &models.User{ID: "u1", Username: u, Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
+		},
+	}
+	stripe := &configStripeClient{
+		onCreatePaymentIntent: func(_ context.Context, _ models.PaymentIntentRequest) (*models.PaymentIntent, error) {
+			return &models.PaymentIntent{ID: "pi_tier", Status: "succeeded"}, nil
+		},
+	}
+	svc := newDonationSvc(donRepo, tieredInitiative(), userRepo, stripe)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents:           2500000,
+		StripePaymentMethodID: "pm_test",
+		IdempotencyKey:        "key-5",
+		DonationTier:          "gold",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if storedTier != "gold" {
+		t.Errorf("DonationTier stored = %q, want \"gold\"", storedTier)
+	}
+}
+
+func TestDonationService_Create_NoTier_Succeeds(t *testing.T) {
+	userRepo := &testUserRepo{
+		onGetByUsername: func(_ context.Context, u string) (*models.User, error) {
+			return &models.User{ID: "u1", Username: u, Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
+		},
+	}
+	stripe := &configStripeClient{
+		onCreatePaymentIntent: func(_ context.Context, _ models.PaymentIntentRequest) (*models.PaymentIntent, error) {
+			return &models.PaymentIntent{ID: "pi_notier", Status: "succeeded"}, nil
+		},
+	}
+	// Donation without a tier on a tiers-mode initiative is valid.
+	svc := newDonationSvc(&testDonationRepo{}, tieredInitiative(), userRepo, stripe)
+
+	don, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents:           100,
+		StripePaymentMethodID: "pm_test",
+		IdempotencyKey:        "key-6",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error for no-tier donation: %v", err)
+	}
+	if don.DonationTier != "" {
+		t.Errorf("DonationTier should be empty when not set, got %q", don.DonationTier)
+	}
+}
+
+func TestDonationService_Create_TierNotConfiguredOnInitiative(t *testing.T) {
+	// Initiative only has silver, not gold.
+	initRepo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:            "init-1",
+			AcceptFunding: true,
+			DonationMode:  models.DonationModeTiers,
+			SponsorshipTiers: []models.SponsorshipTier{
+				{ID: "t1", Name: "silver", Minimum: 1000000, Enabled: true},
+			},
+		},
+	}
+	svc := newDonationSvc(&testDonationRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents:           2000000,
+		StripePaymentMethodID: "pm_test",
+		IdempotencyKey:        "key-notfound",
+		DonationTier:          "gold", // valid name but not configured on this initiative
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for tier not on initiative, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "not configured") {
+		t.Errorf("error message should mention 'not configured', got: %v", err)
+	}
+}
+
+func TestProjectDonationSummaries_PreservesDonationTier(t *testing.T) {
+	donations := []models.Donation{
+		{ID: "d1", UserID: "u1", CurrentAmountCents: 2500000, DonationTier: "gold"},
+		{ID: "d2", UserID: "u2", CurrentAmountCents: 500, DonationTier: ""},
+	}
+
+	result := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, donations)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 summaries, got %d", len(result))
+	}
+	if result[0].DonationTier != "gold" {
+		t.Errorf("summary[0].DonationTier = %q, want \"gold\"", result[0].DonationTier)
+	}
+	if result[1].DonationTier != "" {
+		t.Errorf("summary[1].DonationTier = %q, want empty", result[1].DonationTier)
 	}
 }

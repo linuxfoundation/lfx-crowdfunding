@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -26,6 +27,8 @@ import (
 type subscriptionRepo struct {
 	getByIDResult          *models.Subscription
 	getByIDErr             error
+	getByIDForUserResult   *models.Subscription
+	getByIDForUserErr      error
 	getActiveByUserAndInit *models.Subscription
 	getActiveErr           error
 	listByInitiative       []models.Subscription
@@ -41,6 +44,9 @@ type subscriptionRepo struct {
 
 func (r *subscriptionRepo) GetByID(_ context.Context, _ string) (*models.Subscription, error) {
 	return r.getByIDResult, r.getByIDErr
+}
+func (r *subscriptionRepo) GetByIDForUser(_ context.Context, _, _ string) (*models.Subscription, error) {
+	return r.getByIDForUserResult, r.getByIDForUserErr
 }
 func (r *subscriptionRepo) GetActiveByUserAndInitiative(_ context.Context, _, _ string) (*models.Subscription, error) {
 	if r.getActiveErr != nil {
@@ -128,11 +134,17 @@ func (r *subscriptionInitiativeRepo) UpdateStripeProductID(_ context.Context, _,
 func (r *subscriptionInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *subscriptionInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *subscriptionInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	if r.orgsByIDs != nil {
 		return r.orgsByIDs, nil
 	}
 	return make(map[string]models.Organization), nil
+}
+func (r *subscriptionInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
 }
 
 // subscriptionUserRepo is a configurable UserRepository stub for subscription tests.
@@ -165,6 +177,7 @@ type subscriptionStripeClient struct {
 	onGetOrCreatePrice   func(ctx context.Context, productID, initiativeID string, amount int64, frequency, idempotencyKey string) (string, error)
 	onCreateSubscription func(ctx context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
 	onCancelSubscription func(ctx context.Context, subscriptionID string) error
+	onGetPeriodEnd       func(ctx context.Context, subscriptionID string) (int64, error)
 }
 
 func (c *subscriptionStripeClient) GetProduct(_ context.Context, _ string) (*models.StripeProduct, error) {
@@ -190,6 +203,12 @@ func (c *subscriptionStripeClient) CancelSubscription(ctx context.Context, subsc
 		return c.onCancelSubscription(ctx, subscriptionID)
 	}
 	return nil
+}
+func (c *subscriptionStripeClient) GetSubscriptionCurrentPeriodEnd(ctx context.Context, subscriptionID string) (int64, error) {
+	if c.onGetPeriodEnd != nil {
+		return c.onGetPeriodEnd(ctx, subscriptionID)
+	}
+	return 0, nil
 }
 func (c *subscriptionStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
@@ -511,6 +530,55 @@ func TestSubscriptionListForUser_ReturnsOwnSubs(t *testing.T) {
 	}
 }
 
+func TestSubscriptionListForUser_ReturnsNextChargeDate(t *testing.T) {
+	username := "testuser"
+	userID := "user-123"
+	periodEnd := int64(1767225600) // 2026-01-01T00:00:00Z
+
+	subRepo := &subscriptionRepo{
+		listByUserResult: []models.Subscription{{
+			ID:                   "sub-1",
+			UserID:               userID,
+			StripeSubscriptionID: "stripe-sub-1",
+		}},
+	}
+	userRepo := &subscriptionUserRepo{user: &models.User{ID: userID, Username: username}}
+	stripeClient := &subscriptionStripeClient{
+		onGetPeriodEnd: func(_ context.Context, subscriptionID string) (int64, error) {
+			if subscriptionID != "stripe-sub-1" {
+				t.Fatalf("expected stripe subscription id stripe-sub-1, got %s", subscriptionID)
+			}
+			return periodEnd, nil
+		},
+	}
+	h := newSubscriptionHandler(subRepo, &subscriptionInitiativeRepo{}, userRepo, stripeClient)
+
+	req := subscriptionListForUserReq(&models.Principal{Username: username})
+	w := httptest.NewRecorder()
+	h.ListForUser(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var body struct {
+		Data []models.Subscription `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Data) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(body.Data))
+	}
+	if body.Data[0].NextChargeDate == nil {
+		t.Fatal("expected next_charge_date to be present")
+	}
+	want := time.Unix(periodEnd, 0).UTC()
+	if !body.Data[0].NextChargeDate.Equal(want) {
+		t.Fatalf("expected next_charge_date %s, got %s", want.Format(time.RFC3339), body.Data[0].NextChargeDate.Format(time.RFC3339))
+	}
+}
+
 func TestSubscriptionCancel_NoPrincipal_Returns401(t *testing.T) {
 	subscriptionID := "sub-123"
 	subRepo := &subscriptionRepo{}
@@ -569,5 +637,165 @@ func TestSubscriptionCancel_Success_Returns204(t *testing.T) {
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("expected 204, got %d", w.Code)
+	}
+}
+
+// ── GetForUser tests ──────────────────────────────────────────────────────────
+
+// subscriptionGetForUserReq builds a GET request to /v1/me/subscriptions/{id}.
+func subscriptionGetForUserReq(subscriptionID string, principal *models.Principal) *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/v1/me/subscriptions/"+subscriptionID, nil)
+	if principal != nil {
+		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
+	}
+	return r
+}
+
+func TestSubscriptionGetForUser_NoPrincipal_Returns401(t *testing.T) {
+	h := newSubscriptionHandler(&subscriptionRepo{}, &subscriptionInitiativeRepo{}, &subscriptionUserRepo{}, &subscriptionStripeClient{})
+
+	req := subscriptionGetForUserReq("sub-123", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "sub-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestSubscriptionGetForUser_NotFound_Returns404(t *testing.T) {
+	username := "testuser"
+	userID := "user-123"
+	subscriptionID := "sub-999"
+
+	userRepo := &subscriptionUserRepo{user: &models.User{ID: userID, Username: username}}
+	subRepo := &subscriptionRepo{getByIDForUserErr: domain.ErrSubscriptionNotFound}
+	h := newSubscriptionHandler(subRepo, &subscriptionInitiativeRepo{}, userRepo, &subscriptionStripeClient{})
+
+	req := subscriptionGetForUserReq(subscriptionID, &models.Principal{Username: username})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", subscriptionID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestSubscriptionGetForUser_Success_Returns200(t *testing.T) {
+	username := "testuser"
+	userID := "user-123"
+	subscriptionID := "sub-123"
+
+	userRepo := &subscriptionUserRepo{user: &models.User{ID: userID, Username: username}}
+	subRepo := &subscriptionRepo{
+		getByIDForUserResult: &models.Subscription{
+			ID:                 subscriptionID,
+			UserID:             userID,
+			InitiativeID:       "init-456",
+			CurrentAmountCents: 2000,
+			Status:             "active",
+			InitiativeName:     "Test Initiative",
+			InitiativeLogoURL:  "https://example.com/logo.png",
+		},
+	}
+	h := newSubscriptionHandler(subRepo, &subscriptionInitiativeRepo{}, userRepo, &subscriptionStripeClient{})
+
+	req := subscriptionGetForUserReq(subscriptionID, &models.Principal{Username: username})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", subscriptionID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var body models.Subscription
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ID != subscriptionID {
+		t.Errorf("expected ID %s, got %s", subscriptionID, body.ID)
+	}
+	if body.InitiativeName != "Test Initiative" {
+		t.Errorf("expected initiative_name 'Test Initiative', got %q", body.InitiativeName)
+	}
+}
+
+func TestSubscriptionGetForUser_ReturnsNextChargeDate(t *testing.T) {
+	username := "testuser"
+	userID := "user-123"
+	subscriptionID := "sub-123"
+	periodEnd := int64(1767225600)
+
+	userRepo := &subscriptionUserRepo{user: &models.User{ID: userID, Username: username}}
+	subRepo := &subscriptionRepo{
+		getByIDForUserResult: &models.Subscription{
+			ID:                   subscriptionID,
+			UserID:               userID,
+			StripeSubscriptionID: "stripe-sub-123",
+		},
+	}
+	stripeClient := &subscriptionStripeClient{
+		onGetPeriodEnd: func(_ context.Context, subscriptionID string) (int64, error) {
+			if subscriptionID != "stripe-sub-123" {
+				t.Fatalf("expected stripe subscription id stripe-sub-123, got %s", subscriptionID)
+			}
+			return periodEnd, nil
+		},
+	}
+	h := newSubscriptionHandler(subRepo, &subscriptionInitiativeRepo{}, userRepo, stripeClient)
+
+	req := subscriptionGetForUserReq(subscriptionID, &models.Principal{Username: username})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", subscriptionID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var body models.Subscription
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.NextChargeDate == nil {
+		t.Fatal("expected next_charge_date to be present")
+	}
+	want := time.Unix(periodEnd, 0).UTC()
+	if !body.NextChargeDate.Equal(want) {
+		t.Fatalf("expected next_charge_date %s, got %s", want.Format(time.RFC3339), body.NextChargeDate.Format(time.RFC3339))
+	}
+}
+
+func TestSubscriptionGetForUser_UserNotFound_Returns404(t *testing.T) {
+	username := "ghost"
+	subscriptionID := "sub-123"
+
+	userRepo := &subscriptionUserRepo{err: domain.ErrUserNotFound}
+	h := newSubscriptionHandler(&subscriptionRepo{}, &subscriptionInitiativeRepo{}, userRepo, &subscriptionStripeClient{})
+
+	req := subscriptionGetForUserReq(subscriptionID, &models.Principal{Username: username})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", subscriptionID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetForUser(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for unknown user, got %d", w.Code)
 	}
 }

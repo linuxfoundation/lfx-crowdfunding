@@ -14,6 +14,7 @@ const RE_EXPENSE_ACTION = /^\/api\/expense-email\/[^/]+\/[^/]+$/;
 // Omit `methods` to protect all HTTP methods on matching paths.
 const PROTECTED: ProtectedRoute[] = [
   { match: (p) => p === '/api/me', methods: ['PATCH'] },
+  { match: (p) => p.startsWith('/api/me/') },
   { match: (p) => p === '/api/presigned-url', methods: ['POST'] },
   { match: (p) => p.startsWith('/api/payment/') },
   { match: (p) => RE_DONATIONS.test(p), methods: ['POST'] },

@@ -70,7 +70,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, useId } from 'vue';
 import { isGradient } from './types/donut-chart.types';
 import type {
   DonutChartColorProp,
@@ -109,8 +109,9 @@ const center = computed(() => props.size / 2);
 const radius = computed(() => center.value - props.strokeWidth);
 const circumference = computed(() => 2 * Math.PI * radius.value);
 
-// Unique ID factory — one per instance, keyed by index for multi-segment
-const instanceKey = Math.random().toString(36).slice(2, 8);
+// useId() is SSR/client-deterministic (unlike Math.random()), so gradient
+// ids match between server-rendered and hydrated markup.
+const instanceKey = useId();
 const gradientId = (i: number) => `donut-gradient-${instanceKey}-${i}`;
 
 // Normalize both modes into a unified segment list

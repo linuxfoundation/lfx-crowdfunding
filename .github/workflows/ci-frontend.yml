@@ -167,7 +167,7 @@ jobs:
         working-directory: frontend
         run: pnpm dev &
         env:
-          NUXT_APP_ENV: "development"
+          NUXT_PUBLIC_APP_ENV: "development"
           NUXT_API_BASE_URL: "http://localhost:8080"
           NUXT_JWT_SECRET: "e2e-test-jwt-secret-not-used-for-real-auth"
           NUXT_PUBLIC_AUTH0_CLIENT_ID: "placeholder"
@@ -239,7 +239,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: frontend/
+          context: .
           file: frontend/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

@@ -48,54 +48,67 @@ SPDX-License-Identifier: MIT
       <span class="text-sm">Failed to load categories.</span>
     </div>
 
-    <template v-else-if="categories.length">
-      <!-- Combined stacked bar across all categories -->
+    <template v-else-if="displayCategories.length">
+      <!-- Combined stacked bar; "Others" sits last (right-most) -->
       <lfx-progress-bar
-        :values="categories.map(categoryBarPercent)"
-        :colors="categories.map((c) => categoryColor(c.name))"
+        :values="displayCategories.map(categoryBarPercent)"
+        :colors="displayCategories.map((c) => categoryColor(c.name))"
+        :tooltips="displayCategories.map(categoryTooltip)"
+        :min-segment-width="6"
         :hide-empty="true"
       />
 
       <!-- Category rows -->
       <div class="flex flex-col gap-3">
-        <div
-          v-for="category in categories"
+        <template
+          v-for="category in displayCategories"
           :key="category.id"
-          class="flex items-center justify-between"
         >
-          <!-- Icon bubble + name -->
-          <div class="flex items-center gap-3">
-            <div
-              class="size-6 rounded-full flex items-center justify-center shrink-0"
-              :style="categoryBg(category.name)"
-            >
-              <lfx-icon
-                :name="getCategoryVisual(category.name).icon"
-                type="solid"
-                :size="12"
-                class="text-white"
-              />
-            </div>
-            <span class="md:text-sm text-xs font-semibold text-neutral-900">{{ category.name }}</span>
-          </div>
+          <!-- Divider between the main categories and the combined "Others" bucket -->
+          <div
+            v-if="category.id === OTHERS_ID"
+            class="border-t border-neutral-200"
+            aria-hidden="true"
+          />
 
-          <!-- Percent + donated -->
-          <span class="md:text-sm text-xs text-neutral-600 whitespace-nowrap">
-            {{ categoryPercent(category) }}% ・ {{ formatShort(category.raisedCents) }} donated
-          </span>
-        </div>
+          <div class="flex items-center justify-between">
+            <!-- Icon bubble + name -->
+            <div class="flex items-center gap-3">
+              <div
+                class="size-6 rounded-full flex items-center justify-center shrink-0"
+                :style="categoryBg(category.name)"
+              >
+                <lfx-icon
+                  :name="getCategoryVisual(category.name).icon"
+                  type="solid"
+                  :size="12"
+                  :class="getCategoryVisual(category.name).iconColor ?? 'text-white'"
+                />
+              </div>
+              <span class="md:text-sm text-xs font-semibold text-neutral-900">{{
+                getCategoryLabel(category.name)
+              }}</span>
+            </div>
+
+            <!-- Percent + donated -->
+            <span class="md:text-sm text-xs text-neutral-600 whitespace-nowrap">
+              {{ categoryPercent(category) }}% ・ {{ formatShort(category.raisedCents) }} donated
+            </span>
+          </div>
+        </template>
       </div>
     </template>
   </lfx-card>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import LfxProgressBar from '~/components/uikit/progress-bar/progress-bar.vue';
 import { formatNumberShort } from '~/utils/formatter';
-import { getCategoryVisual } from '~/config/statistics/categories';
+import { getCategoryVisual, getCategoryLabel } from '~/config/statistics/categories';
 import type { FundingCategory } from '#shared/types/statistics.types';
 
 const props = defineProps<{
@@ -103,6 +116,45 @@ const props = defineProps<{
   isLoading: boolean;
   error: Error | null;
 }>();
+
+const OTHERS_ID = 'others';
+
+// Categories shown individually in this card; everything else is grouped into "Others".
+const MAIN_CATEGORY_KEYS = new Set([
+  'general fund',
+  'development',
+  'marketing',
+  'meetups',
+  'bugbounty',
+  'travel',
+  'documentation',
+  'security audit',
+  'mentorship',
+]);
+
+const isMainCategory = (c: FundingCategory): boolean => MAIN_CATEGORY_KEYS.has(c.name.trim().toLowerCase());
+
+const mainCategories = computed((): FundingCategory[] =>
+  props.categories.filter(isMainCategory).sort((a, b) => b.raisedCents - a.raisedCents),
+);
+
+const othersCategory = computed((): FundingCategory | null => {
+  const rest = props.categories.filter((c) => !isMainCategory(c));
+  if (!rest.length) return null;
+  return {
+    id: OTHERS_ID,
+    name: 'Others',
+    icon: '',
+    raisedCents: rest.reduce((sum, c) => sum + c.raisedCents, 0),
+    goalCents: 0,
+    supporterCount: rest.reduce((sum, c) => sum + c.supporterCount, 0),
+  };
+});
+
+// Main categories first (largest first), then the combined "Others" bucket always last.
+const displayCategories = computed((): FundingCategory[] =>
+  othersCategory.value ? [...mainCategories.value, othersCategory.value] : mainCategories.value,
+);
 
 const categoryColor = (name: string): string => getCategoryVisual(name).color;
 
@@ -115,9 +167,20 @@ const categoryBarPercent = (c: FundingCategory): number => {
   return t > 0 ? (c.raisedCents / t) * 100 : 0;
 };
 
-const categoryPercent = (c: FundingCategory): number => Math.round(categoryBarPercent(c));
+const categoryPercent = (c: FundingCategory): string => {
+  const pct = categoryBarPercent(c);
+  if (pct === 0) return '0';
+  // 1%+ reads as a whole number; below that, show one decimal, rounding up
+  // so small-but-real shares aren't flattened to 0%.
+  if (Math.abs(pct) >= 1) return String(Math.round(pct));
+  const rounded = Math.ceil(Math.abs(pct) * 10) / 10;
+  return `${pct < 0 ? '-' : ''}${rounded.toFixed(1)}`;
+};
 
-const formatShort = (cents: number) => formatNumberShort(cents / 100);
+const formatShort = (cents: number) => `$${formatNumberShort(cents / 100)}`;
+
+const categoryTooltip = (c: FundingCategory): string =>
+  `${getCategoryLabel(c.name)} · ${categoryPercent(c)}% · ${formatShort(c.raisedCents)} donated`;
 </script>
 
 <script lang="ts">

@@ -67,6 +67,10 @@ func (r *donationRepo) UpdateByPaymentIntentID(_ context.Context, _, _, _ string
 	return r.updateByPIIDErr
 }
 
+func (r *donationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
+	return nil, nil
+}
+
 // donationInitiativeRepo is a minimal InitiativeRepository stub for donation tests.
 type donationInitiativeRepo struct {
 	initiative *models.Initiative
@@ -112,11 +116,17 @@ func (r *donationInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ s
 func (r *donationInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *donationInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *donationInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	if r.orgsByIDs != nil {
 		return r.orgsByIDs, nil
 	}
 	return make(map[string]models.Organization), nil
+}
+func (r *donationInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
 }
 
 // donationUserRepo is a configurable UserRepository stub for donation tests.
@@ -169,6 +179,9 @@ func (c *donationStripeClient) CreateSubscription(_ context.Context, _ models.St
 }
 func (c *donationStripeClient) CancelSubscription(_ context.Context, _ string) error {
 	return nil
+}
+func (c *donationStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ string) (int64, error) {
+	return 0, nil
 }
 func (c *donationStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
@@ -481,5 +494,62 @@ func TestDonationCreate_Success_Returns201(t *testing.T) {
 	}
 	if body.ID != "don-123" {
 		t.Errorf("expected donation ID don-123, got %s", body.ID)
+	}
+}
+
+// TestDonationCreate_DefaultsPaymentMethodToStripe asserts that when the request
+// body omits payment_method (the normal case from the BFF), the service defaults
+// it to "stripe" before persisting and before forwarding to Stripe.
+func TestDonationCreate_DefaultsPaymentMethodToStripe(t *testing.T) {
+	initiativeID := "init-123"
+	userID := "user-123"
+	username := "testuser"
+
+	principal := &models.Principal{Username: username}
+	userRepo := &donationUserRepo{
+		user: &models.User{
+			ID:               userID,
+			Username:         username,
+			Email:            "test@example.com",
+			StripeCustomerID: "cus_xxx",
+		},
+	}
+	initiativeRepo := &donationInitiativeRepo{
+		initiative: &models.Initiative{
+			ID:              initiativeID,
+			StripeProductID: "prod_yyy",
+			Status:          "published",
+			AcceptFunding:   true,
+		},
+	}
+	donRepo := &donationRepo{}
+
+	var capturedPIReq models.PaymentIntentRequest
+	stripeClient := &donationStripeClient{
+		onCreatePaymentIntent: func(_ context.Context, req models.PaymentIntentRequest) (*models.PaymentIntent, error) {
+			capturedPIReq = req
+			return &models.PaymentIntent{ID: "pi_xxx", Status: "succeeded"}, nil
+		},
+	}
+
+	h := newDonationHandler(donRepo, initiativeRepo, userRepo, stripeClient)
+
+	// Omit payment_method entirely — as the BFF always does for card donations.
+	req := donationCreateReq(initiativeID, "key-1", `{"amount_cents":500,"stripe_payment_method_id":"pm_xxx"}`, principal)
+	req = setChiParam(req, "id", initiativeID)
+	w := httptest.NewRecorder()
+	h.Create(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if capturedPIReq.PaymentMethod != models.PaymentMethodStripe {
+		t.Errorf("PaymentIntentRequest.PaymentMethod = %q, want %q", capturedPIReq.PaymentMethod, models.PaymentMethodStripe)
+	}
+	if donRepo.lastCreated == nil {
+		t.Fatal("expected donation to be created")
+	}
+	if donRepo.lastCreated.PaymentMethod != models.PaymentMethodStripe {
+		t.Errorf("Donation.PaymentMethod = %q, want %q", donRepo.lastCreated.PaymentMethod, models.PaymentMethodStripe)
 	}
 }

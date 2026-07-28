@@ -10,7 +10,7 @@ SPDX-License-Identifier: MIT
         v-for="card in navCards"
         :key="card.id"
         :to="card.href"
-        class="flex flex-col justify-between h-80 p-6 rounded-2xl border border-neutral-200 no-underline"
+        class="flex flex-col justify-between h-80 p-6 rounded-2xl border border-neutral-200 no-underline transition-shadow duration-200 hover:shadow-lg"
         :style="{ backgroundImage: card.gradient }"
       >
         <!-- Top row: label + chevron -->

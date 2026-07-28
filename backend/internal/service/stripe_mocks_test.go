@@ -16,20 +16,21 @@ import (
 // Any method whose function field is nil panics, making accidentally-called
 // paths immediately visible.
 type configStripeClient struct {
-	onGetProduct          func(context.Context, string) (*models.StripeProduct, error)
-	onCreateProduct       func(ctx context.Context, initiativeID, name string) (string, error)
-	onDeleteProduct       func(context.Context, string) error
-	onCreatePaymentIntent func(context.Context, models.PaymentIntentRequest) (*models.PaymentIntent, error)
-	onCreateSubscription  func(context.Context, models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
+	onGetProduct                  func(context.Context, string) (*models.StripeProduct, error)
+	onCreateProduct               func(ctx context.Context, initiativeID, name string) (string, error)
+	onDeleteProduct               func(context.Context, string) error
+	onCreatePaymentIntent         func(context.Context, models.PaymentIntentRequest) (*models.PaymentIntent, error)
+	onCreateSubscription          func(context.Context, models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
 	onCancelSubscription          func(context.Context, string) error
+	onGetSubscriptionPeriodEnd    func(context.Context, string) (int64, error)
 	onUpdatePaymentIntentMetadata func(context.Context, string, map[string]string) error
-	onConstructWebhook    func([]byte, string, string) (stripe.Event, error)
-	onCreateCustomer      func(context.Context, string, string) (string, error)
-	onCreateSetupIntent   func(context.Context, string) (string, error)
-	onAttachPaymentMethod func(context.Context, string, string) (*models.CardDetails, error)
-	onGetPaymentMethod    func(context.Context, string) (*models.CardDetails, error)
-	onDetachPaymentMethod func(context.Context, string) error
-	onGetOrCreatePrice    func(context.Context, string, string, int64, string, string) (string, error)
+	onConstructWebhook            func([]byte, string, string) (stripe.Event, error)
+	onCreateCustomer              func(context.Context, string, string) (string, error)
+	onCreateSetupIntent           func(context.Context, string) (string, error)
+	onAttachPaymentMethod         func(context.Context, string, string) (*models.CardDetails, error)
+	onGetPaymentMethod            func(context.Context, string) (*models.CardDetails, error)
+	onDetachPaymentMethod         func(context.Context, string) error
+	onGetOrCreatePrice            func(context.Context, string, string, int64, string, string) (string, error)
 }
 
 func (c *configStripeClient) GetProduct(ctx context.Context, id string) (*models.StripeProduct, error) {
@@ -67,6 +68,12 @@ func (c *configStripeClient) CancelSubscription(ctx context.Context, id string) 
 		return c.onCancelSubscription(ctx, id)
 	}
 	panic("CancelSubscription not expected")
+}
+func (c *configStripeClient) GetSubscriptionCurrentPeriodEnd(ctx context.Context, subscriptionID string) (int64, error) {
+	if c.onGetSubscriptionPeriodEnd != nil {
+		return c.onGetSubscriptionPeriodEnd(ctx, subscriptionID)
+	}
+	return 0, nil
 }
 func (c *configStripeClient) UpdatePaymentIntentMetadata(ctx context.Context, piID string, metadata map[string]string) error {
 	if c.onUpdatePaymentIntentMetadata != nil {
@@ -162,15 +169,24 @@ func (r *testUserRepo) ClearStripePaymentMethod(ctx context.Context, userID stri
 type testDonationRepo struct {
 	onCreate                  func(context.Context, *models.Donation) (*models.Donation, error)
 	onUpdateByPaymentIntentID func(context.Context, string, string, string) error
+	onListByInitiative        func(context.Context, string, models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
+	onListByUser              func(context.Context, string, models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
+	onListOrgDonations        func(context.Context) ([]models.OrgDonationRow, error)
 }
 
 func (r *testDonationRepo) GetByID(_ context.Context, _ string) (*models.Donation, error) {
 	return nil, nil
 }
-func (r *testDonationRepo) ListByInitiative(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+func (r *testDonationRepo) ListByInitiative(ctx context.Context, initiativeID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+	if r.onListByInitiative != nil {
+		return r.onListByInitiative(ctx, initiativeID, filter)
+	}
 	return nil, nil, nil
 }
-func (r *testDonationRepo) ListByUser(_ context.Context, _ string, _ models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+func (r *testDonationRepo) ListByUser(ctx context.Context, userID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+	if r.onListByUser != nil {
+		return r.onListByUser(ctx, userID, filter)
+	}
 	return nil, nil, nil
 }
 func (r *testDonationRepo) Create(ctx context.Context, d *models.Donation) (*models.Donation, error) {
@@ -186,13 +202,22 @@ func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, st
 	return nil
 }
 
+func (r *testDonationRepo) ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error) {
+	if r.onListOrgDonations != nil {
+		return r.onListOrgDonations(ctx)
+	}
+	return nil, nil
+}
+
 // testSubscriptionRepo is a configurable SubscriptionRepository.
 type testSubscriptionRepo struct {
-	onGetByID                       func(context.Context, string) (*models.Subscription, error)
-	onGetActiveByUserAndInitiative  func(context.Context, string, string) (*models.Subscription, error)
-	onCreate                        func(context.Context, *models.Subscription) (*models.Subscription, error)
-	onUpdate                        func(context.Context, *models.Subscription) (*models.Subscription, error)
-	onUpdateByStripeSubscriptionID  func(context.Context, string, string) error
+	onGetByID                      func(context.Context, string) (*models.Subscription, error)
+	onGetByIDForUser               func(context.Context, string, string) (*models.Subscription, error)
+	onGetActiveByUserAndInitiative func(context.Context, string, string) (*models.Subscription, error)
+	onListByUser                   func(context.Context, string, models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error)
+	onCreate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
+	onUpdate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
+	onUpdateByStripeSubscriptionID func(context.Context, string, string) error
 }
 
 func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.Subscription, error) {
@@ -200,6 +225,12 @@ func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.
 		return r.onGetByID(ctx, id)
 	}
 	return nil, nil
+}
+func (r *testSubscriptionRepo) GetByIDForUser(ctx context.Context, id, userID string) (*models.Subscription, error) {
+	if r.onGetByIDForUser != nil {
+		return r.onGetByIDForUser(ctx, id, userID)
+	}
+	return nil, domain.ErrSubscriptionNotFound
 }
 func (r *testSubscriptionRepo) GetActiveByUserAndInitiative(ctx context.Context, userID, initiativeID string) (*models.Subscription, error) {
 	if r.onGetActiveByUserAndInitiative != nil {
@@ -210,7 +241,10 @@ func (r *testSubscriptionRepo) GetActiveByUserAndInitiative(ctx context.Context,
 func (r *testSubscriptionRepo) ListByInitiative(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
 	return nil, nil, nil
 }
-func (r *testSubscriptionRepo) ListByUser(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+func (r *testSubscriptionRepo) ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+	if r.onListByUser != nil {
+		return r.onListByUser(ctx, userID, filter)
+	}
 	return nil, nil, nil
 }
 func (r *testSubscriptionRepo) Create(ctx context.Context, s *models.Subscription) (*models.Subscription, error) {

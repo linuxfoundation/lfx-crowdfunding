@@ -12,6 +12,9 @@ SPDX-License-Identifier: MIT
     <initiative-detail-donations-table
       :donations="donationRecords"
       :is-loading="isLoadingDonations"
+      :has-more="hasMoreDonations"
+      :is-loading-more="isLoadingMoreDonations"
+      @load-more="$emit('load-more-donations')"
     />
 
     <initiative-detail-expenses-table
@@ -32,8 +35,14 @@ defineProps<{
   initiative: InitiativeDetail;
   donationRecords: DonationRecord[];
   isLoadingDonations?: boolean;
+  hasMoreDonations?: boolean;
+  isLoadingMoreDonations?: boolean;
   expenseRecords: ExpenseRecord[];
   isLoadingExpenses?: boolean;
+}>();
+
+defineEmits<{
+  'load-more-donations': [];
 }>();
 </script>
 

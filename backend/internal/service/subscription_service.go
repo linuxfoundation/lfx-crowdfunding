@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	stripe "github.com/stripe/stripe-go/v85"
 
@@ -74,7 +76,42 @@ func (s *SubscriptionService) ListByUser(ctx context.Context, username string, f
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list subscriptions: %w", err)
 	}
+
+	s.enrichNextChargeDates(ctx, subs)
 	return subs, meta, nil
+}
+
+// GetByIDForUser returns a single subscription by ID that belongs to the authenticated
+// user, enriched with initiative name and logo. Returns ErrSubscriptionNotFound (→ 404)
+// when the subscription does not exist or belongs to a different user.
+func (s *SubscriptionService) GetByIDForUser(ctx context.Context, id, username string) (*models.Subscription, error) {
+	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.GetByIDForUser")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("subscription.id", id),
+		attribute.String("user.username", username),
+	)
+
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrSubscriptionNotFound
+		}
+		span.RecordError(err)
+		return nil, fmt.Errorf("resolve user: %w", err)
+	}
+
+	sub, err := s.repo.GetByIDForUser(ctx, id, user.ID)
+	if err != nil {
+		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+			span.RecordError(err)
+			return nil, fmt.Errorf("get subscription: %w", err)
+		}
+		return nil, err
+	}
+
+	s.enrichNextChargeDate(ctx, sub)
+	return sub, nil
 }
 
 // Create creates a Stripe subscription with 3DS support and records it in the database.
@@ -287,8 +324,14 @@ func (s *SubscriptionService) Cancel(ctx context.Context, id, callerUsername str
 	}
 
 	if err := s.stripe.CancelSubscription(ctx, sub.StripeSubscriptionID); err != nil {
-		span.RecordError(err)
-		return fmt.Errorf("cancel stripe subscription: %w", err)
+		// A 404 from Stripe means the subscription no longer exists there
+		// (e.g. it was already deleted via webhook or Stripe Dashboard).
+		// Treat this as idempotent: proceed to mark it canceled in the DB.
+		if !isStripeSubscriptionMissing(err) {
+			span.RecordError(err)
+			return fmt.Errorf("cancel stripe subscription: %w", err)
+		}
+		slog.WarnContext(ctx, "subscription not found in Stripe, marking canceled locally", "stripe_subscription_id", sub.StripeSubscriptionID)
 	}
 
 	sub.Status = models.SubscriptionStatusCanceled
@@ -310,4 +353,38 @@ func isStripeProductMissing(err error) bool {
 	// Fallback for wrapped errors where the Stripe type is lost.
 	return strings.Contains(err.Error(), "resource_missing") &&
 		strings.Contains(err.Error(), "product")
+}
+
+// isStripeSubscriptionMissing returns true when Stripe returns a 404
+// resource_missing error for a subscription — meaning the subscription
+// was already deleted in Stripe (e.g. via webhook or Stripe Dashboard).
+func isStripeSubscriptionMissing(err error) bool {
+	var se *stripe.Error
+	if errors.As(err, &se) {
+		return se.HTTPStatusCode == 404 && se.Code == stripe.ErrorCodeResourceMissing
+	}
+	return strings.Contains(err.Error(), "resource_missing")
+}
+
+func (s *SubscriptionService) enrichNextChargeDates(ctx context.Context, subs []models.Subscription) {
+	for i := range subs {
+		s.enrichNextChargeDate(ctx, &subs[i])
+	}
+}
+
+func (s *SubscriptionService) enrichNextChargeDate(ctx context.Context, sub *models.Subscription) {
+	if sub == nil || sub.StripeSubscriptionID == "" {
+		return
+	}
+
+	periodEnd, err := s.stripe.GetSubscriptionCurrentPeriodEnd(ctx, sub.StripeSubscriptionID)
+	if err != nil {
+		slog.WarnContext(ctx, "subscription next charge date lookup failed", "subscription_id", sub.ID, "stripe_subscription_id", sub.StripeSubscriptionID, "error", err)
+		return
+	}
+	if periodEnd <= 0 {
+		return
+	}
+	next := time.Unix(periodEnd, 0).UTC()
+	sub.NextChargeDate = &next
 }

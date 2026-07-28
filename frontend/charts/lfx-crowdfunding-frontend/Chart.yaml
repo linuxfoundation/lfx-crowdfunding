@@ -5,8 +5,9 @@ apiVersion: v2
 name: lfx-crowdfunding-frontend
 description: LFX Crowdfunding Nuxt 4 Frontend BFF
 type: application
-version: 0.1.1
-appVersion: "0.1.1"
+# This version is a placeholder — it is overridden with the release tag by ci-release.yml at publish time.
+version: 0.0.1
+appVersion: "latest"
 keywords:
   - lfx
   - crowdfunding

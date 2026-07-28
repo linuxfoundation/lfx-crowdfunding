@@ -50,6 +50,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	subscriptionRepo := db.NewSubscriptionRepository(pool)
 	statisticsRepo := db.NewStatisticsRepository(pool)
 	userRepo := db.NewUserRepository(pool)
+	orgRepo := db.NewOrganizationRepository(pool)
+	announcementRepo := db.NewAnnouncementRepository(pool)
 
 	// Clients
 	ledgerClient := clients.NewLedgerClient(clients.LedgerConfig{
@@ -88,10 +90,14 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		return nil, fmt.Errorf("reimbursement config: %w", err)
 	}
 	reimbursementClient := clients.NewReimbursementClient(clients.ReimbursementConfig{
-		APIURL:       cfg.Reimbursement.APIURL,
-		APIKey:       cfg.Reimbursement.APIKey,
-		FrontendBase: cfg.Mandrill.FrontendBase,
-		Timeout:      cfg.Reimbursement.Timeout,
+		APIURL:                cfg.Reimbursement.APIURL,
+		APIKey:                cfg.Reimbursement.APIKey,
+		FrontendBase:          cfg.Mandrill.FrontendBase,
+		Timeout:               cfg.Reimbursement.Timeout,
+		Auth0TokenURL:         cfg.Reimbursement.Auth0TokenURL,
+		Auth0ClientID:         cfg.Reimbursement.Auth0ClientID,
+		Auth0ClientPrivateKey: cfg.Reimbursement.Auth0ClientPrivateKey,
+		Auth0Audience:         cfg.Reimbursement.Auth0Audience,
 	})
 	if reimbursementClient == nil {
 		logger.Warn("REIMBURSEMENTS_API_URL is not set — Reimbursement Service sync is disabled")
@@ -103,6 +109,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
+	orgSvc := service.NewOrganizationService(orgRepo, userRepo)
+	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)
 
 	// JWT authenticator
 	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
@@ -132,6 +140,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	webhookH := handler.NewWebhookHandler(stripeClient, ledgerClient, donationRepo, subscriptionRepo, emailSvc, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 	uploadH := handler.NewUploadHandler(s3Client)
 	expenseH := handler.NewExpenseHandler(reimbursementClient)
+	orgH := handler.NewOrganizationHandler(orgSvc)
+	announcementH := handler.NewAnnouncementHandler(announcementSvc)
 
 	// UserInfo client — fetches full profile from Auth0 on login sync.
 	// In bypass mode (local dev) there is no real Auth0, so use a mock fetcher.
@@ -151,6 +161,14 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Recoverer)
+	// otelhttp must sit inside Chi's Timeout middleware so that its
+	// RespWriterWrapper only ever sees one WriteHeader call. If otelhttp
+	// wraps the outer http.Server handler it observes both Chi's 504 timeout
+	// response AND the handler's own error write, causing a "superfluous
+	// response.WriteHeader" warning on every timed-out request.
+	r.Use(func(next http.Handler) http.Handler {
+		return otelhttp.NewHandler(next, "initiatives-api")
+	})
 	// Chi's context timeout must be shorter than the HTTP WriteTimeout so the
 	// handler has time to write a graceful 504 before the server closes the
 	// connection. 80% of WriteTimeout is a safe margin.
@@ -173,8 +191,10 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	r.Get("/v1/statistics/platform", statisticsH.GetPlatformDetails)
 	r.Get("/v1/statistics/monthly", statisticsH.GetPlatformMonthly)
 	r.Get("/v1/statistics/recent-donations", statisticsH.GetRecentDonations)
+	r.Get("/v1/statistics/org-donations", statisticsH.GetOrgDonations)
 	r.Get("/v1/initiatives", initiativeH.List)
 	r.Get("/v1/initiatives/{id}/transactions", initiativeH.GetTransactions)
+	r.Get("/v1/initiatives/{id}/announcements", announcementH.List)
 
 	// Initiative detail — public for published initiatives; approvers may also
 	// view non-published initiatives if a valid token is supplied.
@@ -189,10 +209,17 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// Profile sync — calls Auth0 UserInfo, writes to DB.
 		r.Patch("/", userH.SyncProfile)
 
-		// Caller's own initiatives, donations, and subscriptions across all initiatives.
+		// Caller's own initiatives, donations, subscriptions, and organizations.
 		r.Get("/initiatives", initiativeH.ListForUser)
+		r.Get("/donations/csv", donationH.ExportOrgCSV)
 		r.Get("/donations", donationH.ListForUser)
+		r.Get("/transactions", initiativeH.GetAllMyTransactions)
 		r.Get("/subscriptions", subscriptionH.ListForUser)
+		r.Get("/subscriptions/{id}", subscriptionH.GetForUser)
+		r.Get("/organizations", orgH.List)
+		r.Post("/organizations", orgH.Create)
+		r.Patch("/organizations/{id}", orgH.Update)
+		r.Delete("/organizations/{id}", orgH.Delete)
 
 		// Payment account (saved card for 3DS flows).
 		r.Post("/setup-intent", paymentH.CreateSetupIntent)
@@ -208,6 +235,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// non-published initiatives from non-approvers).
 		r.Get("/initiatives/{id}", initiativeH.GetForUser)
 		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactionsForUser)
+		r.Get("/initiatives/{id}/my-transactions", initiativeH.GetMyTransactions)
 		r.Post("/initiatives", initiativeH.Create)
 		r.Patch("/initiatives/{id}", initiativeH.Update)
 		r.Delete("/initiatives/{id}", initiativeH.Delete)
@@ -218,6 +246,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Get("/initiatives/{id}/subscriptions", subscriptionH.List)
 		r.Post("/initiatives/{id}/subscriptions", subscriptionH.Create)
 		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
+
+		// Announcements on a specific initiative (caller must be the initiative owner).
+		r.Post("/initiatives/{id}/announcements", announcementH.Create)
+		r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
+		r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
 	})
 
 	// Approval route — caller is an approver (allowlist check), not the resource owner.
@@ -232,6 +265,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// These endpoints are for service-to-service callers, not end users.
 	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
 		Get("/v1/initiatives/{slug}/owner-info", initiativeH.GetOwnerInfo)
+	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
+		Get("/v1/initiatives/published-list", initiativeH.ListPublished)
 
 	// Expense action — proxies action to the Reimbursement Service.
 	// Requires a valid bearer token (any scope); no specific scope is enforced
@@ -242,7 +277,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{
 		Addr:         addr,
-		Handler:      otelhttp.NewHandler(r, "initiatives-api"),
+		Handler:      r,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,

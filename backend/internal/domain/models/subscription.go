@@ -16,14 +16,15 @@ const (
 
 // Subscription maps to the crowdfunding.subscriptions table.
 type Subscription struct {
-	ID                 string `json:"id"`
-	UserID             string `json:"-"`
-	InitiativeID       string `json:"initiative_id"`
-	OrganizationID     string `json:"-"`
-	Category           string `json:"category,omitempty"`
-	CurrentAmountCents int64  `json:"amount_cents"`
-	Frequency          string `json:"frequency,omitempty"`
-	Status             string `json:"status,omitempty"`
+	ID                 string     `json:"id"`
+	UserID             string     `json:"-"`
+	InitiativeID       string     `json:"initiative_id"`
+	OrganizationID     string     `json:"-"`
+	Category           string     `json:"category,omitempty"`
+	CurrentAmountCents int64      `json:"amount_cents"`
+	NextChargeDate     *time.Time `json:"next_charge_date,omitempty"`
+	Frequency          string     `json:"frequency,omitempty"`
+	Status             string     `json:"status,omitempty"`
 	// Stripe IDs are internal operational fields used by webhook reconciliation.
 	// They are never serialised to API consumers.
 	StripeSubscriptionID     string    `json:"-"`

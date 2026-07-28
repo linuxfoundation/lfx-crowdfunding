@@ -19,8 +19,13 @@ SPDX-License-Identifier: MIT
         :model-value="modelValue"
         @update:model-value="emit('update:modelValue', $event)"
       />
-      <fundraise-compliance-step
+      <fundraise-donation-options-step
         v-else-if="currentStep === 1"
+        :model-value="modelValue.donationOptions"
+        @update:model-value="emit('update:modelValue', { ...modelValue, donationOptions: $event })"
+      />
+      <fundraise-compliance-step
+        v-else-if="currentStep === 2"
         :model-value="modelValue.compliance"
         @update:model-value="emit('update:modelValue', { ...modelValue, compliance: $event })"
       />
@@ -31,10 +36,11 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import FundraiseStepIndicator from '../main/fundraise-step-indicator.vue';
 import FundraiseComplianceStep from '../main/fundraise-compliance-step.vue';
+import FundraiseDonationOptionsStep from '../main/fundraise-donation-options-step.vue';
 import FundraiseGeneralFundDetailsStep from './fundraise-general-fund-details-step.vue';
 import type { GeneralFundFormData } from '~/types/fundraise.types';
 
-const STEPS = ['Initiative details', 'Compliance & Terms'];
+const STEPS = ['Initiative details', 'Donation options', 'Compliance & Terms'];
 
 defineProps<{
   currentStep: number;

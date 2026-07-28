@@ -1,0 +1,80 @@
+// Copyright The Linux Foundation and each contributor to LFX.
+// SPDX-License-Identifier: MIT
+
+// Extra styles applied to markdown rendered inside documentation article pages.
+// Extends .lfx-rich-text with table support and documentation-appropriate heading scale.
+.docs-article-body {
+  @apply text-base leading-7;
+
+  h1 {
+    @apply text-2xl mt-8 mb-3;
+  }
+
+  h2 {
+    @apply text-xl mt-8 mb-2;
+  }
+
+  h3 {
+    @apply text-lg mt-6 mb-2;
+  }
+
+  h4 {
+    @apply mt-4 mb-1;
+  }
+
+  p {
+    @apply mb-4;
+  }
+
+  ul,
+  ol {
+    @apply mb-4 space-y-1.5;
+  }
+
+  // Inline images — light gray border, rounded corners, vertical spacing
+  img {
+    @apply rounded-2xl border border-neutral-200 my-6;
+  }
+
+  // Callout blockquotes (e.g. "> **Note** — ...")
+  blockquote {
+    @apply not-italic border-l-4 border-brand-400 bg-brand-50 text-brand-900 px-4 py-3 my-5 rounded-r-md;
+
+    p {
+      @apply mb-0;
+    }
+  }
+
+  // Markdown tables
+  table {
+    @apply w-full border-collapse mb-6 text-sm;
+
+    thead {
+      th {
+        @apply border-b-2 border-neutral-200 px-4 py-2.5 text-left font-semibold text-neutral-700 bg-neutral-50;
+
+        &:first-child {
+          @apply rounded-tl-lg;
+        }
+
+        &:last-child {
+          @apply rounded-tr-lg;
+        }
+      }
+    }
+
+    tbody {
+      tr {
+        @apply border-b border-neutral-100 transition-colors hover:bg-neutral-50;
+
+        &:last-child {
+          @apply border-b-0;
+        }
+      }
+
+      td {
+        @apply px-4 py-3 text-neutral-700;
+      }
+    }
+  }
+}

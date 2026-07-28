@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 import { type InfiniteData, type QueryFunction, useInfiniteQuery } from '@tanstack/vue-query';
-import { type MaybeRef, computed, toValue } from 'vue';
+import { type MaybeRef, computed, onServerPrefetch, toValue } from 'vue';
 import type { InitiativeBase } from '#shared/types/initiative.types';
 import type { Pagination } from '#shared/types/pagination';
 function getNextInitiativesPageParam(lastPage: Pagination<InitiativeBase>) {
@@ -67,6 +67,10 @@ export function useInitiatives(params?: {
     queryFn,
     getNextPageParam: getNextInitiativesPageParam,
     initialPageParam: 1,
+  });
+
+  onServerPrefetch(async () => {
+    await result.suspense().catch(() => {});
   });
 
   return result;

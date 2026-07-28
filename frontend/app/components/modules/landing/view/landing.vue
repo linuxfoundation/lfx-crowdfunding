@@ -22,8 +22,9 @@ import LandingInitiatives from '../components/landing-initiatives.vue';
 import LandingImpactStories from '../components/landing-impact-stories.vue';
 import LandingNavCards from '../components/landing-nav-cards.vue';
 import { useInitiatives } from '~/composables/initiatives/useInitiatives';
+import { TRENDING_SORT_VALUE } from '~/components/modules/initiatives/config/initiatives-header.config';
 
-const { data, isLoading, error } = useInitiatives({ pageSize: 3 });
+const { data, isLoading, error } = useInitiatives({ pageSize: 3, sortBy: TRENDING_SORT_VALUE, sortDir: 'desc' });
 const initiatives = computed(() => data.value?.pages.flatMap((p) => p.data) ?? []);
 const initiativeError = computed(() => error.value as Error | null);
 </script>

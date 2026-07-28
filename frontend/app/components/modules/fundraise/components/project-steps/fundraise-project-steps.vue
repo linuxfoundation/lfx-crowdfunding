@@ -31,7 +31,14 @@ SPDX-License-Identifier: MIT
       <fundraise-project-details-step
         v-else-if="currentStep === detailsStepIndex"
         :model-value="modelValue.details"
+        :show-repository-url="modelValue.hostingType !== 'github'"
         @update:model-value="emit('update:modelValue', { ...modelValue, details: $event })"
+      />
+
+      <fundraise-donation-options-step
+        v-else-if="currentStep === donationOptionsStepIndex"
+        :model-value="modelValue.donationOptions"
+        @update:model-value="emit('update:modelValue', { ...modelValue, donationOptions: $event })"
       />
 
       <fundraise-compliance-step
@@ -47,13 +54,20 @@ SPDX-License-Identifier: MIT
 import { computed } from 'vue';
 import FundraiseStepIndicator from '../main/fundraise-step-indicator.vue';
 import FundraiseComplianceStep from '../main/fundraise-compliance-step.vue';
+import FundraiseDonationOptionsStep from '../main/fundraise-donation-options-step.vue';
 import FundraiseProjectHostingStep from './fundraise-project-hosting-step.vue';
 import FundraiseProjectGithubStep from './github-sub-steps/fundraise-project-github-step.vue';
 import FundraiseProjectDetailsStep from './details/fundraise-project-details-step.vue';
 import type { ProjectFormData } from '~/types/fundraise.types';
 
-const STEPS_GITHUB = ['Project hosting', 'Connect GitHub', 'Initiative details', 'Compliance & Terms'];
-const STEPS_DEFAULT = ['Project hosting', 'Initiative details', 'Compliance & Terms'];
+const STEPS_GITHUB = [
+  'Project hosting',
+  'Connect GitHub',
+  'Initiative details',
+  'Donation options',
+  'Compliance & Terms',
+];
+const STEPS_DEFAULT = ['Project hosting', 'Initiative details', 'Donation options', 'Compliance & Terms'];
 
 const props = defineProps<{
   currentStep: number;
@@ -67,7 +81,8 @@ const emit = defineEmits<{
 const steps = computed(() => (props.modelValue.hostingType === 'github' ? STEPS_GITHUB : STEPS_DEFAULT));
 
 const detailsStepIndex = computed(() => (props.modelValue.hostingType === 'github' ? 2 : 1));
-const complianceStepIndex = computed(() => detailsStepIndex.value + 1);
+const donationOptionsStepIndex = computed(() => detailsStepIndex.value + 1);
+const complianceStepIndex = computed(() => donationOptionsStepIndex.value + 1);
 </script>
 
 <script lang="ts">

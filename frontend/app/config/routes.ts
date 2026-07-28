@@ -5,6 +5,7 @@ export enum AppRoute {
   Home = '/',
   Initiatives = '/initiatives',
   Statistics = '/statistics',
+  Docs = '/docs',
   ForProjects = '/for-projects',
   ForCompanies = '/for-companies',
   About = '/about',

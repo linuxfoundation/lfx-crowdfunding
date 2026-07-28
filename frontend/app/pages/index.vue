@@ -9,5 +9,18 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import LandingView from '~/components/modules/landing/view/landing.vue';
 
-useHead({ title: 'Home' });
+const title = 'Home';
+const description =
+  'LFX Crowdfunding connects open source contributors, projects, and organizations. Fund the projects that power the world.';
+
+useHead({ title });
+useSeoMeta({
+  description,
+  ogTitle: `${title} | LFX Crowdfunding`,
+  ogDescription: description,
+  ogType: 'website',
+  twitterCard: 'summary_large_image',
+  twitterTitle: `${title} | LFX Crowdfunding`,
+  twitterDescription: description,
+});
 </script>

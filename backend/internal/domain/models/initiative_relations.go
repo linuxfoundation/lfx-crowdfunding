@@ -3,6 +3,15 @@
 
 package models
 
+// ValidTierNames is the set of accepted sponsorship tier name values.
+// Matches the client-side SPONSORSHIP_TIER_NAMES constant.
+var ValidTierNames = map[string]bool{
+	"platinum": true,
+	"gold":     true,
+	"silver":   true,
+	"bronze":   true,
+}
+
 // GoalInput carries the create-time data for a single funding goal.
 // It mirrors the writable columns of initiative_goals, excluding id,
 // initiative_id, created_on, and updated_on which are assigned by the database.
@@ -67,8 +76,12 @@ type SponsorshipTierInput struct {
 	Description string `json:"description,omitempty"`
 	Color       string `json:"color,omitempty"`
 	Icon        string `json:"icon,omitempty"`
-	Minimum     int64  `json:"minimum"`
+	Minimum     int64  `json:"goal_amount_cents"` // JSON alias for the minimum column
 	SortOrder   int    `json:"sort_order"`
+	// Enabled defaults to true when omitted; use a pointer so that omitting the
+	// field is distinguishable from explicitly setting it to false.
+	Enabled  *bool    `json:"enabled,omitempty"`
+	Benefits []string `json:"benefits,omitempty"`
 }
 
 // OSTIFDetailInput holds OSTIF-specific funding detail for initiative_ostif_detail.
@@ -143,12 +156,14 @@ type ProgramInfo struct {
 
 // SponsorshipTier is a read row from initiative_sponsorship_tiers (entity only).
 type SponsorshipTier struct {
-	ID          string `json:"id"`
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
-	Color       string `json:"color,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	Minimum     int64  `json:"minimum"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Color       string   `json:"color,omitempty"`
+	Icon        string   `json:"icon,omitempty"`
+	Minimum     int64    `json:"minimum"`
+	Enabled     bool     `json:"enabled"`
+	Benefits    []string `json:"benefits"`
 }
 
 // OSTIFDetail is read from initiative_ostif_detail (ostif only).

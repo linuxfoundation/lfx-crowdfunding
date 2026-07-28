@@ -7,12 +7,12 @@ SPDX-License-Identifier: MIT
     class="flex-1 w-full flex flex-col min-w-0"
     :aria-label="
       props.buckets.length === 0
-        ? 'Monthly donations bar chart. No data available.'
-        : `Monthly donations bar chart. Peak month: ${peakLabel} with ${peakAmount}.`
+        ? 'Monthly donations line chart. No data available.'
+        : `Monthly donations line chart. Peak month: ${peakLabel} with ${peakAmount}.`
     "
     role="img"
   >
-    <Bar
+    <Line
       :data="chartData"
       :options="chartOptions"
       class="w-full"
@@ -23,14 +23,26 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Bar } from 'vue-chartjs';
-import { Chart as ChartJS, BarController, BarElement, CategoryScale, LinearScale, Tooltip } from 'chart.js';
+import { Line } from 'vue-chartjs';
+import {
+  Chart as ChartJS,
+  LineController,
+  LineElement,
+  PointElement,
+  CategoryScale,
+  LinearScale,
+  Filler,
+  Tooltip,
+} from 'chart.js';
+import type { ScriptableContext } from 'chart.js';
 import { formatNumberCurrency } from '~/utils/formatter';
 import type { MonthlyBucket } from '#shared/types/statistics.types';
 
-ChartJS.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip);
+ChartJS.register(LineController, LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip);
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const LINE_COLOR = '#009aff';
 
 const props = defineProps<{
   buckets: MonthlyBucket[];
@@ -56,9 +68,6 @@ const peakAmount = computed(() =>
   props.buckets[peakIndex.value] ? formatNumberCurrency(props.buckets[peakIndex.value].totalCents / 100, 'USD') : '',
 );
 
-const NORMAL_COLOR = '#b8d9ff';
-const HIGHLIGHT_COLOR = '#009aff';
-
 const chartData = computed(() => ({
   labels: props.buckets.map((b, i) => {
     if (i === 0 || i === props.buckets.length - 1) return MONTH_ABBR[b.month - 1];
@@ -67,11 +76,23 @@ const chartData = computed(() => ({
   datasets: [
     {
       data: props.buckets.map((b) => b.totalCents / 100),
-      backgroundColor: props.buckets.map((_, i) => (i === peakIndex.value ? HIGHLIGHT_COLOR : NORMAL_COLOR)),
-      borderRadius: 4,
-      borderSkipped: false,
-      barPercentage: 0.8,
-      categoryPercentage: 0.9,
+      borderColor: LINE_COLOR,
+      borderWidth: 2,
+      fill: true,
+      backgroundColor: (context: ScriptableContext<'line'>) => {
+        const { ctx, chartArea } = context.chart;
+        if (!chartArea) return 'rgba(0, 154, 255, 0.12)';
+        const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+        gradient.addColorStop(0, 'rgba(0, 154, 255, 0.25)');
+        gradient.addColorStop(1, 'rgba(0, 154, 255, 0)');
+        return gradient;
+      },
+      tension: 0.4,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      pointHoverBackgroundColor: LINE_COLOR,
+      pointHoverBorderColor: '#ffffff',
+      pointHoverBorderWidth: 2,
     },
   ],
 }));
@@ -79,6 +100,7 @@ const chartData = computed(() => ({
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: false,
+  interaction: { intersect: false, mode: 'index' as const },
   plugins: {
     legend: { display: false },
     tooltip: {
@@ -100,6 +122,7 @@ const chartOptions = {
     },
     y: {
       display: false,
+      beginAtZero: true,
       grid: { display: false },
     },
   },
@@ -108,6 +131,6 @@ const chartOptions = {
 
 <script lang="ts">
 export default {
-  name: 'StatisticsMonthlyBarChart',
+  name: 'StatisticsMonthlyLineChart',
 };
 </script>

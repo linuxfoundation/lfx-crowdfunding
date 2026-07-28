@@ -10,7 +10,7 @@ import type { DecodedIdToken } from '~~/types/auth/auth-jwt.types';
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
-  const isLocal = !process.env.NUXT_APP_ENV;
+  const isLocal = !process.env.NUXT_PUBLIC_APP_ENV;
 
   const redirectTo = getSafeRedirectUrl(getCookie(event, 'auth_redirect_to'));
 
@@ -124,6 +124,7 @@ export default defineEventHandler(async (event) => {
       username: idTokenClaims['https://sso.linuxfoundation.org/claims/username'] as
         | string
         | undefined,
+      intercomJwt: idTokenClaims['http://lfx.dev/claims/intercom'] as string | undefined,
     };
     setCookie(
       event,

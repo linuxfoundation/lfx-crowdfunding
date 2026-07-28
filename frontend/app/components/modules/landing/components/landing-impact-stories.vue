@@ -32,7 +32,7 @@ SPDX-License-Identifier: MIT
           <lfx-chip
             v-for="tag in story.tags"
             :key="tag.label"
-            class="text-neutral-900 text-sm"
+            size="small"
           >
             <span class="font-semibold">{{ tag.value }}</span> {{ tag.label }}
           </lfx-chip>

@@ -4,12 +4,14 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { FundingGoal } from '#shared/types/initiative-detail.types';
+import type { SponsorshipTier } from '#shared/types/donate.types';
 
 export interface DonateDrawerInitiative {
   id: string;
   name: string;
   logoUrl?: string;
   fundingGoals?: FundingGoal[];
+  sponsorshipTiers?: SponsorshipTier[];
 }
 
 export const useDonateDrawerStore = defineStore('donateDrawer', () => {

@@ -4,6 +4,7 @@
 import type { BackendInitiative } from '../types/initiatives.types';
 import type { InitiativeBase } from '#shared/types/initiative.types';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
+import type { SponsorshipTier } from '#shared/types/donate.types';
 
 export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
   return {
@@ -37,10 +38,14 @@ export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
 
 export const mapToInitiativeDetail = (b: BackendInitiative): InitiativeDetail => {
   const currentBalanceCents = b.balance?.available_cents ?? b.financials?.available_balance_cents;
+  const githubURL = (b.custom_websites ?? []).find((w) =>
+    ['repository', 'github'].includes((w.name ?? '').toLowerCase()),
+  )?.url;
 
   return {
     ...mapToInitiativeBase(b),
     currentBalanceCents,
+    githubURL,
     fundingGoals: (b.goals ?? []).map((g) => ({
       id: g.id,
       name: g.name,
@@ -64,5 +69,19 @@ export const mapToInitiativeDetail = (b: BackendInitiative): InitiativeDetail =>
     recentDonations: [],
     donationRecords: [],
     expenseRecords: [],
+    sponsorshipTiers:
+      b.donation_mode === 'tiers' && b.sponsorship_tiers?.length
+        ? b.sponsorship_tiers
+            .filter((t) => t.enabled)
+            .map(
+              (t): SponsorshipTier => ({
+                id: t.id,
+                name: t.name,
+                enabled: t.enabled,
+                amountCents: t.minimum,
+                benefits: t.benefits,
+              }),
+            )
+        : undefined,
   };
 };

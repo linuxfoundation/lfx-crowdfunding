@@ -88,10 +88,14 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 }
 
 // flattenSponsors merges orgs and individuals from the cached sponsor list into a
-// single flat slice sorted by total descending.
+// single flat slice sorted by total descending.  Entries with a non-positive
+// total are expense-payout recipients, not donors, and are excluded.
 func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 	sponsors := make([]models.Sponsor, 0, len(list.Orgs)+len(list.Individuals))
 	for _, o := range list.Orgs {
+		if o.Total <= 0 {
+			continue
+		}
 		avatarURL := o.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(o.ID, o.Name)
@@ -99,6 +103,9 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 		sponsors = append(sponsors, models.Sponsor{ID: o.ID, Name: o.Name, AvatarURL: avatarURL, TotalCents: o.Total})
 	}
 	for _, u := range list.Individuals {
+		if u.Total <= 0 {
+			continue
+		}
 		avatarURL := u.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(u.ID, u.Name)
@@ -196,6 +203,20 @@ func (s *InitiativeService) GetOwnerInfoBySlug(ctx context.Context, slug string)
 		return models.OwnerInfo{}, fmt.Errorf("get owner info by slug: %w", err)
 	}
 	return info, nil
+}
+
+// ListPublished returns the ID and Name of every published initiative.
+// Intended for M2M callers (e.g. Reimbursement Service initiative picker).
+func (s *InitiativeService) ListPublished(ctx context.Context) ([]models.InitiativeSummary, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ListPublished")
+	defer span.End()
+
+	results, err := s.repo.ListPublished(ctx)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list published initiatives: %w", err)
+	}
+	return results, nil
 }
 
 // GetForUser retrieves an initiative owned by the authenticated caller, by slug or
@@ -414,6 +435,37 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		seenContactTypes[c.ContactType] = struct{}{}
 	}
 
+	// Validate and default donation_mode.
+	if input.DonationMode == "" {
+		input.DonationMode = models.DonationModeOpen
+	}
+	input.DonationMode = models.DonationMode(strings.ToLower(string(input.DonationMode)))
+	if !input.DonationMode.IsValid() {
+		return nil, fmt.Errorf("%w: invalid donation_mode %q", domain.ErrInvalidInput, input.DonationMode)
+	}
+	if input.DonationMode == models.DonationModeTiers {
+		for idx, t := range input.SponsorshipTiers {
+			if t.Name != "" && !models.ValidTierNames[t.Name] {
+				return nil, fmt.Errorf("%w: sponsorship_tiers[%d]: invalid tier name %q", domain.ErrInvalidInput, idx, t.Name)
+			}
+			// Default nil Enabled to true — omitting the field means "enabled".
+			if input.SponsorshipTiers[idx].Enabled == nil {
+				enabled := true
+				input.SponsorshipTiers[idx].Enabled = &enabled
+			}
+			cleaned := []string{}
+			for _, b := range t.Benefits {
+				if strings.TrimSpace(b) != "" {
+					cleaned = append(cleaned, b)
+				}
+			}
+			input.SponsorshipTiers[idx].Benefits = cleaned
+		}
+	} else {
+		// Open mode: ignore any tiers the caller may have sent.
+		input.SponsorshipTiers = nil
+	}
+
 	// Pre-generate the UUID so the same ID is embedded in both the Stripe
 	// Product metadata and the DB INSERT — no follow-up UPDATE needed.
 	initiativeID := uuid.New().String()
@@ -454,6 +506,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		Status:          models.StatusSubmitted,
 		StripeProductID: productID,
 		CiiProjectID:    input.CiiProjectID,
+		DonationMode:    input.DonationMode,
 
 		// Entity-only display fields
 		EventbriteURL:  input.EventbriteURL,
@@ -525,15 +578,8 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		existing.Slug = *input.Slug
 	}
 	if input.Status != nil {
-		if !input.Status.IsValid() {
-			return nil, fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, *input.Status)
-		}
-		// published, declined, and pending are exclusively set by the approval workflow.
-		// Allowing owners to set these directly would bypass the review process.
-		switch *input.Status {
-		case models.StatusPublished, models.StatusDeclined, models.StatusPending:
-			return nil, fmt.Errorf("%w: status %q cannot be set directly; use the approval workflow",
-				domain.ErrForbidden, *input.Status)
+		if err := validateOwnerStatusTransition(existing.Status, *input.Status); err != nil {
+			return nil, err
 		}
 		existing.Status = *input.Status
 	}
@@ -586,6 +632,19 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	if input.IsOnline != nil {
 		existing.IsOnline = *input.IsOnline
 	}
+	if input.DonationMode != nil {
+		normalizedMode := models.DonationMode(strings.ToLower(string(*input.DonationMode)))
+		if !normalizedMode.IsValid() {
+			return nil, fmt.Errorf("%w: invalid donation_mode %q", domain.ErrInvalidInput, *input.DonationMode)
+		}
+		existing.DonationMode = normalizedMode
+	}
+	// Open-mode invariant: tiers must never be written when mode is open.
+	// Always force-clear when mode is open, regardless of whether it just changed
+	// or was already open — this also discards tiers sent by accident.
+	if existing.DonationMode == models.DonationModeOpen {
+		input.SponsorshipTiers = []models.SponsorshipTierInput{}
+	}
 
 	// Validate required child-record fields before any DB calls.
 	seenGoalNames := make(map[string]struct{}, len(input.Goals))
@@ -612,6 +671,25 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 			return nil, fmt.Errorf("%w: contacts[%d]: duplicate contact_type %q (at most one per type)", domain.ErrInvalidInput, idx, c.ContactType)
 		}
 		seenContactTypes[c.ContactType] = struct{}{}
+	}
+	if existing.DonationMode == models.DonationModeTiers {
+		for idx, t := range input.SponsorshipTiers {
+			if t.Name != "" && !models.ValidTierNames[t.Name] {
+				return nil, fmt.Errorf("%w: sponsorship_tiers[%d]: invalid tier name %q", domain.ErrInvalidInput, idx, t.Name)
+			}
+			// Default nil Enabled to true — omitting the field means "enabled".
+			if input.SponsorshipTiers[idx].Enabled == nil {
+				enabled := true
+				input.SponsorshipTiers[idx].Enabled = &enabled
+			}
+			cleaned := []string{}
+			for _, b := range t.Benefits {
+				if strings.TrimSpace(b) != "" {
+					cleaned = append(cleaned, b)
+				}
+			}
+			input.SponsorshipTiers[idx].Benefits = cleaned
+		}
 	}
 
 	updated, err := s.repo.Update(ctx, existing, input)
@@ -699,24 +777,261 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	return processed, nil
 }
 
-// GetTransactions fetches transactions from Ledger and enriches each with donor
-// name and avatar from the CF DB (users / organizations tables).
-// When no CF DB record matches, a generated avatar URL is returned as fallback.
-func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, limit, offset int) (*models.TransactionList, error) {
-	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
+// validateOwnerStatusTransition validates status changes requested through owner
+// update flows. The permitted transitions are:
+//
+//	submitted  → pending | declined
+//	pending    → declined
+//	published  → hidden
+//	hidden     → published
+func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
+	if !to.IsValid() {
+		return fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, to)
+	}
+
+	allowed := map[models.InitiativeStatus][]models.InitiativeStatus{
+		models.StatusSubmitted: {models.StatusPending, models.StatusDeclined},
+		models.StatusPending:   {models.StatusDeclined},
+		models.StatusPublished: {models.StatusHidden},
+		models.StatusHidden:    {models.StatusPublished},
+	}
+	for _, permitted := range allowed[from] {
+		if to.EqualFold(permitted) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w: status transition %q -> %q is not permitted for owners",
+		domain.ErrForbidden, from, to)
+}
+
+// GetMyTransactions fetches transactions for the given initiative that belong to the
+// specified user (identified by their Auth0 subject / legacy_user_id). The userID
+// filter is forwarded to the Ledger API. If the Ledger returns rows that belong to
+// other users the param was ignored server-side — the request fails rather than
+// returning incorrect pagination metadata. The same negative-donation post-processing
+// applied by GetTransactions is also applied here.
+func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyTransactions")
 	defer span.End()
 
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
-		ProjectID: initiativeID,
-		TxnType:   txnType,
-		Limit:     limit,
-		Offset:    offset,
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		UserID:           userID,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// Detect whether the Ledger API applied the userID filter server-side.
+	// If any returned row belongs to a different user the param was ignored and
+	// we cannot produce a valid TotalCount — fail rather than expose another
+	// user's contributions or return misleading pagination metadata.
+	for _, t := range list.Data {
+		if t.LedgerUserID != userID {
+			span.RecordError(fmt.Errorf("ledger returned foreign rows for userID filter"))
+			return nil, fmt.Errorf(
+				"ledger returned rows for other users (server-side userID filtering unavailable): %w",
+				domain.ErrUpstreamUnavailable,
+			)
+		}
+	}
+
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts. Apply the same post-processing as GetTransactions so
+	// both endpoints have identical transaction-type semantics.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data)
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
+
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
+		if ini, ok := initiatives[initiativeID]; ok {
+			for i := range list.Data {
+				list.Data[i].InitiativeName = ini.Name
+			}
+		}
+	}
+	return list, nil
+}
+
+// GetTransactions fetches transactions from Ledger and enriches each with donor
+// name and avatar from the CF DB (users / organizations tables).
+// When no CF DB record matches, a generated avatar URL is returned as fallback.
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts (e.g. SOS pays grants out of its fund). These are not
+	// donations and must not appear in the "Donations received" table.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data) // capture before filtering
+		// The ledger client encodes HasNext by adding list.Limit to TotalCount;
+		// if TotalCount > offset+fullPageLen the Ledger signalled more pages.
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+		// Adjust the Ledger's total estimate by the number of rows dropped
+		// from this page.  Two clamp rules keep the frontend's
+		// "nextOffset < totalCount" guard from stopping pagination early:
+		//
+		//  1. Normal case (some items kept): TotalCount ≥ offset+len(kept)
+		//     so the items already delivered are accounted for.
+		//
+		//  2. Entire page filtered out but HasNext=true: TotalCount must be
+		//     > nextOffset (offset+limit) or the frontend halts before
+		//     reaching later pages that may still contain positive entries
+		//     (e.g. the manual_from_lf $1M credit on SOS page 6, which sits
+		//     behind five all-negative disbursement pages).
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
+
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
+		if ini, ok := initiatives[initiativeID]; ok {
+			for i := range list.Data {
+				list.Data[i].InitiativeName = ini.Name
+			}
+		}
+	}
+	return list, nil
+}
+
+// GetAllMyTransactions fetches all transactions for the authenticated user across
+// every initiative by omitting the projectID filter on the Ledger API.
+// initiative_name is enriched per-item from the CF DB using the projectID returned
+// by each Ledger row.
+func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetAllMyTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		TxnType:          txnType,
+		UserID:           userID,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Detect whether the Ledger API applied the userID filter server-side.
+	// If any returned row belongs to a different user the param was ignored and
+	// we cannot produce valid results — fail rather than expose another user's
+	// transactions or return misleading pagination metadata.
+	for _, t := range list.Data {
+		if t.LedgerUserID != userID {
+			span.RecordError(fmt.Errorf("ledger returned foreign rows for userID filter"))
+			return nil, fmt.Errorf(
+				"ledger returned rows for other users (server-side userID filtering unavailable): %w",
+				domain.ErrUpstreamUnavailable,
+			)
+		}
+	}
+
+	// The Ledger stores some grant disbursements as credit-type rows with negative
+	// amounts. Exclude them when type=donation, matching GetTransactions and
+	// GetMyTransactions semantics.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data)
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
+
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+
+	// Collect unique project IDs from the page, then batch-fetch initiative names.
+	projectIDs := make([]string, 0, len(list.Data))
+	seen := map[string]bool{}
+	for _, t := range list.Data {
+		if t.LedgerProjectID != "" && !seen[t.LedgerProjectID] {
+			seen[t.LedgerProjectID] = true
+			projectIDs = append(projectIDs, t.LedgerProjectID)
+		}
+	}
+	if len(projectIDs) > 0 {
+		initiatives, batchErr := s.repo.GetInitiativesByIDs(ctx, projectIDs)
+		if batchErr != nil {
+			slog.WarnContext(ctx, "failed to look up initiative names", "error", batchErr)
+		} else {
+			for i := range list.Data {
+				if ini, ok := initiatives[list.Data[i].LedgerProjectID]; ok {
+					list.Data[i].InitiativeName = ini.Name
+				}
+			}
+		}
+	}
+
 	return list, nil
 }
 

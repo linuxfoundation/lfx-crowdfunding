@@ -32,6 +32,7 @@ export default defineEventHandler(async (event): Promise<DonationResult> => {
         stripe_payment_method_id: body.stripePaymentMethodId,
         ...(body.category ? { category: body.category } : {}),
         ...(body.organizationId ? { organization_id: body.organizationId } : {}),
+        ...(body.donationTier ? { donation_tier: body.donationTier } : {}),
       },
       headers: { 'Idempotency-Key': idempotencyKey },
     },

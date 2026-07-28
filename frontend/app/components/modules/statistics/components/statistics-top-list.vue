@@ -3,7 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <lfx-card class="p-6 flex flex-col gap-4">
+  <lfx-card class="p-6 flex flex-col gap-6">
     <p class="text-base font-semibold text-neutral-900 leading-6">{{ title }}</p>
 
     <template v-if="isLoading">
@@ -50,7 +50,7 @@ SPDX-License-Identifier: MIT
         :key="entry.id"
         class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
       >
-        <span class="w-5 text-sm text-neutral-400 text-center shrink-0">{{ entry.rank }}</span>
+        <span class="w-7 text-sm text-neutral-400 text-center shrink-0">#{{ entry.rank }}</span>
         <lfx-avatar
           :type="entryType"
           :src="entry.logoUrl"
@@ -58,7 +58,7 @@ SPDX-License-Identifier: MIT
           class="shrink-0"
         />
         <span class="flex-1 min-w-0 text-sm font-medium text-neutral-900 truncate">{{ entry.name }}</span>
-        <span class="text-sm text-neutral-600 shrink-0">{{ formatCurrency(entry.amountCents) }}</span>
+        <span class="text-sm text-neutral-900 shrink-0">{{ formatCurrency(entry.amountCents) }}</span>
       </div>
     </div>
   </lfx-card>

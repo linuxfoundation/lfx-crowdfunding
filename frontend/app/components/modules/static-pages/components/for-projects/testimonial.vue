@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT
       :key="testimonial.id"
       class="bg-neutral-50 rounded-xl p-16 flex flex-col gap-10"
     >
-      <p class="text-2xl font-light leading-9 text-neutral-900">"{{ testimonial.quote }}"</p>
+      <p class="text-2xl font-secondary font-light leading-9 text-neutral-900">"{{ testimonial.quote }}"</p>
 
       <div class="flex md:items-center items-start gap-5 md:flex-row flex-col">
         <div class="flex items-center gap-4 shrink-0">

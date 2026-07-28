@@ -1,0 +1,14 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+# Checkov CI values — used by Checkov's helm runner to render the chart for
+# static analysis. These values satisfy required guards in validate.yaml so
+# that `helm template` can complete without aborting. They are never used in
+# a real deployment; ArgoCD overrides all values via environment-specific
+# values files and ExternalSecrets.
+
+image:
+  tag: "ci-test"
+
+config:
+  STRIPE_RETURN_URL: "https://crowdfunding.linuxfoundation.org/payment/complete"

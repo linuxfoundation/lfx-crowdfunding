@@ -81,6 +81,28 @@ func ParseApprovalAction(s string) (InitiativeApprovalAction, error) {
 	}
 }
 
+// DonationMode describes how donations are presented to supporters.
+type DonationMode string
+
+const (
+	DonationModeOpen  DonationMode = "open"
+	DonationModeTiers DonationMode = "tiers"
+)
+
+// ValidDonationModes is the set of accepted donation_mode values.
+var ValidDonationModes = map[DonationMode]bool{
+	DonationModeOpen:  true,
+	DonationModeTiers: true,
+}
+
+// IsValid reports whether m is a known donation mode value.
+// Only exact lowercase values ("tiers", "open") are accepted — the DB CHECK
+// constraint requires lowercase and callers must normalise before storing.
+func (m DonationMode) IsValid() bool {
+	_, ok := ValidDonationModes[m]
+	return ok
+}
+
 // Financials holds funding statistics sourced from initiative_ledger_stats,
 // populated by the ledger-stats-sync CronJob. All fields are zero when the
 // cron has not yet run for this initiative.
@@ -110,6 +132,7 @@ type Initiative struct {
 	WebsiteURL     string           `json:"website_url,omitempty"`
 	CocURL         string           `json:"coc_url,omitempty"`
 	AcceptFunding  bool             `json:"accept_funding"`
+	DonationMode   DonationMode     `json:"donation_mode"`
 
 	// Entity-only display fields
 	EventbriteURL  string     `json:"eventbrite_url,omitempty"`
@@ -159,16 +182,17 @@ type Initiative struct {
 
 // InitiativeCreateInput is the request body for creating an initiative.
 type InitiativeCreateInput struct {
-	InitiativeType string `json:"initiative_type"`
-	Name           string `json:"name"`
-	Slug           string `json:"slug,omitempty"`
-	Description    string `json:"description,omitempty"`
-	Industry       string `json:"industry,omitempty"`
-	Color          string `json:"color,omitempty"`
-	LogoURL        string `json:"logo_url,omitempty"`
-	WebsiteURL     string `json:"website_url,omitempty"`
-	CocURL         string `json:"coc_url,omitempty"`
-	AcceptFunding  bool   `json:"accept_funding"`
+	InitiativeType string       `json:"initiative_type"`
+	Name           string       `json:"name"`
+	Slug           string       `json:"slug,omitempty"`
+	Description    string       `json:"description,omitempty"`
+	Industry       string       `json:"industry,omitempty"`
+	Color          string       `json:"color,omitempty"`
+	LogoURL        string       `json:"logo_url,omitempty"`
+	WebsiteURL     string       `json:"website_url,omitempty"`
+	CocURL         string       `json:"coc_url,omitempty"`
+	AcceptFunding  bool         `json:"accept_funding"`
+	DonationMode   DonationMode `json:"donation_mode,omitempty"`
 
 	// Project-only field — CII Best Practices badge project ID.
 	CiiProjectID string `json:"cii_project_id,omitempty"`
@@ -209,6 +233,7 @@ type InitiativeUpdateInput struct {
 	WebsiteURL    *string           `json:"website_url,omitempty"`
 	CocURL        *string           `json:"coc_url,omitempty"`
 	AcceptFunding *bool             `json:"accept_funding,omitempty"`
+	DonationMode  *DonationMode     `json:"donation_mode,omitempty"`
 
 	// Project-only field — nil means "leave unchanged".
 	CiiProjectID *string `json:"cii_project_id,omitempty"`

@@ -35,6 +35,7 @@ automatically from the user's HTTP-only session cookie.
 | 6 | `POST` | `/v1/initiatives/{id}/subscriptions` | JWT | `Idempotency-Key: <uuid>` | Creates a recurring subscription using a saved `pm_xxx`. |
 | 7 | `DELETE` | `/v1/subscriptions/{id}` | JWT | — | Cancels an active subscription. Returns `204`. |
 | 8 | `GET` | `/v1/me/subscriptions` | JWT | — | Lists the authenticated user's own subscriptions (paginated). |
+| 9 | `GET` | `/v1/me/subscriptions/{id}` | JWT | — | Returns one authenticated user's subscription by ID. |
 
 ### Response shapes
 
@@ -74,12 +75,27 @@ automatically from the user's HTTP-only session cookie.
     {
       "id": "uuid",
       "initiative_id": "uuid",
-      "current_amount_in_cents": 5000,
+      "amount_cents": 5000,
+      "next_charge_date": "2026-07-01T00:00:00Z",
       "frequency": "monthly",
       "status": "active"
     }
   ],
   "meta": { "total": 1, "limit": 20, "offset": 0 }
+}
+```
+
+**`GET /v1/me/subscriptions/{id}`** (endpoint 9):
+```json
+{
+  "id": "uuid",
+  "initiative_id": "uuid",
+  "amount_cents": 5000,
+  "next_charge_date": "2026-07-01T00:00:00Z",
+  "frequency": "monthly",
+  "status": "active",
+  "initiative_name": "Test Initiative",
+  "initiative_logo_url": "https://example.com/logo.png"
 }
 ```
 

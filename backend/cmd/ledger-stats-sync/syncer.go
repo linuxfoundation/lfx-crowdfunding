@@ -150,7 +150,21 @@ func collectSponsorIDs(balances []models.LedgerRawBalance) (orgIDs, userIDs []st
 }
 
 // mapBalance converts a LedgerRawBalance into a LedgerStats row ready for
-// upsert, applying ABS to negative Ledger fields and enriching sponsors.
+// upsert, normalising Ledger fields and enriching sponsors.
+//
+// Normalisation rules:
+//   - TotalDebit and FeeBalance are stored negative by Ledger; ABS both.
+//   - TotalRaisedCents recovers gross donations even when Ledger records fund
+//     disbursements as negative-amount "credit" transactions (txnType=credit,
+//     amount<0), which corrupt raw.TotalCredit.  The correction is:
+//     negSponsorAbs = Σ abs(sponsor.Total) for all sponsors with Total < 0
+//     TotalRaisedCents = max(0, raw.TotalCredit + negSponsorAbs)
+//     Derivation: raw.TotalCredit = grossPositive + negCreditSum, and
+//     negSponsorAbs ≈ abs(negCreditSum), so their sum cancels the pollution
+//     and yields grossPositive regardless of unattributed positive credits.
+//   - negSponsorAbs is also added to TotalDebitedCents: negative-credit
+//     transactions use a distinct txnType from proper debits, so there is
+//     no overlap with raw.TotalDebit and no double-counting.
 func mapBalance(
 	raw models.LedgerRawBalance,
 	orgMap map[string]models.Organization,
@@ -165,15 +179,56 @@ func mapBalance(
 		feeBalance = -feeBalance
 	}
 
+	// Sum the absolute value of negative sponsor totals.
+	// These represent disbursements that Ledger misrecords as negative-amount
+	// credit transactions, corrupting raw.TotalCredit.
+	var negSponsorAbs int64
+	for _, o := range raw.Sponsors.Orgs {
+		if o.Total < 0 {
+			negSponsorAbs += -o.Total
+		}
+	}
+	for _, u := range raw.Sponsors.Individuals {
+		if u.Total < 0 {
+			negSponsorAbs += -u.Total
+		}
+	}
+	totalRaised := raw.TotalCredit + negSponsorAbs
+	if totalRaised < 0 {
+		totalRaised = 0
+	}
+	// Disbursements recorded as negative credits are real expenses not already
+	// present in raw.TotalDebit (different txnType; no double-counting).
+	totalDebit += negSponsorAbs
+
+	// Enrich first so the supporter count is derived from the same data that
+	// gets persisted to DB. enrichSponsors already drops entries with empty
+	// IDs; the dedup set below guards against any upstream duplicates so the
+	// count stays consistent with the sponsors JSONB column.
+	// Only entries with a positive total are counted as supporters — negative
+	// totals represent expense payouts to recipients, not donor contributions.
+	enriched := enrichSponsors(raw.Sponsors, orgMap, userMap)
+	seen := make(map[string]struct{}, len(enriched.Orgs)+len(enriched.Individuals))
+	for _, o := range enriched.Orgs {
+		if o.Total > 0 {
+			seen[o.ID] = struct{}{}
+		}
+	}
+	for _, u := range enriched.Individuals {
+		if u.Total > 0 {
+			seen[u.ID] = struct{}{}
+		}
+	}
+
 	return models.LedgerStats{
 		InitiativeID:          raw.ProjectID,
-		TotalRaisedCents:      raw.TotalCredit,
+		TotalRaisedCents:      totalRaised,
 		TotalDebitedCents:     totalDebit,
 		TotalBalanceCents:     raw.TotalBalance,
 		AvailableBalanceCents: raw.AvailableBalance,
 		FeeBalanceCents:       feeBalance,
-		Supporters:            raw.Backers, // Ledger "backers" → DB supporters
-		Sponsors:              enrichSponsors(raw.Sponsors, orgMap, userMap),
+		Supporters:            len(seen),
+		Sponsors:              enriched,
 	}
 }
 

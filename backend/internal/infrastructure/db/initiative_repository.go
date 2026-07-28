@@ -46,6 +46,7 @@ const initiativeSelect = `
 		i.cii_project_id, i.jobspring_project_id, i.stacks_identifier,
 		i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
 		i.country, i.city, i.is_online,
+		i.donation_mode,
 		i.created_on, i.updated_on,
 		COALESCE(ls.total_raised_cents, 0)      AS total_raised_cents,
 		COALESCE(ls.total_debited_cents, 0)     AS total_disbursed_cents,
@@ -175,6 +176,39 @@ func (r *InitiativeRepository) GetOwnerInfoBySlug(ctx context.Context, slug stri
 	return info, nil
 }
 
+// ListPublished returns the ID and Name of every published initiative, ordered by name.
+// Intended for M2M callers — no pagination, no Ledger enrichment.
+func (r *InitiativeRepository) ListPublished(ctx context.Context) ([]models.InitiativeSummary, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.ListPublished")
+	defer span.End()
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, name
+		FROM initiatives
+		WHERE LOWER(status) = $1
+		ORDER BY name`, models.StatusPublished)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list published initiatives: %w", err)
+	}
+	defer rows.Close()
+
+	var results []models.InitiativeSummary
+	for rows.Next() {
+		var s models.InitiativeSummary
+		if err := rows.Scan(&s.ID, &s.Name); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan published initiative: %w", err)
+		}
+		results = append(results, s)
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("iterate published initiatives: %w", err)
+	}
+	return results, nil
+}
+
 // List retrieves initiatives matching the filter with pagination.
 func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")
@@ -203,9 +237,18 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		args = append(args, filter.InitiativeType)
 		argN++
 	}
-	if filter.Status != "" {
-		where += fmt.Sprintf(" AND i.status = $%d", argN)
-		args = append(args, filter.Status)
+	switch {
+	case len(filter.Statuses) > 0:
+		placeholders := make([]string, len(filter.Statuses))
+		for i, s := range filter.Statuses {
+			placeholders[i] = fmt.Sprintf("$%d", argN)
+			args = append(args, strings.ToLower(string(s)))
+			argN++
+		}
+		where += " AND LOWER(i.status) IN (" + strings.Join(placeholders, ", ") + ")"
+	case filter.Status != "":
+		where += fmt.Sprintf(" AND LOWER(i.status) = $%d", argN)
+		args = append(args, strings.ToLower(string(filter.Status)))
 		argN++
 	}
 	if filter.Search != "" {
@@ -231,6 +274,17 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		orderCol = "COALESCE(ls.total_raised_cents, 0)"
 	case "name":
 		orderCol = "LOWER(i.name)"
+	case "trending":
+		// "Trending" = number of supports (donations + subscriptions) started
+		// in the last 30 days, per LFXV2-2533. Uses the local donations/
+		// subscriptions tables (v2-era only) rather than the all-time Ledger-
+		// synced supporters count.
+		orderCol = `((SELECT COUNT(*) FROM donations d
+				WHERE d.initiative_id = i.id AND d.status = 'succeeded'
+					AND d.created_on >= NOW() - INTERVAL '30 days')
+			+ (SELECT COUNT(*) FROM subscriptions s
+				WHERE s.initiative_id = i.id AND s.status = 'active'
+					AND s.created_on >= NOW() - INTERVAL '30 days'))`
 	}
 	orderDir := "DESC"
 	if filter.SortDir == "asc" {
@@ -242,8 +296,14 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 	// deterministic pagination. When using the default created_on sort, i.id alone
 	// is sufficient to break ties (avoids repeating the same column).
 	secondarySort := ", i.created_on DESC, i.id"
-	if filter.SortBy == "" || filter.SortBy == "created_on" {
+	switch filter.SortBy {
+	case "", "created_on":
 		secondarySort = ", i.id"
+	case "trending":
+		// Quiet periods (few/no supports in the window) fall back to all-time
+		// popularity instead of pure recency, so the trending section doesn't
+		// look empty or arbitrary between bursts of activity.
+		secondarySort = ", COALESCE(ls.supporters, 0) DESC, i.created_on DESC, i.id"
 	}
 	dataQuery := fmt.Sprintf("%s %s ORDER BY %s %s%s LIMIT $%d OFFSET $%d",
 		initiativeSelect, where, orderCol, orderDir, secondarySort, argN, argN+1)
@@ -298,9 +358,9 @@ const (
 		        description, color, logo_url, website_url, coc_url,
 		        stripe_plan_id, stripe_product_id, accept_funding, cii_project_id,
 		        eventbrite_url, application_url, event_start_date, event_end_date,
-		        country, city, is_online)
+		        country, city, is_online, donation_mode)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-		        $16,$17,$18,$19,$20,$21,$22,$23)`
+		        $16,$17,$18,$19,$20,$21,$22,$23,$24)`
 
 	insertGoal = `
 		INSERT INTO initiative_goals
@@ -346,8 +406,8 @@ const (
 
 	insertSponsorshipTier = `
 		INSERT INTO initiative_sponsorship_tiers
-		       (id, initiative_id, name, description, color, icon, minimum, sort_order)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)`
+		       (id, initiative_id, name, description, color, icon, minimum, sort_order, enabled, benefits)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	insertOSTIFDetail = `
 		INSERT INTO initiative_ostif_detail
@@ -403,7 +463,8 @@ const (
 		    event_end_date    = $16,
 		    country           = $17,
 		    city              = $18,
-		    is_online         = $19
+		    is_online         = $19,
+		    donation_mode     = $20
 		WHERE id = $1`
 )
 
@@ -437,6 +498,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		nullableString(i.EventbriteURL), nullableString(i.ApplicationURL),
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
+		string(i.DonationMode),
 	); err != nil {
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
@@ -529,7 +591,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		if _, err = tx.Exec(ctx, insertSponsorshipTier,
 			i.ID, nullableString(t.Name), nullableString(t.Description),
 			nullableString(t.Color), nullableString(t.Icon),
-			t.Minimum, t.SortOrder,
+			t.Minimum, t.SortOrder, derefBoolTrue(t.Enabled), t.Benefits,
 		); err != nil {
 			return nil, fmt.Errorf("insert sponsorship tier %q: %w", t.Name, err)
 		}
@@ -613,6 +675,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		nullableString(i.EventbriteURL), nullableString(i.ApplicationURL),
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
+		string(i.DonationMode),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update initiative: %w", err)
@@ -734,7 +797,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 			if _, err = tx.Exec(ctx, insertSponsorshipTier,
 				i.ID, nullableString(t.Name), nullableString(t.Description),
 				nullableString(t.Color), nullableString(t.Icon),
-				t.Minimum, t.SortOrder,
+				t.Minimum, t.SortOrder, derefBoolTrue(t.Enabled), t.Benefits,
 			); err != nil {
 				return nil, fmt.Errorf("insert sponsorship tier %q: %w", t.Name, err)
 			}
@@ -1129,7 +1192,7 @@ func (r *InitiativeRepository) loadProgramInfo(ctx context.Context, id string) (
 }
 
 func (r *InitiativeRepository) listSponsorshipTiers(ctx context.Context, id string) ([]models.SponsorshipTier, error) {
-	const q = `SELECT id, name, description, color, icon, minimum FROM initiative_sponsorship_tiers WHERE initiative_id = $1 ORDER BY sort_order ASC`
+	const q = `SELECT id, name, description, color, icon, minimum, enabled, benefits FROM initiative_sponsorship_tiers WHERE initiative_id = $1 ORDER BY sort_order ASC`
 	rows, err := r.pool.Query(ctx, q, id)
 	if err != nil {
 		return nil, fmt.Errorf("list sponsorship tiers: %w", err)
@@ -1139,13 +1202,16 @@ func (r *InitiativeRepository) listSponsorshipTiers(ctx context.Context, id stri
 	for rows.Next() {
 		var t models.SponsorshipTier
 		var name, description, color, icon *string
-		if err := rows.Scan(&t.ID, &name, &description, &color, &icon, &t.Minimum); err != nil {
+		if err := rows.Scan(&t.ID, &name, &description, &color, &icon, &t.Minimum, &t.Enabled, &t.Benefits); err != nil {
 			return nil, fmt.Errorf("scan sponsorship tier: %w", err)
 		}
 		t.Name = derefString(name)
 		t.Description = derefString(description)
 		t.Color = derefString(color)
 		t.Icon = derefString(icon)
+		if t.Benefits == nil {
+			t.Benefits = []string{}
+		}
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -1249,6 +1315,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		acceptFunding, isOnline                                       *bool
 		createdOn, updatedOn                                          *time.Time
 		sponsorsJSON                                                  []byte
+		donationMode                                                  string
 	)
 	err := row.Scan(
 		&i.ID, &i.InitiativeType, &sourceDynamoTable, &i.OwnerID,
@@ -1259,6 +1326,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		&ciiProjectID, &jobspringProjectID, &stacksIdentifier,
 		&eventbriteURL, &applicationURL, &i.EventStartDate, &i.EventEndDate,
 		&country, &city, &isOnline,
+		&donationMode,
 		&createdOn, &updatedOn,
 		&i.Financials.TotalRaisedCents,
 		&i.Financials.TotalDisbursedCents,
@@ -1298,6 +1366,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	i.ApplicationURL = derefString(applicationURL)
 	i.Country = derefString(country)
 	i.City = derefString(city)
+	i.DonationMode = models.DonationMode(donationMode)
 	if acceptFunding != nil {
 		i.AcceptFunding = *acceptFunding
 	}
@@ -1412,6 +1481,41 @@ func (r *InitiativeRepository) GetUsersByLegacyIDs(ctx context.Context, legacyID
 	return result, nil
 }
 
+// GetInitiativesByIDs returns a map of initiative UUID → Initiative for the given IDs.
+// IDs not found in the DB are silently omitted from the result.
+func (r *InitiativeRepository) GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetInitiativesByIDs")
+	defer span.End()
+
+	result := make(map[string]*models.Initiative, len(ids))
+	ids = filterValidUUIDs(ids)
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, name FROM initiatives WHERE id = ANY($1::uuid[])`
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get initiatives by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var i models.Initiative
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan initiative: %w", err)
+		}
+		result[i.ID] = &i
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return result, fmt.Errorf("iterate initiatives: %w", err)
+	}
+	return result, nil
+}
+
 // GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs provided.
 // Missing IDs are absent from the map.
 func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
@@ -1455,6 +1559,15 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// derefBoolTrue returns the pointed-to value, or true when the pointer is nil.
+// Used for SponsorshipTierInput.Enabled whose DB column defaults to true.
+func derefBoolTrue(b *bool) bool {
+	if b == nil {
+		return true
+	}
+	return *b
 }
 
 func nullableString(s string) any {

@@ -81,7 +81,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
         with:
-          context: frontend/
+          context: .
           file: frontend/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -112,7 +112,7 @@ jobs:
         run: |
           set -euo pipefail
           APP_VERSION="${REF_NAME#v}"
-          CHART_VERSION="$(yq '.version' backend/charts/lfx-crowdfunding-backend/Chart.yaml)"
+          CHART_VERSION="${REF_NAME#v}"
           echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
           echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
 
@@ -172,7 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           APP_VERSION="${REF_NAME#v}"
-          CHART_VERSION="$(yq '.version' frontend/charts/lfx-crowdfunding-frontend/Chart.yaml)"
+          CHART_VERSION="${REF_NAME#v}"
           echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
           echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
 

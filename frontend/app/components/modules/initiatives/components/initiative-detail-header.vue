@@ -26,9 +26,11 @@ SPDX-License-Identifier: MIT
                 @click="handleShare()"
               />
               <lfx-icon-button
+                v-if="initiative.githubURL"
                 type="outline"
                 icon="github"
                 icon-type="brands"
+                @click="openGitHub()"
               />
             </div>
           </div>
@@ -64,12 +66,25 @@ SPDX-License-Identifier: MIT
                 </h1>
 
                 <!-- Description -->
-                <p
-                  class="text-sm text-neutral-600 leading-5"
-                  :class="{ hidden: isScrolled }"
-                >
-                  {{ plainDescription }}
-                </p>
+                <div :class="{ hidden: isScrolled }">
+                  <p
+                    ref="descRef"
+                    class="text-sm text-neutral-600 leading-5 line-clamp-2"
+                  >
+                    {{ plainDescription }}
+                  </p>
+                  <!-- SSR can't measure scrollHeight/clientHeight, so whether this
+                       button should show is only known client-side (LFXV2-2700). -->
+                  <client-only>
+                    <lfx-button
+                      v-if="isTruncated"
+                      label="Read more"
+                      type="transparent"
+                      size="small"
+                      @click="$emit('update:activeTab', 'about')"
+                    />
+                  </client-only>
+                </div>
               </div>
             </div>
 
@@ -117,6 +132,7 @@ SPDX-License-Identifier: MIT
             icon-type="brands"
             icon-position="left"
             button-style="pill"
+            @click="openGitHub()"
           />
           <lfx-tooltip
             content="This initiative is not currently accepting donations"
@@ -149,7 +165,8 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, nextTick, watch } from 'vue';
+import { useResizeObserver } from '@vueuse/core';
 import {
   initiativeTypeConfigMap,
   defaultInitiativeTypeConfig,
@@ -176,9 +193,36 @@ const props = defineProps<{
 const { stripHtml } = useSanitize();
 const plainDescription = computed(() => stripHtml(props.initiative.description ?? ''));
 
+const descRef = ref<HTMLElement | null>(null);
+const isTruncated = ref(false);
+
+const checkTruncation = async () => {
+  await nextTick();
+  if (descRef.value) {
+    isTruncated.value = descRef.value.scrollHeight > descRef.value.clientHeight;
+  }
+};
+
+// Recompute on element resize (viewport changes, font load, etc.).
+// Deferred via rAF: checkTruncation toggles the "Read more" button inside the
+// observed element, and mutating the DOM synchronously in the observer callback
+// re-triggers it in the same delivery cycle, causing the browser to emit
+// "ResizeObserver loop completed with undelivered notifications".
+useResizeObserver(descRef, () => {
+  requestAnimationFrame(checkTruncation);
+});
+// Also recompute when the description text changes (e.g. async loads) since
+// ResizeObserver won't fire if the clamped element's border-box stays the same.
+// `immediate: true` covers the initial mount run.
+watch(plainDescription, checkTruncation, { immediate: true });
+
 const { openDonateDrawer } = useDonateDrawerStore();
 const { openShareModal } = useShareModalStore();
 const { isAuthenticated, login } = useAuth();
+
+function openGitHub() {
+  window.open(props.initiative.githubURL, '_blank', 'noopener,noreferrer');
+}
 
 function handleShare() {
   openShareModal({
@@ -196,6 +240,7 @@ function handleDonate() {
       name: props.initiative.name,
       logoUrl: props.initiative.logoUrl,
       fundingGoals: props.initiative.fundingGoals,
+      sponsorshipTiers: props.initiative.sponsorshipTiers,
     });
   }
 }
@@ -205,11 +250,12 @@ const isScrolled = computed(() => scrollTop.value > 10);
 
 defineEmits<{ (e: 'update:activeTab', value: string): void }>();
 
-const tabs = [
+const tabs = computed(() => [
   { value: 'overview', label: 'Overview', icon: 'gauge-high' },
   { value: 'financials', label: 'Financials', icon: 'money-check-dollar' },
+  { value: 'announcements', label: 'Announcements', icon: 'megaphone' },
   { value: 'about', label: 'About', icon: 'memo' },
-];
+]);
 
 const typeConfig = computed(
   () => initiativeTypeConfigMap[props.initiative.initiativeType] ?? defaultInitiativeTypeConfig,

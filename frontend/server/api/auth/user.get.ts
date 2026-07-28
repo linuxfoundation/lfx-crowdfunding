@@ -24,6 +24,7 @@ export default defineEventHandler((event) => {
         email_verified: user.email_verified,
         updated_at: user.updated_at,
         username: user.username,
+        intercomJwt: user.intercomJwt,
       },
       token: null,
     };

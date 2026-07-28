@@ -10,6 +10,7 @@ import type {
   SecurityAuditFormData,
   GeneralFundFormData,
   EventFormData,
+  DonationOptionsData,
 } from '~/types/fundraise.types';
 
 interface FundraiseFormData {
@@ -55,16 +56,34 @@ export const useFundraiseSubmit = () => {
   return { submitting, error, submitFundraise };
 };
 
+// Converts each tier's dollar-string goal to cents, matching every other
+// goal field's dollars→cents conversion in this file.
+function buildDonationOptionsPayload(
+  data: DonationOptionsData | undefined,
+): Record<string, unknown> | undefined {
+  if (!data) return undefined;
+  return {
+    mode: data.mode,
+    tiers: data.tiers.map((tier) => ({
+      name: tier.name,
+      enabled: tier.enabled,
+      goalCents: parseDollarsToCents(tier.goal),
+      benefits: tier.benefits,
+    })),
+  };
+}
+
 function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<string, unknown> {
   const { projectForm, securityAuditForm, generalFundForm, eventForm } = forms;
 
   switch (type) {
     case 'project': {
-      const repoUrl = projectForm?.selectedRepo
-        ? projectForm.hostingType === 'github'
-          ? `https://github.com/${projectForm.selectedRepo}`
-          : projectForm.selectedRepo
-        : undefined;
+      const repoUrl =
+        projectForm?.hostingType === 'github'
+          ? projectForm.selectedRepo
+            ? `https://github.com/${projectForm.selectedRepo}`
+            : undefined
+          : projectForm?.details.repositoryUrl || undefined;
       return {
         initiativeType: 'project',
         name: projectForm?.details.projectName ?? '',
@@ -82,6 +101,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(projectForm?.details.annualFundingGoal),
         goals: projectForm?.details.goals?.length ? projectForm.details.goals : undefined,
+        donationOptions: buildDonationOptionsPayload(projectForm?.donationOptions),
       };
     }
 
@@ -104,6 +124,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         primaryContact: securityAuditForm?.primaryContact,
         secondaryContact: securityAuditForm?.secondaryContact,
         technicalLead: securityAuditForm?.technicalLead,
+        donationOptions: buildDonationOptionsPayload(securityAuditForm?.donationOptions),
       };
     }
 
@@ -125,6 +146,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         budgetDistribution: eventForm?.budgetDistribution?.length
           ? eventForm.budgetDistribution
           : undefined,
+        donationOptions: buildDonationOptionsPayload(eventForm?.donationOptions),
       };
     }
 
@@ -140,6 +162,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? generalFundForm.beneficiaries
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(generalFundForm?.annualFundingGoal),
+        donationOptions: buildDonationOptionsPayload(generalFundForm?.donationOptions),
       };
     }
   }

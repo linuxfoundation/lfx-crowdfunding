@@ -3,13 +3,19 @@
 
 import { useQuery } from '@tanstack/vue-query';
 import type { MaybeRef } from 'vue';
-import { toValue } from 'vue';
+import { onServerPrefetch, toValue } from 'vue';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
 
 export function useInitiative(slug: MaybeRef<string>) {
-  return useQuery<InitiativeDetail>({
+  const query = useQuery<InitiativeDetail>({
     queryKey: ['initiative', slug] as const,
     queryFn: () => $fetch<InitiativeDetail>(`/api/initiatives/${toValue(slug)}`),
     enabled: computed(() => !!toValue(slug)),
   });
+
+  onServerPrefetch(async () => {
+    await query.suspense().catch(() => {});
+  });
+
+  return query;
 }

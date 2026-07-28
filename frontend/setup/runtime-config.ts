@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-const appEnv = process.env.NUXT_APP_ENV || 'development';
+const appEnv = process.env.NUXT_PUBLIC_APP_ENV || 'development';
 const isProduction = appEnv === 'production';
 
 if (isProduction) {
@@ -45,5 +45,14 @@ export default {
     selfServeUrl,
     stripePublishableKey: '', // populated from NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     githubOauthClientId: process.env.NUXT_PUBLIC_GITHUB_OAUTH_CLIENT_ID || '',
+    intercomAppId:
+      process.env.NUXT_PUBLIC_INTERCOM_APP_ID || (isProduction ? 'w29sqomy' : 'mxl90k6y'),
+    // Datadog RUM — leave empty locally; set via NUXT_PUBLIC_DATADOG_RUM_* in k8s secrets.
+    datadogRumAppId: process.env.NUXT_PUBLIC_DATADOG_RUM_APP_ID || '',
+    datadogRumClientToken: process.env.NUXT_PUBLIC_DATADOG_RUM_CLIENT_TOKEN || '',
+    // Version is injected from the git tag at deploy time (e.g. "0.1.12").
+    datadogRumVersion: process.env.NUXT_PUBLIC_APP_VERSION || '',
+    // LaunchDarkly client-side ID — leave empty locally to disable feature flags.
+    ldClientId: process.env.NUXT_PUBLIC_LD_CLIENT_ID || '',
   },
 };

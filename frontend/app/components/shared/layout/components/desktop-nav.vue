@@ -7,16 +7,29 @@ SPDX-License-Identifier: MIT
     <NuxtLink
       v-for="item in regularMenuItems"
       :key="item.label"
+      v-slot="{ href, navigate, isActive }"
       :to="item.to!"
-      class="items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 lg:inline-flex hidden"
-      active-class="!bg-neutral-100 !text-neutral-900"
+      custom
     >
-      <lfx-icon
-        :name="item.icon"
-        type="light"
-        :size="16"
-      />
-      {{ item.label }}
+      <a
+        :href="href"
+        class="hidden items-center gap-2 rounded-full px-3 py-2 text-sm lg:inline-flex"
+        :class="
+          isActive
+            ? 'bg-brand-50 font-semibold text-neutral-900'
+            : 'font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700'
+        "
+        :aria-current="isActive ? 'page' : undefined"
+        @click="navigate"
+      >
+        <lfx-icon
+          :name="item.icon"
+          :type="isActive ? 'solid' : 'light'"
+          :class="{ 'text-brand-500': isActive }"
+          :size="16"
+        />
+        {{ item.label }}
+      </a>
     </NuxtLink>
 
     <!-- More dropdown -->

@@ -40,10 +40,12 @@ type LedgerBalance struct {
 
 // TransactionFilter holds query parameters for the Ledger paginate endpoint.
 type TransactionFilter struct {
-	ProjectID string
-	TxnType   string // "donation" | "reimbursement" — empty = all
-	Limit     int    // page size; 0 defaults to 10
-	Offset    int    // number of records to skip; negative treated as 0
+	ProjectID        string
+	TxnType          string // "donation" | "reimbursement" — empty = all
+	UserID           string // Auth0 subject (legacy_user_id) — empty = all users
+	SubscriptionOnly bool   // when true, appends subscriptionOnly=true to filter recurring charges only
+	Limit            int    // page size; 0 defaults to 10
+	Offset           int    // number of records to skip; negative treated as 0
 }
 
 // LedgerClient is the interface consumed by the service layer and the
@@ -71,6 +73,10 @@ type LedgerClient interface {
 
 	// GetPlatformRecentDonations returns the most recent platform-wide credit transactions.
 	GetPlatformRecentDonations(ctx context.Context) ([]LedgerRecentDonation, error)
+
+	// GetOrgDonations returns the sum of all credit transactions (amount > 0)
+	// for a fixed set of organisations, ordered by amount descending.
+	GetOrgDonations(ctx context.Context) ([]LedgerOrgDonation, error)
 
 	// PostTransaction records a completed charge in the Ledger service.
 	// Passing version="v2" instructs the Ledger service to skip its own email
@@ -161,15 +167,17 @@ type ledgerTransactionRaw struct {
 	SubmitterName  string `json:"submitterName"`
 	TxnType        string `json:"txnType"` // "credit" | "debit"
 	TxnCategory    string `json:"txnCategory"`
-	Amount         int64  `json:"amount"`  // cents
-	TxnDate        int64  `json:"txnDate"` // unix seconds
+	Amount         int64  `json:"amount"`         // cents
+	TxnDate        int64  `json:"txnDate"`        // unix seconds
+	SubscriptionID string `json:"subscriptionID"` // non-empty for recurring charges
 }
 
 type ledgerTransactionsResponse struct {
-	TransactionsPerPage int                    `json:"transactionsPerPage"`
-	CurrentPage         int                    `json:"currentPage"`
-	HasNext             bool                   `json:"hasNext"`
-	Transactions        []ledgerTransactionRaw `json:"transactions"`
+	TotalTransactionCount int                    `json:"totalTransactionCount"`
+	TransactionsPerPage   int                    `json:"transactionsPerPage"`
+	CurrentPage           int                    `json:"currentPage"`
+	HasNext               bool                   `json:"hasNext"`
+	Transactions          []ledgerTransactionRaw `json:"transactions"`
 }
 
 // GetTransactions fetches a paginated list of transactions for an initiative
@@ -213,6 +221,12 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			q.Set("txnType", filter.TxnType)
 		}
 	}
+	if filter.UserID != "" {
+		q.Set("userID", filter.UserID)
+	}
+	if filter.SubscriptionOnly {
+		q.Set("subscriptionOnly", "true")
+	}
 
 	endpoint := fmt.Sprintf("%s/transactions?%s", c.baseURL, q.Encode())
 	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
@@ -237,23 +251,21 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			donorType = "organization"
 		}
 		txns = append(txns, models.Transaction{
-			ID:           raw.TxnID,
-			Type:         txnType,
-			AmountCents:  raw.Amount,
-			Date:         time.Unix(raw.TxnDate, 0).UTC(),
-			Category:     raw.TxnCategory,
-			DonorType:    donorType,
-			DonorName:    raw.SubmitterName,
-			LedgerUserID: raw.UserID,
-			LedgerOrgID:  raw.OrganizationID,
+			ID:              raw.TxnID,
+			Type:            txnType,
+			AmountCents:     raw.Amount,
+			Date:            time.Unix(raw.TxnDate, 0).UTC(),
+			Category:        raw.TxnCategory,
+			DonorType:       donorType,
+			DonorName:       raw.SubmitterName,
+			Recurring:       raw.SubscriptionID != "",
+			LedgerUserID:    raw.UserID,
+			LedgerOrgID:     raw.OrganizationID,
+			LedgerProjectID: raw.ProjectID,
 		})
 	}
 
-	// Ledger doesn't return a total count on this endpoint; use HasNext to estimate.
-	totalCount := offset + len(txns)
-	if resp.HasNext {
-		totalCount += limit // at least one more page
-	}
+	totalCount := resp.TotalTransactionCount
 
 	return &models.TransactionList{
 		Data:       txns,
@@ -298,6 +310,15 @@ type LedgerMonthlyBucket struct {
 	TotalCents    int64
 	Supporters    int64
 	NewSupporters int64
+}
+
+// LedgerOrgDonation holds the summed credit amount for a single organisation
+// from GET /transactions/platform/org-donations.
+type LedgerOrgDonation struct {
+	OrgID         string `json:"orgId"`
+	Name          string `json:"name"`
+	AmountInCents int64  `json:"amount_in_cents"`
+	AvatarURL     string `json:"avatar_url"`
 }
 
 // LedgerRecentDonation is one entry from GET /transactions/platform/recent.
@@ -459,6 +480,25 @@ func (c *ledgerHTTPClient) GetPlatformRecentDonations(ctx context.Context) ([]Le
 		})
 	}
 	return out, nil
+}
+
+// GetOrgDonations fetches org-level donation totals from GET /transactions/platform/org-donations.
+func (c *ledgerHTTPClient) GetOrgDonations(ctx context.Context) ([]LedgerOrgDonation, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetOrgDonations")
+	defer span.End()
+
+	endpoint := fmt.Sprintf("%s/transactions/platform/org-donations", c.baseURL)
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
+
+	var resp []LedgerOrgDonation
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger GET /transactions/platform/org-donations returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger org donations: %w", err)
+	}
+	return resp, nil
 }
 
 // GetAllBalances fetches the full bulk balance snapshot from the Ledger service.

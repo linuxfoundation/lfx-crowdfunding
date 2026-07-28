@@ -71,6 +71,9 @@ type StripeClient interface {
 	// so the first invoice's PaymentIntent can require 3DS before the subscription activates.
 	CreateSubscription(ctx context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error)
 	CancelSubscription(ctx context.Context, subscriptionID string) error
+	// GetSubscriptionCurrentPeriodEnd returns Stripe's current_period_end Unix
+	// timestamp for a subscription, or 0 when unavailable.
+	GetSubscriptionCurrentPeriodEnd(ctx context.Context, subscriptionID string) (int64, error)
 	// UpdatePaymentIntentMetadata merges the given key/value pairs into an existing
 	// PaymentIntent's metadata without overwriting keys that are not in the map.
 	// Used by the invoice.finalized webhook to stamp version=v2 onto subscription
@@ -538,6 +541,24 @@ func (c *stripeClientImpl) CancelSubscription(ctx context.Context, subscriptionI
 		return fmt.Errorf("stripe cancel subscription: %w", err)
 	}
 	return nil
+}
+
+// GetSubscriptionCurrentPeriodEnd retrieves a subscription and returns
+// current_period_end as Unix seconds.
+func (c *stripeClientImpl) GetSubscriptionCurrentPeriodEnd(ctx context.Context, subscriptionID string) (int64, error) {
+	_, span := stripeTracer.Start(ctx, "stripe.GetSubscriptionCurrentPeriodEnd")
+	defer span.End()
+	span.SetAttributes(attribute.String("stripe.subscription_id", subscriptionID))
+
+	sub, err := c.api.V1Subscriptions.Retrieve(ctx, subscriptionID, nil)
+	if err != nil {
+		span.RecordError(err)
+		return 0, fmt.Errorf("stripe get subscription: %w", err)
+	}
+	if sub.Items != nil && len(sub.Items.Data) > 0 {
+		return sub.Items.Data[0].CurrentPeriodEnd, nil
+	}
+	return 0, nil
 }
 
 // UpdatePaymentIntentMetadata merges key/value pairs into a PI's metadata.

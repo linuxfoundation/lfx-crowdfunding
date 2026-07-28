@@ -47,10 +47,7 @@ onMounted(async () => {
     });
     showToast(`The expense report has been ${label.past}.`, ToastTypesEnum.positive);
   } catch {
-    showToast(
-      `Failed to ${label.verb} the expense report. Please contact LF Support.`,
-      ToastTypesEnum.negative,
-    );
+    showToast(`Failed to ${label.verb} the expense report. Please contact LF Support.`, ToastTypesEnum.negative);
   }
 
   await router.replace('/');

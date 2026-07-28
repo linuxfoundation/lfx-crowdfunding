@@ -116,7 +116,24 @@ func (h *SubscriptionHandler) ListForUser(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// Cancel handles DELETE /v1/subscriptions/{id} — requires JWT.
+// GetForUser handles GET /v1/me/subscriptions/{id} — requires JWT.
+// Returns the authenticated user's single subscription by ID.
+func (h *SubscriptionHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	sub, err := h.svc.GetByIDForUser(r.Context(), id, principal.Username)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, sub)
+}
+
 func (h *SubscriptionHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {

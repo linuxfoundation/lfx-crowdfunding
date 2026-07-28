@@ -7,6 +7,8 @@ SPDX-License-Identifier: MIT
     title="Project Details"
     name-label="Project name"
     :model-value="sharedValue"
+    :show-repository-url="showRepositoryUrl"
+    :repository-url-required="showRepositoryUrl"
     @update:model-value="onSharedUpdate"
   />
 </template>
@@ -18,6 +20,7 @@ import type { ProjectDetailsData, InitiativeDetailsData } from '~/types/fundrais
 
 const props = defineProps<{
   modelValue: ProjectDetailsData;
+  showRepositoryUrl?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -28,6 +31,7 @@ const sharedValue = computed<InitiativeDetailsData>(() => ({
   name: props.modelValue.projectName,
   elevatorPitch: props.modelValue.elevatorPitch,
   topics: props.modelValue.topics,
+  repositoryUrl: props.modelValue.repositoryUrl,
   websiteUrl: props.modelValue.websiteUrl,
 }));
 
@@ -37,6 +41,7 @@ const onSharedUpdate = (updated: InitiativeDetailsData) => {
     projectName: updated.name,
     elevatorPitch: updated.elevatorPitch,
     topics: updated.topics,
+    repositoryUrl: updated.repositoryUrl ?? '',
     websiteUrl: updated.websiteUrl,
   });
 };

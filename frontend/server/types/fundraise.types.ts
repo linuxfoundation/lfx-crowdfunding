@@ -24,6 +24,20 @@ export interface FundraiseBeneficiaryInput {
   email: string;
 }
 
+export type SponsorshipTierInput = {
+  name: string;
+  enabled: boolean;
+  goalCents?: number;
+  benefits: string[];
+};
+
+// Matches the backend contract in docs/sponsorship-tiers-backend-requirements.md
+// (donation_mode + sponsorship_tiers[]) — not yet implemented server-side.
+export interface DonationOptionsInput {
+  mode: 'tiers' | 'open';
+  tiers: SponsorshipTierInput[];
+}
+
 export interface ProjectFundraisePayload {
   initiativeType: 'project';
   name: string;
@@ -37,6 +51,7 @@ export interface ProjectFundraisePayload {
   beneficiaries?: FundraiseBeneficiaryInput[];
   annualFundingGoalCents?: number;
   goals?: GoalItemInput[];
+  donationOptions?: DonationOptionsInput;
 }
 
 export interface SecurityAuditFundraisePayload {
@@ -55,6 +70,7 @@ export interface SecurityAuditFundraisePayload {
   primaryContact?: FundraiseContactInput;
   secondaryContact?: FundraiseContactInput;
   technicalLead?: FundraiseContactInput;
+  donationOptions?: DonationOptionsInput;
 }
 
 export interface EventFundraisePayload {
@@ -73,6 +89,7 @@ export interface EventFundraisePayload {
   beneficiaries?: FundraiseBeneficiaryInput[];
   sponsorshipGoalCents?: number;
   budgetDistribution?: GoalItemInput[];
+  donationOptions?: DonationOptionsInput;
 }
 
 export interface GeneralFundFundraisePayload {
@@ -84,6 +101,7 @@ export interface GeneralFundFundraisePayload {
   logoUrl?: string;
   beneficiaries?: FundraiseBeneficiaryInput[];
   annualFundingGoalCents?: number;
+  donationOptions?: DonationOptionsInput;
 }
 
 export type FundraisePayload =

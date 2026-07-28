@@ -31,7 +31,7 @@ type LedgerRawBalance struct {
 	TotalBalance     int64             `json:"totalBalance"`
 	AvailableBalance int64             `json:"availableBalance"`
 	FeeBalance       int64             `json:"feeBalance"` // negative; ABS before storing
-	Backers          int               `json:"backers"`    // distinct user count → DB supporters
+	Backers          int               `json:"backers"`    // distinct individual-user count (not used; supporters derived from Sponsors)
 	Sponsors         LedgerRawSponsors `json:"sponsors"`
 }
 
@@ -74,6 +74,6 @@ type LedgerStats struct {
 	TotalBalanceCents     int64
 	AvailableBalanceCents int64
 	FeeBalanceCents       int64
-	Supporters            int // ledger "backers" field (distinct user count)
+	Supporters            int // count of unique org + individual donors from sponsors lists
 	Sponsors              LedgerSponsorList
 }

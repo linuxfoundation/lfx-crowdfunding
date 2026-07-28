@@ -132,12 +132,8 @@ const goalAmount = computed(() => {
   return isNaN(n) ? 0 : n;
 });
 
-const computedAmount = (percentage: number): string => {
-  const amount = (percentage / 100) * goalAmount.value;
-  if (amount === 0) return '$0';
-  if (amount >= 1000) return `$${Math.round(amount / 1000)}K`;
-  return `$${Math.round(amount)}`;
-};
+const computedAmount = (percentage: number): string =>
+  formatNumberCurrency((percentage / 100) * goalAmount.value, 'USD');
 
 const updateDistribution = (index: number, patch: Partial<GoalItem>) => {
   const distribution = props.modelValue.distribution.map((item, i) => (i === index ? { ...item, ...patch } : item));

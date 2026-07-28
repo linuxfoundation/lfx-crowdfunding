@@ -12,10 +12,14 @@ WORKDIR /build
 # Cache pnpm store separately from source — rebuild only when manifest changes.
 # pnpm-workspace.yaml contains overrides/allowBuilds that affect resolution so
 # it must be in this layer alongside the lockfile.
-COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
+COPY frontend/pnpm-lock.yaml frontend/package.json frontend/pnpm-workspace.yaml ./
 RUN pnpm fetch
 
-COPY . .
+# Copy frontend source and docs content so the prebuild script (build-docs.mjs)
+# and the runtime server can resolve docs/user/ via ../docs/user relative paths.
+COPY frontend/ .
+COPY docs/user/ /docs/user/
+
 RUN pnpm install --frozen-lockfile --prefer-offline && pnpm build
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
@@ -27,6 +31,9 @@ WORKDIR /app
 
 # Nuxt 4 output: .output/server (Node server) + .output/public (static assets)
 COPY --from=builder --chown=appuser:appgroup /build/.output/ ./
+# Docs markdown files for runtime API — getDocsDir() finds them via ../docs/user
+# (process.cwd() = /app, so ../docs/user = /docs/user)
+COPY --from=builder --chown=appuser:appgroup /docs/user/ /docs/user/
 
 USER appuser
 

@@ -68,12 +68,17 @@ SPDX-License-Identifier: MIT
         </tbody>
       </table>
 
-      <div class="flex justify-center">
+      <div
+        v-if="hasMore"
+        class="flex justify-center"
+      >
         <lfx-button
           label="Load more"
           type="outline"
           size="small"
           button-style="pill"
+          :loading="isLoadingMore"
+          @click="$emit('load-more')"
         />
       </div>
     </template>
@@ -89,7 +94,11 @@ import LfxTag from '~/components/uikit/tag/tag.vue';
 import LfxButton from '~/components/uikit/button/button.vue';
 import { formatAmountCents } from '~/utils/currency';
 
-defineProps<{ donations: DonationRecord[]; isLoading?: boolean }>();
+defineProps<{ donations: DonationRecord[]; isLoading?: boolean; hasMore?: boolean; isLoadingMore?: boolean }>();
+
+defineEmits<{
+  'load-more': [];
+}>();
 
 const formatAmount = formatAmountCents;
 </script>

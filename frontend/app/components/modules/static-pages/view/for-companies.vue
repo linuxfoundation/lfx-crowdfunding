@@ -8,7 +8,6 @@ SPDX-License-Identifier: MIT
       <div class="md:pt-18 pt-10 md:px-35 px-0">
         <for-companies-hero />
         <for-companies-why-fund />
-        <for-companies-portfolio />
         <for-companies-companies
           :companies="companiesData?.data ?? []"
           :is-loading="companiesLoading"
@@ -24,7 +23,6 @@ SPDX-License-Identifier: MIT
 import { computed } from 'vue';
 import ForCompaniesHero from '../components/for-companies/hero.vue';
 import ForCompaniesWhyFund from '../components/for-companies/why-fund.vue';
-import ForCompaniesPortfolio from '../components/for-companies/portfolio.vue';
 import ForCompaniesCompanies from '../components/for-companies/companies.vue';
 import ForCompaniesCta from '../components/for-companies/cta.vue';
 import { useInvestingCompanies } from '~/composables/static-pages/useInvestingCompanies';

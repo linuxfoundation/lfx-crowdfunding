@@ -79,8 +79,14 @@ func (r *stubRepoForGetForUser) GetUsersByLegacyIDs(_ context.Context, _ []strin
 func (r *stubRepoForGetForUser) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
+func (r *stubRepoForGetForUser) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
+	return nil, nil
+}
 func (r *stubRepoForGetForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
+}
+func (r *stubRepoForGetForUser) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
 }
 func (r *stubRepoForGetForUser) UpdateStripeProductID(_ context.Context, _, _ string) error {
 	return nil
