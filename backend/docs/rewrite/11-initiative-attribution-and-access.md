@@ -134,6 +134,14 @@ Design rules:
   retry.
 - **CF stores no roles.** No membership tables, no role columns — CF stores one entity reference
   and asks the platform the membership question at request time.
+- **Changing attribution is not the flat manage capability.** Editing an initiative's *content*
+  is one flat capability; changing its *attribution* is a separate, more restricted action.
+  Validating only the target entity (§2.1) is insufficient: under the flat rule, any current
+  writer could reattribute the initiative to another entity they write — or to `personal` —
+  silently revoking the original entity's writers and moving (or erasing) the public claim of
+  representation. An attribution change must therefore be authorized on **both** the current and
+  the target entity; transferring a non-personal initiative to `personal` is **creator-only**.
+  (Open question 6 covers the related "who changed this" record.)
 - **Who made a given change is out of scope here.** M2 lets multiple writers manage the same
   initiative, but this proposal doesn't add per-change attribution — see open question 6.
 
@@ -191,6 +199,10 @@ a separate metadata source (project-service / member-service) is required, with 
 for deleted/missing entities. Net: if eligibility must match actual management rights, the form
 should enumerate candidates then batch-verify them via `access_check.request`, rather than trust
 `read_tuples` alone (ties to open question 2).
+
+`access_check.request` replies are **unordered** (per `fga-sync-contract.md`: cached results may
+come back first). Callers must correlate each result by its echoed request token, never by
+array/line position — positional matching would assign a permission to the wrong entity.
 
 **Transit — how CF reaches the check (platform decision pending).** The architecture sync framed
 three options: **(A)** token exchange — swap the CF-audience user token for an LFX v2 token and
@@ -314,6 +326,14 @@ fix:
    installed.
 2. Make the picker path **reuse/upsert** the canonical linked row rather than inserting a new one —
    the unique index alone doesn't prevent concurrent duplicate inserts without upsert-on-conflict.
+   **Reuse conflicts with the table's current user-ownership model** (`001_initial.up.sql:55`;
+   `organization_repository.go` create/update/delete): today the first creator owns the row and
+   can rename or delete it, and a delete nulls every linked donation/subscription FK. A shared
+   canonical row can't stay user-owned — the first donor would control an org record others depend
+   on. So before introducing reuse, linked (`b2b_org`-backed) rows must become
+   **platform-managed/immutable** (name/logo sourced from member-service, not donor-editable, not
+   user-deletable), or canonical identity must be separated from the per-user organization record.
+   Unlinked rows keep today's per-user ownership.
 3. Replace free-text org creation in the donation flow with a **hybrid picker**: typeahead against
    canonical platform orgs first; if the donor's org isn't found, free text still works and
    creates a **local, unlinked CF row** (flagged `unlinked`) — never a platform/Salesforce org
@@ -346,6 +366,15 @@ initiative reads, owner-scoped transaction reads, and announcement create/update
 `AnnouncementService`). If M2 only routes the edit path through the resolver, entity writers get
 inconsistent partial access — e.g. they could edit an initiative but not see it in their list or
 manage its announcements. The "one flat capability" rule requires all of these to move together.
+
+**`ListForUser` needs an access-aware query plan, not the point resolver.** The single-entity
+boolean resolver works for per-initiative gates (edit, read, delete) but not for *discovery*:
+applying it after SQL pagination yields short pages and wrong totals, and checking every
+initiative before pagination doesn't scale. `read_tuples` can't fill the gap either — it returns
+direct tuples only, so it misses inherited-writer entities. The list path must first obtain the
+set of entity UIDs the caller can write (a complete list-objects/index source, or Query Service
+integration), then filter/paginate in SQL against `owner_id OR attributed_to IN (…)`. This query
+plan is an M2 design prerequisite, not a detail deferrable to implementation.
 
 **M1/M2 coupling under affiliation eligibility.** If open question 2 resolves to *affiliation*
 (not *writer*), M1 shipped alone would publish an entity's public label for a creator who may not
