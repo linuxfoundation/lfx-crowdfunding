@@ -113,8 +113,9 @@ flowchart TD
     E -- "resolver error" --> ERR
 ```
 
-`user:PRINCIPAL` is the FGA user identifier for the caller (see the identity note in §3.1 — the
-exact value CF must send is [open question 4](#6-open-questions)).
+`user:PRINCIPAL` is the caller's **LFID username** — member-service and project-service key their
+`writer` tuples by LFID username (per their FGA contracts), and CF already carries it as
+`Principal.Username`. So the check CF sends is `entity:UID#writer@user:{username}`.
 
 Design rules:
 
@@ -141,9 +142,9 @@ Design rules:
   silently revoking the original entity's writers and moving (or erasing) the public claim of
   representation. An attribution change must therefore be authorized on **both** the current and
   the target entity; transferring a non-personal initiative to `personal` is **creator-only**.
-  (Open question 6 covers the related "who changed this" record.)
+  (Open question 5 covers the related "who changed this" record.)
 - **Who made a given change is out of scope here.** M2 lets multiple writers manage the same
-  initiative, but this proposal doesn't add per-change attribution — see open question 6.
+  initiative, but this proposal doesn't add per-change attribution — see open question 5.
 
 ---
 
@@ -159,7 +160,7 @@ flowchart LR
         API --> RES[EntityRoleResolver]
     end
 
-    RES <-->|NATS request/reply<br/>lfx.access_check.*| FGASYNC[fga-sync]
+    RES <-->|access check<br/>transit A/B/C pending §3.1| FGASYNC[fga-sync]
 
     subgraph PLATFORM[LFX v2 platform]
         FGASYNC --> KV[(JetStream KV<br/>cache)]
@@ -187,22 +188,14 @@ Two NATS subjects cover everything CF needs:
 
 | Subject | Use |
 |---|---|
-| `lfx.access_check.request` | Batch yes/no checks; each tuple is `{object_type}:{object_id}#{relation}@{user_type}:{user_id}` (e.g. `project:UID#writer@user:auth0\|alice`) — the edit-access gate |
-| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type), paginating internally and returning them in one response. Candidate source for the form dropdowns — but see the two caveats below |
+| `lfx.access_check.request` | Batch yes/no checks; each tuple is `{object_type}:{object_id}#{relation}@{user_type}:{user_id}` (e.g. `project:UID#writer@user:alice`) — the edit-access gate |
+| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type), paginating internally and returning them in one response. Candidate source for the form dropdowns — but see the caveats below |
 
-`read_tuples` has two limits the caller must handle (per `fga-sync-contract.md`): (1) it returns
-*all* relations, not just `writer`, so CF must filter; and (2) it returns **direct** tuples only —
-it does **not** expand inherited/computed writer access, so an entity where the user is an
-inherited writer would be omitted even though `access_check.request` would permit management. It
-also returns tuple UIDs only — **not** the entity names/logos the picker and source label need, so
-a separate metadata source (project-service / member-service) is required, with defined behavior
-for deleted/missing entities. Net: if eligibility must match actual management rights, the form
-should enumerate candidates then batch-verify them via `access_check.request`, rather than trust
-`read_tuples` alone (ties to open question 2).
-
-`access_check.request` replies are **unordered** (per `fga-sync-contract.md`: cached results may
-come back first). Callers must correlate each result by its echoed request token, never by
-array/line position — positional matching would assign a permission to the wrong entity.
+Two `read_tuples` limits shape the form flow (§3.3, per `fga-sync-contract.md`): it returns *all*
+direct relations (CF filters to `writer`) and **UIDs only** (names/logos need a separate metadata
+lookup), and it does **not** expand inherited/computed access, so inherited-only writers are
+omitted. And `access_check.request` replies are **unordered** (cached results may return first) —
+callers must correlate each result by its echoed request token, never by array position.
 
 **Transit — how CF reaches the check (platform decision pending).** The architecture sync framed
 three options: **(A)** token exchange — swap the CF-audience user token for an LFX v2 token and
@@ -261,21 +254,20 @@ sequenceDiagram
     API->>FS: read_tuples {user, object_type: "project"}
     API->>FS: read_tuples {user, object_type: "b2b_org"}
     FS-->>API: all direct tuples (single response)
-    API->>API: filter to writer
-    Note over API: batch-verify via access_check.request<br/>(catches inherited writers)
+    API->>API: filter tuples to writer
     API->>PS: fetch names/logos for candidate UIDs
     API-->>FE: eligible projects + organizations
     Note over FE: user picks Personal (default),<br/>an org, or a project — no free text
 ```
 
-Two things the simple "read_tuples → dropdown" path misses, shown above: `read_tuples` returns
-**all** direct relations (not just `writer`) and does **not** expand inherited writer access, so
-CF filters and then batch-verifies candidates via `access_check.request`; and it returns UIDs
-only, so names/logos come from a metadata source (project-service / member-service, shown as `PS`).
-This whole flow assumes eligibility = the `writer` relation. If the PM instead chooses
-*affiliation* (open question 2), the candidate source is affiliation data — not an FGA relation, so
-it comes from the platform's profile/affiliation source rather than `read_tuples`. The edit-access
-check (§3.2) is unaffected either way.
+Caveats, shown above. `read_tuples` returns **all direct** relations (CF filters to `writer`) and
+returns **UIDs only** (names/logos come from a metadata source — project-service / member-service,
+shown as `PS`). Critically, it returns *direct* tuples only, so a user who is an **inherited-only**
+writer of an entity never appears in this candidate set — this flow can miss eligible entities.
+If eligibility must include inherited writers, the candidate source has to be a complete
+list-objects/affiliation source, not `read_tuples`. This ties to open question 2: if the PM
+chooses *affiliation* eligibility, the source is affiliation data, not an FGA relation at all. The
+edit-access check (§3.2) is unaffected either way.
 
 ### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
 
@@ -411,11 +403,9 @@ maintainer story is the strongest).
    — see §3.1. This proposal recommends C because it also covers the §3.4 target state's tuple
    writes; its prerequisite is NATS access control. Onboarding requirements per
    `lfx-v2-fga-sync/docs/fga-catalog.md`.
-4. **FGA user identifier.** FGA tuples key users as e.g. `user:auth0|alice`; CF's canonical
-   identifier is the LF SSO username. Confirm the identifier CF must send in checks.
-5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
+4. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
-6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
+5. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
    `initiative_announcements` tracks *which* writer made a given change today — `initiatives` has
    no `updated_by`, and `initiative_announcements.created_by` is stamped once at creation and never
    revisited by later `PUT`s, so an announcement edited by a second writer still displays the
