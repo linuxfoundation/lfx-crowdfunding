@@ -24,11 +24,6 @@ The proposal: each initiative carries an **attribution** — *personal* (default
 The same attribution field drives the details-page source label and the Self Serve (SS) lens
 "Initiatives" pages. Existing initiatives default to *personal* — **no data backfill**.
 
-Attribution is exclusive, so this is **at most one FGA check per request** (zero for personal
-initiatives) — not a fan-out union of checks. The idiomatic alternative (a new
-`crowdfunding_initiative` FGA type) is documented as the target state for when CF moves behind
-the API gateway (§3.4).
-
 ---
 
 ## 1. Problem
@@ -142,9 +137,8 @@ Design rules:
   silently revoking the original entity's writers and moving (or erasing) the public claim of
   representation. An attribution change must therefore be authorized on **both** the current and
   the target entity; transferring a non-personal initiative to `personal` is **creator-only**.
-  (Open question 5 covers the related "who changed this" record.)
-- **Who made a given change is out of scope here.** M2 lets multiple writers manage the same
-  initiative, but this proposal doesn't add per-change attribution — see open question 5.
+  Tracking *which* writer made a given change is a separate concern, out of scope here (open
+  question 5).
 
 ---
 
@@ -189,13 +183,11 @@ Two NATS subjects cover everything CF needs:
 | Subject | Use |
 |---|---|
 | `lfx.access_check.request` | Batch yes/no checks; each tuple is `{object_type}:{object_id}#{relation}@{user_type}:{user_id}` (e.g. `project:UID#writer@user:alice`) — the edit-access gate |
-| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type), paginating internally and returning them in one response. Candidate source for the form dropdowns — but see the caveats below |
+| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type), paginating internally and returning them in one response. Candidate source for the form dropdowns — with the limits detailed in §3.3 |
 
-Two `read_tuples` limits shape the form flow (§3.3, per `fga-sync-contract.md`): it returns *all*
-direct relations (CF filters to `writer`) and **UIDs only** (names/logos need a separate metadata
-lookup), and it does **not** expand inherited/computed access, so inherited-only writers are
-omitted. And `access_check.request` replies are **unordered** (cached results may return first) —
-callers must correlate each result by its echoed request token, never by array position.
+One contract detail that isn't obvious from the flow: `access_check.request` replies are
+**unordered** (cached results may return first, per `fga-sync-contract.md`) — callers must
+correlate each result by its echoed request token, never by array position.
 
 **Transit — how CF reaches the check (platform decision pending).** The architecture sync framed
 three options: **(A)** token exchange — swap the CF-audience user token for an LFX v2 token and
