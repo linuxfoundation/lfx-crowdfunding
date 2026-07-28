@@ -299,18 +299,17 @@ New backend is Go, same DDD pattern as LFF (domain/, usecases/, interfaces/repos
 
 Deployed as a long-running Go HTTP service on Kubernetes, not Lambda. Background jobs become Kubernetes CronJobs (not CloudWatch Events).
 
-### Background jobs — monorepo, separate binaries, separate container images
+### Background jobs — monorepo, separate binaries, single container image
 
-All code lives in one repository (monorepo). Each entrypoint under `cmd/` builds to a **separate container image** via its own Dockerfile:
+All code lives in one repository (monorepo). Each entrypoint under `cmd/` builds to its own binary, and all binaries are bundled into a **single container image** via `backend/Dockerfile`:
 
-| Entrypoint | Dockerfile | K8s resource |
+| Entrypoint | Binary | K8s resource |
 |---|---|---|
-| `cmd/api/` | `Dockerfile.api` | `Deployment` |
-| `cmd/mentorship-sync/` | `Dockerfile.mentorship-sync` | `CronJob` |
-| `cmd/ledger-stats-sync/` | `Dockerfile.ledger-stats-sync` | `CronJob` |
-| `cmd/migrate/` | `Dockerfile.migrate` | one-off `Job` |
+| `cmd/initiatives-api/` | `/app/initiatives-api` | `Deployment` |
+| `cmd/ledger-stats-sync/` | `/app/ledger-stats-sync` | `CronJob` |
+| `cmd/mentorship-sync/` | `/app/mentorship-sync` | `CronJob` |
 
-Rationale: a single container serving both HTTP requests and being invoked as a CronJob (via a flag) conflates two distinct runtime responsibilities. Separate images are minimal, contain only the code they need, and make it obvious what each K8s resource is doing. Shared business logic in `internal/` is compiled into each binary — no duplication of source, no runtime coupling.
+Rationale: the binaries are compiled statically (`CGO_ENABLED=0`), so bundling them in one image adds negligible size while keeping the build and release pipeline simple — one image to build, push, and track per release. Each K8s resource selects its binary via the container `command`. The CronJob Helm templates default to the same `image.repository`/`image.tag` as the API `Deployment`, overriding only when a different image is explicitly needed.
 
 ### Chi router (same as today)
 
