@@ -68,6 +68,7 @@ export default defineEventHandler(async (event) => {
       username: idTokenClaims['https://sso.linuxfoundation.org/claims/username'] as
         | string
         | undefined,
+      intercomJwt: idTokenClaims['http://lfx.dev/claims/intercom'] as string | undefined,
     };
     setCookie(
       event,
