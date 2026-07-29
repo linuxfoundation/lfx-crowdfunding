@@ -5,11 +5,11 @@
 
 ---
 
-**Status:** Design proposal, July 2026 — **revised after the July architecture sync**. The sync
-raised two decisions: **(1)** how CF reaches the platform's FGA checks (token exchange vs.
-privileged HTTP vs. NATS — owned by the platform team, see §3.1); **(2)** these hybrid per-entity
-checks vs. an idiomatic `crowdfunding_initiative` FGA type — resolved here as **hybrid now,
-idiomatic as the target state** (§3.4). Not yet a spec or implementation plan. Related story:
+**Status:** Design proposal, July 2026 — **reviewed and approved by the architecture team.** Two
+decisions from the review are now settled: **(1)** transit — CF reaches the FGA checks over direct
+NATS (option C), approved by Eric and Jordan (§3.1); **(2)** approach — **hybrid per-entity checks
+now, idiomatic `crowdfunding_initiative` type as the target state** for when CF is behind the
+Heimdall gateway (§3.4). Not yet a spec or implementation plan. Related story:
 [LFXV2-2537](https://linuxfoundation.atlassian.net/browse/LFXV2-2537) *"Initiatives on behalf of
 projects and/or organizations"*; epic
 [LFXV2-2759](https://linuxfoundation.atlassian.net/browse/LFXV2-2759).
@@ -154,7 +154,7 @@ flowchart LR
         API --> RES[EntityRoleResolver]
     end
 
-    RES <-->|access check<br/>transit A/B/C pending §3.1| FGASYNC[fga-sync]
+    RES <-->|NATS request/reply<br/>lfx.access_check.*| FGASYNC[fga-sync]
 
     subgraph PLATFORM[LFX v2 platform]
         FGASYNC --> KV[(JetStream KV<br/>cache)]
@@ -189,19 +189,19 @@ One contract detail that isn't obvious from the flow: `access_check.request` rep
 **unordered** (cached results may return first, per `fga-sync-contract.md`) — callers must
 correlate each result by its echoed request token, never by array position.
 
-**Transit — how CF reaches the check (platform decision pending).** The architecture sync framed
-three options: **(A)** token exchange — swap the CF-audience user token for an LFX v2 token and
-call the public `/access-check` HTTP endpoint (the MCP-server precedent; the wrapper is not a
-drop-in otherwise, since it expects a Heimdall-minted JWT and derives the principal from it);
-**(B)** a new privileged `/user-access-check` HTTP endpoint that accepts arbitrary users,
-authorized for specific machine clients via an LFX v2 M2M token; **(C)** direct on-network NATS
-access to the fga-sync subjects above. This proposal recommends **C**: it is the only option that
-also covers tuple *writes* (`lfx.fga-sync.update_access` has no HTTP equivalent), which the §3.4
-target state needs — picking A or B now would leave CF running a second transport later. C's
-prerequisite, flagged at the sync, is prioritizing **NATS access control** so on-network access is
-authenticated rather than implicit (open question 3). Whichever option lands, the integration
-hides behind a small `EntityRoleResolver` interface (entity type + UID + principal → can manage?)
-so the transport can be swapped without touching business logic.
+**Transit — how CF reaches the check (decided: C).** The architecture sync framed three options:
+**(A)** token exchange — swap the CF-audience user token for an LFX v2 token and call the public
+`/access-check` HTTP endpoint (the MCP-server precedent; the wrapper is not a drop-in otherwise,
+since it expects a Heimdall-minted JWT and derives the principal from it); **(B)** a new privileged
+`/user-access-check` HTTP endpoint that accepts arbitrary users, authorized for specific machine
+clients via an LFX v2 M2M token; **(C)** direct on-network NATS access to the fga-sync subjects
+above. **Eric and Jordan approved C.** The rationale: when CF eventually moves behind the Heimdall
+gateway (the §3.4 target state), it adopts NATS anyway for the indexing/tuple-write path — so using
+NATS now means its access checks never have to migrate off HTTP later. NATS access control is an
+existing platform-wide operational concern, *not* a CF-specific prerequisite, so CF does not roll
+it out in isolation. The integration hides behind a small `EntityRoleResolver` interface (entity
+type + UID + principal → can manage?) so the transport can be swapped without touching business
+logic if that ever proves necessary.
 
 **Caching:** none in CF on day one — fga-sync is already cache-first. Add an in-process cache only
 if measured latency demands it.
@@ -293,8 +293,6 @@ gateway:**
   gateway routes to attach rules to, so `crowdfunding_initiative` would be the first type
   maintained and checked entirely from outside the platform. The only existing external-consumer
   precedent (the MCP server) does read-only brokered checks — exactly this proposal's hybrid.
-- **Tuple writes force the transit decision.** `update_access` is NATS-only, so going idiomatic
-  today pre-decides option C (§3.1) before NATS access control exists.
 - **It copies CF-local facts into FGA to read them back.** Creator and attribution live in CF's
   Postgres; the genuinely *external* facts are only "who is a writer on this project/org," which
   the hybrid reads directly. Duplicating local facts adds a sync failure mode (a missed publish
@@ -397,11 +395,10 @@ maintainer story is the strongest).
    name on an initiative that no org *writer* approved (the org's writers do gain edit access and
    lens visibility, so they can react — but after the fact). If the PM wants org sign-off *before*
    the name appears, the eligibility gate must be *writer*, not *affiliated*. Confirm with PM.
-3. **Transit (A/B/C) — pending platform decision.** The platform team is aligning on how CF
-   reaches the check: token exchange (A), privileged `/user-access-check` (B), or direct NATS (C)
-   — see §3.1. This proposal recommends C because it also covers the §3.4 target state's tuple
-   writes; its prerequisite is NATS access control. Onboarding requirements per
-   `lfx-v2-fga-sync/docs/fga-catalog.md`.
+3. **Platform onboarding for NATS (transit C).** Transit is decided — Eric and Jordan approved
+   direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
+   `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is a platform-wide concern, not a
+   CF prerequisite.)
 4. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
 5. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
