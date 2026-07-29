@@ -138,7 +138,7 @@ Design rules:
   representation. An attribution change must therefore be authorized on **both** the current and
   the target entity; transferring a non-personal initiative to `personal` is **creator-only**.
   Tracking *which* writer made a given change is a separate concern, out of scope here (open
-  question 5).
+  question 6).
 
 ---
 
@@ -363,14 +363,55 @@ initiative reads, owner-scoped transaction reads, and announcement create/update
 inconsistent partial access — e.g. they could edit an initiative but not see it in their list or
 manage its announcements. The "one flat capability" rule requires all of these to move together.
 
-**`ListForUser` needs an access-aware query plan, not the point resolver.** The single-entity
-boolean resolver works for per-initiative gates (edit, read, delete) but not for *discovery*:
-applying it after SQL pagination yields short pages and wrong totals, and checking every
-initiative before pagination doesn't scale. `read_tuples` can't fill the gap either — it returns
-direct tuples only, so it misses inherited-writer entities. The list path must first obtain the
-set of entity UIDs the caller can write (a complete list-objects/index source, or Query Service
-integration), then filter/paginate in SQL against `owner_id OR attributed_to IN (…)`. This query
-plan is an M2 design prerequisite, not a detail deferrable to implementation.
+**`ListForUser` needs an access-aware query plan (M2 prerequisite) — see §5.1.** The single-entity
+boolean resolver works for per-initiative gates (edit, read, delete) but not for *discovery*.
+Today `ListForUser` filters `WHERE i.owner_id = $1`, counts, then paginates
+([initiative_repository.go:230,261,308](../../internal/infrastructure/db/initiative_repository.go)).
+Extending that to "initiatives I can manage" is not a point check applied per-row — the plan is
+below.
+
+### 5.1 The `ListForUser` query plan
+
+The list must return every initiative the caller owns **or** is a writer on the attributed entity
+of, correctly paginated. Two naive approaches both fail:
+
+- **Check each row after pagination** — the point resolver applied to a fetched page produces
+  short pages (some rows drop out) and wrong totals.
+- **Check every initiative before pagination** — an FGA call per initiative doesn't scale.
+
+The correct shape inverts it: **resolve the caller's writable entity set first, then push it into
+the existing SQL as a second `WHERE` branch.**
+
+1. **Resolve the writable set** — the set of `project`/`b2b_org` UIDs the caller can write,
+   *including inherited writers* (e.g. a parent-project writer). This is the hard part, because the
+   two NATS subjects fga-sync exposes today can't do it directly: `access_check.request` only
+   answers yes/no for a UID you already have, and `read_tuples` returns **direct** tuples only (it
+   drops inherited access). There is **no `list-objects` subject** in the current fga-sync contract
+   (`fga-sync-contract.md`). So the realistic sources are:
+   - **(a) Platform Query Service / OpenSearch** — the index already materializes computed
+     (inherited-inclusive) access per user, which is exactly the writable set. This is the
+     preferred source and the same index the SS lens pages read. Needs CF↔Query-Service onboarding.
+   - **(b) Affiliation candidates + batch-verify** — enumerate the user's candidate entities from
+     an affiliation/metadata source, then confirm each with a single batched `access_check.request`.
+     Works without Query Service but depends on the candidate list being complete.
+   - **(c) Ask the platform team to add a `list-objects` NATS subject** to fga-sync — the cleanest
+     long-term answer (OpenFGA supports ListObjects natively), but it's platform work that doesn't
+     exist yet.
+
+   **Open dependency:** which of (a)/(b)/(c) — this is the one thing to settle with the platform
+   team before building M2's list path. (a) is likely the shortest path since the index already
+   exists for the lens pages.
+2. **Extend the SQL, don't post-filter.** The writable set becomes a second branch on the existing
+   query: `WHERE i.owner_id = $1 OR i.attributed_to IN ($2, $3, …)`. Count and `LIMIT/OFFSET`
+   pagination then work unchanged — totals and page sizes stay correct because the filter is
+   applied *in* the query, not after it.
+3. **Bound the set.** If a caller writes an unusually large number of entities, cap the `IN` list
+   and fall back to Query Service-side filtering rather than emitting an unbounded query. Log when
+   the cap is hit (no silent truncation).
+
+Net: the writable-set resolution is one call per list request (cacheable per-user for a short TTL,
+mirroring SS's 5-min role cache), not one call per initiative. The SQL change is additive — the
+existing sort, search, and pagination are untouched.
 
 **M1/M2 coupling under affiliation eligibility.** If open question 2 resolves to *affiliation*
 (not *writer*), M1 shipped alone would publish an entity's public label for a creator who may not
@@ -399,9 +440,14 @@ maintainer story is the strongest).
    direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
    `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is a platform-wide concern, not a
    CF prerequisite.)
-4. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
+4. **Writable-set source for the list path (M2).** `ListForUser` needs the set of entities the
+   caller can write, *inherited access included* — which fga-sync's current subjects can't produce
+   (§5.1). Settle with the platform team: use the Query Service / OpenSearch index (preferred,
+   already built for the lens pages), enumerate-and-batch-verify, or ask fga-sync to add a
+   `list-objects` subject. This gates M2's list path specifically, not the per-initiative gates.
+5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
-5. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
+6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
    `initiative_announcements` tracks *which* writer made a given change today — `initiatives` has
    no `updated_by`, and `initiative_announcements.created_by` is stamped once at creation and never
    revisited by later `PUT`s, so an announcement edited by a second writer still displays the
