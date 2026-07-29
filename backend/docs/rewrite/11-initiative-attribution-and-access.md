@@ -395,20 +395,28 @@ the existing SQL as a second `WHERE` branch.**
    two NATS subjects fga-sync exposes today can't do it directly: `access_check.request` only
    answers yes/no for a UID you already have, and `read_tuples` returns **direct** tuples only (it
    drops inherited access). There is **no `list-objects` subject** in the current fga-sync contract
-   (`fga-sync-contract.md`). So the realistic sources are:
-   - **(a) Platform Query Service / OpenSearch** — the index already materializes computed
-     (inherited-inclusive) access per user, which is exactly the writable set. This is the
-     preferred source and the same index the SS lens pages read. Needs CF↔Query-Service onboarding.
-   - **(b) Affiliation candidates + batch-verify** — enumerate the user's candidate entities from
-     an affiliation/metadata source, then confirm each with a single batched `access_check.request`.
-     Works without Query Service but depends on the candidate list being complete.
-   - **(c) Ask the platform team to add a `list-objects` NATS subject** to fga-sync — the cleanest
-     long-term answer (OpenFGA supports ListObjects natively), but it's platform work that doesn't
-     exist yet.
+   (`fga-sync-contract.md`). **No platform component enumerates a user's inherited-inclusive
+   writable set in one call** — this was verified against Self-Serve, which is the closest precedent
+   and doesn't have such a call either. SS assembles the answer in two steps
+   (`project.service.ts`, `access-check.service.ts`, `org-role-grants.service.ts`): fetch a
+   candidate set, then batch-verify writer on each. The realistic sources for CF are therefore:
+   - **(a) Candidate enumeration + batch-verify (the proven pattern).** Enumerate the user's
+     candidate entities, then confirm `writer` on each with one batched `access_check.request`
+     (transit C) — the same shape SS uses for inherited access. The candidate set comes from the
+     Query Service (`GET /query/resources` scoped to the user: `filter_grants=direct` for projects,
+     `tags=member:{username}` + cascading children for orgs). Correctness depends on the candidate
+     list being a *superset* of the true writable set before the batch-verify prunes it.
+   - **(b) Ask the platform team to add a `list-objects` NATS subject** to fga-sync — OpenFGA
+     supports ListObjects natively and it would collapse (a) into one call, but it's platform work
+     that doesn't exist yet.
 
-   **Open dependency:** which of (a)/(b)/(c) — this is the one thing to settle with the platform
-   team before building M2's list path. (a) is likely the shortest path since the index already
-   exists for the lens pages.
+   **Open dependency — the transport, not the algorithm.** The algorithm is settled: (a),
+   candidate + batch-verify. The unknown is that the candidate half (`GET /query/resources`) is a
+   Heimdall-gated HTTP endpoint requiring a bearer token, and CF sits *outside* Heimdall (the same
+   boundary that drove transit C). The batch-verify half already has a NATS path (transit C). So the
+   one thing to settle with the platform team is: **how does CF, outside Heimdall, obtain the
+   candidate enumeration** — a service-auth path to `/query/resources`, or a NATS equivalent — since
+   there is no verified NATS subject for it today. Option (b) would sidestep this entirely.
 2. **Extend the SQL, don't post-filter.** The writable set becomes a second branch on the existing
    query: `WHERE i.owner_id = $1 OR i.attributed_to IN ($2, $3, …)`. Count and `LIMIT/OFFSET`
    pagination then work unchanged — totals and page sizes stay correct because the filter is
@@ -452,11 +460,15 @@ maintainer story is the strongest).
    direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
    `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is a platform-wide concern, not a
    CF prerequisite.)
-4. **Writable-set source for the list path (M2).** `ListForUser` needs the set of entities the
-   caller can write, *inherited access included* — which fga-sync's current subjects can't produce
-   (§5.1). Settle with the platform team: use the Query Service / OpenSearch index (preferred,
-   already built for the lens pages), enumerate-and-batch-verify, or ask fga-sync to add a
-   `list-objects` subject. This gates M2's list path specifically, not the per-initiative gates.
+4. **Candidate enumeration from outside Heimdall (M1 validation + M2 list).** Both the affiliation
+   picker/validation (M1) and the writable-set for `ListForUser` (M2) need to *enumerate* a user's
+   candidate entities, then batch-verify. No platform component returns an inherited-inclusive
+   writable set in one call — verified: even Self-Serve assembles it as candidate + batch-verify
+   (§5.1). The batch-verify half has a NATS path (transit C); the candidate half
+   (`GET /query/resources`) is Heimdall-gated HTTP, and CF sits outside Heimdall. Settle with the
+   platform team: a service-auth path to `/query/resources`, a NATS equivalent, or add a
+   `list-objects` subject to fga-sync (which would collapse both halves into one call). This is the
+   one undispatched blocker on the critical path.
 5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
 6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
