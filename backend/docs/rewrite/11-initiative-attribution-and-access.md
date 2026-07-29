@@ -74,21 +74,29 @@ Each initiative carries exactly one attribution, chosen at creation in a new fun
 One field, three consumers: **access control**, the **details-page source label**, and the **SS
 lens listing pages**. Existing initiatives default to `personal` and behave exactly as today.
 
-**Eligibility is strict — affiliated entities only.** The org/project pickers list only entities
-the user is already affiliated with (per LFXV2-2537's functional requirements: no free text, and
-a disabled option with an explanation when the user has none). "Any existing org" is deliberately
-rejected: attribution is a public claim of representation — the org's name and logo on a
-fundraising page — and under the access rule it would also hand the org's writers edit access to
+**The picker lists affiliated entities only — no free text.** The org/project pickers show only
+entities the user is already affiliated with (per LFXV2-2537's functional requirements: no free
+text, and a disabled option with an explanation when the user has none). "Any existing org" is
+deliberately rejected: attribution is a public claim of representation — the org's name and logo on
+a fundraising page — and under the access rule it would also hand the org's writers edit access to
 (and lens visibility of) an initiative nobody at the org sanctioned. Escape hatches **deep-link
 out of the form** rather than inlining platform workflows: "can't find your org" links to the
 platform's org-creation flow; "org exists but I'm not listed" links to where affiliations are
 managed. Users with multiple affiliations simply see them all in the single-select.
 
+**Eligibility gate: affiliation, not writer (decided).** A user may attribute to any org/project
+they are *affiliated* with — they need not be a `writer` on it (PM decision, 2026-07). This is the
+weaker of the two gates: someone affiliated with, but not a writer on, an org can publish a page
+carrying that org's name and logo without a writer signing off first. The org's writers *can*
+correct or remove it — but only once M2 ships the access rule that grants them management. Two
+consequences follow directly (see §5): the public attribution label cannot ship in a standalone
+M1, and server-side validation checks an *affiliation* source, not an FGA `writer` relation.
+
 **Eligibility is enforced server-side, not by the picker.** Constraining the dropdown is UX only —
 a caller can POST a create/update request with any entity UID directly. The API must therefore
-re-validate the submitted attribution against the authoritative eligible set (the same
-affiliation-or-writer source, per open question 2) *before persisting it*. Otherwise an
-unaffiliated user could publish a false org/project attribution by bypassing the form.
+re-validate the submitted attribution against the authoritative **affiliation** set *before
+persisting it*. Otherwise an unaffiliated user could publish a false org/project attribution by
+bypassing the form. (Which affiliation source backs this check is open question 4.)
 
 ### 2.2 Access decision
 
@@ -256,10 +264,10 @@ Caveats, shown above. `read_tuples` returns **all direct** relations (CF filters
 returns **UIDs only** (names/logos come from a metadata source — project-service / member-service,
 shown as `PS`). Critically, it returns *direct* tuples only, so a user who is an **inherited-only**
 writer of an entity never appears in this candidate set — this flow can miss eligible entities.
-If eligibility must include inherited writers, the candidate source has to be a complete
-list-objects/affiliation source, not `read_tuples`. This ties to open question 2: if the PM
-chooses *affiliation* eligibility, the source is affiliation data, not an FGA relation at all. The
-edit-access check (§3.2) is unaffected either way.
+Since eligibility is *affiliation* (§2.1, decided), the picker's candidate source is affiliation
+data, not an FGA relation at all — so `read_tuples` is not the right source for the picker, and its
+direct-only/inherited-writer limitation doesn't apply here. Which affiliation source to use is open
+question 4. The edit-access check (§3.2) is unaffected — it stays a per-entity `access_check`.
 
 ### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
 
@@ -352,7 +360,7 @@ Each independently shippable; M3 can move ahead of M1/M2.
 
 | # | Scope | Delivers |
 |---|---|---|
-| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID), form step with eligibility pickers (source per open question 2), **server-side eligibility validation** (§2.1), details-page source label. No access changes. | Most of LFXV2-2537 |
+| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID), form step with affiliation pickers (source per open question 4), **server-side affiliation validation** (§2.1), details-page source label **suppressed until M2** (§5 coupling). No access changes. | Most of LFXV2-2537 |
 | M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages (authorization-aware — entity writers also see unpublished initiatives). | Multi-person management |
 | M3 | **Org donations cleanup** — `b2b_org` link + partial unique index + upsert, canonical-org picker, dedup | Reconciled org donors |
 
@@ -413,11 +421,14 @@ Net: the writable-set resolution is one call per list request (cacheable per-use
 mirroring SS's 5-min role cache), not one call per initiative. The SQL change is additive — the
 existing sort, search, and pagination are untouched.
 
-**M1/M2 coupling under affiliation eligibility.** If open question 2 resolves to *affiliation*
-(not *writer*), M1 shipped alone would publish an entity's public label for a creator who may not
-be a writer, while the entity's writers can't correct or remove it until M2 exists. In that case,
-either couple M1+M2, gate M1 on writer eligibility, or suppress the public attribution label until
-M2. Under *writer* eligibility this doesn't arise and M1 is independently safe.
+**M1/M2 coupling under affiliation eligibility (now in force).** Eligibility is *affiliation*, not
+*writer* (§2.1). So a standalone M1 would publish an entity's public label for a creator who may
+not be a writer, while the entity's writers can't correct or remove it until M2 grants them
+management. M1 therefore cannot ship the public attribution label alone. Pick one:
+**(a)** couple M1+M2 so writer management lands with the label; or **(b)** ship M1's data model
+and pickers but keep the public org/project label suppressed until M2. Option (b) keeps M1
+independently shippable and is the recommended path — the attribution is captured and validated,
+just not shown publicly until the people who can police it have the tools to.
 
 Scope-reduction lever: ship the Project lens page before the Organization lens page (the
 maintainer story is the strongest).
@@ -430,12 +441,13 @@ maintainer story is the strongest).
    relation. If finance/reporting needs "which project does this money benefit" independent of
    "who runs the fundraiser," a separate optional benefit-project field is required — attribution
    cannot carry both.
-2. **Eligibility vs. access populations.** LFXV2-2537 lets users attribute to entities they're
-   *affiliated* with; edit access flows from the *writer* relation. These differ — a contributor
-   may be affiliated with a project without being a writer. Consequence: someone can put an org's
-   name on an initiative that no org *writer* approved (the org's writers do gain edit access and
-   lens visibility, so they can react — but after the fact). If the PM wants org sign-off *before*
-   the name appears, the eligibility gate must be *writer*, not *affiliated*. Confirm with PM.
+2. ~~**Eligibility vs. access populations.**~~ **Resolved (PM, 2026-07): affiliation.** A user may
+   attribute to any org/project they are *affiliated* with; they need not be a `writer`. The PM
+   accepted that an affiliated non-writer can put an org's name on an initiative without prior
+   sign-off, since the org's writers gain edit access and can correct it after the fact. Because
+   that correction only exists once M2 ships, this decision makes M1's public label depend on M2
+   (§5, "M1/M2 coupling") and points server-side validation at an affiliation source (open
+   question 4), not an FGA `writer` relation.
 3. **Platform onboarding for NATS (transit C).** Transit is decided — Eric and Jordan approved
    direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
    `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is a platform-wide concern, not a
