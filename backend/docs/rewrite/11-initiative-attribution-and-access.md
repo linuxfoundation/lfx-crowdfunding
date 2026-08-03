@@ -10,8 +10,8 @@ decisions from the review are now settled: **(1)** transit — CF reaches the FG
 NATS (option C), approved by Eric and Jordan (§3.1); **(2)** approach — **hybrid per-entity checks
 now, idiomatic `crowdfunding_initiative` type as the target state** for when CF is behind the
 Heimdall gateway (§3.4). The July architecture sync itself closed with action items (Eric/Jordan to
-align on transit; this doc to be revised); both approvals were recorded in the follow-up exchange
-after the sync. Not yet a spec or implementation plan. Related story:
+align on transit; this doc to be revised); transit C was then approved by Eric and Jordan in the
+follow-up Slack exchange after this doc's update pass. Not yet a spec or implementation plan. Related story:
 [LFXV2-2537](https://linuxfoundation.atlassian.net/browse/LFXV2-2537) *"Initiatives on behalf of
 projects and/or organizations"*; epic
 [LFXV2-2759](https://linuxfoundation.atlassian.net/browse/LFXV2-2759).
@@ -207,11 +207,10 @@ since it expects a Heimdall-minted JWT and derives the principal from it); **(B)
 clients via an LFX v2 M2M token; **(C)** direct on-network NATS access to the fga-sync subjects
 above. **Eric and Jordan approved C.** The rationale: when CF eventually moves behind the Heimdall
 gateway (the §3.4 target state), it adopts NATS anyway for the indexing/tuple-write path — so using
-NATS now means its access checks never have to migrate off HTTP later. Eric's approval came with a
-caveat: C highlights the risk of NATS access control not being implemented yet, so the platform
-should **prioritize NATS access control in parallel** for this approach to be comfortable. It
-remains a platform-wide concern (CF does not roll it out in isolation), but it is a paired
-commitment, not a dismissed one. The integration hides behind a small `EntityRoleResolver` interface (entity
+NATS now means its access checks never have to migrate off HTTP later. On NATS access control: the
+sync notes initially framed it as a risk to prioritize alongside C, but Eric's follow-up settled it
+as **not a prerequisite** — an operational risk that grows with platform-wide NATS sprawl, owned by
+the platform, not something CF rolls out in isolation. The integration hides behind a small `EntityRoleResolver` interface (entity
 type + UID + principal → can manage?) so the transport can be swapped without touching business
 logic if that ever proves necessary.
 
@@ -463,8 +462,8 @@ maintainer story is the strongest).
    question 4), not an FGA `writer` relation.
 3. **Platform onboarding for NATS (transit C).** Transit is decided — Eric and Jordan approved
    direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
-   `lfx-v2-fga-sync/docs/fga-catalog.md`, and track the paired platform commitment to prioritize
-   NATS access control (Eric's caveat on C, §3.1).
+   `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is explicitly *not* a prerequisite —
+   a platform-owned operational risk, per Eric's follow-up; §3.1.)
 4. **Candidate enumeration from outside Heimdall (M1 validation + M2 list).** Both the affiliation
    picker/validation (M1) and the writable-set for `ListForUser` (M2) need to *enumerate* a user's
    candidate entities, then batch-verify. No platform component returns an inherited-inclusive
