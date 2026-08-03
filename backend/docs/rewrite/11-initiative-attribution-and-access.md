@@ -282,12 +282,17 @@ question 4. The edit-access check (§3.2) is unaffected — it stays a per-entit
 > plan.
 
 At the architecture sync, Eric flagged the hybrid's OR-union of per-entity checks (project OR
-b2b_org OR local creator) as **something of an FGA antipattern**, and proposed the idiomatic
-alternative: add a `crowdfunding_initiative` type to the platform model — `define writer: [user] or writer from project or writer from b2b_org`
+b2b_org OR local creator) as **something of an FGA antipattern** — while also noting the fan-out
+"is more in line with the fact that you're outside of the system," that a new type is what an
+*inside-the-gateway* service would do, and that the hybrid is fine **as an initial step until CF
+is behind the gateway** (the position this section adopts). The idiomatic alternative he proposed:
+add a `crowdfunding_initiative` type to the platform model — `define writer: [user] or writer from project or writer from b2b_org`
 (`project_membership` in `model.yaml` is an existing precedent for the shape) — have CF emit
 `update_access`/`delete_access` tuples on create/attribution-change/delete (including the creator
 as a direct `writer` tuple, so *all* access decisions move to FGA), backfill existing initiatives,
-and reduce every runtime check to one `crowdfunding_initiative:{id}#writer` query.
+and reduce every runtime check to one `crowdfunding_initiative:{id}#writer` query. A side benefit:
+the platform's auto-generated access documentation would then describe the initiative type's roles
+and permission inheritance — visibility an in-backend union never gets.
 
 **Non-LF initiatives are the simple case, not a driver.** There is no requirement (nor a timeline
 for one) to model a non-LF *project entity* with multiple managers. If non-LF support ever lands,
