@@ -5,13 +5,11 @@
 
 ---
 
-**Status:** Design proposal, July 2026 — **reviewed and approved by the architecture team.** Two
-decisions from the review are now settled: **(1)** transit — CF reaches the FGA checks over direct
-NATS (option C), approved by Eric and Jordan (§3.1); **(2)** approach — **hybrid per-entity checks
-now, idiomatic `crowdfunding_initiative` type as the target state** for when CF is behind the
-Heimdall gateway (§3.4). The July architecture sync itself closed with action items (Eric/Jordan to
-align on transit; this doc to be revised); transit C was then approved by Eric and Jordan in the
-follow-up Slack exchange after this doc's update pass. Not yet a spec or implementation plan. Related story:
+**Status:** Design proposal, July 2026 — reviewed at the July architecture sync, settled in the
+follow-up exchange. Two decisions: **(1)** transit — CF reaches the FGA checks over direct NATS
+(option C), approved by Eric and Jordan (§3.1); **(2)** approach — **hybrid per-entity checks now,
+idiomatic `crowdfunding_initiative` type as the target state** once CF is behind the Heimdall
+gateway (§3.4), per Eric's initial-step framing. Not yet a spec or implementation plan. Related story:
 [LFXV2-2537](https://linuxfoundation.atlassian.net/browse/LFXV2-2537) *"Initiatives on behalf of
 projects and/or organizations"*; epic
 [LFXV2-2759](https://linuxfoundation.atlassian.net/browse/LFXV2-2759).
@@ -188,12 +186,12 @@ that raw data reads miss), CF already runs in the LFX v2 shared cluster so NATS 
 principle, and it's the integration every other v2 service uses. Both `project` and `b2b_org`
 live in the same OpenFGA store, so **one integration covers both attribution kinds**.
 
-Two NATS subjects cover everything CF needs:
+The fga-sync NATS subjects relevant to CF:
 
 | Subject | Use |
 |---|---|
-| `lfx.access_check.request` | Batch yes/no checks; each tuple is `{object_type}:{object_id}#{relation}@{user_type}:{user_id}` (e.g. `project:UID#writer@user:alice`) — the edit-access gate |
-| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type), paginating internally and returning them in one response. Candidate source for the form dropdowns — with the limits detailed in §3.3 |
+| `lfx.access_check.request` | Batch yes/no checks; each tuple is `{object_type}:{object_id}#{relation}@{user_type}:{user_id}` (e.g. `project:UID#writer@user:alice`) — the edit-access gate, and the batch-verify half of §5.1 |
+| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type). Evaluated as the picker's candidate source and rejected (§3.3) — direct-only, and eligibility is affiliation anyway |
 
 One contract detail that isn't obvious from the flow: `access_check.request` replies are
 **unordered** (cached results may return first, per `fga-sync-contract.md`) — callers must
@@ -207,12 +205,12 @@ since it expects a Heimdall-minted JWT and derives the principal from it); **(B)
 clients via an LFX v2 M2M token; **(C)** direct on-network NATS access to the fga-sync subjects
 above. **Eric and Jordan approved C.** The rationale: when CF eventually moves behind the Heimdall
 gateway (the §3.4 target state), it adopts NATS anyway for the indexing/tuple-write path — so using
-NATS now means its access checks never have to migrate off HTTP later. On NATS access control: the
-sync notes initially framed it as a risk to prioritize alongside C, but Eric's follow-up settled it
-as **not a prerequisite** — an operational risk that grows with platform-wide NATS sprawl, owned by
-the platform, not something CF rolls out in isolation. The integration hides behind a small `EntityRoleResolver` interface (entity
-type + UID + principal → can manage?) so the transport can be swapped without touching business
-logic if that ever proves necessary.
+NATS now means its access checks never have to migrate off HTTP later. NATS access control is
+**not a prerequisite** (raised at the sync, settled in Eric's follow-up): a platform-owned
+operational risk that grows with NATS sprawl, not something CF rolls out in isolation. The
+integration hides behind a small `EntityRoleResolver` interface (entity type + UID + principal →
+can manage?) so the transport can be swapped without touching business logic if that ever proves
+necessary.
 
 **Caching:** none in CF on day one — fga-sync is already cache-first. Add an in-process cache only
 if measured latency demands it.
@@ -250,27 +248,23 @@ sequenceDiagram
 sequenceDiagram
     participant FE as Fundraise form
     participant API as CF Go API
-    participant FS as fga-sync (NATS)
+    participant AF as affiliation source (open question 4)
     participant PS as project / member service
 
     FE->>API: GET attribution options
-    API->>FS: read_tuples {user, object_type: "project"}
-    API->>FS: read_tuples {user, object_type: "b2b_org"}
-    FS-->>API: all direct tuples (single response)
-    API->>API: filter tuples to writer
+    API->>AF: list caller's affiliated orgs + projects
+    AF-->>API: candidate entity UIDs
     API->>PS: fetch names/logos for candidate UIDs
     API-->>FE: eligible projects + organizations
     Note over FE: user picks Personal (default),<br/>an org, or a project — no free text
 ```
 
-Caveats, shown above. `read_tuples` returns **all direct** relations (CF filters to `writer`) and
-returns **UIDs only** (names/logos come from a metadata source — project-service / member-service,
-shown as `PS`). Critically, it returns *direct* tuples only, so a user who is an **inherited-only**
-writer of an entity never appears in this candidate set — this flow can miss eligible entities.
-Since eligibility is *affiliation* (§2.1, decided), the picker's candidate source is affiliation
-data, not an FGA relation at all — so `read_tuples` is not the right source for the picker, and its
-direct-only/inherited-writer limitation doesn't apply here. Which affiliation source to use is open
-question 4. The edit-access check (§3.2) is unaffected — it stays a per-entity `access_check`.
+Because eligibility is *affiliation*, not writer (§2.1), the picker's candidate source is
+affiliation data — which source is open question 4. An FGA-based source was evaluated and
+rejected: `read_tuples` returns *direct* tuples only (an inherited-only writer would never
+appear) and answers the wrong question anyway. Names/logos come from project-service /
+member-service (`PS`); the sources return UIDs only. The edit-access check (§3.2) is
+unaffected — it stays a per-entity `access_check`.
 
 ### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
 
@@ -282,17 +276,19 @@ question 4. The edit-access check (§3.2) is unaffected — it stays a per-entit
 > plan.
 
 At the architecture sync, Eric flagged the hybrid's OR-union of per-entity checks (project OR
-b2b_org OR local creator) as **something of an FGA antipattern** — while also noting the fan-out
-"is more in line with the fact that you're outside of the system," that a new type is what an
-*inside-the-gateway* service would do, and that the hybrid is fine **as an initial step until CF
-is behind the gateway** (the position this section adopts). The idiomatic alternative he proposed:
-add a `crowdfunding_initiative` type to the platform model — `define writer: [user] or writer from project or writer from b2b_org`
+b2b_org OR local creator) as **something of an FGA antipattern** — while also noting that the
+fan-out fits a service *outside* the system, a new type is the *inside-the-gateway* pattern, and
+the hybrid is fine **as an initial step until CF is behind the gateway**. That initial-step
+framing is the position this section adopts.
+
+The idiomatic alternative he proposed: add a `crowdfunding_initiative` type to the platform
+model — `define writer: [user] or writer from project or writer from b2b_org`
 (`project_membership` in `model.yaml` is an existing precedent for the shape) — have CF emit
 `update_access`/`delete_access` tuples on create/attribution-change/delete (including the creator
 as a direct `writer` tuple, so *all* access decisions move to FGA), backfill existing initiatives,
 and reduce every runtime check to one `crowdfunding_initiative:{id}#writer` query. A side benefit:
-the platform's auto-generated access documentation would then describe the initiative type's roles
-and permission inheritance — visibility an in-backend union never gets.
+the platform's auto-generated access documentation would then describe the type's roles and
+permission inheritance — visibility an in-backend union never gets.
 
 **Non-LF initiatives are the simple case, not a driver.** There is no requirement (nor a timeline
 for one) to model a non-LF *project entity* with multiple managers. If non-LF support ever lands,
@@ -365,7 +361,8 @@ until reconciled — correct behavior, not a bug.
 
 ## 5. Milestones
 
-Each independently shippable; M3 can move ahead of M1/M2.
+M1 and M3 ship independently (M1 with the public label suppressed — see the coupling note below);
+M2 builds on M1. M3 can move ahead of both.
 
 | # | Scope | Delivers |
 |---|---|---|
@@ -441,11 +438,11 @@ existing sort, search, and pagination are untouched.
 **M1/M2 coupling under affiliation eligibility (now in force).** Eligibility is *affiliation*, not
 *writer* (§2.1). So a standalone M1 would publish an entity's public label for a creator who may
 not be a writer, while the entity's writers can't correct or remove it until M2 grants them
-management. M1 therefore cannot ship the public attribution label alone. Pick one:
-**(a)** couple M1+M2 so writer management lands with the label; or **(b)** ship M1's data model
-and pickers but keep the public org/project label suppressed until M2. Option (b) keeps M1
-independently shippable and is the recommended path — the attribution is captured and validated,
-just not shown publicly until the people who can police it have the tools to.
+management. M1 therefore cannot ship the public attribution label alone. **Resolution: ship M1's
+data model and pickers with the public org/project label suppressed until M2** (reflected in the
+M1 row above) — the attribution is captured and validated, just not shown publicly until the
+people who can police it have the tools to. Coupling M1+M2 into one release was the rejected
+alternative; suppression keeps M1 independently shippable.
 
 Scope-reduction lever: ship the Project lens page before the Organization lens page (the
 maintainer story is the strongest).
@@ -459,25 +456,19 @@ maintainer story is the strongest).
    "who runs the fundraiser," a separate optional benefit-project field is required — attribution
    cannot carry both.
 2. ~~**Eligibility vs. access populations.**~~ **Resolved (PM, 2026-07): affiliation.** A user may
-   attribute to any org/project they are *affiliated* with; they need not be a `writer`. The PM
-   accepted that an affiliated non-writer can put an org's name on an initiative without prior
-   sign-off, since the org's writers gain edit access and can correct it after the fact. Because
-   that correction only exists once M2 ships, this decision makes M1's public label depend on M2
-   (§5, "M1/M2 coupling") and points server-side validation at an affiliation source (open
-   question 4), not an FGA `writer` relation.
+   attribute to any org/project they are *affiliated* with; they need not be a `writer`. Details
+   and consequences: §2.1 and the M1/M2 coupling note in §5.
 3. **Platform onboarding for NATS (transit C).** Transit is decided — Eric and Jordan approved
    direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
    `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is explicitly *not* a prerequisite —
    a platform-owned operational risk, per Eric's follow-up; §3.1.)
 4. **Candidate enumeration from outside Heimdall (M1 validation + M2 list).** Both the affiliation
    picker/validation (M1) and the writable-set for `ListForUser` (M2) need to *enumerate* a user's
-   candidate entities, then batch-verify. No platform component returns an inherited-inclusive
-   writable set in one call — verified: even Self-Serve assembles it as candidate + batch-verify
-   (§5.1). The batch-verify half has a NATS path (transit C); the candidate half
+   candidate entities before a batch-verify (full analysis in §5.1). The candidate half
    (`GET /query/resources`) is Heimdall-gated HTTP, and CF sits outside Heimdall. Settle with the
-   platform team: a service-auth path to `/query/resources`, a NATS equivalent, or add a
-   `list-objects` subject to fga-sync (which would collapse both halves into one call). This is the
-   one undispatched blocker on the critical path.
+   platform team: a service-auth path to `/query/resources`, a NATS equivalent, or a new
+   `list-objects` fga-sync subject (which would collapse both halves into one call). **This is the
+   one undispatched blocker on the critical path.**
 5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
 6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
