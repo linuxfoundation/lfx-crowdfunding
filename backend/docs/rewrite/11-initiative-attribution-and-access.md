@@ -126,7 +126,9 @@ Design rules:
   if a real need surfaces.
 - **At most one FGA check per request.** Attribution is exclusive, so the resolver checks only
   the attributed entity's branch; personal initiatives make no FGA call at all.
-- **The creator always retains access.** `owner_id` (the creator's CF user row) stays as
+- **The creator always retains access** (PM-confirmed, 2026-08 — including after the creator
+  leaves the attributed org/project; the entity's writers can edit or unpublish the initiative but
+  cannot revoke the creator). `owner_id` (the creator's CF user row) stays as
   "created by" and guarantees the creator can always edit — without this, a user could create an
   initiative attributed to an entity they're not a writer on and be locked out immediately.
   Everyone else's access comes and goes with their writer role on the attributed entity. This
@@ -366,7 +368,7 @@ M2 builds on M1. M3 can move ahead of both.
 
 | # | Scope | Delivers |
 |---|---|---|
-| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID), form step with affiliation pickers (source per open question 4), **server-side affiliation validation** (§2.1), details-page source label **suppressed until M2** (§5 coupling). No access changes. | Most of LFXV2-2537 |
+| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID, plus nullable benefit-project field per resolved OQ1), form step with affiliation pickers (source per open question 4), **server-side affiliation validation** (§2.1), details-page source label **suppressed until M2** (§5 coupling). No access changes. | Most of LFXV2-2537 |
 | M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages (authorization-aware — entity writers also see unpublished initiatives). | Multi-person management |
 | M3 | **Org donations cleanup** — `b2b_org` link + partial unique index + upsert, canonical-org picker, dedup | Reconciled org donors |
 
@@ -451,10 +453,11 @@ maintainer story is the strongest).
 
 ## 6. Open questions
 
-1. **PM: benefit vs. attribution axis.** A company-attributed initiative has no LF project
-   relation. If finance/reporting needs "which project does this money benefit" independent of
-   "who runs the fundraiser," a separate optional benefit-project field is required — attribution
-   cannot carry both.
+1. ~~**PM: benefit vs. attribution axis.**~~ **Resolved (PM, 2026-08): yes** — add a separate,
+   nullable benefit-project field to the M1 schema, independent of attribution. The PM's framing
+   ("it should always be clear which project a donation is attributed to") suggests the benefit
+   relation may eventually be *required*; the schema is nullable either way, and requiredness is
+   API/form validation to settle before M1's form ships — not a migration.
 2. ~~**Eligibility vs. access populations.**~~ **Resolved (PM, 2026-07): affiliation.** A user may
    attribute to any org/project they are *affiliated* with; they need not be a `writer`. Details
    and consequences: §2.1 and the M1/M2 coupling note in §5.
