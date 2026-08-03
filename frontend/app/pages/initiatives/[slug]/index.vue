@@ -30,7 +30,6 @@ const description = computed(() => {
 });
 const baseUrl = (config.public.appUrl as string).replace(/\/$/, '');
 const ogUrl = computed(() => `${baseUrl}/initiatives/${slug.value}`);
-const ogImage = computed(() => initiative.value?.logoUrl ?? `${baseUrl}/og-image.png`);
 
 useHead({ title });
 useSeoMeta({
@@ -39,10 +38,10 @@ useSeoMeta({
   ogDescription: description,
   ogType: 'website',
   ogUrl,
-  ogImage,
+  // ogImage/twitterImage intentionally omitted — inherits the shared site-wide
+  // image from setup/head.ts (LFXV2-2855: one OG image across the site).
   twitterCard: 'summary_large_image',
   twitterTitle: computed(() => `${title.value} | LFX Crowdfunding`),
   twitterDescription: description,
-  twitterImage: ogImage,
 });
 </script>
