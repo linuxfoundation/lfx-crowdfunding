@@ -320,7 +320,10 @@ gateway:**
 **Deferral is cheap by design.** The `EntityRoleResolver` seam is the migration path: when CF
 moves behind the gateway, the resolver's implementation swaps to a single
 `crowdfunding_initiative:{id}#writer@user:{id}` check, CF adds tuple emission plus a one-time
-backfill, and handlers/services don't change. The model addition and its Heimdall ruleset then
+backfill, and handlers/services don't change. One migration-time design item to note now: tuple
+emission (`update_access`) is asynchronous with no reply, so the migration must define a
+read-after-write/convergence strategy — a create or attribution change is otherwise briefly
+inconsistent with FGA-backed decisions. The model addition and its Heimdall ruleset then
 land together, as the platform contract expects.
 
 ---
@@ -410,10 +413,12 @@ the existing SQL as a second `WHERE` branch.**
    candidate set, then batch-verify writer on each. The realistic sources for CF are therefore:
    - **(a) Candidate enumeration + batch-verify (the proven pattern).** Enumerate the user's
      candidate entities, then confirm `writer` on each with one batched `access_check.request`
-     (transit C) — the same shape SS uses for inherited access. The candidate set comes from the
-     Query Service (`GET /query/resources` scoped to the user: `filter_grants=direct` for projects,
-     `tags=member:{username}` + cascading children for orgs). Correctness depends on the candidate
-     list being a *superset* of the true writable set before the batch-verify prunes it.
+     (transit C) — the same shape SS uses for inherited access. Correctness depends on the
+     candidate list being a *superset* of the true writable set before the batch-verify prunes
+     it — so the candidate query must be **inheritance-inclusive**. A `filter_grants=direct`
+     Query Service read is *not* a valid source: it omits inherited grants, so an inherited-only
+     parent-project writer's children would be absent, and batch-verify cannot recover an omitted
+     candidate. The superset requirement is itself an argument for option (b).
    - **(b) Ask the platform team to add a `list-objects` NATS subject** to fga-sync — OpenFGA
      supports ListObjects natively and it would collapse (a) into one call, but it's platform work
      that doesn't exist yet.
@@ -426,12 +431,16 @@ the existing SQL as a second `WHERE` branch.**
    candidate enumeration** — a service-auth path to `/query/resources`, or a NATS equivalent — since
    there is no verified NATS subject for it today. Option (b) would sidestep this entirely.
 2. **Extend the SQL, don't post-filter.** The writable set becomes a second branch on the existing
-   query: `WHERE i.owner_id = $1 OR i.attributed_to IN ($2, $3, …)`. Count and `LIMIT/OFFSET`
-   pagination then work unchanged — totals and page sizes stay correct because the filter is
-   applied *in* the query, not after it.
-3. **Bound the set.** If a caller writes an unusually large number of entities, cap the `IN` list
-   and fall back to Query Service-side filtering rather than emitting an unbounded query. Log when
-   the cap is hit (no silent truncation).
+   query, matched as **(attribution type, entity UID) pairs** — not bare UIDs — so a writable
+   `project` UID can never authorize a `b2b_org`-attributed initiative (or vice versa):
+   `WHERE i.owner_id = $1 OR (i.attributed_to_type, i.attributed_to_id) IN ((…,…), …)`. Count and
+   `LIMIT/OFFSET` pagination then work unchanged — totals and page sizes stay correct because the
+   filter is applied *in* the query, not after it.
+3. **Bound the set.** If a caller writes an unusually large number of entities, keep the filter
+   database-side: pass the set as an array parameter (`= ANY($n::uuid[])` per attribution type)
+   or a joined temporary relation instead of an inline `IN` list, so sort, count, and pagination
+   stay in the query at any set size. If a hard cap is ever imposed, log when it is hit (no
+   silent truncation).
 
 Net: the writable-set resolution is one call per list request (cacheable per-user for a short TTL,
 mirroring SS's 5-min role cache), not one call per initiative. The SQL change is additive — the
@@ -467,11 +476,13 @@ maintainer story is the strongest).
    a platform-owned operational risk, per Eric's follow-up; §3.1.)
 4. **Candidate enumeration from outside Heimdall (M1 validation + M2 list).** Both the affiliation
    picker/validation (M1) and the writable-set for `ListForUser` (M2) need to *enumerate* a user's
-   candidate entities before a batch-verify (full analysis in §5.1). The candidate half
-   (`GET /query/resources`) is Heimdall-gated HTTP, and CF sits outside Heimdall. Settle with the
-   platform team: a service-auth path to `/query/resources`, a NATS equivalent, or a new
-   `list-objects` fga-sync subject (which would collapse both halves into one call). **This is the
-   one undispatched blocker on the critical path.**
+   candidate entities — the enumeration itself is the shared dependency. Only M2 follows it with a
+   `writer` batch-verify; M1 validates *affiliation* and involves no writer check (§2.1; full
+   analysis in §5.1). The enumeration source (`GET /query/resources`) is Heimdall-gated HTTP, and
+   CF sits outside Heimdall. Settle with the platform team: a service-auth path to
+   `/query/resources`, a NATS equivalent, or a new `list-objects` fga-sync subject (which would
+   also collapse M2's two halves into one call). **This is the one undispatched blocker on the
+   critical path.**
 5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
 6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
