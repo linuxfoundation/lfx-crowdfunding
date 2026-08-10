@@ -97,6 +97,10 @@ config:
   # Comma-separated LF SSO usernames allowed to approve or decline initiatives.
   # Example: "alice,bob,carol"
   ALLOWED_APPROVERS: ""
+  # fga-sync NATS access-check client (LFXV2-2956 M1). Optional — leave empty
+  # to disable; no access checks are made on any request path yet (M2).
+  FGA_NATS_URL: ""
+  FGA_ACCESS_CHECK_TIMEOUT: "5s"
 
 # ── Additional environment variables ─────────────────────────────────────────
 # Rendered as a Kubernetes env: list on the Deployment and CronJob.

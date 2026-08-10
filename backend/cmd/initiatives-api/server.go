@@ -19,6 +19,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/db"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
+	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -29,6 +30,7 @@ type Server struct {
 	cfg     *Config
 	logger  *slog.Logger
 	httpSrv *http.Server
+	fgaConn *nats.Conn
 }
 
 // NewServer wires up all dependencies and builds the Chi router.
@@ -101,6 +103,20 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	})
 	if reimbursementClient == nil {
 		logger.Warn("REIMBURSEMENTS_API_URL is not set — Reimbursement Service sync is disabled")
+	}
+
+	// fga-sync NATS connection (LFXV2-2956 M1) — optional; nil when
+	// FGA_NATS_URL is unset. Not yet wired into any request path (M2); it
+	// exists here, alongside fga.NewNATSResolver, so the client can be
+	// dev-verified against fga-sync per the AC.
+	var fgaConn *nats.Conn
+	if cfg.FGA.NATSURL != "" {
+		fgaConn, err = nats.Connect(cfg.FGA.NATSURL, nats.Timeout(cfg.FGA.Timeout))
+		if err != nil {
+			return nil, fmt.Errorf("fga-sync nats connect: %w", err)
+		}
+	} else {
+		logger.Warn("FGA_NATS_URL is not set — fga-sync access checks are disabled")
 	}
 
 	// Services
@@ -289,6 +305,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		cfg:     cfg,
 		logger:  logger,
 		httpSrv: httpSrv,
+		fgaConn: fgaConn,
 	}, nil
 }
 
@@ -304,6 +321,9 @@ func (s *Server) Shutdown() {
 	defer cancel()
 	if err := s.httpSrv.Shutdown(ctx); err != nil {
 		s.logger.Error("graceful shutdown error", "error", err)
+	}
+	if s.fgaConn != nil {
+		s.fgaConn.Close()
 	}
 	s.pool.Close()
 }

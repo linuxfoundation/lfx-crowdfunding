@@ -1965,6 +1965,116 @@ func TestCreate_DonationMode_TiersMode_BlankBenefitsCleaned(t *testing.T) {
 	}
 }
 
+// ── attribution (LFXV2-2956 M1) ───────────────────────────────────────────────
+
+func TestCreate_Attribution_DefaultsToPersonal(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		InitiativeType: "project",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastCreated.Attribution.Type != models.AttributionPersonal {
+		t.Errorf("Attribution.Type = %q, want %q", repo.lastCreated.Attribution.Type, models.AttributionPersonal)
+	}
+	if repo.lastCreated.Attribution.EntityUID != "" {
+		t.Errorf("Attribution.EntityUID = %q, want empty", repo.lastCreated.Attribution.EntityUID)
+	}
+}
+
+func TestCreate_Attribution_Organization_Propagated(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	svc := newCreateSvc(repo)
+	uid := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
+		Name:           "My Project",
+		InitiativeType: "project",
+		Attribution:    &models.Attribution{Type: models.AttributionOrganization, EntityUID: uid},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastCreated.Attribution.Type != models.AttributionOrganization || repo.lastCreated.Attribution.EntityUID != uid {
+		t.Errorf("Attribution = %+v, want {organization %s}", repo.lastCreated.Attribution, uid)
+	}
+}
+
+func TestCreate_Attribution_InvalidShape(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:           "My Project",
+			InitiativeType: "project",
+			Attribution:    &models.Attribution{Type: models.AttributionOrganization}, // missing entity_uid
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for missing entity_uid, got %v", err)
+	}
+}
+
+func TestCreate_BenefitProjectUID_InvalidUUID(t *testing.T) {
+	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(context.Background(), "owner-1",
+		models.InitiativeCreateInput{
+			Name:              "My Project",
+			InitiativeType:    "project",
+			BenefitProjectUID: "not-a-uuid",
+		},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for malformed benefit_project_uid, got %v", err)
+	}
+}
+
+func TestUpdate_Attribution_NilIsNoOp(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID: "init-1", OwnerID: "owner-1",
+			Attribution: models.Attribution{Type: models.AttributionPersonal},
+		},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastUpdated.Attribution.Type != models.AttributionPersonal {
+		t.Errorf("Attribution.Type = %q, want unchanged personal", repo.lastUpdated.Attribution.Type)
+	}
+}
+
+func TestUpdate_Attribution_ChangedAndValidated(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{
+			ID: "init-1", OwnerID: "owner-1",
+			Attribution: models.Attribution{Type: models.AttributionPersonal},
+		},
+	}
+	uid := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{
+		Attribution: &models.Attribution{Type: models.AttributionProject, EntityUID: uid},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastUpdated.Attribution.Type != models.AttributionProject || repo.lastUpdated.Attribution.EntityUID != uid {
+		t.Errorf("Attribution = %+v, want {project %s}", repo.lastUpdated.Attribution, uid)
+	}
+}
+
+func TestUpdate_Attribution_InvalidShapeRejected(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{
+		Attribution: &models.Attribution{Type: models.AttributionOrganization, EntityUID: "not-a-uuid"},
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for malformed entity_uid, got %v", err)
+	}
+}
+
 // ── donation_mode + sponsorship tiers — Update ────────────────────────────────
 
 func TestUpdate_DonationMode_InvalidValue(t *testing.T) {

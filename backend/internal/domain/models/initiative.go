@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // ValidInitiativeTypes is the set of accepted initiative_type values.
@@ -103,6 +105,59 @@ func (m DonationMode) IsValid() bool {
 	return ok
 }
 
+// AttributionType describes the entity an initiative is run on behalf of.
+// See backend/docs/rewrite/11-initiative-attribution-and-access.md §2.1.
+type AttributionType string
+
+const (
+	AttributionPersonal     AttributionType = "personal"
+	AttributionOrganization AttributionType = "organization"
+	AttributionProject      AttributionType = "project"
+)
+
+// ValidAttributionTypes is the set of accepted attributed_to_type values.
+var ValidAttributionTypes = map[AttributionType]bool{
+	AttributionPersonal:     true,
+	AttributionOrganization: true,
+	AttributionProject:      true,
+}
+
+// Attribution is the entity — none, a b2b_org, or an LF project — an
+// initiative is run on behalf of. EntityUID must be empty when Type is
+// personal, and a UUID otherwise.
+//
+// Validate checks shape only: type membership and the UUID/emptiness
+// invariant. It deliberately does NOT check that the caller is affiliated
+// with EntityUID — that check is blocked on the platform enumeration
+// decision (design doc open question 4) and is out of scope for M1.
+type Attribution struct {
+	Type      AttributionType `json:"type"`
+	EntityUID string          `json:"entity_uid,omitempty"`
+}
+
+// Validate reports whether a is a well-formed attribution: a known type, with
+// EntityUID present and a parseable UUID iff Type is not personal. The
+// returned error is a plain error (not domain.ErrInvalidInput — this package
+// cannot import domain without a cycle); callers wrap it as needed.
+func (a Attribution) Validate() error {
+	if !ValidAttributionTypes[a.Type] {
+		return fmt.Errorf("attribution.type must be one of personal, organization, project")
+	}
+	if a.Type == AttributionPersonal {
+		if a.EntityUID != "" {
+			return fmt.Errorf("attribution.entity_uid must be empty for personal attribution")
+		}
+		return nil
+	}
+	if a.EntityUID == "" {
+		return fmt.Errorf("attribution.entity_uid is required for %s attribution", a.Type)
+	}
+	if _, err := uuid.Parse(a.EntityUID); err != nil {
+		return fmt.Errorf("attribution.entity_uid must be a UUID")
+	}
+	return nil
+}
+
 // Financials holds funding statistics sourced from initiative_ledger_stats,
 // populated by the ledger-stats-sync CronJob. All fields are zero when the
 // cron has not yet run for this initiative.
@@ -133,6 +188,14 @@ type Initiative struct {
 	CocURL         string           `json:"coc_url,omitempty"`
 	AcceptFunding  bool             `json:"accept_funding"`
 	DonationMode   DonationMode     `json:"donation_mode"`
+
+	// Attribution — who this initiative is run on behalf of (LFXV2-2956 M1).
+	// The public source label driven by Attribution is suppressed until M2
+	// ships the access rule that lets the attributed entity's writers police
+	// it (design §5 coupling note) — it is captured here but not yet surfaced
+	// beyond this API response.
+	Attribution       Attribution `json:"attribution"`
+	BenefitProjectUID string      `json:"benefit_project_uid,omitempty"`
 
 	// Entity-only display fields
 	EventbriteURL  string     `json:"eventbrite_url,omitempty"`
@@ -194,6 +257,11 @@ type InitiativeCreateInput struct {
 	AcceptFunding  bool         `json:"accept_funding"`
 	DonationMode   DonationMode `json:"donation_mode,omitempty"`
 
+	// Attribution — nil defaults to personal (today's behavior). See
+	// Initiative.Attribution.
+	Attribution       *Attribution `json:"attribution,omitempty"`
+	BenefitProjectUID string       `json:"benefit_project_uid,omitempty"`
+
 	// Project-only field — CII Best Practices badge project ID.
 	CiiProjectID string `json:"cii_project_id,omitempty"`
 
@@ -234,6 +302,14 @@ type InitiativeUpdateInput struct {
 	CocURL        *string           `json:"coc_url,omitempty"`
 	AcceptFunding *bool             `json:"accept_funding,omitempty"`
 	DonationMode  *DonationMode     `json:"donation_mode,omitempty"`
+
+	// Attribution — nil means "leave unchanged". Changing attribution is
+	// captured here as one atomic unit (Type + EntityUID together); design
+	// §2.2 makes an attribution change a separately-authorized action once
+	// M2 introduces entity writers, but M1 has only one manager (the
+	// creator), so no additional authorization is needed yet.
+	Attribution       *Attribution `json:"attribution,omitempty"`
+	BenefitProjectUID *string      `json:"benefit_project_uid,omitempty"`
 
 	// Project-only field — nil means "leave unchanged".
 	CiiProjectID *string `json:"cii_project_id,omitempty"`
