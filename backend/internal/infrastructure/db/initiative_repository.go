@@ -504,7 +504,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 		string(i.DonationMode),
-		string(i.Attribution.Type), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
+		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
 	); err != nil {
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
@@ -682,7 +682,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 		string(i.DonationMode),
-		string(i.Attribution.Type), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
+		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update initiative: %w", err)
@@ -1590,4 +1590,14 @@ func nullableString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// attributionType mirrors the attributed_to_type column default: an unset
+// type on a directly-constructed model stores as personal rather than an
+// empty string, which would bypass DEFAULT and trip the CHECK constraint.
+func attributionType(a models.Attribution) string {
+	if a.Type == "" {
+		return string(models.AttributionPersonal)
+	}
+	return string(a.Type)
 }

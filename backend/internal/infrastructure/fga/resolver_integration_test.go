@@ -42,8 +42,7 @@ func TestNATSResolver_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("nats.Connect: %v", err)
 	}
-	defer conn.Close()
-	resolver := NewNATSResolver(conn)
+	resolver := NewNATSResolver(conn, 5*time.Second)
 
 	// A definitive result (true or false, whichever it is) must come back
 	// without error — this is the "404 semantics" leg: a real, reachable
@@ -54,19 +53,18 @@ func TestNATSResolver_Integration(t *testing.T) {
 	}
 
 	// An unreachable fga-sync must surface as ErrUpstreamUnavailable (the
-	// "503 semantics" leg), never a false/404.
-	deadConn, err := nats.Connect("nats://127.0.0.1:1", nats.Timeout(1*time.Second), nats.NoReconnect())
+	// "503 semantics" leg), never a false/404. Closing the live connection
+	// guarantees the request fails, unlike connecting to a refused port
+	// (which nats.Connect itself may or may not error on depending on the
+	// host).
+	conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err = resolver.CanManage(ctx, models.AttributionProject, projectUID, username)
 	if err == nil {
-		defer deadConn.Close()
-		deadResolver := NewNATSResolver(deadConn)
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_, err = deadResolver.CanManage(ctx, models.AttributionProject, projectUID, username)
-		if err == nil {
-			t.Fatal("expected an error from an unreachable fga-sync connection")
-		}
-		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
-			t.Fatalf("expected error to wrap ErrUpstreamUnavailable, got: %v", err)
-		}
+		t.Fatal("expected an error from a closed fga-sync connection")
+	}
+	if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Fatalf("expected error to wrap ErrUpstreamUnavailable, got: %v", err)
 	}
 }

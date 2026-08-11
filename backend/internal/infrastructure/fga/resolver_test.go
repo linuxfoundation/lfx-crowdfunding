@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 
@@ -27,6 +28,16 @@ func (f *fakeRequester) RequestWithContext(_ context.Context, _ string, _ []byte
 		return nil, f.err
 	}
 	return &nats.Msg{Data: f.reply}, nil
+}
+
+// blockingRequester never replies until its request context is done — it
+// stands in for a subscriber that received the request but never sent a
+// reply, the scenario the resolver's own timeout must bound.
+type blockingRequester struct{}
+
+func (blockingRequester) RequestWithContext(ctx context.Context, _ string, _ []byte) (*nats.Msg, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func TestNATSResolver_CanManage(t *testing.T) {
@@ -112,6 +123,17 @@ func TestNATSResolver_CanManage(t *testing.T) {
 		_, err := r.CanManage(context.Background(), models.AttributionPersonal, project, username)
 		if err == nil {
 			t.Fatal("expected an error for personal attribution")
+		}
+	})
+
+	t.Run("resolver timeout bounds a caller context with no deadline", func(t *testing.T) {
+		// nats.Timeout on the connection only covers connection setup; a
+		// caller context.Background() (no deadline) must still be bounded
+		// by the resolver's own configured timeout, not block forever.
+		r := &NATSResolver{conn: blockingRequester{}, timeout: 20 * time.Millisecond}
+		_, err := r.CanManage(context.Background(), models.AttributionProject, project, username)
+		if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+			t.Fatalf("expected error to wrap ErrUpstreamUnavailable, got: %v", err)
 		}
 	})
 }

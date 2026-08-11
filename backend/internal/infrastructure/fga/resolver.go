@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 
@@ -64,12 +65,21 @@ type natsRequester interface {
 // lfx.access_check.request subject.
 type NATSResolver struct {
 	conn natsRequester
+	// timeout bounds each request/reply round trip. nats.Timeout on the
+	// connection only covers initial connection setup, not individual
+	// requests, so CanManage must apply this itself — otherwise a caller
+	// context without a deadline could block indefinitely on a subscriber
+	// that receives the request but never replies. Zero means "no bound",
+	// which keeps existing test doubles constructed without it working
+	// unchanged.
+	timeout time.Duration
 }
 
 // NewNATSResolver wraps a NATS connection for access checks. Callers own the
-// connection's lifecycle (created and closed in cmd/initiatives-api).
-func NewNATSResolver(conn *nats.Conn) *NATSResolver {
-	return &NATSResolver{conn: conn}
+// connection's lifecycle (created and closed in cmd/initiatives-api). timeout
+// bounds each access-check request/reply round trip.
+func NewNATSResolver(conn *nats.Conn, timeout time.Duration) *NATSResolver {
+	return &NATSResolver{conn: conn, timeout: timeout}
 }
 
 // entityTypePrefix maps CF's attribution type to the OpenFGA object-type
@@ -94,6 +104,12 @@ func (r *NATSResolver) CanManage(ctx context.Context, attrType models.Attributio
 		return false, err
 	}
 	request := fmt.Sprintf("%s:%s#writer@user:%s", prefix, entityUID, username)
+
+	if r.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.timeout)
+		defer cancel()
+	}
 
 	msg, err := r.conn.RequestWithContext(ctx, AccessCheckSubject, []byte(request))
 	if err != nil {
