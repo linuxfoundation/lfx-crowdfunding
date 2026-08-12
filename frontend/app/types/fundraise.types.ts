@@ -61,6 +61,13 @@ export interface ComplianceData {
   termsAccepted: boolean;
 }
 
+export type AttributionKind = 'personal' | 'organization' | 'project';
+
+export interface AttributionData {
+  kind: AttributionKind;
+  entityId: string | null;
+}
+
 export type SponsorshipTierName = 'platinum' | 'gold' | 'silver' | 'bronze';
 
 export interface SponsorshipTierConfig {
@@ -83,6 +90,7 @@ export interface ProjectFormData {
   details: ProjectDetailsData;
   donationOptions: DonationOptionsData;
   compliance: ComplianceData;
+  attribution: AttributionData;
 }
 
 export interface InitiativeDetailsData {
@@ -118,6 +126,7 @@ export interface SecurityAuditFormData {
   fundingGoal: string;
   donationOptions: DonationOptionsData;
   compliance: ComplianceData;
+  attribution: AttributionData;
 }
 
 export interface FundDistributionData {
@@ -141,6 +150,7 @@ export interface EventFormData {
   budgetDistribution: GoalItem[];
   donationOptions: DonationOptionsData;
   compliance: ComplianceData;
+  attribution: AttributionData;
 }
 
 export interface GeneralFundFormData {
@@ -153,6 +163,7 @@ export interface GeneralFundFormData {
   annualFundingGoal: string;
   donationOptions: DonationOptionsData;
   compliance: ComplianceData;
+  attribution: AttributionData;
 }
 
 export interface FundraiseDetailsForm {

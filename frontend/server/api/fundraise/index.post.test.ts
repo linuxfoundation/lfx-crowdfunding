@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect } from 'vitest';
-import type { GoalItemInput } from '../../types/fundraise.types';
-import { buildProjectGoals } from './index.post';
+import type { GoalItemInput, GeneralFundFundraisePayload } from '../../types/fundraise.types';
+import { buildProjectGoals, buildBackendPayload } from './index.post';
 
 const goalItem = (overrides: Partial<GoalItemInput>): GoalItemInput => ({
   category: 'development',
@@ -57,5 +57,31 @@ describe('buildProjectGoals', () => {
     const goals = buildProjectGoals(400000, []);
 
     expect(goals).toEqual([{ name: 'Annual Funding Goal', amount_cents: 400000, sort_order: 0 }]);
+  });
+});
+
+describe('buildBackendPayload — attribution', () => {
+  const basePayload = (): GeneralFundFundraisePayload => ({
+    initiativeType: 'general_fund',
+    name: 'General Fund',
+    description: 'A general fund',
+  });
+
+  it('omits attribution when no attribution is sent', () => {
+    const backendPayload = buildBackendPayload(basePayload());
+
+    expect(backendPayload.attribution).toBeUndefined();
+  });
+
+  it('maps kind + entityId to attribution.type + .entity_uid', () => {
+    const backendPayload = buildBackendPayload({
+      ...basePayload(),
+      attribution: { kind: 'organization', entityId: '8b1e2c3d-4f56-4a78-9b0c-1d2e3f4a5b6c' },
+    });
+
+    expect(backendPayload.attribution).toEqual({
+      type: 'organization',
+      entity_uid: '8b1e2c3d-4f56-4a78-9b0c-1d2e3f4a5b6c',
+    });
   });
 });

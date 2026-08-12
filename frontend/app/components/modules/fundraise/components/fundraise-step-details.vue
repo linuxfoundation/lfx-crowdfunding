@@ -8,6 +8,7 @@ SPDX-License-Identifier: MIT
     v-if="initiativeType === 'project'"
     :current-step="subStep"
     :model-value="projectForm"
+    :show-attribution="showAttribution"
     @update:model-value="projectForm = $event"
   />
 
@@ -16,6 +17,7 @@ SPDX-License-Identifier: MIT
     v-else-if="initiativeType === 'security_audit'"
     :current-step="subStep"
     :model-value="securityAuditForm"
+    :show-attribution="showAttribution"
     @update:model-value="securityAuditForm = $event"
   />
 
@@ -24,6 +26,7 @@ SPDX-License-Identifier: MIT
     v-else-if="initiativeType === 'general_fund'"
     :current-step="subStep"
     :model-value="generalFundForm"
+    :show-attribution="showAttribution"
     @update:model-value="generalFundForm = $event"
   />
 
@@ -32,6 +35,7 @@ SPDX-License-Identifier: MIT
     v-else-if="initiativeType === 'event'"
     :current-step="subStep"
     :model-value="eventForm"
+    :show-attribution="showAttribution"
     @update:model-value="eventForm = $event"
   />
 </template>
@@ -39,6 +43,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { createDefaultDonationOptions } from '../config/donation-options.config';
+import { createDefaultAttribution } from '../config/attribution.config';
 import FundraiseProjectSteps from './project-steps/fundraise-project-steps.vue';
 import FundraiseSecurityAuditSteps from './security-audit-steps/fundraise-security-audit-steps.vue';
 import FundraiseGeneralFundSteps from './general-fund-steps/fundraise-general-fund-steps.vue';
@@ -53,6 +58,7 @@ import type {
   GeneralFundFormData,
   EventFormData,
   DonationOptionsData,
+  AttributionData,
 } from '~/types/fundraise.types';
 
 const props = defineProps<{
@@ -122,6 +128,7 @@ const createInitialProjectForm = (): ProjectFormData => ({
   },
   donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
+  attribution: createDefaultAttribution(),
 });
 
 const createInitialContact = (): ContactPerson => ({
@@ -149,6 +156,7 @@ const createInitialSecurityAuditForm = (): SecurityAuditFormData => ({
   fundingGoal: '',
   donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
+  attribution: createDefaultAttribution(),
 });
 
 const DEFAULT_BUDGET_DISTRIBUTION: GoalItem[] = [
@@ -205,6 +213,7 @@ const createInitialEventForm = (): EventFormData => ({
   budgetDistribution: DEFAULT_BUDGET_DISTRIBUTION.map((item) => ({ ...item })),
   donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
+  attribution: createDefaultAttribution(),
 });
 
 const createInitialGeneralFundForm = (): GeneralFundFormData => ({
@@ -217,6 +226,7 @@ const createInitialGeneralFundForm = (): GeneralFundFormData => ({
   annualFundingGoal: '',
   donationOptions: createDefaultDonationOptions(),
   compliance: { ofacConfirmed: false, termsAccepted: false },
+  attribution: createDefaultAttribution(),
 });
 
 const subStep = ref(0);
@@ -225,13 +235,16 @@ const securityAuditForm = ref<SecurityAuditFormData>(createInitialSecurityAuditF
 const generalFundForm = ref<GeneralFundFormData>(createInitialGeneralFundForm());
 const eventForm = ref<EventFormData>(createInitialEventForm());
 
+const showAttribution = useFeatureFlags().getBooleanFlag('crowdfunding-attribution-step');
+
 const totalSubSteps = computed(() => {
+  const attributionSteps = showAttribution.value ? 1 : 0;
   if (props.initiativeType === 'project') {
-    return projectForm.value.hostingType === 'github' ? 5 : 4;
+    return (projectForm.value.hostingType === 'github' ? 5 : 4) + attributionSteps;
   }
-  if (props.initiativeType === 'security_audit') return 3;
-  if (props.initiativeType === 'general_fund') return 3;
-  if (props.initiativeType === 'event') return 3;
+  if (props.initiativeType === 'security_audit') return 3 + attributionSteps;
+  if (props.initiativeType === 'general_fund') return 3 + attributionSteps;
+  if (props.initiativeType === 'event') return 3 + attributionSteps;
   return 1;
 });
 
@@ -245,6 +258,18 @@ const isDonationOptionsStepValid = (donationOptions: DonationOptionsData): boole
   );
 };
 
+const isAttributionStepValid = (attribution: AttributionData): boolean =>
+  attribution.kind === 'personal' || attribution.entityId !== null;
+
+// Compliance is always last; Attribution (when the flag is on) sits directly before it;
+// Donation options sits before either of those. Named here once instead of repeating the
+// `totalSubSteps - N` arithmetic in every per-type branch below.
+const complianceIndex = computed(() => totalSubSteps.value - 1);
+const attributionIndex = computed(() => (showAttribution.value ? complianceIndex.value - 1 : -1));
+const donationOptionsIndex = computed(() =>
+  showAttribution.value ? attributionIndex.value - 1 : complianceIndex.value - 1,
+);
+
 const isCurrentSubStepValid = computed(() => {
   if (props.initiativeType === 'project') {
     if (subStep.value === 0) return projectForm.value.hostingType !== null;
@@ -254,37 +279,49 @@ const isCurrentSubStepValid = computed(() => {
     if (subStep.value === 1 && projectForm.value.hostingType !== 'github') {
       return projectForm.value.details.repositoryUrl.trim() !== '';
     }
-    if (subStep.value === totalSubSteps.value - 1) {
+    if (subStep.value === complianceIndex.value) {
       return projectForm.value.compliance.ofacConfirmed && projectForm.value.compliance.termsAccepted;
     }
-    if (subStep.value === totalSubSteps.value - 2) {
+    if (subStep.value === attributionIndex.value) {
+      return isAttributionStepValid(projectForm.value.attribution);
+    }
+    if (subStep.value === donationOptionsIndex.value) {
       return isDonationOptionsStepValid(projectForm.value.donationOptions);
     }
     return true;
   }
   if (props.initiativeType === 'security_audit') {
-    if (subStep.value === totalSubSteps.value - 1) {
+    if (subStep.value === complianceIndex.value) {
       return securityAuditForm.value.compliance.ofacConfirmed && securityAuditForm.value.compliance.termsAccepted;
     }
-    if (subStep.value === totalSubSteps.value - 2) {
+    if (subStep.value === attributionIndex.value) {
+      return isAttributionStepValid(securityAuditForm.value.attribution);
+    }
+    if (subStep.value === donationOptionsIndex.value) {
       return isDonationOptionsStepValid(securityAuditForm.value.donationOptions);
     }
     return securityAuditForm.value.auditName.trim() !== '';
   }
   if (props.initiativeType === 'general_fund') {
-    if (subStep.value === totalSubSteps.value - 1) {
+    if (subStep.value === complianceIndex.value) {
       return generalFundForm.value.compliance.ofacConfirmed && generalFundForm.value.compliance.termsAccepted;
     }
-    if (subStep.value === totalSubSteps.value - 2) {
+    if (subStep.value === attributionIndex.value) {
+      return isAttributionStepValid(generalFundForm.value.attribution);
+    }
+    if (subStep.value === donationOptionsIndex.value) {
       return isDonationOptionsStepValid(generalFundForm.value.donationOptions);
     }
     return generalFundForm.value.name.trim() !== '';
   }
   if (props.initiativeType === 'event') {
-    if (subStep.value === totalSubSteps.value - 1) {
+    if (subStep.value === complianceIndex.value) {
       return eventForm.value.compliance.ofacConfirmed && eventForm.value.compliance.termsAccepted;
     }
-    if (subStep.value === totalSubSteps.value - 2) {
+    if (subStep.value === attributionIndex.value) {
+      return isAttributionStepValid(eventForm.value.attribution);
+    }
+    if (subStep.value === donationOptionsIndex.value) {
       return isDonationOptionsStepValid(eventForm.value.donationOptions);
     }
     return eventForm.value.name.trim() !== '';

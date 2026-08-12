@@ -259,4 +259,55 @@ describe('useFundraiseSubmit', () => {
       expect(body.annualFundingGoalCents).toBeGreaterThan(0);
     });
   });
+
+  describe('buildPayload — attribution', () => {
+    beforeEach(() => {
+      mockAuthState.value.isAuthenticated = true;
+      mockFetch.mockResolvedValue(undefined);
+    });
+
+    const generalFundForm = (attribution: { kind: string; entityId: string | null }) => ({
+      name: 'General Fund',
+      elevatorPitch: '',
+      topics: [],
+      websiteUrl: '',
+      logoUrl: '',
+      beneficiaries: [],
+      annualFundingGoal: '100000',
+      attribution,
+    });
+
+    it('omits attribution when kind is personal', async () => {
+      const { submitFundraise } = useFundraiseSubmit();
+      await submitFundraise('general_fund', {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        generalFundForm: generalFundForm({ kind: 'personal', entityId: null }) as any,
+      });
+
+      const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;
+      expect(body.attribution).toBeUndefined();
+    });
+
+    it('sends kind + entityId when attributed to an organization', async () => {
+      const { submitFundraise } = useFundraiseSubmit();
+      await submitFundraise('general_fund', {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        generalFundForm: generalFundForm({ kind: 'organization', entityId: 'org-1' }) as any,
+      });
+
+      const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;
+      expect(body.attribution).toEqual({ kind: 'organization', entityId: 'org-1' });
+    });
+
+    it('omits attribution when a non-personal kind has no entityId selected', async () => {
+      const { submitFundraise } = useFundraiseSubmit();
+      await submitFundraise('general_fund', {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        generalFundForm: generalFundForm({ kind: 'project', entityId: null }) as any,
+      });
+
+      const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;
+      expect(body.attribution).toBeUndefined();
+    });
+  });
 });

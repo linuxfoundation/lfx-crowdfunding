@@ -41,6 +41,12 @@ SPDX-License-Identifier: MIT
         @update:model-value="emit('update:modelValue', { ...modelValue, donationOptions: $event })"
       />
 
+      <fundraise-attribution-step
+        v-else-if="showAttribution && currentStep === attributionStepIndex"
+        :model-value="modelValue.attribution"
+        @update:model-value="emit('update:modelValue', { ...modelValue, attribution: $event })"
+      />
+
       <fundraise-compliance-step
         v-else-if="currentStep === complianceStepIndex"
         :model-value="modelValue.compliance"
@@ -55,34 +61,36 @@ import { computed } from 'vue';
 import FundraiseStepIndicator from '../main/fundraise-step-indicator.vue';
 import FundraiseComplianceStep from '../main/fundraise-compliance-step.vue';
 import FundraiseDonationOptionsStep from '../main/fundraise-donation-options-step.vue';
+import FundraiseAttributionStep from '../main/fundraise-attribution-step.vue';
 import FundraiseProjectHostingStep from './fundraise-project-hosting-step.vue';
 import FundraiseProjectGithubStep from './github-sub-steps/fundraise-project-github-step.vue';
 import FundraiseProjectDetailsStep from './details/fundraise-project-details-step.vue';
 import type { ProjectFormData } from '~/types/fundraise.types';
 
-const STEPS_GITHUB = [
-  'Project hosting',
-  'Connect GitHub',
-  'Initiative details',
-  'Donation options',
-  'Compliance & Terms',
-];
-const STEPS_DEFAULT = ['Project hosting', 'Initiative details', 'Donation options', 'Compliance & Terms'];
-
 const props = defineProps<{
   currentStep: number;
   modelValue: ProjectFormData;
+  showAttribution: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: ProjectFormData): void;
 }>();
 
-const steps = computed(() => (props.modelValue.hostingType === 'github' ? STEPS_GITHUB : STEPS_DEFAULT));
-
 const detailsStepIndex = computed(() => (props.modelValue.hostingType === 'github' ? 2 : 1));
 const donationOptionsStepIndex = computed(() => detailsStepIndex.value + 1);
-const complianceStepIndex = computed(() => donationOptionsStepIndex.value + 1);
+const attributionStepIndex = computed(() => donationOptionsStepIndex.value + 1);
+const complianceStepIndex = computed(() =>
+  props.showAttribution ? attributionStepIndex.value + 1 : donationOptionsStepIndex.value + 1,
+);
+
+const steps = computed(() => {
+  const base =
+    props.modelValue.hostingType === 'github'
+      ? ['Project hosting', 'Connect GitHub', 'Initiative details', 'Donation options']
+      : ['Project hosting', 'Initiative details', 'Donation options'];
+  return props.showAttribution ? [...base, 'Attribution', 'Compliance & Terms'] : [...base, 'Compliance & Terms'];
+});
 </script>
 
 <script lang="ts">

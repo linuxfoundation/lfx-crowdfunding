@@ -11,6 +11,7 @@ import type {
   GeneralFundFormData,
   EventFormData,
   DonationOptionsData,
+  AttributionData,
 } from '~/types/fundraise.types';
 
 interface FundraiseFormData {
@@ -73,6 +74,16 @@ function buildDonationOptionsPayload(
   };
 }
 
+// Omitted for 'personal' (and when the attribution step never ran) so the wire
+// payload for the default flow is byte-identical to before this feature existed.
+// entityId must be a UUID — the backend (LFXV2-2956) validates entity_uid as one.
+function buildAttributionPayload(
+  attribution: AttributionData | undefined,
+): Record<string, unknown> | undefined {
+  if (!attribution || attribution.kind === 'personal' || !attribution.entityId) return undefined;
+  return { kind: attribution.kind, entityId: attribution.entityId };
+}
+
 function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<string, unknown> {
   const { projectForm, securityAuditForm, generalFundForm, eventForm } = forms;
 
@@ -102,6 +113,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         annualFundingGoalCents: parseDollarsToCents(projectForm?.details.annualFundingGoal),
         goals: projectForm?.details.goals?.length ? projectForm.details.goals : undefined,
         donationOptions: buildDonationOptionsPayload(projectForm?.donationOptions),
+        attribution: buildAttributionPayload(projectForm?.attribution),
       };
     }
 
@@ -125,6 +137,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
         secondaryContact: securityAuditForm?.secondaryContact,
         technicalLead: securityAuditForm?.technicalLead,
         donationOptions: buildDonationOptionsPayload(securityAuditForm?.donationOptions),
+        attribution: buildAttributionPayload(securityAuditForm?.attribution),
       };
     }
 
@@ -147,6 +160,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           ? eventForm.budgetDistribution
           : undefined,
         donationOptions: buildDonationOptionsPayload(eventForm?.donationOptions),
+        attribution: buildAttributionPayload(eventForm?.attribution),
       };
     }
 
@@ -163,6 +177,7 @@ function buildPayload(type: InitiativeType, forms: FundraiseFormData): Record<st
           : undefined,
         annualFundingGoalCents: parseDollarsToCents(generalFundForm?.annualFundingGoal),
         donationOptions: buildDonationOptionsPayload(generalFundForm?.donationOptions),
+        attribution: buildAttributionPayload(generalFundForm?.attribution),
       };
     }
   }
