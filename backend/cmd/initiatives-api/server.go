@@ -109,9 +109,15 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// FGA_NATS_URL is unset. Not yet wired into any request path (M2); it
 	// exists here, alongside fga.NewNATSResolver, so the client can be
 	// dev-verified against fga-sync per the AC.
+	//
+	// RetryOnFailedConnect: this integration isn't on any request path yet,
+	// so a transient fga-sync/NATS outage must not fail API startup — Connect
+	// enters background reconnect instead of erroring. Once M2 wires the
+	// resolver in, callers still see failures via CanManage's own timeout and
+	// ErrUpstreamUnavailable wrapping, not through this connection setup.
 	var fgaConn *nats.Conn
 	if cfg.FGA.NATSURL != "" {
-		fgaConn, err = nats.Connect(cfg.FGA.NATSURL, nats.Timeout(cfg.FGA.Timeout))
+		fgaConn, err = nats.Connect(cfg.FGA.NATSURL, nats.Timeout(cfg.FGA.Timeout), nats.RetryOnFailedConnect(true))
 		if err != nil {
 			return nil, fmt.Errorf("fga-sync nats connect: %w", err)
 		}
