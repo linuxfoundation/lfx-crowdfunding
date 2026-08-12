@@ -4,8 +4,8 @@
 // Package fga provides a read-only client to the platform's fga-sync service,
 // used to answer "can this principal manage this entity?" for CF's attributed
 // initiatives. See backend/docs/rewrite/11-initiative-attribution-and-access.md
-// §2.2, §3.1 and lfx-v2-fga-sync/docs/fga-sync-contract.md for the NATS wire
-// contract.
+// (PR #230, pending merge) §2.2, §3.1 and lfx-v2-fga-sync/docs/fga-sync-contract.md
+// for the NATS wire contract.
 //
 // This package is a consumer only — CF never publishes tuples, so it has no
 // fga-contract.md and needs no fga-catalog.md entry (those are for

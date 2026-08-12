@@ -106,7 +106,8 @@ func (m DonationMode) IsValid() bool {
 }
 
 // AttributionType describes the entity an initiative is run on behalf of.
-// See backend/docs/rewrite/11-initiative-attribution-and-access.md §2.1.
+// See backend/docs/rewrite/11-initiative-attribution-and-access.md (PR #230,
+// pending merge) §2.1.
 type AttributionType string
 
 const (

@@ -6,7 +6,8 @@ BEGIN;
 SET LOCAL search_path TO crowdfunding, public;
 
 -- LFXV2-2956 M1: attribution foundation (design doc
--- backend/docs/rewrite/11-initiative-attribution-and-access.md, §2.1, §5).
+-- backend/docs/rewrite/11-initiative-attribution-and-access.md (PR #230,
+-- pending merge), §2.1, §5).
 -- attributed_to_type/uid: who an initiative is run on behalf of. Existing rows
 -- default to 'personal' with a NULL uid — no backfill, behavior unchanged.
 -- benefit_project_uid: separate, independent field (PM decision, 2026-08,
