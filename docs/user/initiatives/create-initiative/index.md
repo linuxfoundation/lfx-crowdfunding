@@ -61,8 +61,6 @@ Fill in the details for your initiative. Fields vary by type, but all types ask 
 
 ### Step 3 — Attribution
 
-![Attribution step](/images/docs/screenshots/initiatives/create-initiative-attribution.png)
-
 Choose who this initiative is being created on behalf of:
 
 - **Personal** — the initiative is attributed to you. This is the default.

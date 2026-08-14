@@ -27,9 +27,11 @@ SPDX-License-Identifier: MIT
             @click="selectKind(option.value)"
           >
             <lfx-radio
+              name="attributionKind"
               :model-value="modelValue.kind"
               :value="option.value"
               :disabled="isDisabled(option.value)"
+              :aria-label="option.label"
               @update:model-value="selectKind($event as AttributionKind)"
             />
             <div class="flex flex-col gap-1">
@@ -39,32 +41,35 @@ SPDX-License-Identifier: MIT
                 v-if="isDisabled(option.value)"
                 class="text-xs text-neutral-500 leading-4 italic"
               >
-                {{ option.emptyMessage }}
+                {{ disabledMessage(option) }}
               </p>
             </div>
           </div>
 
-          <!-- Entity picker — only for non-personal kinds, revealed when selected -->
+          <!-- Entity picker — only for non-personal kinds, revealed when selected;
+               the escape-hatch link below stays reachable even while disabled. -->
           <div
-            v-if="option.value !== 'personal' && modelValue.kind === option.value && !isDisabled(option.value)"
+            v-if="option.value !== 'personal' && (modelValue.kind === option.value || isDisabled(option.value))"
             class="flex flex-col gap-2 pl-7"
           >
-            <p class="text-sm font-medium text-neutral-900">
-              {{ option.entityLabel }} <span class="text-negative-500">*</span>
-            </p>
+            <template v-if="!isDisabled(option.value)">
+              <p class="text-sm font-medium text-neutral-900">
+                {{ option.entityLabel }} <span class="text-negative-500">*</span>
+              </p>
 
-            <lfx-select
-              :model-value="modelValue.entityId ?? ''"
-              placeholder="Select option..."
-              @update:model-value="selectEntity($event)"
-            >
-              <lfx-dropdown-item
-                v-for="entity in candidatesFor(option.value)"
-                :key="entity.id"
-                :value="entity.id"
-                :label="entity.name"
-              />
-            </lfx-select>
+              <lfx-select
+                :model-value="modelValue.entityId ?? ''"
+                placeholder="Select option..."
+                @update:model-value="selectEntity($event)"
+              >
+                <lfx-dropdown-item
+                  v-for="entity in candidatesFor(option.value)"
+                  :key="entity.id"
+                  :value="entity.id"
+                  :label="entity.name"
+                />
+              </lfx-select>
+            </template>
 
             <p class="text-xs text-neutral-600 flex items-center gap-1">
               <lfx-icon
@@ -95,6 +100,7 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed } from 'vue';
 import { ATTRIBUTION_OPTIONS, AFFILIATIONS_MANAGEMENT_PATH } from '../../config/attribution.config';
+import type { AttributionOption } from '../../config/attribution.config';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
@@ -112,7 +118,7 @@ const emit = defineEmits<{
 
 // Fetched once per drawer session — a single-select list is small enough that
 // Nuxt's own request de-dupe/caching covers this without a dedicated composable.
-const { data } = useLazyFetch('/api/me/affiliations');
+const { data, status } = useLazyFetch('/api/me/affiliations');
 
 const candidatesFor = (kind: AttributionKind): AffiliationEntity[] => {
   if (kind === 'organization') return data.value?.organizations ?? [];
@@ -120,12 +126,17 @@ const candidatesFor = (kind: AttributionKind): AffiliationEntity[] => {
   return [];
 };
 
-// Personal is always available; org/project are disabled once the fetch has
-// resolved with an empty candidate list. Before it resolves, data.value is
-// undefined, so `candidatesFor` returns [] transiently — the row starts
-// disabled and enables itself once the fetch confirms there's nothing to pick
-// from either way, so this never flickers enabled→disabled.
-const isDisabled = (kind: AttributionKind): boolean => kind !== 'personal' && candidatesFor(kind).length === 0;
+// Personal is always available; org/project stay disabled while the fetch is
+// idle/pending (data.value is undefined, so we can't yet tell if there are
+// candidates) and remain disabled only if it resolves with an empty list.
+const isDisabled = (kind: AttributionKind): boolean =>
+  kind !== 'personal' && (status.value !== 'success' || candidatesFor(kind).length === 0);
+
+// While the fetch is idle/pending we don't yet know if the user has
+// affiliations, so show a loading line instead of the "you aren't
+// affiliated" message.
+const disabledMessage = (option: AttributionOption): string | undefined =>
+  status.value === 'success' ? option.emptyMessage : 'Loading your affiliations…';
 
 const affiliationsManagementUrl = computed(
   () => `${useRuntimeConfig().public.selfServeUrl}${AFFILIATIONS_MANAGEMENT_PATH}`,

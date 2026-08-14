@@ -13,6 +13,7 @@ SPDX-License-Identifier: MIT
       :name="props.name"
       :value="props.value"
       :disabled="props.disabled"
+      :aria-label="props.ariaLabel"
       class="c-radio__input"
     />
     <span class="c-radio__indicator">
@@ -38,11 +39,14 @@ const props = withDefaults(
     name?: string;
     size?: RadioSize;
     disabled?: boolean;
+    // Accessible name for radios whose visible label isn't passed through the default slot.
+    ariaLabel?: string;
   }>(),
   {
     name: undefined,
     size: 'default',
     disabled: false,
+    ariaLabel: undefined,
   },
 );
 
