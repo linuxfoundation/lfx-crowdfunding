@@ -92,11 +92,28 @@ correct or remove it — but only once M2 ships the access rule that grants them
 consequences follow directly (see §5): the public attribution label cannot ship in a standalone
 M1, and server-side validation checks an *affiliation* source, not an FGA `writer` relation.
 
+> **Architecture ruling on affiliation data (2026-08, Eric).** Involvement/affiliation data (CDP
+> contribution history, persona-service detections) is **self-attested and must never be an
+> authorization signal** — anyone in the public can contribute to a project and appear "involved."
+> This is platform doctrine (epic [LFXV2-1654](https://linuxfoundation.atlassian.net/browse/LFXV2-1654),
+> [permission-persona-navigation-model doc](https://github.com/linuxfoundation/lfx-self-serve/blob/docs/permission-persona-preread/docs/architecture/frontend/permission-persona-navigation-model-preread.md)):
+> persona/involvement shapes what a user *sees*; only manage/write permission gates what a user
+> *does*. The affiliation gate above is compatible with this ruling **only because attribution
+> derives no access for the claimant**: the claim grants access *to* the entity's real FGA writers
+> (M2), never *from* the claim to the claimer, and the public label stays suppressed until those
+> writers can police it (§5). What this changes: server-side "affiliation validation" cannot be an
+> authoritative check (no authoritative affiliation source exists — involvement is best-effort and
+> self-attested), so attribution is a **self-attested claim**; the server validates that the entity
+> exists and is the right type, and the false-claim risk is mitigated by label suppression + writer
+> policing, not by an affiliation lookup. Confirmation of this framing with the architect is
+> tracked in open question 4.
+
 **Eligibility is enforced server-side, not by the picker.** Constraining the dropdown is UX only —
 a caller can POST a create/update request with any entity UID directly. The API must therefore
-re-validate the submitted attribution against the authoritative **affiliation** set *before
-persisting it*. Otherwise an unaffiliated user could publish a false org/project attribution by
-bypassing the form. (Which affiliation source backs this check is open question 4.)
+re-validate the submitted attribution *before persisting it*: the entity UID must exist and match
+the claimed type (project-service / member-service lookup). Per the ruling above, this validation
+is an existence/shape check, not an authorization check — affiliation data cannot authoritatively
+prove or disprove the claim. (Picker suggestion sources: open question 4.)
 
 ### 2.2 Access decision
 
@@ -250,23 +267,34 @@ sequenceDiagram
 sequenceDiagram
     participant FE as Fundraise form
     participant API as CF Go API
-    participant AF as affiliation source (open question 4)
+    participant AF as persona-service (suggestions)
     participant PS as project / member service
 
     FE->>API: GET attribution options
-    API->>AF: list caller's affiliated orgs + projects
-    AF-->>API: candidate entity UIDs
+    API->>AF: lfx.personas-api.get (caller's involvement)
+    AF-->>API: candidate project UIDs (best-effort)
     API->>PS: fetch names/logos for candidate UIDs
-    API-->>FE: eligible projects + organizations
+    API-->>FE: suggested projects + organizations
     Note over FE: user picks Personal (default),<br/>an org, or a project — no free text
 ```
 
-Because eligibility is *affiliation*, not writer (§2.1), the picker's candidate source is
-affiliation data — which source is open question 4. An FGA-based source was evaluated and
-rejected: `read_tuples` returns *direct* tuples only (an inherited-only writer would never
-appear) and answers the wrong question anyway. Names/logos come from project-service /
-member-service (`PS`); the sources return UIDs only. The edit-access check (§3.2) is
-unaffected — it stays a per-entity `access_check`.
+Because the picker is a **suggestion surface, not the gate** (§2.1 architecture ruling — persona
+shapes what you see, permission gates what you do), its candidate source may be best-effort:
+
+- **Projects: persona-service** (`lfx.personas-api.get`, NATS request/reply — reachable from
+  outside Heimdall, same transit posture as C). It aggregates the caller's *involvement*
+  (writer/auditor grants, board/committee membership, maintainer detection, mailing lists, meeting
+  attendance) and is explicitly **not** an authorization source — acceptable here precisely because
+  no access derives from the pick. A type-ahead project search is the fallback for anything the
+  best-effort list misses.
+- **Organizations: source still open** (open question 4) — persona-service returns projects and
+  foundations, not `b2b_org`; the likely source is member-service affiliation data.
+
+An FGA-based source was evaluated and rejected twice over: `read_tuples` returns *direct* tuples
+only (an inherited-only writer would never appear), and a `list-objects` subject was ruled out
+platform-wide (§5.1). Names/logos come from project-service / member-service (`PS`); the sources
+return UIDs only. The edit-access check (§3.2) is unaffected — it stays a per-entity
+`access_check`.
 
 ### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
 
@@ -371,7 +399,7 @@ M2 builds on M1. M3 can move ahead of both.
 
 | # | Scope | Delivers |
 |---|---|---|
-| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID, plus nullable benefit-project field per resolved OQ1), form step with affiliation pickers (source per open question 4), **server-side affiliation validation** (§2.1), details-page source label **suppressed until M2** (§5 coupling). No access changes. | Most of LFXV2-2537 |
+| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID, plus nullable benefit-project field per resolved OQ1), form step with affiliation pickers (projects: persona-service + type-ahead, §3.3; org source per open question 4), **server-side entity validation** (existence/type, not authorization — §2.1), details-page source label **suppressed until M2** (§5 coupling). No access changes. | Most of LFXV2-2537 |
 | M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages (authorization-aware — entity writers also see unpublished initiatives). | Multi-person management |
 | M3 | **Org donations cleanup** — `b2b_org` link + partial unique index + upsert, canonical-org picker, dedup | Reconciled org donors |
 
@@ -401,35 +429,41 @@ of, correctly paginated. Two naive approaches both fail:
 The correct shape inverts it: **resolve the caller's writable entity set first, then push it into
 the existing SQL as a second `WHERE` branch.**
 
-1. **Resolve the writable set** — the set of `project`/`b2b_org` UIDs the caller can write,
-   *including inherited writers* (e.g. a parent-project writer). This is the hard part, because the
-   two NATS subjects fga-sync exposes today can't do it directly: `access_check.request` only
-   answers yes/no for a UID you already have, and `read_tuples` returns **direct** tuples only (it
-   drops inherited access). There is **no `list-objects` subject** in the current fga-sync contract
-   (`fga-sync-contract.md`). **No platform component enumerates a user's inherited-inclusive
-   writable set in one call** — this was verified against Self-Serve, which is the closest precedent
-   and doesn't have such a call either. SS assembles the answer in two steps
-   (`project.service.ts`, `access-check.service.ts`, `org-role-grants.service.ts`): fetch a
-   candidate set, then batch-verify writer on each. The realistic sources for CF are therefore:
-   - **(a) Candidate enumeration + batch-verify (the proven pattern).** Enumerate the user's
-     candidate entities, then confirm `writer` on each with one batched `access_check.request`
-     (transit C) — the same shape SS uses for inherited access. Correctness depends on the
-     candidate list being a *superset* of the true writable set before the batch-verify prunes
-     it — so the candidate query must be **inheritance-inclusive**. A `filter_grants=direct`
-     Query Service read is *not* a valid source: it omits inherited grants, so an inherited-only
-     parent-project writer's children would be absent, and batch-verify cannot recover an omitted
-     candidate. The superset requirement is itself an argument for option (b).
-   - **(b) Ask the platform team to add a `list-objects` NATS subject** to fga-sync — OpenFGA
-     supports ListObjects natively and it would collapse (a) into one call, but it's platform work
-     that doesn't exist yet.
+1. **Resolve the writable set — from CF's own data (resolved 2026-08).** The set of
+   `project`/`b2b_org` UIDs the caller can write, *including inherited writers* (e.g. a
+   parent-project writer). Two platform-side sources were evaluated and are dead:
+   - **FGA enumeration (`list-objects`) is a platform anti-pattern.** A draft fga-sync subject
+     existed ([lfx-v2-fga-sync#57](https://github.com/linuxfoundation/lfx-v2-fga-sync/pull/57)) but
+     is being closed: OpenFGA's ListObjects is "explicitly NOT guaranteed to be affordable," and the
+     platform (including the Query Service) is deliberately built to *avoid* that call, using batch
+     permission checks instead (Eric,
+     [LFXV2-2753 comment](https://linuxfoundation.atlassian.net/browse/LFXV2-2753?focusedCommentId=116226);
+     Jordan, 2026-08).
+   - **Direct-grant reads are not a valid superset.** `read_tuples` (and `filter_grants=direct`
+     Query Service reads) return **direct** tuples only — an inherited-only writer has *zero* direct
+     tuples yet can evaluate as writer on 1,000+ projects (verified in prod, LFXV2-2753). An omitted
+     candidate can never be recovered by batch-verify.
 
-   **Open dependency — the transport, not the algorithm.** The algorithm is settled: (a),
-   candidate + batch-verify. The unknown is that the candidate half (`GET /query/resources`) is a
-   Heimdall-gated HTTP endpoint requiring a bearer token, and CF sits *outside* Heimdall (the same
-   boundary that drove transit C). The batch-verify half already has a NATS path (transit C). So the
-   one thing to settle with the platform team is: **how does CF, outside Heimdall, obtain the
-   candidate enumeration** — a service-auth path to `/query/resources`, or a NATS equivalent — since
-   there is no verified NATS subject for it today. Option (b) would sidestep this entirely.
+   The resolution is to invert the candidate source: **CF's own `initiatives` table bounds the
+   candidates.** The only entities that can matter for this list are the distinct
+   `(attributed_to_type, attributed_to_id)` pairs that actually appear on non-personal CF
+   initiatives — a set bounded by CF's own data, not by the platform's entity universe. So:
+
+   ```
+   SELECT DISTINCT attributed_to_type, attributed_to_id
+     FROM initiatives WHERE attributed_to_type <> 'personal'
+   ```
+
+   then confirm `writer` on each pair with **one batched `access_check.request`** (transit C — the
+   subject already accepts multiple checks per message, and `Check` evaluates inheritance, so
+   inherited writers are included for free). This is the same batch-check-as-filter shape the Query
+   Service itself uses, needs **no new platform capability**, and is correct by construction: the
+   candidate set is a superset of every entity that could put an initiative in the caller's list.
+
+   **Bounding note:** the batch size grows with the number of *distinct attributed entities across
+   CF*, not per-user. At CF's scale that is small; the per-user result is cacheable (short TTL,
+   step below), and if the distinct-entity count ever grows past a comfortable batch size, chunk
+   the batch and monitor — never silently truncate.
 2. **Extend the SQL, don't post-filter.** The writable set becomes a second branch on the existing
    query, matched as **(attribution type, entity UID) pairs** — not bare UIDs — so a writable
    `project` UID can never authorize a `b2b_org`-attributed initiative (or vice versa):
@@ -474,15 +508,20 @@ maintainer story is the strongest).
    direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
    `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is explicitly *not* a prerequisite —
    a platform-owned operational risk, per Eric's follow-up; §3.1.)
-4. **Candidate enumeration from outside Heimdall (M1 validation + M2 list).** Both the affiliation
-   picker/validation (M1) and the writable-set for `ListForUser` (M2) need to *enumerate* a user's
-   candidate entities — the enumeration itself is the shared dependency. Only M2 follows it with a
-   `writer` batch-verify; M1 validates *affiliation* and involves no writer check (§2.1; full
-   analysis in §5.1). The enumeration source (`GET /query/resources`) is Heimdall-gated HTTP, and
-   CF sits outside Heimdall. Settle with the platform team: a service-auth path to
-   `/query/resources`, a NATS equivalent, or a new `list-objects` fga-sync subject (which would
-   also collapse M2's two halves into one call). **This is the one undispatched blocker on the
-   critical path.**
+4. **Candidate enumeration — largely resolved (2026-08); org picker source + gate framing remain.**
+   The shared "enumerate a user's entities" dependency dissolved once the platform ruled FGA
+   enumeration out (ListObjects is an anti-pattern; fga-sync PR #57 being closed — see §5.1):
+   - ~~**M2 writable-set**~~ **Resolved:** CF-local candidates (distinct attributed entities from
+     CF's own `initiatives` table) + one batched `access_check` — no platform work needed (§5.1).
+   - ~~**M1 project picker**~~ **Resolved:** persona-service suggestions + type-ahead fallback
+     (§3.3). Best-effort is acceptable because the picker is a suggestion surface, not the gate.
+   - **Still open (a): the org picker source.** persona-service covers projects/foundations, not
+     `b2b_org` — likely member-service affiliation data; confirm. Scope lever: ship the project
+     picker first (M1 already sequences project-lens ahead of org-lens).
+   - **Still open (b): confirm the gate framing with the architect.** Attribution as a
+     self-attested claim — no access derived from it, entity existence validated server-side,
+     public label suppressed until M2 writer policing (§2.1 ruling note). One-line confirmation
+     from Eric closes this.
 5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
    platform-admin concept?
 6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
