@@ -74,6 +74,13 @@ Each initiative carries exactly one attribution, chosen at creation in a new fun
 One field, three consumers: **access control**, the **details-page source label**, and the **SS
 lens listing pages**. Existing initiatives default to `personal` and behave exactly as today.
 
+> **`b2b_org` UIDs are Salesforce SFIDs, not UUIDs.** Per
+> `lfx-v2-member-service/docs/indexer-contract.md`, a `b2b_org` uid is an 18-char Salesforce Account
+> SFID (e.g. `0012M00002qnukOQAQ`); only the `project` UID is a v2 UUID. The M1 schema and
+> `models.Attribution.Validate()` currently assume UUID for both attribution kinds and would reject
+> every real organization — tracked as a bug fix landing ahead of any org-picker work, not as part
+> of this doc.
+
 **The picker lists affiliated entities only — no free text.** The org/project pickers show only
 entities the user is already affiliated with (per LFXV2-2537's functional requirements: no free
 text, and a disabled option with an explanation when the user has none). "Any existing org" is
@@ -91,6 +98,13 @@ carrying that org's name and logo without a writer signing off first. The org's 
 correct or remove it — but only once M2 ships the access rule that grants them management. Two
 consequences follow directly (see §5): the public attribution label cannot ship in a standalone
 M1, and server-side validation checks an *affiliation* source, not an FGA `writer` relation.
+
+**Known gap: the org picker is narrower than this gate (§3.3).** The org candidate source is
+`read_tuples` filtered to direct `writer` tuples — it cannot see affiliation, only a subset of it.
+An org member who is affiliated but not a direct writer (or is only an inherited writer) will not
+see their org in the picker at all, even though the affiliation gate above would allow the
+attribution. Their path is the escape hatch, not the select. This is a real narrowing of who can
+use the picker, not just a best-effort miss — see §3.3 for why it's accepted anyway.
 
 > **Architecture ruling on affiliation data (2026-08, Eric).** Involvement/affiliation data (CDP
 > contribution history, persona-service detections) is **self-attested and must never be an
@@ -201,16 +215,29 @@ flowchart LR
 | Literal org ownership (transfer `owner_id` to an org) | Forces CF to answer "who is in the org" — inventing membership. Attribution + FGA-derived access stores one UID instead. |
 
 fga-sync is the canonical enforcement source (it captures committee-derived and inherited grants
-that raw data reads miss), CF already runs in the LFX v2 shared cluster so NATS is reachable in
-principle, and it's the integration every other v2 service uses. Both `project` and `b2b_org`
-live in the same OpenFGA store, so **one integration covers both attribution kinds**.
+that raw data reads miss), CF already runs in the LFX v2 shared cluster, and it's the integration
+every other v2 service uses. Both `project` and `b2b_org` live in the same OpenFGA store, so **one
+integration covers both attribution kinds**.
+
+**"Reachable in principle" is not yet reachable in fact.** `FGA_NATS_URL` is unset in every argocd
+environment — dev, staging, and prod (`lfx-v2-argocd/values/*/lfx-crowdfunding-backend.yaml`).
+Every other v2 service is handed `nats://lfx-platform-nats.lfx.svc.cluster.local:4222` (e.g.
+`values/dev/lfx-v2-meeting-service.yaml:42-43`); CF is not. The `NATSResolver` shipped in M1
+(`backend/internal/infrastructure/fga/resolver.go`) is therefore inert everywhere today — this is
+the substance of open question 3, not a formality. CF also sits fully outside Heimdall: its own
+Traefik ingress (`crowdfunding-api.dev.lfx.dev`), its own Auth0 audience, JWTs validated against
+Auth0's JWKS directly rather than Heimdall's. The only outbound platform credential CF holds is a
+private-key-JWT M2M client for the **v1** api-gw (`reimbursement_client.go`), audience
+`https://api-gw.*.platform.linuxfoundation.org/` — not an LFX v2 audience, and no RFC 8693 token
+exchange exists anywhere in the repo. Both onboarding the NATS values and the two decisions below
+are prerequisites, not follow-up detail.
 
 The fga-sync NATS subjects relevant to CF:
 
 | Subject | Use |
 |---|---|
 | `lfx.access_check.request` | Batch yes/no checks; each tuple is `{object_type}:{object_id}#{relation}@{user_type}:{user_id}` (e.g. `project:UID#writer@user:alice`) — the edit-access gate, and the batch-verify half of §5.1 |
-| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type). Evaluated as the picker's candidate source and rejected (§3.3) — direct-only, and eligibility is affiliation anyway |
+| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type) — request `{"user": "user:<lfid>", "object_type": "b2b_org"}`, response `{"results": ["b2b_org:<uid>#writer@user:<lfid>", …]}`. Direct-only, so rejected as the §5.1 `ListForUser` candidate source — but adopted as the **org picker's** candidate source (§3.3): a consumer must filter the results to the exact `#writer` relation, since `auditor`/`owner`/`parent` tuples for the same object type come back in the same list |
 
 One contract detail that isn't obvious from the flow: `access_check.request` replies are
 **unordered** (cached results may return first, per `fga-sync-contract.md`) — callers must
@@ -268,12 +295,18 @@ sequenceDiagram
     participant FE as Fundraise form
     participant API as CF Go API
     participant AF as persona-service (suggestions)
+    participant FS as fga-sync (NATS)
+    participant QS as query-service
     participant PS as project / member service
 
     FE->>API: GET attribution options
     API->>AF: lfx.personas-api.get (caller's involvement)
     AF-->>API: candidate project UIDs (best-effort)
-    API->>PS: fetch names/logos for candidate UIDs
+    API->>PS: fetch project names/logos for candidate UIDs
+    API->>FS: lfx.access_check.read_tuples<br/>{user, object_type: "b2b_org"}
+    FS-->>API: direct b2b_org writer UIDs
+    API->>QS: name/logo lookup by b2b_org UID
+    QS-->>API: org names + logos
     API-->>FE: suggested projects + organizations
     Note over FE: user picks Personal (default),<br/>an org, or a project — no free text
 ```
@@ -287,14 +320,27 @@ shapes what you see, permission gates what you do), its candidate source may be 
   attendance) and is explicitly **not** an authorization source — acceptable here precisely because
   no access derives from the pick. A type-ahead project search is the fallback for anything the
   best-effort list misses.
-- **Organizations: source still open** (open question 4) — persona-service returns projects and
-  foundations, not `b2b_org`; the likely source is member-service affiliation data.
+- **Organizations (open question 4a — resolved): `read_tuples`, filtered to `#writer`, then
+  query-service for names.** `read_tuples` (`object_type=b2b_org`) is direct-tuples-only — the same
+  property that disqualifies it as the §5.1 `ListForUser` candidate source — but here that's
+  acceptable for the same reason persona-service's best-effort list is: the picker is a suggestion
+  surface, not the gate, and no authorization derives from the pick. The known gap (§2.1): an
+  inherited-only org writer, or an affiliated non-writer, won't appear — their path is the escape
+  hatch. Names/logos then come from query-service (`GET /query/resources?type=b2b_org&tags=b2b_org_uid:<uid>`),
+  the same call Self Serve's `OrgRoleGrantsService` makes for the identical purpose.
 
-An FGA-based source was evaluated and rejected twice over: `read_tuples` returns *direct* tuples
-only (an inherited-only writer would never appear), and a `list-objects` subject was ruled out
-platform-wide (§5.1). Names/logos come from project-service / member-service (`PS`); the sources
-return UIDs only. The edit-access check (§3.2) is unaffected — it stays a per-entity
-`access_check`.
+**This reopens the transit question for the name half.** `read_tuples` travels over the already-approved
+NATS transit (option C). Query-service does not — it is HTTP-only, behind Heimdall, and
+fga-sync's own docs list it as a *consumer* of `access_check`, not a NATS publisher. CF has no
+Heimdall route and no LFX v2-audience credential (§3.1), so the org-picker's name lookup is blocked
+on a decision this doc had not previously scoped: front CF with Heimdall, mint CF a privileged
+v2 M2M client for query-service, or add a NATS subject for this lookup. The middle option
+also raises a principal question — query-service is access-aware per *calling user* (SS calls it
+with the user's own Heimdall token), so an M2M-authenticated call would make CF itself the
+principal, which is transit option B (a privileged endpoint) resurfacing at the query-service layer
+instead of the access-check layer. Left as an explicit platform ask (see the PR discussion),
+distinct from the NATS onboarding in open question 3. The edit-access check (§3.2) is unaffected —
+it stays a per-entity `access_check` over the already-approved NATS transit.
 
 ### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
 
@@ -399,7 +445,7 @@ M2 builds on M1. M3 can move ahead of both.
 
 | # | Scope | Delivers |
 |---|---|---|
-| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID, plus nullable benefit-project field per resolved OQ1), form step with affiliation pickers (projects: persona-service + type-ahead, §3.3; org source per open question 4), **server-side entity validation** (existence/type, not authorization — §2.1), details-page source label **suppressed until M2** (§5 coupling). No access changes. | Most of LFXV2-2537 |
+| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID, plus nullable benefit-project field per resolved OQ1), form step with affiliation pickers (projects: persona-service + type-ahead, §3.3; orgs: `read_tuples` + query-service, §3.3 — blocked on the query-service transit gap, open question 4a), **server-side entity validation** (existence/type, not authorization — §2.1), details-page source label **suppressed until M2** (§5 coupling). No access changes. | Most of LFXV2-2537 |
 | M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages (authorization-aware — entity writers also see unpublished initiatives). | Multi-person management |
 | M3 | **Org donations cleanup** — `b2b_org` link + partial unique index + upsert, canonical-org picker, dedup | Reconciled org donors |
 
@@ -504,8 +550,11 @@ maintainer story is the strongest).
 2. ~~**Eligibility vs. access populations.**~~ **Resolved (PM, 2026-07): affiliation.** A user may
    attribute to any org/project they are *affiliated* with; they need not be a `writer`. Details
    and consequences: §2.1 and the M1/M2 coupling note in §5.
-3. **Platform onboarding for NATS (transit C).** Transit is decided — Eric and Jordan approved
-   direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
+3. **Platform onboarding for NATS (transit C) — blocking, not a formality.** Transit is decided —
+   Eric and Jordan approved direct NATS (§3.1) — but it is not yet *deployed*: `FGA_NATS_URL` is
+   unset in every argocd environment, so nothing in §2.2/§3.2 can run until crowdfunding-backend's
+   values are updated and connectivity to `lfx-platform-nats` (network policy) is confirmed for the
+   two subjects CF needs (`lfx.access_check.request`, `lfx.access_check.read_tuples`), per
    `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is explicitly *not* a prerequisite —
    a platform-owned operational risk, per Eric's follow-up; §3.1.)
 4. **Candidate enumeration — largely resolved (2026-08); org picker source + gate framing remain.**
@@ -515,9 +564,14 @@ maintainer story is the strongest).
      CF's own `initiatives` table) + one batched `access_check` — no platform work needed (§5.1).
    - ~~**M1 project picker**~~ **Resolved:** persona-service suggestions + type-ahead fallback
      (§3.3). Best-effort is acceptable because the picker is a suggestion surface, not the gate.
-   - **Still open (a): the org picker source.** persona-service covers projects/foundations, not
-     `b2b_org` — likely member-service affiliation data; confirm. Scope lever: ship the project
-     picker first (M1 already sequences project-lens ahead of org-lens).
+   - ~~**M1 org picker source**~~ **Resolved:** `lfx.access_check.read_tuples`
+     (`object_type=b2b_org`, filtered to `#writer`) for UIDs, query-service
+     (`/query/resources?type=b2b_org&tags=b2b_org_uid:<uid>`) for names/logos (§3.3). Known
+     narrowing: direct writers only, not full affiliation (§2.1). **New, still open:** the
+     name-lookup half needs an HTTP path to query-service that CF does not have — see the transit
+     note in §3.3 and the platform ask tracked alongside open question 3. Scope lever unchanged:
+     ship the project picker first (M1 already sequences project-lens ahead of org-lens), since it
+     has no such blocker.
    - **Still open (b): confirm the gate framing with the architect.** Attribution as a
      self-attested claim — no access derived from it, entity existence validated server-side,
      public label suppressed until M2 writer policing (§2.1 ruling note). One-line confirmation
