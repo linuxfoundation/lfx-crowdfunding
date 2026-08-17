@@ -47,6 +47,7 @@ const initiativeSelect = `
 		i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
 		i.country, i.city, i.is_online,
 		i.donation_mode,
+		i.attributed_to_type, i.attributed_to_uid, i.benefit_project_uid,
 		i.created_on, i.updated_on,
 		COALESCE(ls.total_raised_cents, 0)      AS total_raised_cents,
 		COALESCE(ls.total_debited_cents, 0)     AS total_disbursed_cents,
@@ -358,9 +359,10 @@ const (
 		        description, color, logo_url, website_url, coc_url,
 		        stripe_plan_id, stripe_product_id, accept_funding, cii_project_id,
 		        eventbrite_url, application_url, event_start_date, event_end_date,
-		        country, city, is_online, donation_mode)
+		        country, city, is_online, donation_mode,
+		        attributed_to_type, attributed_to_uid, benefit_project_uid)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-		        $16,$17,$18,$19,$20,$21,$22,$23,$24)`
+		        $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`
 
 	insertGoal = `
 		INSERT INTO initiative_goals
@@ -464,7 +466,10 @@ const (
 		    country           = $17,
 		    city              = $18,
 		    is_online         = $19,
-		    donation_mode     = $20
+		    donation_mode     = $20,
+		    attributed_to_type   = $21,
+		    attributed_to_uid    = $22,
+		    benefit_project_uid  = $23
 		WHERE id = $1`
 )
 
@@ -499,6 +504,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 		string(i.DonationMode),
+		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
 	); err != nil {
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
@@ -676,6 +682,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 		string(i.DonationMode),
+		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update initiative: %w", err)
@@ -1316,6 +1323,8 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		createdOn, updatedOn                                          *time.Time
 		sponsorsJSON                                                  []byte
 		donationMode                                                  string
+		attributedToType                                              string
+		attributedToUID, benefitProjectUID                            *string
 	)
 	err := row.Scan(
 		&i.ID, &i.InitiativeType, &sourceDynamoTable, &i.OwnerID,
@@ -1327,6 +1336,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		&eventbriteURL, &applicationURL, &i.EventStartDate, &i.EventEndDate,
 		&country, &city, &isOnline,
 		&donationMode,
+		&attributedToType, &attributedToUID, &benefitProjectUID,
 		&createdOn, &updatedOn,
 		&i.Financials.TotalRaisedCents,
 		&i.Financials.TotalDisbursedCents,
@@ -1367,6 +1377,11 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	i.Country = derefString(country)
 	i.City = derefString(city)
 	i.DonationMode = models.DonationMode(donationMode)
+	i.Attribution = models.Attribution{
+		Type:      models.AttributionType(attributedToType),
+		EntityUID: derefString(attributedToUID),
+	}
+	i.BenefitProjectUID = derefString(benefitProjectUID)
 	if acceptFunding != nil {
 		i.AcceptFunding = *acceptFunding
 	}
@@ -1575,4 +1590,14 @@ func nullableString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// attributionType mirrors the attributed_to_type column default: an unset
+// type on a directly-constructed model stores as personal rather than an
+// empty string, which would bypass DEFAULT and trip the CHECK constraint.
+func attributionType(a models.Attribution) string {
+	if a.Type == "" {
+		return string(models.AttributionPersonal)
+	}
+	return string(a.Type)
 }
