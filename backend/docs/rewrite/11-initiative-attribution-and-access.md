@@ -357,17 +357,19 @@ shapes what you see, permission gates what you do), its candidate source may be 
   rules the picker a best-effort suggestion surface. This does not make Snowflake an authorization
   source: the uid list is still FGA's; Snowflake only decorates it with a display name and logo.
 
-  **Grant needed, and one open item.** CF's Snowflake role (`LFX_CROWDFUNDING`) currently holds
-  only `DB_ANALYTICS_GOLD_RO` (143 per-table grants) — it cannot read `ORG_LENS_ACCOUNT_CONTEXT`,
-  which lives in `PLATINUM_LFX_ONE`. The ask is a single-table grant, not a blanket
-  `DB_ANALYTICS_PLATINUM_RO` — same shape as CF's existing GOLD grants. Open item for this review:
-  confirm who owns this table's dbt model (it wasn't found in a local, several-months-stale
-  `lf-dbt` checkout, so absence there isn't conclusive) and flag that CF taking a dependency on an
-  LFX One-namespaced table means a future regrain there could break CF's picker with no
-  compile-time signal. If that coupling is unacceptable, the fallback is asking the data team for a
-  thin GOLD alias view over `bronze_fivetran_salesforce_b2b_accounts` (which already carries
-  `account_id`/`account_name`/`logo_url__c`) — more platform work, but a contract CF alone depends
-  on.
+  **Grant needed — not a blocker, two acceptable shapes.** CF's Snowflake role
+  (`LFX_CROWDFUNDING`) currently holds only `DB_ANALYTICS_GOLD_RO` (143 per-table grants) — it
+  cannot read `ORG_LENS_ACCOUNT_CONTEXT`, which lives in `PLATINUM_LFX_ONE`. Either of these closes
+  it, and the choice doesn't gate the design above:
+  1. **Ride Self Serve's model** — a single-table grant on `ORG_LENS_ACCOUNT_CONTEXT` itself, same
+     shape as CF's existing GOLD grants. Cheapest, but couples CF to a table namespaced for LFX
+     One; a future regrain there could break CF's picker with no compile-time signal.
+  2. **Ask for a CF-owned GOLD model** — a thin view over `bronze_fivetran_salesforce_b2b_accounts`
+     (which already carries `account_id`/`account_name`/`logo_url__c`), granted to CF alone. One
+     small lf-dbt PR up front, but the contract is then CF's and nobody else's to change.
+  Either way, CF's own consuming code (the nightly sync in the next paragraph) is identical — this
+  is purely which upstream object it points at. Deciding this can happen alongside the data team
+  during implementation; it doesn't need to hold up the architecture review.
 
 **This closes the transit question for the name half — no Heimdall needed.** The prior version of
 this doc left the org-picker's name/logo lookup blocked on query-service, which is HTTP-only,
@@ -609,11 +611,13 @@ maintainer story is the strongest).
      names/logos (§3.3) — no Heimdall route or platform ask needed, since CF already holds
      Snowflake credentials for `mentorship-sync` and the join key requires no mapping (FGA's
      `b2b_org` uid is the same 18-char SFID Snowflake keys accounts on). Known narrowing: direct
-     writers only, not full affiliation (§2.1). **Two new open items:** (a) confirm ownership of
-     the `ORG_LENS_ACCOUNT_CONTEXT` dbt model and request the single-table grant CF's Snowflake
-     role needs; (b) the *project* name/logo half of the same picker (persona-service's candidate
-     uids → project-service) is untouched by this and remains open. Scope lever unchanged: ship
-     the project picker first (M1 already sequences project-lens ahead of org-lens).
+     writers only, not full affiliation (§2.1). Snowflake grant: either a single-table grant on
+     `ORG_LENS_ACCOUNT_CONTEXT` (ride Self Serve's model) or a small CF-owned GOLD view over
+     `bronze_fivetran_salesforce_b2b_accounts` — an implementation-time choice with the data team,
+     not a design blocker (§3.3). **New, still open:** the *project* name/logo half of the same
+     picker (persona-service's candidate uids → project-service) is untouched by this and remains
+     open. Scope lever unchanged: ship the project picker first (M1 already sequences project-lens
+     ahead of org-lens).
    - **Still open (b): confirm the gate framing with the architect.** Attribution as a
      self-attested claim — no access derived from it, entity existence validated server-side,
      public label suppressed until M2 writer policing (§2.1 ruling note). One-line confirmation
