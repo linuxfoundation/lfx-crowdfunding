@@ -166,6 +166,24 @@ mentorshipSyncCronJob:
 
 # ── CronJob: ledger-stats-sync ────────────────────────────────────────────────
 # Runs hourly to sync financial data from the ledger service into initiative_ledger_stats.
+# ── DB migration Job (pre-install/pre-upgrade Helm hook) ─────────────────────
+# Runs `/app/migrate` (backend/cmd/migrate) before the new Deployment/CronJob
+# pods start, applying any pending backend/db/migrations/*.up.sql via
+# golang-migrate. Disable only for environments where migrations are applied
+# out-of-band.
+migrationJob:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  # Fail the release rather than hang if the DB is unreachable/misconfigured.
+  activeDeadlineSeconds: 120
+  backoffLimit: 2
+
 cronJob:
   enabled: true
   schedule: "0 * * * *"    # every hour on the hour
