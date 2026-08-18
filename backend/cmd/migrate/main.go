@@ -10,13 +10,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"strconv"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/db/migrations"
 )
@@ -26,9 +27,40 @@ func main() {
 	if dsn == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
-	dsn, err := withPinnedMigrationsTable(dsn)
+
+	// Parsed with pgx rather than net/url: DATABASE_URL is a postgres:// URL
+	// locally/in CI but a libpq keyword/value string ("host=... user=...") in
+	// staging/prod (see lfx-v2-argocd values), which net/url can't parse.
+	connConfig, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		log.Fatalf("parse DATABASE_URL: %v", err)
+	}
+	// Lock safety rails required by backend/docs/rewrite/10-database-migrations.md:
+	// fail fast and roll back rather than queue behind live traffic for an
+	// ACCESS EXCLUSIVE lock. Set on the connection since it isn't derivable
+	// from the pool's search_path (internal/infrastructure/db/pool.go), which
+	// this separate migrate connection doesn't share.
+	connConfig.RuntimeParams["lock_timeout"] = "5s"
+	connConfig.RuntimeParams["statement_timeout"] = "30s"
+
+	sqlDB := stdlib.OpenDB(*connConfig)
+	defer sqlDB.Close()
+
+	driver, err := postgres.WithInstance(sqlDB, &postgres.Config{
+		// Pins golang-migrate's own version-tracking table to
+		// "public".schema_migrations. Without this, the driver defaults to
+		// CURRENT_SCHEMA() — the first schema on the connection's
+		// search_path — which is only "public" before migration 001 creates
+		// the "crowdfunding" schema. On every run after that, Postgres'
+		// default "$user",public search path resolves "crowdfunding" first
+		// (it matches the DB username), so the driver would silently create
+		// a second, always-empty tracking table there and re-apply every
+		// migration from scratch.
+		MigrationsTable:       `"public"."schema_migrations"`,
+		MigrationsTableQuoted: true,
+	})
+	if err != nil {
+		log.Fatalf("init postgres driver: %v", err)
 	}
 
 	source, err := iofs.New(migrations.FS, ".")
@@ -36,7 +68,7 @@ func main() {
 		log.Fatalf("load embedded migrations: %v", err)
 	}
 
-	m, err := migrate.NewWithSourceInstance("iofs", source, dsn)
+	m, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
 	if err != nil {
 		log.Fatalf("init migrator: %v", err)
 	}
@@ -46,8 +78,11 @@ func main() {
 	// Job existed) but has no schema_migrations row recording that. Run
 	// manually once per such environment: `migrate force N`. Never part of
 	// the automatic pre-install/pre-upgrade hook path.
-	if len(os.Args) > 1 && os.Args[1] == "force" {
-		if len(os.Args) != 3 {
+	switch len(os.Args) {
+	case 1:
+		// no subcommand — normal `m.Up()` path below.
+	case 3:
+		if os.Args[1] != "force" {
 			log.Fatal("usage: migrate force <version>")
 		}
 		version, err := strconv.Atoi(os.Args[2])
@@ -59,6 +94,8 @@ func main() {
 		}
 		fmt.Printf("schema_migrations forced to version %d\n", version)
 		return
+	default:
+		log.Fatal("usage: migrate force <version>")
 	}
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
@@ -70,24 +107,4 @@ func main() {
 		log.Fatalf("read schema version: %v", err)
 	}
 	fmt.Printf("migrations applied: schema version %d (dirty=%v)\n", version, dirty)
-}
-
-// withPinnedMigrationsTable pins golang-migrate's own version-tracking table
-// to "public".schema_migrations. Without this, the postgres driver defaults
-// to CURRENT_SCHEMA() — the first schema on the connection's search_path —
-// which is only "public" before migration 001 creates the "crowdfunding"
-// schema. On every run after that, Postgres' default "$user",public search
-// path resolves "crowdfunding" first (it matches the DB username), so the
-// driver silently creates a second, always-empty tracking table there and
-// re-applies every migration from scratch.
-func withPinnedMigrationsTable(dsn string) (string, error) {
-	u, err := url.Parse(dsn)
-	if err != nil {
-		return "", err
-	}
-	q := u.Query()
-	q.Set("x-migrations-table", `"public"."schema_migrations"`)
-	q.Set("x-migrations-table-quoted", "true")
-	u.RawQuery = q.Encode()
-	return u.String(), nil
 }

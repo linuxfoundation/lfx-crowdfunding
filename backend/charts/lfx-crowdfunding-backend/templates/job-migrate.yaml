@@ -5,6 +5,13 @@
 # hook-weight ensures this runs after the placeholder Secret (weight -5) but
 # before the Deployment/CronJob (unweighted, i.e. weight 0), and each release
 # gets its own Job name so Helm doesn't try to reuse a completed one.
+#
+# Deliberately uses the namespace's default ServiceAccount and does not mount
+# the app ConfigMap: on a first `helm install`, pre-install hooks run before
+# the chart's own ServiceAccount and ConfigMap exist, so referencing either
+# here would leave the hook pod stuck (unadmittable / CreateContainerConfigError).
+# The migrator only needs DATABASE_URL (from env: below) and makes no
+# Kubernetes API calls, so neither is required.
 {{- if .Values.migrationJob.enabled }}
 apiVersion: batch/v1
 kind: Job
@@ -27,7 +34,6 @@ spec:
         app.kubernetes.io/component: db-migrate
     spec:
       restartPolicy: Never
-      serviceAccountName: {{ include "lfx-v2-initiatives-service.serviceAccountName" . }}
       automountServiceAccountToken: false
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -47,8 +53,6 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           envFrom:
-            - configMapRef:
-                name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
             - secretRef:
                 name: {{ .Values.secretName }}
           resources:
