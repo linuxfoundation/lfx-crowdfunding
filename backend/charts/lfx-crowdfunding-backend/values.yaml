@@ -169,8 +169,11 @@ mentorshipSyncCronJob:
 # ── DB migration Job (pre-install/pre-upgrade Helm hook) ─────────────────────
 # Runs `/app/migrate` (backend/cmd/migrate) before the new Deployment/CronJob
 # pods start, applying any pending backend/db/migrations/*.up.sql via
-# golang-migrate. Disable only for environments where migrations are applied
-# out-of-band.
+# golang-migrate.
+# IMPORTANT: any environment whose schema was hand-applied without a tracking
+# table must run `migrate force <current-version>` once before this is enabled,
+# or the hook will attempt to re-apply migration 001 and fail the release.
+# Disable for environments where migrations are applied out-of-band.
 migrationJob:
   enabled: true
   resources:

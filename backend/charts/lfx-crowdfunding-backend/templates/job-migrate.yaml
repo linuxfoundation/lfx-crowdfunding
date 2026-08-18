@@ -16,7 +16,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "lfx-v2-initiatives-service.fullname" . }}-migrate-{{ .Release.Revision }}
+  name: {{ printf "%s-migrate-%v" (include "lfx-v2-initiatives-service.fullname" .) .Release.Revision | trunc 63 | trimSuffix "-" }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
