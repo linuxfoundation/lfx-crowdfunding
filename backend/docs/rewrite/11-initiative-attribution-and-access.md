@@ -640,15 +640,15 @@ maintainer story is the strongest).
      </details>
    - ~~**New, still open: project name/logo half**~~ **Resolved** by the same v2 query-service
      answer above — it was the missing half, not a separate dependency.
-   - **Still open (b): confirm the gate framing with the architect.** Attribution as a
-     self-attested claim — no access derived from it, entity existence validated server-side,
-     public label suppressed until M2 writer policing (§2.1 ruling note). Two new sub-parts, raised
-     by this round of review: (i) does forbidding attribution to private/formation projects
-     (§2.1, new) satisfy the architecture team's underlying concern, or is there more to the
-     framing than the public/private line; (ii) does the affiliation-vs-writer gate still hold now
-     that `filter_grants=direct` — a direct-grants-only, relation-agnostic filter — is the
-     practical org-picker source, given it's narrower than affiliation but broader than the
-     writer-only filter this doc previously assumed. One-line confirmation from Eric closes this.
+   - ~~**Gate framing.**~~ **Resolved (PM, 2026-08).** Attribution stays a self-attested claim — no
+     access derived from it, entity existence validated server-side, public label suppressed until
+     M2 writer policing (§2.1 ruling note). Both sub-parts raised by architecture review: (i)
+     excluding private/formation projects (§2.1) is confirmed sufficient — no further framing
+     needed beyond the public/private line; (ii) the affiliation-vs-writer gate stands as-is, with
+     `filter_grants=direct` accepted as the practical org-picker source even though it's narrower
+     than affiliation and broader than writer-only. Both are application-level policy, not a schema
+     or migration decision — either can be revisited later without a data migration if the
+     architecture team's formal sign-off (still pending, informational) lands differently.
    - **New: open question 7 — the credential for the org picker's `filter_grants=direct` call.**
      The architecture team's preferred order: attempt a user-scoped v2 token from the CF backend
      first, since CF's frontend already holds a per-user session (LFXV2-2537's premise that "any
