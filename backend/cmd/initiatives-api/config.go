@@ -28,6 +28,8 @@ type Config struct {
 	Approval      ApprovalConfig
 	Reimbursement ReimbursementConfig
 	FGA           FGAConfig
+	TokenExchange TokenExchangeConfig
+	QueryService  QueryServiceConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -154,6 +156,38 @@ type FGAConfig struct {
 	// NATSURL is the fga-sync NATS connection URL. Set via FGA_NATS_URL.
 	NATSURL string
 	// Timeout caps a single access-check request/reply round trip.
+	Timeout time.Duration
+}
+
+// TokenExchangeConfig holds settings for exchanging a Crowdfunding-audience
+// user token for a v2-platform-audience token via Auth0 Custom Token Exchange
+// (LFXV2-3322). All fields are optional — when Auth0TokenURL is unset the
+// integration is disabled and the org affiliation picker endpoint is not
+// wired up (503).
+type TokenExchangeConfig struct {
+	// Auth0TokenURL is the Auth0 tenant's token endpoint.
+	// Set via TOKEN_EXCHANGE_AUTH0_TOKEN_URL.
+	Auth0TokenURL string
+	// ClientID/ClientSecret authenticate the "LFX Crowdfunding Token Exchange"
+	// M2M client. Set via TOKEN_EXCHANGE_CLIENT_ID / TOKEN_EXCHANGE_CLIENT_SECRET.
+	ClientID     string
+	ClientSecret string
+	// SubjectTokenType is the lfx_crowdfunding_api resource server identifier.
+	// Set via TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE.
+	SubjectTokenType string
+	// Audience is the lfx_v2_api resource server identifier.
+	// Set via TOKEN_EXCHANGE_AUDIENCE.
+	Audience string
+	// Timeout caps a single token-exchange HTTP call.
+	Timeout time.Duration
+}
+
+// QueryServiceConfig holds settings for the v2 platform query service,
+// reached through the public API gateway.
+type QueryServiceConfig struct {
+	// BaseURL is the gateway base URL. Set via QUERY_SERVICE_BASE_URL.
+	BaseURL string
+	// Timeout caps a single query-service HTTP call.
 	Timeout time.Duration
 }
 
@@ -352,6 +386,18 @@ func LoadConfig() (*Config, error) {
 			NATSURL: getEnv("FGA_NATS_URL", ""),
 			Timeout: fgaTimeout,
 		},
+		TokenExchange: TokenExchangeConfig{
+			Auth0TokenURL:    getEnv("TOKEN_EXCHANGE_AUTH0_TOKEN_URL", ""),
+			ClientID:         getEnv("TOKEN_EXCHANGE_CLIENT_ID", ""),
+			ClientSecret:     getEnv("TOKEN_EXCHANGE_CLIENT_SECRET", ""),
+			SubjectTokenType: getEnv("TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE", ""),
+			Audience:         getEnv("TOKEN_EXCHANGE_AUDIENCE", ""),
+			Timeout:          10 * time.Second,
+		},
+		QueryService: QueryServiceConfig{
+			BaseURL: getEnv("QUERY_SERVICE_BASE_URL", ""),
+			Timeout: 10 * time.Second,
+		},
 	}, nil
 }
 
@@ -373,6 +419,23 @@ func validateReimbursementConfig(cfg ReimbursementConfig) error {
 	}
 	if setCount > 0 && setCount < len(m2mFields) {
 		return fmt.Errorf("API_GW_AUTH0_TOKEN_URL, API_GW_AUTH0_CLIENT_ID, API_GW_AUTH0_CLIENT_PRIVATE_KEY, and API_GW_AUTH0_AUDIENCE must all be set or all be empty")
+	}
+	return nil
+}
+
+// validateTokenExchangeConfig returns an error when the TokenExchange fields
+// are partially set — the integration is all-or-nothing, mirroring
+// validateReimbursementConfig's M2M check.
+func validateTokenExchangeConfig(cfg TokenExchangeConfig) error {
+	fields := []string{cfg.Auth0TokenURL, cfg.ClientID, cfg.ClientSecret, cfg.SubjectTokenType, cfg.Audience}
+	setCount := 0
+	for _, f := range fields {
+		if f != "" {
+			setCount++
+		}
+	}
+	if setCount > 0 && setCount < len(fields) {
+		return fmt.Errorf("TOKEN_EXCHANGE_AUTH0_TOKEN_URL, TOKEN_EXCHANGE_CLIENT_ID, TOKEN_EXCHANGE_CLIENT_SECRET, TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE, and TOKEN_EXCHANGE_AUDIENCE must all be set or all be empty")
 	}
 	return nil
 }

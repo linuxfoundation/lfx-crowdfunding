@@ -243,7 +243,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		claims, err := a.extractAndValidate(r)
+		claims, rawToken, err := a.extractAndValidate(r)
 		if err != nil {
 			a.logger.WarnContext(r.Context(), "auth: token validation failed", "category", authFailureCategory(err), "error", err, "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid or missing token")
@@ -268,6 +268,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 			GivenName:     claims.GivenName,
 			FamilyName:    claims.FamilyName,
 			Picture:       claims.Picture,
+			RawToken:      rawToken,
 		}
 		next.ServeHTTP(w, r.WithContext(ContextWithPrincipal(r.Context(), principal)))
 	})
@@ -290,7 +291,7 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		claims, err := a.extractAndValidate(r)
+		claims, rawToken, err := a.extractAndValidate(r)
 		if err == nil {
 			if claims != nil && claims.Subject != "" {
 				principal := &models.Principal{
@@ -303,6 +304,7 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 					GivenName:     claims.GivenName,
 					FamilyName:    claims.FamilyName,
 					Picture:       claims.Picture,
+					RawToken:      rawToken,
 				}
 				r = r.WithContext(ContextWithPrincipal(r.Context(), principal))
 			}
@@ -345,48 +347,48 @@ func hasScope(scopeStr, required string) bool {
 	return false
 }
 
-func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, error) {
+func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, string, error) {
 	if a.baseCtx != nil {
 		if err := a.baseCtx.Err(); err != nil {
-			return nil, fmt.Errorf("%w: %s", errAuthenticatorContextClosed, err)
+			return nil, "", fmt.Errorf("%w: %s", errAuthenticatorContextClosed, err)
 		}
 	}
 
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return nil, errMissingAuthorizationHeader
+		return nil, "", errMissingAuthorizationHeader
 	}
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-		return nil, errInvalidAuthorizationHeader
+		return nil, "", errInvalidAuthorizationHeader
 	}
 	raw := parts[1]
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil, errMissingBearerToken
+		return nil, "", errMissingBearerToken
 	}
 
 	if a.validator != nil {
 		validated, err := a.validator.ValidateToken(r.Context(), raw)
 		if err != nil {
-			return nil, fmt.Errorf("validate token: %w", err)
+			return nil, "", fmt.Errorf("validate token: %w", err)
 		}
 		validatedClaims, ok := validated.(*validator.ValidatedClaims)
 		if !ok {
-			return nil, errors.New("unexpected validated claims type")
+			return nil, "", errors.New("unexpected validated claims type")
 		}
 		claims, ok := validatedClaims.CustomClaims.(*JWTClaims)
 		if !ok {
-			return nil, errors.New("unexpected custom claims type")
+			return nil, "", errors.New("unexpected custom claims type")
 		}
 		claims.Subject = validatedClaims.RegisteredClaims.Subject
 		if strings.TrimSpace(claims.Subject) == "" {
-			return nil, errMissingSubjectClaim
+			return nil, "", errMissingSubjectClaim
 		}
-		return claims, nil
+		return claims, raw, nil
 	}
 
-	return nil, errValidatorNotConfigured
+	return nil, "", errValidatorNotConfigured
 }
 
 func withValidatorRequestContext(baseCtx context.Context, requestCtx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

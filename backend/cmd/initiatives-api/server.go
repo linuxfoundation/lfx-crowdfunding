@@ -125,6 +125,30 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		logger.Warn("FGA_NATS_URL is not set — fga-sync access checks are disabled")
 	}
 
+	// Token exchange + query-service clients (LFXV2-3323) — nil when their
+	// respective config is unset (integration disabled).
+	if err := validateTokenExchangeConfig(cfg.TokenExchange); err != nil {
+		return nil, fmt.Errorf("token exchange config: %w", err)
+	}
+	tokenExchangeClient := clients.NewTokenExchangeClient(clients.TokenExchangeConfig{
+		Auth0TokenURL:    cfg.TokenExchange.Auth0TokenURL,
+		ClientID:         cfg.TokenExchange.ClientID,
+		ClientSecret:     cfg.TokenExchange.ClientSecret,
+		SubjectTokenType: cfg.TokenExchange.SubjectTokenType,
+		Audience:         cfg.TokenExchange.Audience,
+		Timeout:          cfg.TokenExchange.Timeout,
+	})
+	if tokenExchangeClient == nil {
+		logger.Warn("TOKEN_EXCHANGE_AUTH0_TOKEN_URL is not set — organization affiliation lookup is disabled")
+	}
+	queryServiceClient := clients.NewQueryServiceClient(clients.QueryServiceConfig{
+		BaseURL: cfg.QueryService.BaseURL,
+		Timeout: cfg.QueryService.Timeout,
+	})
+	if queryServiceClient == nil {
+		logger.Warn("QUERY_SERVICE_BASE_URL is not set — organization affiliation lookup is disabled")
+	}
+
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
@@ -133,6 +157,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 	orgSvc := service.NewOrganizationService(orgRepo, userRepo)
 	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)
+	orgAffiliationSvc := service.NewOrganizationAffiliationService(tokenExchangeClient, queryServiceClient)
 
 	// JWT authenticator
 	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
@@ -164,6 +189,16 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	expenseH := handler.NewExpenseHandler(reimbursementClient)
 	orgH := handler.NewOrganizationHandler(orgSvc)
 	announcementH := handler.NewAnnouncementHandler(announcementSvc)
+	// orgAffiliationSvc is a concrete *service.OrganizationAffiliationService;
+	// nil-check it here before it reaches the interface-typed handler
+	// parameter, otherwise a nil-valued concrete pointer would become a
+	// non-nil interface and defeat the handler's own nil check.
+	var orgAffiliationH *handler.OrganizationAffiliationHandler
+	if orgAffiliationSvc == nil {
+		orgAffiliationH = handler.NewOrganizationAffiliationHandler(nil)
+	} else {
+		orgAffiliationH = handler.NewOrganizationAffiliationHandler(orgAffiliationSvc)
+	}
 
 	// UserInfo client — fetches full profile from Auth0 on login sync.
 	// In bypass mode (local dev) there is no real Auth0, so use a mock fetcher.
@@ -242,6 +277,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Post("/organizations", orgH.Create)
 		r.Patch("/organizations/{id}", orgH.Update)
 		r.Delete("/organizations/{id}", orgH.Delete)
+		r.Get("/organization-affiliations", orgAffiliationH.List)
 
 		// Payment account (saved card for 3DS flows).
 		r.Post("/setup-intent", paymentH.CreateSetupIntent)

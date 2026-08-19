@@ -51,4 +51,8 @@ type Principal struct {
 	GivenName     string
 	FamilyName    string
 	Picture       string
+	// RawToken is the original bearer JWT string, needed as the subject_token
+	// for Auth0 Custom Token Exchange calls (e.g. resolving the caller's v2
+	// platform organizations). Empty when JWT validation is bypassed (local dev).
+	RawToken string
 }
