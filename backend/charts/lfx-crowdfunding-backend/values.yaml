@@ -97,6 +97,10 @@ config:
   # Comma-separated LF SSO usernames allowed to approve or decline initiatives.
   # Example: "alice,bob,carol"
   ALLOWED_APPROVERS: ""
+  # fga-sync NATS access-check client (LFXV2-2956 M1). Optional — leave empty
+  # to disable; no access checks are made on any request path yet (M2).
+  FGA_NATS_URL: ""
+  FGA_ACCESS_CHECK_TIMEOUT: "5s"
 
 # ── Additional environment variables ─────────────────────────────────────────
 # Rendered as a Kubernetes env: list on the Deployment and CronJob.
@@ -162,6 +166,27 @@ mentorshipSyncCronJob:
 
 # ── CronJob: ledger-stats-sync ────────────────────────────────────────────────
 # Runs hourly to sync financial data from the ledger service into initiative_ledger_stats.
+# ── DB migration Job (pre-install/pre-upgrade Helm hook) ─────────────────────
+# Runs `/app/migrate` (backend/cmd/migrate) before the new Deployment/CronJob
+# pods start, applying any pending backend/db/migrations/*.up.sql via
+# golang-migrate.
+# IMPORTANT: any environment whose schema was hand-applied without a tracking
+# table must run `migrate force <current-version>` once before this is enabled,
+# or the hook will attempt to re-apply migration 001 and fail the release.
+# Disable for environments where migrations are applied out-of-band.
+migrationJob:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  # Fail the release rather than hang if the DB is unreachable/misconfigured.
+  activeDeadlineSeconds: 120
+  backoffLimit: 2
+
 cronJob:
   enabled: true
   schedule: "0 * * * *"    # every hour on the hour

@@ -466,6 +466,24 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		input.SponsorshipTiers = nil
 	}
 
+	// Validate and default attribution (LFXV2-2956 M1). Omitting attribution
+	// defaults to personal — today's behavior. Shape-only validation; the
+	// affiliation check against the caller's real orgs/projects is blocked
+	// on the platform enumeration decision (design doc open question 4) and
+	// is out of scope here.
+	attribution := models.Attribution{Type: models.AttributionPersonal}
+	if input.Attribution != nil {
+		attribution = *input.Attribution
+	}
+	if err := attribution.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+	}
+	if input.BenefitProjectUID != "" {
+		if _, err := uuid.Parse(input.BenefitProjectUID); err != nil {
+			return nil, fmt.Errorf("%w: benefit_project_uid must be a UUID", domain.ErrInvalidInput)
+		}
+	}
+
 	// Pre-generate the UUID so the same ID is embedded in both the Stripe
 	// Product metadata and the DB INSERT — no follow-up UPDATE needed.
 	initiativeID := uuid.New().String()
@@ -507,6 +525,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		StripeProductID: productID,
 		CiiProjectID:    input.CiiProjectID,
 		DonationMode:    input.DonationMode,
+
+		Attribution:       attribution,
+		BenefitProjectUID: input.BenefitProjectUID,
 
 		// Entity-only display fields
 		EventbriteURL:  input.EventbriteURL,
@@ -609,6 +630,23 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	}
 	if input.CiiProjectID != nil {
 		existing.CiiProjectID = *input.CiiProjectID
+	}
+	// Attribution is validated but not yet gated by an entity-writer check
+	// (M2). Update is already creator-gated above, which is sufficient while
+	// an initiative has exactly one manager (design §2.2).
+	if input.Attribution != nil {
+		if err := input.Attribution.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+		}
+		existing.Attribution = *input.Attribution
+	}
+	if input.BenefitProjectUID != nil {
+		if *input.BenefitProjectUID != "" {
+			if _, err := uuid.Parse(*input.BenefitProjectUID); err != nil {
+				return nil, fmt.Errorf("%w: benefit_project_uid must be a UUID", domain.ErrInvalidInput)
+			}
+		}
+		existing.BenefitProjectUID = *input.BenefitProjectUID
 	}
 
 	if input.EventbriteURL != nil {
