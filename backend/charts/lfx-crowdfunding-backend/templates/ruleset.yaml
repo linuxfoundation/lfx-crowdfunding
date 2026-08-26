@@ -1,0 +1,164 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+#
+# Mirrors the route tiers wired in backend/cmd/initiatives-api/server.go.
+# default_rule in lfx-platform is deny_all, so every path must be listed here
+# explicitly — an omitted path 403s instead of falling through to a sane default.
+#
+# DRAFT: path glob syntax below (/*) follows the pattern used by
+# lfx-v2-access-check and lfx-v2-query-service's rulesets, but none of those
+# cover a path *parameter* (e.g. {id}). Confirm the correct dadrus Heimdall
+# capture syntax for parameterized segments before this PR merges.
+{{- if .Values.heimdall.enabled }}
+---
+apiVersion: heimdall.dadrus.github.com/v1alpha4
+kind: RuleSet
+metadata:
+  name: {{ include "lfx-v2-initiatives-service.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  rules:
+    # Health checks — unauthenticated.
+    - id: "rule:lfx:lfx-crowdfunding-backend:health"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /livez
+          - path: /healthz
+          - path: /readyz
+      execute:
+        - authenticator: anonymous_authenticator
+        - authorizer: allow_all
+
+    # Stripe webhook — authenticated by its own HMAC signature, not JWT.
+    - id: "rule:lfx:lfx-crowdfunding-backend:stripe-webhook"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - POST
+        routes:
+          - path: /v1/stripe/webhook
+      execute:
+        - authenticator: anonymous_authenticator
+        - authorizer: allow_all
+
+    # Public read routes — no auth required.
+    - id: "rule:lfx:lfx-crowdfunding-backend:public"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /v1/statistics
+          - path: /v1/statistics/platform
+          - path: /v1/statistics/monthly
+          - path: /v1/statistics/recent-donations
+          - path: /v1/statistics/org-donations
+          - path: /v1/initiatives
+          - path: /v1/initiatives/*/transactions
+          - path: /v1/initiatives/*/announcements
+      execute:
+        - authenticator: anonymous_authenticator
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+
+    # Initiative detail — auth optional, principal used if present but not required.
+    - id: "rule:lfx:lfx-crowdfunding-backend:initiative-detail"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /v1/initiatives/*
+      execute:
+        - authenticator: oidc
+        - authenticator: anonymous_authenticator
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+
+    # Authenticated user routes — /v1/me/*, access:me scope today.
+    - id: "rule:lfx:lfx-crowdfunding-backend:me"
+      allow_encoded_slashes: "off"
+      match:
+        routes:
+          - path: /v1/me/**
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+
+    # Approval action — access:me scope today, approver allowlist enforced in-app.
+    - id: "rule:lfx:lfx-crowdfunding-backend:process-approval"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - POST
+        routes:
+          - path: /v1/initiatives/*/process-approval/*
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+
+    # Internal/management routes — access:manage scope today.
+    - id: "rule:lfx:lfx-crowdfunding-backend:manage"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /v1/initiatives/*/owner-info
+          - path: /v1/initiatives/published-list
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+
+    # Expense actions — authenticated, no scope check today.
+    - id: "rule:lfx:lfx-crowdfunding-backend:expense"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - POST
+        routes:
+          - path: /v1/expense/*/*
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+{{- end }}

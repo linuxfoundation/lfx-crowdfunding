@@ -1,0 +1,31 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+{{ if .Values.heimdall.add_middleware }}
+---
+# Heimdall middleware with body forwarding capability.
+# Required on routes where the request body must reach the backend intact
+# after auth (e.g. /v1/stripe/webhook, whose HMAC signature covers the raw body).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: heimdall-forward-body
+  namespace: {{ .Release.Namespace }}
+spec:
+  forwardAuth:
+    address: "{{ .Values.heimdall.url }}"
+    authResponseHeaders:
+      - Authorization
+    forwardBody: true
+---
+# Default Heimdall middleware, no body forwarding. Use for all other routes.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: heimdall
+  namespace: {{ .Release.Namespace }}
+spec:
+  forwardAuth:
+    address: "{{ .Values.heimdall.url }}"
+    authResponseHeaders:
+      - Authorization
+{{- end }}

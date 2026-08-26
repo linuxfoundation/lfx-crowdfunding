@@ -102,6 +102,32 @@ config:
   FGA_NATS_URL: ""
   FGA_ACCESS_CHECK_TIMEOUT: "5s"
 
+# ── Heimdall API gateway onboarding (LFXV2-3352, draft — not yet cut over) ───
+# Disabled by default so this chart is a no-op until lfx-v2-argocd flips it.
+# See lfx-v2-query-service's chart for the reference pattern.
+heimdall:
+  enabled: false
+  add_middleware: false
+  url: http://lfx-platform-heimdall.lfx.svc.cluster.local:4456
+
+lfx:
+  # domain is the base domain used to build the Heimdall HTTPRoute hostname
+  # (lfx-api.<domain>). Per-environment — set via ArgoCD values.
+  domain: k8s.orb.local
+
+app:
+  # use_oidc_contextualizer is a boolean to determine if the OIDC contextualizer should be used
+  use_oidc_contextualizer: false
+  # audience is the JWT aud claim Heimdall's create_jwt finalizer stamps onto
+  # tokens forwarded to this service, and what JWT_AUDIENCE must match once
+  # dual-accept (LFXV2-3351) is live.
+  audience: lfx-crowdfunding-backend
+
+traefik:
+  gateway:
+    name: lfx-gateway
+    namespace: lfx
+
 # ── Additional environment variables ─────────────────────────────────────────
 # Rendered as a Kubernetes env: list on the Deployment and CronJob.
 # Supports the full env entry schema (value:, valueFrom:, etc.).
