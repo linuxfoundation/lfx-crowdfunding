@@ -805,9 +805,12 @@ maintainer story is the strongest).
      the full reasoning.
    - The M2M fallback (a second audience on `reimbursement_client.go`) was never built and is
      dropped for the same reason, not picked as the alternative.
-   - LFXV2-3323 (the CF-side consumer of the exchange) and its branch
-     (`feat/lfxv2-3323-org-token-exchange-client`) are moot for the same reason but untouched —
-     no PR exists for it and no action has been taken on it.
+   - [LFXV2-3323](https://linuxfoundation.atlassian.net/browse/LFXV2-3323) (the CF-side consumer
+     of the exchange) is **Discarded** for the same reason. Its implementation,
+     [PR #248](https://github.com/linuxfoundation/lfx-crowdfunding/pull/248), is **closed without
+     merging**; the branch (`feat/lfxv2-3323-org-token-exchange-client`) is kept, not deleted —
+     its query-service client, `Principal.RawToken` plumbing, and org-affiliation handler/service
+     are reusable once CF is gateway-fronted, only the token-exchange client itself is dead.
 
    <details><summary>Original framing (superseded 2026-08-25, kept for history)</summary>
 
