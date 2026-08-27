@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/config"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -161,93 +160,70 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 	return out, nil
 }
 
-// GetOrgDonations returns the summed credit totals per organisation from the Ledger service.
-func (s *StatisticsService) GetOrgDonations(ctx context.Context) ([]clients.LedgerOrgDonation, error) {
-	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetOrgDonations")
-	defer span.End()
-
-	result, err := s.ledgerClient.GetOrgDonations(ctx)
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("get org donations: %w", err)
-	}
-	return result, nil
-}
-
-// fallbackFeaturedOrgLimit is how many top-contributing organizations are
-// shown on the "/for-companies" page in environments (local, dev, staging)
-// whose database doesn't contain the curated, prod-only org IDs.
-const fallbackFeaturedOrgLimit = 15
-
 // GetInvestingCompanies returns the organizations featured on the
-// "/for-companies" page, each with its total succeeded-donation amount.
+// "/for-companies" page, each with its total donation amount from the
+// Ledger — the system of record for donations (CF Postgres only persists
+// one-time charges; Ledger also captures recurring/subscription charges).
 //
-// In prod, the curated list in internal/config/featured_orgs.json resolves
-// to real rows and is returned in that file's order. In local/dev/staging,
-// those IDs don't exist in the database (they were pulled from prod), so this
-// falls back to the top fallbackFeaturedOrgLimit organizations by amount —
-// no environment flag required.
+// Ledger's org-donations aggregation ("GET /transactions/platform/org-donations")
+// is itself scoped to a fixed set of org IDs (mocked in non-prod), which today
+// matches internal/config/featured_orgs.json exactly. Adding a new org to that
+// config file requires a matching change in ledger-service, or it will have no
+// amount here and be skipped.
 func (s *StatisticsService) GetInvestingCompanies(ctx context.Context) ([]models.OrgContribution, error) {
 	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetInvestingCompanies")
 	defer span.End()
 
-	featuredIDs := config.FeaturedOrgIDs()
-	// Check org existence directly rather than inferring it from contribution
-	// rows: a curated org with zero succeeded donations still exists in this
-	// database and must not trigger the fallback below.
-	existing, err := s.repo.GetOrganizationsByIDs(ctx, featuredIDs)
+	raw, err := s.ledgerClient.GetOrgDonations(ctx)
 	if err != nil {
 		span.RecordError(err)
-		return nil, fmt.Errorf("check featured orgs exist: %w", err)
+		if errors.Is(err, domain.ErrUpstreamUnavailable) {
+			return []models.OrgContribution{}, nil
+		}
+		return nil, fmt.Errorf("get org donations: %w", err)
 	}
 
-	var result []models.OrgContribution
-	if len(existing) == 0 {
-		slog.InfoContext(ctx, "no curated featured orgs found in this database; falling back to top contributors",
-			"limit", fallbackFeaturedOrgLimit)
-		result, err = s.repo.ListOrgContributions(ctx, nil, fallbackFeaturedOrgLimit)
-		if err != nil {
-			span.RecordError(err)
-			return nil, fmt.Errorf("list top org contributions: %w", err)
-		}
-	} else {
-		result, err = s.repo.ListOrgContributions(ctx, featuredIDs, 0)
-		if err != nil {
-			span.RecordError(err)
-			return nil, fmt.Errorf("list org contributions: %w", err)
-		}
-		result = reorderByIDs(result, featuredIDs)
+	amounts := make(map[string]clients.LedgerOrgDonation, len(raw))
+	for _, d := range raw {
+		amounts[d.OrgID] = d
 	}
 
-	for i, c := range result {
-		if c.AvatarURL == "" {
-			result[i].AvatarURL = generatedAvatarURL(c.OrgID, c.Name)
-		}
+	featuredIDs := config.FeaturedOrgIDs()
+	orgs, err := s.repo.GetOrganizationsByIDs(ctx, featuredIDs)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("enrich featured organizations: %w", err)
 	}
-	return result, nil
-}
 
-// reorderByIDs returns contributions sorted to match the order of ids.
-// Any contribution whose OrgID isn't in ids keeps its relative order at the end.
-func reorderByIDs(contributions []models.OrgContribution, ids []string) []models.OrgContribution {
-	byID := make(map[string]models.OrgContribution, len(contributions))
-	for _, c := range contributions {
-		byID[c.OrgID] = c
-	}
-	ordered := make([]models.OrgContribution, 0, len(contributions))
-	seen := make(map[string]bool, len(contributions))
-	for _, id := range ids {
-		if c, ok := byID[id]; ok {
-			ordered = append(ordered, c)
-			seen[id] = true
+	out := make([]models.OrgContribution, 0, len(featuredIDs))
+	for _, id := range featuredIDs {
+		d, ok := amounts[id]
+		if !ok {
+			continue // ponytail: ledger aggregates a fixed org set; a config-only org has no amount
 		}
-	}
-	for _, c := range contributions {
-		if !seen[c.OrgID] {
-			ordered = append(ordered, c)
+		entry := models.OrgContribution{
+			OrgID:       id,
+			Name:        d.Name,
+			AvatarURL:   d.AvatarURL,
+			AmountCents: d.AmountInCents,
 		}
+		if org, found := orgs[id]; found { // CF DB is fresher than ledger's baked-in values
+			if org.Name != "" {
+				entry.Name = org.Name
+			}
+			if org.AvatarURL != "" {
+				entry.AvatarURL = org.AvatarURL
+			}
+		}
+		if entry.Name == "" {
+			entry.Name = unknownOrgName
+		}
+		if entry.AvatarURL == "" {
+			entry.AvatarURL = generatedAvatarURL(entry.OrgID, entry.Name)
+		}
+		out = append(out, entry)
 	}
-	return ordered
+	return out, nil
 }
 
 // GetRecentDonations returns the most recent platform-wide donations enriched

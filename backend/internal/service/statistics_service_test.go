@@ -6,7 +6,6 @@ package service
 import (
 	"context"
 	"errors"
-	"sort"
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -17,12 +16,11 @@ import (
 // --- test doubles ---
 
 type testStatisticsRepo struct {
-	stats         *models.PlatformStatistics
-	orgs          map[string]models.Organization
-	users         map[string]models.User
-	projectNames  map[string]string
-	contributions []models.OrgContribution
-	err           error
+	stats        *models.PlatformStatistics
+	orgs         map[string]models.Organization
+	users        map[string]models.User
+	projectNames map[string]string
+	err          error
 }
 
 func (r *testStatisticsRepo) GetPlatformStatistics(_ context.Context) (*models.PlatformStatistics, error) {
@@ -77,33 +75,6 @@ func (r *testStatisticsRepo) GetInitiativeNamesByIDs(_ context.Context, ids []st
 		if name, ok := r.projectNames[id]; ok {
 			result[id] = name
 		}
-	}
-	return result, nil
-}
-
-// ListOrgContributions mimics the real SQL semantics: filter to ids when
-// non-empty, sort by amount descending, then cap to limit when > 0.
-func (r *testStatisticsRepo) ListOrgContributions(_ context.Context, ids []string, limit int) ([]models.OrgContribution, error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-	result := make([]models.OrgContribution, 0, len(r.contributions))
-	if len(ids) == 0 {
-		result = append(result, r.contributions...)
-	} else {
-		want := make(map[string]bool, len(ids))
-		for _, id := range ids {
-			want[id] = true
-		}
-		for _, c := range r.contributions {
-			if want[c.OrgID] {
-				result = append(result, c)
-			}
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].AmountCents > result[j].AmountCents })
-	if limit > 0 && len(result) > limit {
-		result = result[:limit]
 	}
 	return result, nil
 }
@@ -618,35 +589,6 @@ func TestGetPlatformStatistics_RepoError(t *testing.T) {
 	svc := newStatsSvc(repo, &testLedgerClient{})
 
 	_, err := svc.GetPlatformStatistics(context.Background())
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
-// --- GetOrgDonations ---
-
-func TestGetOrgDonations_ReturnsLedgerResult(t *testing.T) {
-	ledger := &testLedgerClient{
-		orgDonations: []clients.LedgerOrgDonation{
-			{OrgID: "org-1", Name: "Acme", AmountInCents: 250_000},
-		},
-	}
-	svc := newStatsSvc(&testStatisticsRepo{}, ledger)
-
-	result, err := svc.GetOrgDonations(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result) != 1 || result[0].OrgID != "org-1" || result[0].AmountInCents != 250_000 {
-		t.Fatalf("unexpected result: %+v", result)
-	}
-}
-
-func TestGetOrgDonations_LedgerError(t *testing.T) {
-	ledger := &testLedgerClient{err: errors.New("ledger down")}
-	svc := newStatsSvc(&testStatisticsRepo{}, ledger)
-
-	_, err := svc.GetOrgDonations(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

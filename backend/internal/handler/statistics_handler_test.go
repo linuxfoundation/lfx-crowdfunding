@@ -35,9 +35,6 @@ func (r *statsRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[stri
 func (r *statsRepo) GetInitiativeNamesByIDs(_ context.Context, _ []string) (map[string]string, error) {
 	return map[string]string{}, nil
 }
-func (r *statsRepo) ListOrgContributions(_ context.Context, _ []string, _ int) ([]models.OrgContribution, error) {
-	return []models.OrgContribution{}, nil
-}
 
 // statsLedgerClient is a configurable LedgerClient stub for statistics handler tests.
 type statsLedgerClient struct {
