@@ -6,7 +6,7 @@ const isProduction = appEnv === 'production';
 
 if (isProduction) {
   const required = [
-    'NUXT_APP_URL',
+    'NUXT_PUBLIC_APP_URL',
     'NUXT_PUBLIC_AUTH0_DOMAIN',
     'NUXT_PUBLIC_AUTH0_CLIENT_ID',
     'NUXT_AUTH0_CLIENT_SECRET',
@@ -19,7 +19,10 @@ if (isProduction) {
   }
 }
 
-const appUrl = process.env.NUXT_APP_URL || 'http://localhost:3000';
+// NUXT_PUBLIC_APP_URL — must use the NUXT_PUBLIC_ prefix so Nuxt's runtime
+// config re-reads it from the container's env at server startup (matches
+// public.appUrl below); a differently-prefixed var name is silently ignored.
+const appUrl = process.env.NUXT_PUBLIC_APP_URL || 'http://localhost:3000';
 const selfServeUrl =
   process.env.NUXT_PUBLIC_SELF_SERVE_URL ||
   (isProduction ? 'https://app.lfx.dev' : 'https://app.dev.lfx.dev');
