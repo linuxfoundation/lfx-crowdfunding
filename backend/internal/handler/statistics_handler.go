@@ -76,6 +76,16 @@ func (h *StatisticsHandler) GetOrgDonations(w http.ResponseWriter, r *http.Reque
 	cachedJSON(w, r, donations)
 }
 
+// GetInvestingCompanies handles GET /v1/statistics/investing-companies
+func (h *StatisticsHandler) GetInvestingCompanies(w http.ResponseWriter, r *http.Request) {
+	companies, err := h.svc.GetInvestingCompanies(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	cachedJSON(w, r, companies)
+}
+
 // GetRecentDonations handles GET /v1/statistics/recent-donations
 func (h *StatisticsHandler) GetRecentDonations(w http.ResponseWriter, r *http.Request) {
 	donations, err := h.svc.GetRecentDonations(r.Context())

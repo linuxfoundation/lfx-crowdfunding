@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/config"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -170,6 +172,73 @@ func (s *StatisticsService) GetOrgDonations(ctx context.Context) ([]clients.Ledg
 		return nil, fmt.Errorf("get org donations: %w", err)
 	}
 	return result, nil
+}
+
+// fallbackFeaturedOrgLimit is how many top-contributing organizations are
+// shown on the "/for-companies" page in environments (local, dev, staging)
+// whose database doesn't contain the curated, prod-only org IDs.
+const fallbackFeaturedOrgLimit = 15
+
+// GetInvestingCompanies returns the organizations featured on the
+// "/for-companies" page, each with its total succeeded-donation amount.
+//
+// In prod, the curated list in internal/config/featured_orgs.json resolves
+// to real rows and is returned in that file's order. In local/dev/staging,
+// those IDs don't exist in the database (they were pulled from prod), so this
+// falls back to the top fallbackFeaturedOrgLimit organizations by amount —
+// no environment flag required.
+func (s *StatisticsService) GetInvestingCompanies(ctx context.Context) ([]models.OrgContribution, error) {
+	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetInvestingCompanies")
+	defer span.End()
+
+	featuredIDs := config.FeaturedOrgIDs()
+	result, err := s.repo.ListOrgContributions(ctx, featuredIDs, 0)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list org contributions: %w", err)
+	}
+
+	if len(result) == 0 {
+		slog.InfoContext(ctx, "no curated featured orgs found in this database; falling back to top contributors",
+			"limit", fallbackFeaturedOrgLimit)
+		result, err = s.repo.ListOrgContributions(ctx, nil, fallbackFeaturedOrgLimit)
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("list top org contributions: %w", err)
+		}
+	} else {
+		result = reorderByIDs(result, featuredIDs)
+	}
+
+	for i, c := range result {
+		if c.AvatarURL == "" {
+			result[i].AvatarURL = generatedAvatarURL(c.OrgID, c.Name)
+		}
+	}
+	return result, nil
+}
+
+// reorderByIDs returns contributions sorted to match the order of ids.
+// Any contribution whose OrgID isn't in ids keeps its relative order at the end.
+func reorderByIDs(contributions []models.OrgContribution, ids []string) []models.OrgContribution {
+	byID := make(map[string]models.OrgContribution, len(contributions))
+	for _, c := range contributions {
+		byID[c.OrgID] = c
+	}
+	ordered := make([]models.OrgContribution, 0, len(contributions))
+	seen := make(map[string]bool, len(contributions))
+	for _, id := range ids {
+		if c, ok := byID[id]; ok {
+			ordered = append(ordered, c)
+			seen[id] = true
+		}
+	}
+	for _, c := range contributions {
+		if !seen[c.OrgID] {
+			ordered = append(ordered, c)
+		}
+	}
+	return ordered
 }
 
 // GetRecentDonations returns the most recent platform-wide donations enriched

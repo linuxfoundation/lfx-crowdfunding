@@ -110,6 +110,54 @@ func (r *StatisticsRepository) GetOrganizationsByIDs(ctx context.Context, ids []
 	return result, nil
 }
 
+// ListOrgContributions returns each organization's total succeeded-donation
+// amount, ordered by amount descending. When ids is non-empty, results are
+// restricted to those organization IDs; otherwise all organizations with at
+// least one succeeded donation are considered. When limit > 0, results are
+// capped to the top `limit` organizations by amount.
+func (r *StatisticsRepository) ListOrgContributions(ctx context.Context, ids []string, limit int) ([]models.OrgContribution, error) {
+	ctx, span := statisticsTracer.Start(ctx, "db.statistics.ListOrgContributions")
+	defer span.End()
+	span.SetAttributes(attribute.Int("db.id_count", len(ids)), attribute.Int("db.limit", limit))
+
+	if ids == nil {
+		// pgx sends a nil slice as SQL NULL, which would make
+		// `cardinality($1::uuid[]) = 0` evaluate to NULL instead of true.
+		ids = []string{}
+	}
+
+	const q = `
+		SELECT CAST(o.id AS text), o.name, COALESCE(o.avatar_url, ''),
+		       COALESCE(SUM(d.current_amount_in_cents), 0)::bigint AS amount_in_cents
+		FROM donations d
+		JOIN organizations o ON o.id = d.organization_id
+		WHERE d.status = 'succeeded'
+		  AND (cardinality($1::uuid[]) = 0 OR d.organization_id = ANY($1::uuid[]))
+		GROUP BY o.id, o.name, o.avatar_url
+		ORDER BY amount_in_cents DESC
+		LIMIT NULLIF($2, 0)`
+
+	rows, err := r.pool.Query(ctx, q, ids, limit)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list org contributions: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	result := make([]models.OrgContribution, 0, len(ids))
+	for rows.Next() {
+		var c models.OrgContribution
+		if err := rows.Scan(&c.OrgID, &c.Name, &c.AvatarURL, &c.AmountCents); err != nil {
+			return nil, fmt.Errorf("scan org contribution: %w", err)
+		}
+		result = append(result, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate org contributions: %w", err)
+	}
+	return result, nil
+}
+
 // GetInitiativeNamesByIDs returns a map of initiative UUID → name for the given IDs.
 // Missing IDs are absent from the map.
 func (r *StatisticsRepository) GetInitiativeNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {

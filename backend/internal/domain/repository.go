@@ -135,6 +135,13 @@ type StatisticsRepository interface {
 	// GetInitiativeNamesByIDs returns a map of initiative UUID → name for the given IDs.
 	// Missing IDs are absent from the map. Used to enrich recent donation entries.
 	GetInitiativeNamesByIDs(ctx context.Context, ids []string) (map[string]string, error)
+
+	// ListOrgContributions returns each organization's total succeeded-donation
+	// amount, ordered by amount descending. When ids is non-empty, results are
+	// restricted to those organization IDs; otherwise all organizations with at
+	// least one succeeded donation are considered. When limit > 0, results are
+	// capped to the top `limit` organizations by amount.
+	ListOrgContributions(ctx context.Context, ids []string, limit int) ([]models.OrgContribution, error)
 }
 
 // LedgerStatsRepository defines the persistence operations used exclusively by
