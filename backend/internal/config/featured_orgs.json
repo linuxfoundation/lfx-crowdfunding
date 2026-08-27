@@ -1,0 +1,18 @@
+[
+  { "id": "c64448e2-ad1d-4132-afdc-1fa5de259372", "name": "Cloud Native Computing Foundation" },
+  { "id": "1c7953a6-6bed-4eb2-9a54-e03f68ee87cc", "name": "Google" },
+  { "id": "32694046-9495-49e6-a64c-2339bb8a6b4a", "name": "Hyperledger" },
+  { "id": "26b40d9a-fa10-4517-b5e9-f398d599119a", "name": "Open Mainframe Project" },
+  { "id": "c24884e2-da5b-4232-adcc-8ca5df629112", "name": "Red Hat" },
+  { "id": "01597fd9-e8a2-4eee-81ed-fde0f57a7970", "name": "RISC-V" },
+  { "id": "e4994c28-38cf-4bac-bc84-cd0e1dff7d93", "name": "GraphQL" },
+  { "id": "da991783-b553-4776-b78f-3cd99eb0dd8b", "name": "Intel Corporation" },
+  { "id": "bda9cb38-3e49-4c44-b828-5d269b6bb8d9", "name": "Alpha-Omega" },
+  { "id": "48d54209-b254-4dd6-99ce-eb20fa72b87e", "name": "OpenSSF" },
+  { "id": "4bf2ca3d-c208-40e1-ab27-118462e6f4c1", "name": "Sysdig, Inc." },
+  { "id": "09e36557-5ef7-4ee1-b9b5-820b24fd8b36", "name": "GitHub" },
+  { "id": "adbc0b16-9ccb-46fc-8938-50d295fb07aa", "name": "Crowdstrike" },
+  { "id": "ea1fc61b-13f7-409f-8ccf-abb3ff569cc4", "name": "Cisco" },
+  { "id": "7319eb76-5147-4812-8398-ce0c3aaf5ecc", "name": "CHECK24" },
+  { "id": "3d6b41a7-1a5b-49ff-a7be-f2f83b87e1ca", "name": "Wayfair LLC" }
+]
