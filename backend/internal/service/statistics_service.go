@@ -192,13 +192,17 @@ func (s *StatisticsService) GetInvestingCompanies(ctx context.Context) ([]models
 	defer span.End()
 
 	featuredIDs := config.FeaturedOrgIDs()
-	result, err := s.repo.ListOrgContributions(ctx, featuredIDs, 0)
+	// Check org existence directly rather than inferring it from contribution
+	// rows: a curated org with zero succeeded donations still exists in this
+	// database and must not trigger the fallback below.
+	existing, err := s.repo.GetOrganizationsByIDs(ctx, featuredIDs)
 	if err != nil {
 		span.RecordError(err)
-		return nil, fmt.Errorf("list org contributions: %w", err)
+		return nil, fmt.Errorf("check featured orgs exist: %w", err)
 	}
 
-	if len(result) == 0 {
+	var result []models.OrgContribution
+	if len(existing) == 0 {
 		slog.InfoContext(ctx, "no curated featured orgs found in this database; falling back to top contributors",
 			"limit", fallbackFeaturedOrgLimit)
 		result, err = s.repo.ListOrgContributions(ctx, nil, fallbackFeaturedOrgLimit)
@@ -207,6 +211,11 @@ func (s *StatisticsService) GetInvestingCompanies(ctx context.Context) ([]models
 			return nil, fmt.Errorf("list top org contributions: %w", err)
 		}
 	} else {
+		result, err = s.repo.ListOrgContributions(ctx, featuredIDs, 0)
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("list org contributions: %w", err)
+		}
 		result = reorderByIDs(result, featuredIDs)
 	}
 

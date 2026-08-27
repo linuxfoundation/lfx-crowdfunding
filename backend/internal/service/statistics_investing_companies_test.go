@@ -23,10 +23,16 @@ func TestGetInvestingCompanies_FeaturedIDsPresent(t *testing.T) {
 	// Intentionally give the lower-priority featured org the larger amount, so
 	// a naive amount-descending sort would put it first.
 	first, second := featured[0], featured[1]
-	repo := &testStatisticsRepo{contributions: []models.OrgContribution{
-		{OrgID: second, Name: "Second", AvatarURL: "https://example.com/second.png", AmountCents: 900_00},
-		{OrgID: first, Name: "First", AvatarURL: "https://example.com/first.png", AmountCents: 100_00},
-	}}
+	repo := &testStatisticsRepo{
+		orgs: map[string]models.Organization{
+			first:  {ID: first, Name: "First"},
+			second: {ID: second, Name: "Second"},
+		},
+		contributions: []models.OrgContribution{
+			{OrgID: second, Name: "Second", AvatarURL: "https://example.com/second.png", AmountCents: 900_00},
+			{OrgID: first, Name: "First", AvatarURL: "https://example.com/first.png", AmountCents: 100_00},
+		},
+	}
 	svc := newStatsSvc(repo, &testLedgerClient{})
 
 	got, err := svc.GetInvestingCompanies(context.Background())
@@ -80,9 +86,14 @@ func TestGetInvestingCompanies_GeneratesAvatarWhenMissing(t *testing.T) {
 	if len(featured) == 0 {
 		t.Fatal("expected at least 1 featured org ID")
 	}
-	repo := &testStatisticsRepo{contributions: []models.OrgContribution{
-		{OrgID: featured[0], Name: "No Logo Org", AvatarURL: "", AmountCents: 500_00},
-	}}
+	repo := &testStatisticsRepo{
+		orgs: map[string]models.Organization{
+			featured[0]: {ID: featured[0], Name: "No Logo Org"},
+		},
+		contributions: []models.OrgContribution{
+			{OrgID: featured[0], Name: "No Logo Org", AvatarURL: "", AmountCents: 500_00},
+		},
+	}
 	svc := newStatsSvc(repo, &testLedgerClient{})
 
 	got, err := svc.GetInvestingCompanies(context.Background())
@@ -94,5 +105,33 @@ func TestGetInvestingCompanies_GeneratesAvatarWhenMissing(t *testing.T) {
 	}
 	if got[0].AvatarURL == "" {
 		t.Error("expected a generated avatar URL, got empty string")
+	}
+}
+
+// TestGetInvestingCompanies_NoFallbackWhenFeaturedOrgsHaveNoContributions
+// verifies that curated orgs existing in this database with zero succeeded
+// donations do not trigger the local/dev/staging fallback — existence of the
+// org, not existence of a contribution row, decides which branch runs.
+func TestGetInvestingCompanies_NoFallbackWhenFeaturedOrgsHaveNoContributions(t *testing.T) {
+	featured := config.FeaturedOrgIDs()
+	if len(featured) == 0 {
+		t.Fatal("expected at least 1 featured org ID")
+	}
+	repo := &testStatisticsRepo{
+		orgs: map[string]models.Organization{
+			featured[0]: {ID: featured[0], Name: "No Donations Yet"},
+		},
+		contributions: []models.OrgContribution{
+			{OrgID: "unrelated-org", Name: "Unrelated", AvatarURL: "https://example.com/x.png", AmountCents: 999_00},
+		},
+	}
+	svc := newStatsSvc(repo, &testLedgerClient{})
+
+	got, err := svc.GetInvestingCompanies(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 companies (no fallback, no contribution rows), got %d: %+v", len(got), got)
 	}
 }
