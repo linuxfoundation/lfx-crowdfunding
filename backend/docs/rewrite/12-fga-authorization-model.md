@@ -19,8 +19,15 @@ authorization-model doc this one follows in structure and convention).
 
 Postgres stays the system of record for initiatives, attribution, and status. OpenFGA holds only
 what Heimdall needs to check at the edge — who may manage a given initiative. CF makes no
-authorization decisions in the backend and never queries FGA at request time. Donations,
-sponsorship tiers, announcements, and statuses stay Postgres-only, unchanged from doc 11.
+per-object authorization decisions in the backend and never queries FGA to gate a single request
+at request time — that's Heimdall's job. Donations, sponsorship tiers, announcements, and statuses
+stay Postgres-only, unchanged from doc 11.
+
+**Carve-out for list population (see open question G resolution below):** the above principle
+governs single-object *gating* (can this request proceed), which moves to the gateway entirely.
+It does not forbid one bounded, batched `Check` call issued by CF itself to *populate a list view*
+— that's a read-model concern, not an authorization decision, and the same shape doc 11 §5.1
+already proposed for the hybrid model.
 
 ## The type
 
@@ -112,16 +119,34 @@ Resolved during review — kept here for the record rather than left in the open
 - **Private-view population (was open question E).** No wider audience than creator, entity
   writer, and approver — the `auditor` relation and its project/org inheritance are dropped from
   the type; see "The type" above.
+- **`GET /v1/me/initiatives` list authorization (was open question G).** Resolved without an
+  external service, using only Postgres + a bounded batched FGA `Check` (no `ListObjects`, no new
+  dependency):
+  1. Postgres: `SELECT id FROM initiatives WHERE owner_id = $1` — owned initiatives need no check.
+  2. Postgres: `SELECT DISTINCT attributed_to_type, attributed_to_uid FROM initiatives` — the
+     candidate set is bounded by *how many distinct orgs/projects have ever been attributed an
+     initiative*, not by total initiatives or total platform entities.
+  3. One batched FGA `Check` call (OpenFGA's `BatchCheck` RPC) against that candidate set: "is
+     `$1` a writer on `project:X` / `b2b_org:Y`" for each entity, one round trip.
+  4. Postgres: `SELECT id FROM initiatives WHERE owner_id = $1 OR (attributed_to_type,
+     attributed_to_uid) IN (<entities that came back true>)` — same parenthesized-OR shape as
+     doc 11 §5.1's builder fix, so pagination/sorting/search stay ordinary SQL.
+
+  This is the same batched-candidate-set shape doc 11 §5.1 already proposed for the hybrid model,
+  and the same shape `lfx-self-serve`'s `AccessCheckService.checkAccess()` uses in production to
+  annotate list rows — a bounded batch of named checks, not the open-ended `ListObjects`
+  enumeration this doc rejects elsewhere. See the principle carve-out above.
 
 ## Open questions for the Architecture team
 
 | # | Question | Proposed default | Directed to |
 |---|---|---|---|
 | D | **Ordering.** Model + `tests.yaml` in `lfx-v2-helm` first, Heimdall RuleSets second, CF-side tuple emission third — a RuleSet referencing a relation that doesn't exist yet fails closed. | Model lands first, as its own PR; RuleSet wiring and CF emission are tracked separately once the model is accepted. | Architecture team |
-| G | **`GET /v1/me/initiatives` (the caller's manageable-initiatives list) has no authorization mechanism under this model.** That route has no initiative ID for Heimdall to check; doc 11 §5.1 requires CF-side batched FGA checks against a CF-bounded candidate set, but this doc's principle says CF never queries FGA at request time, and the per-initiative `crowdfunding_initiative` type (unlike the rejected `ListObjects` enumeration) doesn't itself support "list all initiatives I can manage." | No default proposed — needs an edge/query/index strategy that returns the caller's manageable initiatives with correct pagination before this doc's "all backend authorization removed" claim can stand for the list endpoint. | Architecture team |
 
 (Open question F — `delete_access` orphaning a per-initiative `approver@team:…#member` tuple — no
-longer applies now that approvers are not modeled in FGA at all, per the "Decided" section above.)
+longer applies now that approvers are not modeled in FGA at all, per the "Decided" section above.
+Open question G — the `GET /v1/me/initiatives` list mechanism — is resolved above via a bounded
+batched `Check`, no longer open.)
 
 ## Prerequisite (named, not solved here)
 
