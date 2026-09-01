@@ -411,9 +411,11 @@ shapes what you see, permission gates what you do), its candidate source may be 
 for it.** The prior version of this doc routed the org half through Snowflake, believing
 query-service was unreachable from outside Heimdall; that premise was wrong (§3.1). The design
 above was the intended replacement for both halves, but the org half is now deferred to the gateway
-milestone (§3.5) rather than shipped — see §6 open question 4's org bullet and open question 7. The
-edit-access check (§3.2) was never affected by any of this — it stays a per-entity `access_check`
-over the NATS transit confirmed above.
+milestone (§3.5) rather than shipped — see §6 open question 4's org bullet and open question 7.
+**Superseded (§3.4):** the edit-access check (§3.2) *was* unaffected by the org-picker deferral
+above, but §3.4's later conclusion supersedes §3.2 itself — the hybrid per-entity `access_check`
+over NATS does not ship at all; Heimdall checks the idiomatic `crowdfunding_initiative:{id}#writer`
+relation at the gateway instead (§3.4, doc 12).
 
 ### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
 
@@ -421,8 +423,8 @@ over the NATS transit confirmed above.
 > **read-only**: CF only *asks* FGA "is this user a writer on this project/org?" and stores its own
 > data (creator, attribution) in Postgres. The idiomatic alternative below is the only part that
 > would have CF **write** to FGA — because FGA would then own "who can manage this initiative," so
-> CF must keep those tuples in sync. That write-sync burden is one reason it's deferred, not the
-> plan.
+> CF must keep those tuples in sync. That write-sync burden is one reason it's deferred until the
+> gateway milestone, not shipped immediately.
 
 At the architecture sync, Eric flagged the hybrid's OR-union of per-entity checks (project OR
 b2b_org OR local creator) as **something of an FGA antipattern** — while also noting that the
