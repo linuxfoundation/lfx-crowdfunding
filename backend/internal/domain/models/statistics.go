@@ -70,3 +70,13 @@ type RecentDonation struct {
 type RecentDonationsResponse struct {
 	Data []RecentDonation `json:"data"`
 }
+
+// OrgContribution is one organization's total succeeded-donation amount,
+// returned by GET /v1/statistics/investing-companies. JSON tags match the
+// legacy Ledger org-donations wire shape so frontend consumers need no changes.
+type OrgContribution struct {
+	OrgID       string `json:"orgId"`
+	Name        string `json:"name"`
+	AvatarURL   string `json:"avatar_url"`
+	AmountCents int64  `json:"amount_in_cents"`
+}

@@ -593,32 +593,3 @@ func TestGetPlatformStatistics_RepoError(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 }
-
-// --- GetOrgDonations ---
-
-func TestGetOrgDonations_ReturnsLedgerResult(t *testing.T) {
-	ledger := &testLedgerClient{
-		orgDonations: []clients.LedgerOrgDonation{
-			{OrgID: "org-1", Name: "Acme", AmountInCents: 250_000},
-		},
-	}
-	svc := newStatsSvc(&testStatisticsRepo{}, ledger)
-
-	result, err := svc.GetOrgDonations(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result) != 1 || result[0].OrgID != "org-1" || result[0].AmountInCents != 250_000 {
-		t.Fatalf("unexpected result: %+v", result)
-	}
-}
-
-func TestGetOrgDonations_LedgerError(t *testing.T) {
-	ledger := &testLedgerClient{err: errors.New("ledger down")}
-	svc := newStatsSvc(&testStatisticsRepo{}, ledger)
-
-	_, err := svc.GetOrgDonations(context.Background())
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
