@@ -60,10 +60,11 @@ Notes:
 
 - `writer` is doc 11 §2.2's flat manage capability verbatim: creator **or** attributed-entity
   writer, one capability, no view-only tier.
-- `approver` sits outside `writer` deliberately — approvers cannot edit content, and a creator
-  cannot approve their own initiative. This retires the `ALLOWED_APPROVERS` allowlist
-  (`backend/cmd/initiatives-api/config.go:110-112`,
-  `backend/internal/handler/initiative_handler.go:570-579`) and resolves doc 11 open question 5.
+- `approver` sits outside `writer` deliberately — approvers cannot edit content. Self-approval
+  (an approver approving their own initiative) is allowed, matching today's `ALLOWED_APPROVERS`
+  allowlist behavior (`backend/cmd/initiatives-api/config.go:110-112`,
+  `backend/internal/handler/initiative_handler.go:568-579`, `isApprover` — no ownership check).
+  This relation retires that allowlist and resolves doc 11 open question 5.
 - `viewer: [user:*]` is a **per-object** tuple, emitted only while `status == 'published'`
   (`backend/internal/domain/models/initiative.go:29-62`). `hidden` is the only path back down from
   `published` (`validateOwnerStatusTransition`, `backend/internal/service/initiative_service.go:818-833`
@@ -85,9 +86,9 @@ separate CF-side emission issue once this model is accepted, not to this proposa
 ## `tests.yaml` merge gate
 
 The platform model ships with an OpenFGA test suite; the merge criterion is that scenarios pass,
-not that the DSL parses. Minimum negative cases: an `approver` is denied `writer`; an `owner` is
-denied `approver` on their own initiative; a project-A writer is denied `writer` on a
-project-B-attributed initiative; a `hidden` initiative grants no `viewer@user:*`. Minimum
+not that the DSL parses. Minimum negative cases: an `approver` is denied `writer`; a project-A
+writer is denied `writer` on a project-B-attributed initiative; a `hidden` initiative grants no
+`viewer@user:*`. Minimum
 inheritance case: a parent-project writer reaches an initiative attributed to the child project.
 Validate locally against OpenFGA in Docker before proposing — a mis-scoped relation fails *open*.
 
@@ -99,10 +100,9 @@ Validate locally against OpenFGA in Docker before proposing — a mis-scoped rel
 | B | **Is `writer from b2b_org` acceptable given it doesn't cascade?** `b2b_org.writer` is scoped to the directly-assigned org by design (parent→child is auditor-only in the platform model); `project.writer` inherits from parent. Org- and project-attributed initiatives therefore inherit differently. | Accept it — it's the platform's own scoping decision, and CF shouldn't invent a broader org-write population. Flagged so it isn't discovered later as a surprise. | Architecture team |
 | C | **Who owns and administers the `approver` team?** A `team#member` grant needs a platform team to exist and be administered. | Reuse an existing LF-staff team if one fits; otherwise a CF-specific team administered the way `global_org_admin` is. | Architecture team |
 | D | **Ordering.** Model + `tests.yaml` in `lfx-v2-helm` first, Heimdall RuleSets second, CF-side tuple emission third — a RuleSet referencing a relation that doesn't exist yet fails closed. | Model lands first, as its own PR; RuleSet wiring and CF emission are tracked separately once the model is accepted. | Architecture team |
-| E | **Self-approval is not enforced by the model.** `approver: [team#member]` has no exclusion of `owner` — an LF staff member who is both an initiative's creator and a member of the approver team evaluates true for `approver`, contradicting this doc's own stated intent (line 63: "a creator cannot approve their own initiative"). | Add a separate permission, e.g. `can_approve: approver but not owner`, have the RuleSet check that instead of `approver` directly, and add a `tests.yaml` negative case covering a user holding both tuples. | Architecture team (FGA model) |
-| F | **Does `auditor` widen access beyond doc 11's scope?** `auditor: writer or approver or auditor from project or auditor from b2b_org` grants project/org auditors read access to an initiative's private data and transactions before it publishes. Doc 11 §2.2 states "no view-only tier" for the flat access model. | Needs a decision: either doc 11 is amended to explicitly authorize this broader private-view audience, or `auditor` here is narrowed to `writer or approver` (dropping the `auditor from project`/`auditor from b2b_org` inheritance) to stay consistent with doc 11 as written. | PM + Architecture team |
-| G | **`delete_access` can't clean up the per-initiative `approver@team:…#member` tuple.** fga-sync deliberately preserves every `team:*#member` tuple, so that grant survives initiative deletion as an orphan. | Needs an explicit cleanup operation for this tuple (or a model shape for `approver` that doesn't attach a per-object team tuple) before relying on `delete_access` as the deletion plan. | Architecture team / fga-sync maintainers |
-| H | **`GET /v1/me/initiatives` (the caller's manageable-initiatives list) has no authorization mechanism under this model.** That route has no initiative ID for Heimdall to check; doc 11 §5.1 requires CF-side batched FGA checks against a CF-bounded candidate set, but this doc's principle says CF never queries FGA at request time, and the per-initiative `crowdfunding_initiative` type (unlike the rejected `ListObjects` enumeration) doesn't itself support "list all initiatives I can manage." | No default proposed — needs an edge/query/index strategy that returns the caller's manageable initiatives with correct pagination before this doc's "all backend authorization removed" claim can stand for the list endpoint. | Architecture team |
+| E | **Does `auditor` widen access beyond doc 11's scope?** `auditor: writer or approver or auditor from project or auditor from b2b_org` grants project/org auditors read access to an initiative's private data and transactions before it publishes. Doc 11 §2.2 states "no view-only tier" for the flat access model. | Needs a decision: either doc 11 is amended to explicitly authorize this broader private-view audience, or `auditor` here is narrowed to `writer or approver` (dropping the `auditor from project`/`auditor from b2b_org` inheritance) to stay consistent with doc 11 as written. | PM + Architecture team |
+| F | **`delete_access` can't clean up the per-initiative `approver@team:…#member` tuple.** fga-sync deliberately preserves every `team:*#member` tuple, so that grant survives initiative deletion as an orphan. | Needs an explicit cleanup operation for this tuple (or a model shape for `approver` that doesn't attach a per-object team tuple) before relying on `delete_access` as the deletion plan. | Architecture team / fga-sync maintainers |
+| G | **`GET /v1/me/initiatives` (the caller's manageable-initiatives list) has no authorization mechanism under this model.** That route has no initiative ID for Heimdall to check; doc 11 §5.1 requires CF-side batched FGA checks against a CF-bounded candidate set, but this doc's principle says CF never queries FGA at request time, and the per-initiative `crowdfunding_initiative` type (unlike the rejected `ListObjects` enumeration) doesn't itself support "list all initiatives I can manage." | No default proposed — needs an edge/query/index strategy that returns the caller's manageable initiatives with correct pagination before this doc's "all backend authorization removed" claim can stand for the list endpoint. | Architecture team |
 
 ## Prerequisite (named, not solved here)
 
