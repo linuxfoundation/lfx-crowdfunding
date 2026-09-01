@@ -6,10 +6,17 @@
 ---
 
 **Status:** Design proposal, July 2026 — reviewed at the July architecture sync, settled in the
-follow-up exchange. Two decisions: **(1)** transit — CF reaches the FGA checks over direct NATS
-(option C), approved by Eric and Jordan (§3.1); **(2)** approach — **hybrid per-entity checks now,
-idiomatic `crowdfunding_initiative` type as the target state** once CF is behind the Heimdall
-gateway (§3.4), per Eric's initial-step framing. Not yet a spec or implementation plan. Related story:
+follow-up exchange, then partially superseded 2026-08-25. Three decisions: **(1)** transit — CF
+reaches the FGA checks over direct NATS (option C), approved by Eric and Jordan (§3.1); **(2)**
+approach — **the hybrid per-entity write gate is deferred, not shipped as an interim step; the
+idiomatic `crowdfunding_initiative` type is the plan for the gateway milestone, with no mechanism
+before it** (§3.4) — Eric's July initial-step exception is read as superseded by the 2026-08-25
+guidance (CF's interpretation, architecture confirmation pending — §6 open question 8); **(3)**
+attribution's access-granting half deferred entirely — **permission-aware attachment for both
+`b2b_org` and `project` (the M1 org picker's FGA-brokered candidate list and the writer-access grant
+for either entity type alike) waits for the gateway milestone** (architecture team, 2026-08-25 —
+§3.4 "org attribution" addendum, §3.3, §3.5, §6 open questions 7 and 8). Not yet a spec or
+implementation plan. Related story:
 [LFXV2-2537](https://linuxfoundation.atlassian.net/browse/LFXV2-2537) *"Initiatives on behalf of
 projects and/or organizations"*; epic
 [LFXV2-2759](https://linuxfoundation.atlassian.net/browse/LFXV2-2759).
@@ -74,6 +81,15 @@ Each initiative carries exactly one attribution, chosen at creation in a new fun
 One field, three consumers: **access control**, the **details-page source label**, and the **SS
 lens listing pages**. Existing initiatives default to `personal` and behave exactly as today.
 
+> **`b2b_org` UID format is documented two conflicting ways — verify before the M1 migration.** Per
+> `lfx-v2-member-service/docs/indexer-contract.md`, a `b2b_org` uid is an 18-char Salesforce Account
+> SFID (e.g. `0012M00002qnukOQAQ`); but `lfx-v2-helm/charts/lfx-platform/files/model.fga` describes
+> it as "an invertible UUID v8 encoded from the Salesforce Account SFID." Only the `project` UID is
+> unambiguously a v2 UUID. The M1 schema and `models.Attribution.Validate()` currently assume UUID
+> for both attribution kinds; whether that's a bug depends on which of the two descriptions the live
+> index actually uses — check a real `b2b_org` document before relying on either — tracked as a
+> pre-migration verification, not settled fact.
+
 **The picker lists affiliated entities only — no free text.** The org/project pickers show only
 entities the user is already affiliated with (per LFXV2-2537's functional requirements: no free
 text, and a disabled option with an explanation when the user has none). "Any existing org" is
@@ -88,9 +104,28 @@ managed. Users with multiple affiliations simply see them all in the single-sele
 they are *affiliated* with — they need not be a `writer` on it (PM decision, 2026-07). This is the
 weaker of the two gates: someone affiliated with, but not a writer on, an org can publish a page
 carrying that org's name and logo without a writer signing off first. The org's writers *can*
-correct or remove it — but only once M2 ships the access rule that grants them management. Two
+correct or remove it — but only once the gateway milestone ships the access rule that grants them
+management (§3.4, §3.5, §5 — deferred from M2, which no longer exists as a separate milestone). Two
 consequences follow directly (see §5): the public attribution label cannot ship in a standalone
 M1, and server-side validation checks an *affiliation* source, not an FGA `writer` relation.
+
+**New eligibility rule (architecture team, 2026-08): private/formation projects are not
+attributable at all.** Even a project *writer* cannot attribute an initiative to a project that
+isn't public — attribution is a public claim of representation, and a formation-stage project has
+no public identity to claim on behalf of yet. This is enforced the same way the rest of §2.1's
+eligibility is: server-side, on the entity lookup at submit time, not by the picker alone. It also
+happens to make the project picker's anonymous query-service lookup (§3.3) correct by
+construction — a private project would never need to appear there.
+
+**Known gap: the org picker is narrower than the affiliation gate (§3.3).** The org candidate
+source is the query service's `filter_grants=direct` filter for `object_type=b2b_org` — it returns
+any *direct* tuple on the org (writer, auditor, or owner alike), so it is closer to the affiliation
+gate than a writer-only filter would be, but it still cannot see affiliation itself, and it still
+excludes **inherited-only** grants (e.g. an org member who only inherits access through a parent
+org). That narrower population won't see their org in the picker at all, even though the
+affiliation gate above would allow the attribution. Their path is the escape hatch, not the select.
+This is a real narrowing of who can use the picker, not just a best-effort miss — see §3.3 for why
+it's accepted anyway.
 
 > **Architecture ruling on affiliation data (2026-08, Eric).** Involvement/affiliation data (CDP
 > contribution history, persona-service detections) is **self-attested and must never be an
@@ -100,8 +135,8 @@ M1, and server-side validation checks an *affiliation* source, not an FGA `write
 > persona/involvement shapes what a user *sees*; only manage/write permission gates what a user
 > *does*. The affiliation gate above is compatible with this ruling **only because attribution
 > derives no access for the claimant**: the claim grants access *to* the entity's real FGA writers
-> (M2), never *from* the claim to the claimer, and the public label stays suppressed until those
-> writers can police it (§5). What this changes: server-side "affiliation validation" cannot be an
+> (deferred to the gateway milestone, §3.4/§3.5), never *from* the claim to the claimer, and the
+> public label stays suppressed until those writers can police it (§5). What this changes: server-side "affiliation validation" cannot be an
 > authoritative check (no authoritative affiliation source exists — involvement is best-effort and
 > self-attested), so attribution is a **self-attested claim**; the server validates that the entity
 > exists and is the right type, and the false-claim risk is mitigated by label suppression + writer
@@ -116,6 +151,12 @@ is an existence/shape check, not an authorization check — affiliation data can
 prove or disprove the claim. (Picker suggestion sources: open question 4.)
 
 ### 2.2 Access decision
+
+**This is the semantic spec for "who can manage an initiative," not a near-term build.** Per §3.4/
+§3.5, the write gate ships at the gateway milestone, not before — and by then the mechanism is
+likely §3.4's idiomatic `crowdfunding_initiative` type rather than the hybrid per-entity flowchart
+below. The flowchart still documents the intended access decision correctly (creator OR entity
+writer, fail-closed, one flat capability); only *how* it's evaluated at runtime may change.
 
 ```mermaid
 flowchart TD
@@ -201,16 +242,52 @@ flowchart LR
 | Literal org ownership (transfer `owner_id` to an org) | Forces CF to answer "who is in the org" — inventing membership. Attribution + FGA-derived access stores one UID instead. |
 
 fga-sync is the canonical enforcement source (it captures committee-derived and inherited grants
-that raw data reads miss), CF already runs in the LFX v2 shared cluster so NATS is reachable in
-principle, and it's the integration every other v2 service uses. Both `project` and `b2b_org`
-live in the same OpenFGA store, so **one integration covers both attribution kinds**.
+that raw data reads miss), CF already runs in the LFX v2 shared cluster, and it's the integration
+every other v2 service uses. Both `project` and `b2b_org` live in the same OpenFGA store, so **one
+integration covers both attribution kinds**.
+
+**"Reachable in principle" is now reachable in fact (2026-08-17).** `FGA_NATS_URL` was set to
+`nats://lfx-platform-nats.lfx.svc.cluster.local:4222` in
+`lfx-v2-argocd/values/global/lfx-crowdfunding-backend.yaml:86` (commit `e882c635`, "set
+FGA_NATS_URL for direct NATS access-check transit") — the same value every other v2 service is
+handed (e.g. `values/dev/lfx-v2-meeting-service.yaml:42-43`), applied globally rather than
+per-environment. DevOps separately confirmed the same day that network-policy connectivity from
+CF's pods to `lfx-platform-nats` is open. What's left is CF-side code, not a platform
+prerequisite: the `NATSResolver` shipped in M1 (`backend/internal/infrastructure/fga/resolver.go`)
+implements only `AccessCheckSubject`/`CanManage` (`lfx.access_check.request`).
+
+**That remaining CF-side work is now deferred, not scheduled for M1.** With the write gate itself
+pushed to the gateway milestone (§3.4, §3.5, §6 open question 8), CF builds no
+`EntityRoleResolver`/NATS access-check integration in M1 — the platform-side prerequisites above
+(`FGA_NATS_URL`, network policy) stay live and cost CF nothing to leave in place, but there is no
+near-term consumer for them.
+
+**Correction (2026-08, architecture team): being outside Heimdall is a provider-side constraint,
+not a consumer-side one.** An earlier version of this doc read "CF sits fully outside Heimdall" as
+"CF cannot reach v2 HTTP APIs" and used that to justify routing the org-picker's name/logo lookup
+through Snowflake instead (§3.3). That conflates two different things. CF's own decisions around
+access control **as a provider** — no gateway routes to attach `openfga_check` rules to — are what
+§3.4 is about, and that section's reasoning is unaffected by this correction. But **as a consumer**,
+CF is no different from any other client, human or machine: the v2 query service is a public API
+behind the gateway, and any caller — including CF's backend — can call it directly over HTTPS. The
+mechanism is not optional but also not a blocker: the query service validates a *Heimdall-minted*
+PS256 JWT against Heimdall's own JWKS (`JWKS_URL: http://lfx-platform-heimdall:4457/.well-known/jwks`
+per its Helm chart), so a caller must go through the gateway to get a token the service accepts —
+which is exactly the normal path for an external consumer, not something CF is locked out of. §3.3
+below now uses this path for both halves of the picker; Snowflake is no longer part of the design.
+
+CF still holds only one outbound platform credential: a private-key-JWT M2M client for the **v1**
+api-gw (`reimbursement_client.go`), audience `https://api-gw.*.platform.linuxfoundation.org/` — not
+an LFX v2 audience, and no RFC 8693 token exchange exists anywhere in the repo. That gap now matters
+only for the **org** half of the picker (§3.3, open question 7): public project lookups need no
+credential at all, but `b2b_org` is indexed non-public and still needs one.
 
 The fga-sync NATS subjects relevant to CF:
 
 | Subject | Use |
 |---|---|
 | `lfx.access_check.request` | Batch yes/no checks; each tuple is `{object_type}:{object_id}#{relation}@{user_type}:{user_id}` (e.g. `project:UID#writer@user:alice`) — the edit-access gate, and the batch-verify half of §5.1 |
-| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type). Evaluated as the picker's candidate source and rejected (§3.3) — direct-only, and eligibility is affiliation anyway |
+| `lfx.access_check.read_tuples` | Returns **all direct** OpenFGA tuples for a (user, object_type) — request `{"user": "user:<lfid>", "object_type": "b2b_org"}`, response `{"results": ["b2b_org:<uid>#writer@user:<lfid>", …]}`. Direct-only, so rejected as the §5.1 `ListForUser` candidate source (same reasoning applies to the query service's `filter_grants=direct`, §3.3). **Not adopted by CF** — the org picker's equivalent need is served by the query service's `filter_grants=direct` instead (§3.3), which returns names/logos in the same call; a `read_tuples` client is not on CF's build list |
 
 One contract detail that isn't obvious from the flow: `access_check.request` replies are
 **unordered** (cached results may return first, per `fga-sync-contract.md`) — callers must
@@ -268,12 +345,16 @@ sequenceDiagram
     participant FE as Fundraise form
     participant API as CF Go API
     participant AF as persona-service (suggestions)
-    participant PS as project / member service
+    participant FS as fga-sync (NATS)
+    participant QS as v2 query service (HTTP, via gateway)
 
     FE->>API: GET attribution options
     API->>AF: lfx.personas-api.get (caller's involvement)
     AF-->>API: candidate project UIDs (best-effort)
-    API->>PS: fetch names/logos for candidate UIDs
+    API->>QS: GET /query/resources?type=project (anonymous)
+    QS-->>API: project names/logos (public only)
+    API->>QS: GET /query/resources?type=b2b_org&filter_grants=direct
+    QS-->>API: caller's directly-granted orgs, with name/logo
     API-->>FE: suggested projects + organizations
     Note over FE: user picks Personal (default),<br/>an org, or a project — no free text
 ```
@@ -281,20 +362,58 @@ sequenceDiagram
 Because the picker is a **suggestion surface, not the gate** (§2.1 architecture ruling — persona
 shapes what you see, permission gates what you do), its candidate source may be best-effort:
 
-- **Projects: persona-service** (`lfx.personas-api.get`, NATS request/reply — reachable from
-  outside Heimdall, same transit posture as C). It aggregates the caller's *involvement*
+- **Projects: persona-service** for candidates (`lfx.personas-api.get`, NATS request/reply —
+  reachable from outside Heimdall, same transit posture as C), **v2 query service** for
+  names/logos and the type-ahead fallback. It aggregates the caller's *involvement*
   (writer/auditor grants, board/committee membership, maintainer detection, mailing lists, meeting
   attendance) and is explicitly **not** an authorization source — acceptable here precisely because
   no access derives from the pick. A type-ahead project search is the fallback for anything the
   best-effort list misses.
-- **Organizations: source still open** (open question 4) — persona-service returns projects and
-  foundations, not `b2b_org`; the likely source is member-service affiliation data.
 
-An FGA-based source was evaluated and rejected twice over: `read_tuples` returns *direct* tuples
-only (an inherited-only writer would never appear), and a `list-objects` subject was ruled out
-platform-wide (§5.1). Names/logos come from project-service / member-service (`PS`); the sources
-return UIDs only. The edit-access check (§3.2) is unaffected — it stays a per-entity
-`access_check`.
+  **Names/logos, and the type-ahead search itself, now resolve through
+  `GET /query/resources?v=1&type=project`** (open question 4, project half — resolved,
+  architecture team, 2026-08). This corrects an earlier premise in this doc (§3.1): CF being
+  outside Heimdall constrains it as a *provider*, not as a *consumer* — any client can call the
+  public v2 query service through the gateway. For `project`, it's better than "reachable": the
+  endpoint runs an anonymous authenticator for public resources, filtering to `public: true` docs
+  and returning `name`/`slug`/`logo_url` with `Cache-Control: public, max-age=300` — **no
+  credential at all**, and the new eligibility rule above (private/formation projects aren't
+  attributable) means the picker never needs to reach past what's public anyway.
+- **Organizations — superseded again (architecture team, 2026-08-25, §3.5): deferred to the
+  gateway milestone, not built for M1.** The design below was resolved as of open question 4's org
+  half, superseding the earlier Snowflake answer — kept here for the reasoning, not as the current
+  plan. `GET /query/resources?v=1&type=b2b_org&filter_grants=direct`, one call for both uids
+  and names/logos. `filter_grants=direct` narrows the query-service search to resources where
+  the authenticated caller has a direct OpenFGA tuple on that object type — any relation, so
+  writers, auditors, and owners all match — and the same response documents already carry `name`
+  and `logo_url` (per `lfx-v2-member-service/docs/indexer-contract.md`; the same fields Self Serve
+  already reads for orgs, `lfx-self-serve/apps/lfx-one/src/server/services/org-role-grants.service.ts:308-325`).
+  This is a single HTTP round trip in place of the two-step NATS-plus-Snowflake design the earlier
+  version of this doc proposed, and it removes the `lfx.access_check.read_tuples` client entirely
+  — nothing in M1 now depends on it (update open question 3 accordingly).
+
+  Unlike `project`, `b2b_org` is indexed non-public
+  (`lfx-v2-member-service/docs/indexer-contract.md`: `public: false`), and `/query/orgs` /
+  `/query/orgs/suggest` have no anonymous authenticator either — so this call needs a credential.
+  ~~Which one is open question 7: try a user-scoped v2 token from the CF backend first (the
+  architecture team's preference); fall back to CF's own M2M client, extended with a second
+  audience, if that proves impractical.~~ **Superseded (§3.5, architecture team, 2026-08-25):**
+  needing a credential at all is the problem, not which credential — see open question 7's
+  resolution. Neither the user-scoped-token nor the M2M path is being built.
+
+  **Known gap, restated (§2.1) — now moot for M1.** `filter_grants=direct` is *direct*-tuples-only
+  — the same property that disqualifies it as the §5.1 `ListForUser` candidate source (§5.1
+  explains why) — so an inherited-only org grant still won't surface here. This gap no longer
+  matters for M1 scope now that the org picker itself is deferred (§3.5); recorded for whoever
+  picks this back up post-migration.
+
+**This closes the picker's project name/logo question — no Heimdall route or NATS subject needed
+for it.** The prior version of this doc routed the org half through Snowflake, believing
+query-service was unreachable from outside Heimdall; that premise was wrong (§3.1). The design
+above was the intended replacement for both halves, but the org half is now deferred to the gateway
+milestone (§3.5) rather than shipped — see §6 open question 4's org bullet and open question 7. The
+edit-access check (§3.2) was never affected by any of this — it stays a per-entity `access_check`
+over the NATS transit confirmed above.
 
 ### 3.4 Considered alternative: an idiomatic `crowdfunding_initiative` FGA type (target state)
 
@@ -308,8 +427,21 @@ return UIDs only. The edit-access check (§3.2) is unaffected — it stays a per
 At the architecture sync, Eric flagged the hybrid's OR-union of per-entity checks (project OR
 b2b_org OR local creator) as **something of an FGA antipattern** — while also noting that the
 fan-out fits a service *outside* the system, a new type is the *inside-the-gateway* pattern, and
-the hybrid is fine **as an initial step until CF is behind the gateway**. That initial-step
-framing is the position this section adopts.
+the hybrid is fine **as an initial step until CF is behind the gateway**.
+
+**Superseded (CF's reading, 2026-08-25 guidance — §3.5, §6 open question 8): that initial-step
+exception no longer stands.** The later guidance's own opening line — permission inheritance from
+LF projects was withheld "until the milestone where it had been converted to an idiomatic v2
+service" — reasserts the constraint July's exception had waived, and does so for `project`, not
+only `b2b_org`. Under that reading there is no interim mechanism: the hybrid does not ship as a
+first step, and the idiomatic `crowdfunding_initiative` type below is the plan for the gateway
+milestone directly, with the write gate absent until then (§2.2, §5). This is CF's interpretation of
+guidance that named org attribution as its concrete case, not a statement architecture has confirmed
+against the project gate specifically — flagged for confirmation at gateway-milestone scoping.
+
+**The type sketch is now proposed** in
+[12-fga-authorization-model.md](./12-fga-authorization-model.md), tracked as
+[lfx-crowdfunding#269](https://github.com/linuxfoundation/lfx-crowdfunding/issues/269).
 
 The idiomatic alternative he proposed: add a `crowdfunding_initiative` type to the platform
 model — `define writer: [user] or writer from project or writer from b2b_org`
@@ -345,14 +477,83 @@ gateway:**
   (per the model-evolution policy in `fga-sync-contract.md`); freezing CF's access model into
   `lfx-v2-helm` before the non-LF-initiative design exists is premature.
 
-**Deferral is cheap by design.** The `EntityRoleResolver` seam is the migration path: when CF
-moves behind the gateway, the resolver's implementation swaps to a single
-`crowdfunding_initiative:{id}#writer@user:{id}` check, CF adds tuple emission plus a one-time
-backfill, and handlers/services don't change. One migration-time design item to note now: tuple
+**Deferral is cheap by design.** The `EntityRoleResolver` seam is the migration path — though with
+the hybrid itself now deferred (above), CF builds this seam *at* the gateway migration rather than
+swapping into it from an already-shipped interim implementation: when CF moves behind the gateway,
+the resolver's implementation is a single `crowdfunding_initiative:{id}#writer@user:{id}` check
+from the start, CF adds tuple emission plus a one-time backfill, and handlers/services are written
+against the seam once. One migration-time design item to note now: tuple
 emission (`update_access`) is asynchronous with no reply, so the migration must define a
 read-after-write/convergence strategy — a create or attribution change is otherwise briefly
 inconsistent with FGA-backed decisions. The model addition and its Heimdall ruleset then
 land together, as the platform contract expects.
+
+**Correction: once the type is proposed, `EntityRoleResolver.CanManage(attrType, entityUID,
+username)` (`backend/internal/infrastructure/fga/resolver.go:43-55`) is not the seam to build
+into — its signature checks one attributed *entity* (project or org), which is exactly the
+per-entity hybrid check §3.4 is deferring, not the idiomatic
+`crowdfunding_initiative:{id}#writer` check proposed in
+[12-fga-authorization-model.md](./12-fga-authorization-model.md). Once Heimdall performs that
+check at the edge, there is no in-backend caller left for a resolver of either shape to serve.
+Treat `resolver.go` as removable at the gateway migration, not as something to extend.
+
+### 3.5 Org attribution deferred to the same milestone (architecture team, 2026-08-25)
+
+**New guidance, broader than §3.4's access-check antipattern alone.** Relayed from the
+architecture team:
+
+> The "hybrid" approach for crowdfunding was predicated on initiatives being fully decoupled from
+> LFX. We didn't bring in the idea of linking to LF projects in a way that could support permission
+> inheritance until the milestone where it had been converted to an idiomatic v2 service. Adding
+> org permissions falls into the same category — it puts authorization decisions (who can set what
+> values on an attribute) into the backend instead of the edge, and it implies some degree of
+> republishing entities, which should otherwise be avoided. I'd recommend that attaching b2b orgs
+> in a permission-aware way wait until the milestone where this is behind the API GW — the
+> authorization decision for setting the property to a given b2b org should be done by the API GW,
+> not the backend service.
+
+This extends §3.4's reasoning (deferred until CF is behind the gateway) from *just the M2
+access-check hybrid* to *the org attribution feature as a whole*, including the parts §3.3
+previously treated as low-risk because they were read-only and not the gate:
+
+- **The M1 org picker's credentialed candidate list is in scope, not exempt.** §3.3 justified the
+  `filter_grants=direct` query-service call and its user-scoped-token-vs-M2M question (open
+  question 7) on the grounds that the picker is "a suggestion surface, not the gate" — no access
+  derives from the pick. This guidance reads that lookup itself as already backend-brokered,
+  FGA-informed decision-making about a `b2b_org` attribute — the "who can set what values on an
+  attribute" the quote calls out — and says it belongs at the edge regardless of whether the pick
+  itself grants access.
+- **Practical result: the credentialed org-picker work is dropped, not merely re-sequenced.**
+  [LFXV2-3322](https://linuxfoundation.atlassian.net/browse/LFXV2-3322) (the Auth0 custom token
+  exchange for a user-scoped v2 token) is **Discarded**, and its implementation,
+  [auth0-terraform PR #366](https://github.com/linuxfoundation/auth0-terraform/pull/366), is
+  **closed without merging** — see §6 open question 7 for why it wouldn't have been reusable
+  post-migration anyway (it bridges an audience mismatch the migration itself removes). CF's
+  M2M-fallback path (a second audience on `reimbursement_client.go`) is dropped for the same reason
+  — it's the same category of backend-brokered decision, just via a service identity instead of a
+  user-scoped one.
+- **Project attribution's M1 scope is unaffected.** The project picker (§3.3) uses persona-service
+  candidates plus an *anonymous* query-service call — no credential, no FGA-brokered lookup, no
+  backend authorization decision about who may see what. Nothing in this guidance's own reasoning
+  reaches it.
+- **Resolved (CF's interpretation, pending architecture confirmation — open question 8): yes, it
+  also revisits project's write gate, not only org's.** The quote's first sentence — permission
+  inheritance from LF projects was withheld "until the milestone where it had been converted to an
+  idiomatic v2 service" — is read here as reasserting that constraint against §3.4's own
+  initial-step exception (which Eric approved for project *and* org alike at the July sync). Under
+  this reading, July's approval is superseded: the hybrid write gate does not ship as an interim
+  step for either entity type, and §3.4's idiomatic type is the plan for the gateway milestone
+  directly (§3.4, §2.2, §5). This is CF's reading, not a statement architecture has made against the
+  project case specifically — the guidance's own example was org attribution — so it stays flagged
+  for confirmation at gateway-milestone scoping rather than treated as settled.
+
+**M1 scope consequence (§5): the org attribution option has no candidate source left for M1.**
+Without a curated, FGA-aware list, offering `organization` attribution would mean either free text
+(rejected outright, §2.1 — "no free text" is an LFXV2-2537 functional requirement) or an
+uncurated/anonymous org list (defeats the affiliation-gate purpose of the picker entirely, and
+`b2b_org` isn't indexed public like `project` — §3.3). **M1 ships `personal` and `project`
+attribution only; `organization` attribution is deferred to the gateway milestone**, not scoped
+down to a lesser M1 mechanism. §5's milestones table and §6's open question 7 reflect this.
 
 ---
 
@@ -394,25 +595,29 @@ until reconciled — correct behavior, not a bug.
 
 ## 5. Milestones
 
-M1 and M3 ship independently (M1 with the public label suppressed — see the coupling note below);
-M2 builds on M1. M3 can move ahead of both.
+M1 and M3 ship independently (M1 with the public label suppressed — see the coupling note below).
+The former M2 scope no longer exists as a separate milestone: per §3.4/§3.5 (CF's reading of the
+2026-08-25 guidance, §6 open question 8), the write gate for either attribution type waits for the
+gateway milestone, so "multi-person management" folds in there instead of following M1 directly. M3
+can move ahead of M1 and the gateway milestone alike.
 
 | # | Scope | Delivers |
 |---|---|---|
-| M1 | **Attribution foundation** — schema (`attributed_to` type + entity UID, plus nullable benefit-project field per resolved OQ1), form step with affiliation pickers (projects: persona-service + type-ahead, §3.3; org source per open question 4), **server-side entity validation** (existence/type, not authorization — §2.1), details-page source label **suppressed until M2** (§5 coupling). No access changes. | Most of LFXV2-2537 |
-| M2 | **Access from attribution** — `access_check` integration, writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages (authorization-aware — entity writers also see unpublished initiatives). | Multi-person management |
+| M1 | **Attribution foundation, `personal` + `project` only (`organization` deferred, §3.5)** — schema (`attributed_to` type + entity UID, plus nullable benefit-project field per resolved OQ1; schema keeps the `organization` enum value so no migration is needed later), form step with affiliation pickers (projects: persona-service candidates + anonymous query-service names/logos + type-ahead, §3.3; ~~orgs: query-service `filter_grants=direct`, one call for uids and names/logos, §3.3 — needs a credential, open question 7~~ **org picker dropped from M1 scope — no FGA-brokered candidate source is being built, §3.5**), **server-side entity validation** (existence/type, not authorization — §2.1; includes the new private/formation-project exclusion), details-page source label **suppressed until the gateway milestone** (§5 coupling). No access changes. | Most of LFXV2-2537 (org half and access deferred) |
+| Gateway milestone | **Everything the write gate touches, for both attribution types, folded into one delivery (§3.4, §3.5, §6 open question 8)** — the idiomatic `crowdfunding_initiative` FGA type (§3.4: tuple emission, backfill, Heimdall `openfga_check` rules), `organization` attribution and its credentialed picker (§3.5, dropped from M1), writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages (authorization-aware — entity writers also see unpublished initiatives), and the access-aware `ListForUser` query plan (§5.1). These were already converging on the same milestone from two directions (org attribution via §3.5, the write gate via §3.4's target state) — this folds the last piece (project's write gate) in alongside them. | Multi-person management, `organization` attribution |
 | M3 | **Org donations cleanup** — `b2b_org` link + partial unique index + upsert, canonical-org picker, dedup | Reconciled org donors |
 
-**M2 must migrate every owner-gated path, not just editing.** Today `owner_id` gates more than
-Update/Delete: `ListForUser` hard-filters `owner_id` (the CF management list), private/unpublished
-initiative reads, owner-scoped transaction reads, and announcement create/update/delete (in
-`AnnouncementService`). If M2 only routes the edit path through the resolver, entity writers get
-inconsistent partial access — e.g. they could edit an initiative but not see it in their list or
-manage its announcements. The "one flat capability" rule requires all of these to move together.
+**The gateway milestone must migrate every owner-gated path, not just editing.** Today `owner_id`
+gates more than Update/Delete: `ListForUser` hard-filters `owner_id` (the CF management list),
+private/unpublished initiative reads, owner-scoped transaction reads, and announcement
+create/update/delete (in `AnnouncementService`). If only the edit path routes through the resolver,
+entity writers get inconsistent partial access — e.g. they could edit an initiative but not see it
+in their list or manage its announcements. The "one flat capability" rule requires all of these to
+move together.
 
-**`ListForUser` needs an access-aware query plan (M2 prerequisite) — see §5.1.** The single-entity
-boolean resolver works for per-initiative gates (edit, read, delete) but not for *discovery*.
-Today `ListForUser` filters `WHERE i.owner_id = $1`, counts, then paginates
+**`ListForUser` needs an access-aware query plan (gateway-milestone prerequisite) — see §5.1.** The
+single-entity boolean resolver works for per-initiative gates (edit, read, delete) but not for
+*discovery*. Today `ListForUser` filters `WHERE i.owner_id = $1`, counts, then paginates
 ([initiative_repository.go:230,261,308](../../internal/infrastructure/db/initiative_repository.go)).
 Extending that to "initiatives I can manage" is not a point check applied per-row — the plan is
 below.
@@ -460,6 +665,13 @@ the existing SQL as a second `WHERE` branch.**
    Service itself uses, needs **no new platform capability**, and is correct by construction: the
    candidate set is a superset of every entity that could put an initiative in the caller's list.
 
+   **This shape may itself be superseded if §3.4's idiomatic `crowdfunding_initiative` type ships
+   directly (§3.4, §6 open question 8).** A single `crowdfunding_initiative:{id}#writer` relation
+   turns "which entities can the caller write" into a question FGA answers about initiatives
+   themselves, which changes the discovery problem this candidate-set-then-batch-check design
+   solves. Kept here as the design for the gateway milestone unless/until the idiomatic type
+   changes the shape of the problem.
+
    **Bounding note:** the batch size grows with the number of *distinct attributed entities across
    CF*, not per-user. At CF's scale that is small; the per-user result is cacheable (short TTL,
    step below), and if the distinct-entity count ever grows past a comfortable batch size, chunk
@@ -480,14 +692,23 @@ Net: the writable-set resolution is one call per list request (cacheable per-use
 mirroring SS's 5-min role cache), not one call per initiative. The SQL change is additive — the
 existing sort, search, and pagination are untouched.
 
-**M1/M2 coupling under affiliation eligibility (now in force).** Eligibility is *affiliation*, not
-*writer* (§2.1). So a standalone M1 would publish an entity's public label for a creator who may
-not be a writer, while the entity's writers can't correct or remove it until M2 grants them
-management. M1 therefore cannot ship the public attribution label alone. **Resolution: ship M1's
-data model and pickers with the public org/project label suppressed until M2** (reflected in the
-M1 row above) — the attribution is captured and validated, just not shown publicly until the
-people who can police it have the tools to. Coupling M1+M2 into one release was the rejected
-alternative; suppression keeps M1 independently shippable.
+**M1/gateway-milestone coupling under affiliation eligibility (now in force).** Eligibility is
+*affiliation*, not *writer* (§2.1). So a standalone M1 would publish an entity's public label for a
+creator who may not be a writer, while the entity's writers can't correct or remove it until the
+gateway milestone grants them management. M1 therefore cannot ship the public attribution label
+alone. **Resolution: ship M1's data model and pickers with the public project label suppressed
+until the gateway milestone** (reflected in the M1 row above) — the attribution is captured and
+validated, just not shown publicly until the people who can police it have the tools to. Coupling
+M1 into one release with that milestone was the rejected alternative; suppression keeps M1
+independently shippable.
+
+**Consequence, stated plainly rather than glossed: this is now a longer wait than originally
+scoped.** The gateway milestone folds in the entire write gate for both attribution types (§5
+table above), not just the org half — so M1's captured-but-suppressed attribution stays invisible
+on the details page for the full duration of that milestone, whatever it turns out to be, not a
+near-term M2 that follows shortly after M1. Accepted knowingly per §3.5's M1-scope consequence
+(`organization` attribution deferred outright) and §6 open question 8's resolution above — not
+revisited here as a separate open question, but flagged so it isn't mistaken for an oversight.
 
 Scope-reduction lever: ship the Project lens page before the Organization lens page (the
 maintainer story is the strongest).
@@ -503,36 +724,142 @@ maintainer story is the strongest).
    API/form validation to settle before M1's form ships — not a migration.
 2. ~~**Eligibility vs. access populations.**~~ **Resolved (PM, 2026-07): affiliation.** A user may
    attribute to any org/project they are *affiliated* with; they need not be a `writer`. Details
-   and consequences: §2.1 and the M1/M2 coupling note in §5.
-3. **Platform onboarding for NATS (transit C).** Transit is decided — Eric and Jordan approved
-   direct NATS (§3.1). Remaining: confirm CF's onboarding to the fga-sync NATS subjects per
-   `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access control is explicitly *not* a prerequisite —
-   a platform-owned operational risk, per Eric's follow-up; §3.1.)
-4. **Candidate enumeration — largely resolved (2026-08); org picker source + gate framing remain.**
-   The shared "enumerate a user's entities" dependency dissolved once the platform ruled FGA
-   enumeration out (ListObjects is an anti-pattern; fga-sync PR #57 being closed — see §5.1):
-   - ~~**M2 writable-set**~~ **Resolved:** CF-local candidates (distinct attributed entities from
-     CF's own `initiatives` table) + one batched `access_check` — no platform work needed (§5.1).
-   - ~~**M1 project picker**~~ **Resolved:** persona-service suggestions + type-ahead fallback
-     (§3.3). Best-effort is acceptable because the picker is a suggestion surface, not the gate.
-   - **Still open (a): the org picker source.** persona-service covers projects/foundations, not
-     `b2b_org` — likely member-service affiliation data; confirm. Scope lever: ship the project
-     picker first (M1 already sequences project-lens ahead of org-lens).
-   - **Still open (b): confirm the gate framing with the architect.** Attribution as a
-     self-attested claim — no access derived from it, entity existence validated server-side,
-     public label suppressed until M2 writer policing (§2.1 ruling note). One-line confirmation
-     from Eric closes this.
-5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
-   platform-admin concept?
+   and consequences: §2.1 and the M1/gateway-milestone coupling note in §5.
+3. ~~**Platform onboarding for NATS (transit C).**~~ **Resolved on the platform side (2026-08-17).**
+   `FGA_NATS_URL` is now set globally (`lfx-v2-argocd/values/global/lfx-crowdfunding-backend.yaml:86`,
+   commit `e882c635`), and DevOps confirmed the same day that network-policy connectivity from CF's
+   pods to `lfx-platform-nats` is open, per `lfx-v2-fga-sync/docs/fga-catalog.md`. (NATS access
+   control is explicitly *not* a prerequisite — a platform-owned operational risk, per Eric's
+   follow-up; §3.1.) **Remaining work is CF-side, not platform-side, and is now smaller than
+   originally scoped — but also deferred, not scheduled for M1:** `resolver.go` only implements
+   `lfx.access_check.request` (`AccessCheckSubject`/`CanManage`), which is all it would need to; the
+   org picker no longer depends on a `lfx.access_check.read_tuples` client (superseded, §3.3: the
+   org picker moved to the v2 query service's `filter_grants=direct`, then dropped from M1 entirely,
+   §3.5). With the write gate itself deferred to the gateway milestone (§3.4, §3.5, open question
+   8), there is no near-term consumer for this resolver work either.
+4. **Candidate enumeration — largely resolved (2026-08); org picker source superseded again, gate
+   framing remains open.** The shared "enumerate a user's entities" dependency dissolved once the
+   platform ruled FGA enumeration out (ListObjects is an anti-pattern; fga-sync PR #57 being closed
+   — see §5.1):
+   - ~~**Gateway-milestone writable-set**~~ **Resolved:** CF-local candidates (distinct attributed
+     entities from CF's own `initiatives` table) + one batched `access_check` — no platform work
+     needed (§5.1). (Originally scoped to "M2"; that milestone folded into the gateway migration,
+     open question 8.)
+   - ~~**M1 project picker**~~ **Resolved (architecture team, 2026-08 — superseding the earlier
+     answer).** persona-service supplies candidates (unchanged); names/logos and type-ahead now
+     come from the v2 query service's `GET /query/resources?type=project`, called **anonymously** —
+     project docs are indexed `public` and the endpoint runs an anonymous authenticator, so no
+     credential or M2M grant is needed at all (§3.3). This corrects the earlier premise that CF
+     couldn't reach v2 HTTP APIs from outside Heimdall (§3.1) — that constraint is provider-side,
+     not consumer-side.
+   - ~~**M1 org picker source**~~ **Deferred (architecture team, 2026-08-25 — supersedes the
+     2026-08 re-resolution below, §3.5).** The org picker itself — not just its credential — is out
+     of M1 scope. `organization` attribution ships once CF is behind the gateway, alongside §3.4's
+     idiomatic type. The 2026-08 answer is kept below for the reasoning it recorded, not as the
+     current plan.
+     <details><summary>2026-08 answer (superseded 2026-08-25, kept for history)</summary>
+
+     `GET /query/resources?v=1&type=b2b_org&filter_grants=direct` — one
+     HTTP call returns the caller's directly-granted org uids *and* their names/logos together
+     (§3.3), replacing the two-part `read_tuples` + Snowflake design entirely: no nightly CronJob,
+     no new CF-local Postgres table, no Snowflake grant request. `b2b_org` is indexed non-public,
+     so this call still needs a credential — tracked as open question 7, not blocking this
+     resolution. Known narrowing, revised: `filter_grants=direct` matches any direct relation
+     (writer, auditor, owner), which is *closer* to the affiliation gate than the earlier
+     writer-only filter — the remaining gap is inherited-only grants (§2.1).
+     </details>
+     <details><summary>Superseded answer (kept for history)</summary>
+
+     `lfx.access_check.read_tuples` (`object_type=b2b_org`, filtered to `#writer`) for UIDs,
+     Snowflake (`ANALYTICS.PLATINUM_LFX_ONE.ORG_LENS_ACCOUNT_CONTEXT`, synced nightly into
+     Postgres) for names/logos — reasoned at the time that this needed no Heimdall route or
+     platform ask, since CF already held Snowflake credentials for `mentorship-sync`. That
+     reasoning rested on the premise (since corrected, §3.1) that CF could not reach v2 HTTP APIs
+     from outside Heimdall.
+     </details>
+   - ~~**New, still open: project name/logo half**~~ **Resolved** by the same v2 query-service
+     answer above — it was the missing half, not a separate dependency.
+   - ~~**Gate framing.**~~ **Resolved (PM, 2026-08).** Attribution stays a self-attested claim — no
+     access derived from it, entity existence validated server-side, public label suppressed until
+     gateway-milestone writer policing (§2.1 ruling note). Both sub-parts raised by architecture review: (i)
+     excluding private/formation projects (§2.1) is confirmed sufficient — no further framing
+     needed beyond the public/private line; (ii) the affiliation-vs-writer gate stands as-is, with
+     `filter_grants=direct` accepted as the practical org-picker source even though it's narrower
+     than affiliation and broader than writer-only. Both are application-level policy, not a schema
+     or migration decision — either can be revisited later without a data migration if the
+     architecture team's formal sign-off (still pending, informational) lands differently.
+   - **Org-picker credential question — see open question 7.** Originally raised here; promoted to
+     a top-level item below once it was resolved, since it no longer depends on the candidate-
+     enumeration framing this item groups.
+5. ~~**`allowedApprovers`.**~~ **Resolved (proposal): fold it into the FGA model.**
+   [12-fga-authorization-model.md](./12-fga-authorization-model.md) proposes an `approver:
+   [team#member]` relation on `crowdfunding_initiative`, stamped at creation, mirroring
+   `b2b_org.global_org_admin` — no separate platform-admin concept needed. Pending architecture
+   sign-off on the type itself.
 6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
    `initiative_announcements` tracks *which* writer made a given change today — `initiatives` has
    no `updated_by`, and `initiative_announcements.created_by` is stamped once at creation and never
    revisited by later `PUT`s, so an announcement edited by a second writer still displays the
-   original author. That's harmless while an initiative has exactly one manager; once M2 lets
-   multiple org/project writers manage the same initiative, "who changed this" becomes answerable
-   only from the last `updated_on` timestamp, not a which-writer record. Decide before M2 ships
-   whether that's acceptable or whether initiatives and announcements need a minimal `updated_by`
-   column (not a full audit/edit-history log unless a real need surfaces). Confirm with PM.
+   original author. That's harmless while an initiative has exactly one manager; once the gateway
+   milestone lets multiple org/project writers manage the same initiative, "who changed this"
+   becomes answerable only from the last `updated_on` timestamp, not a which-writer record. Decide
+   before that milestone ships whether that's acceptable or whether initiatives and announcements
+   need a minimal `updated_by` column (not a full audit/edit-history log unless a real need
+   surfaces). Confirm with PM.
+7. ~~**The credential for the org picker's `filter_grants=direct` call.**~~
+   **Moot (architecture team, 2026-08-25, §3.5): there is no credential to choose, because the
+   org picker isn't being built for M1.** The original framing (below, kept for history) picked
+   between a user-scoped v2 token and an M2M fallback; both are backend-brokered authorization
+   decisions about a `b2b_org` attribute, which is exactly what the 2026-08-25 guidance says
+   belongs at the gateway instead. Consequently:
+   - [LFXV2-3322](https://linuxfoundation.atlassian.net/browse/LFXV2-3322) (Auth0 token-exchange
+     plumbing for the user-scoped path) is **Discarded**, and its implementation,
+     [auth0-terraform PR #366](https://github.com/linuxfoundation/auth0-terraform/pull/366), is
+     **closed without merging**. It wasn't just deferred-and-shelved: the gateway migration
+     removes the audience mismatch it bridges (CF's Auth0-audience tokens vs. Heimdall-audience
+     ones), so there's nothing to resume post-migration either — see the PR's closing comment for
+     the full reasoning.
+   - The M2M fallback (a second audience on `reimbursement_client.go`) was never built and is
+     dropped for the same reason, not picked as the alternative.
+   - [LFXV2-3323](https://linuxfoundation.atlassian.net/browse/LFXV2-3323) (the CF-side consumer
+     of the exchange) is **Discarded** for the same reason. Its implementation,
+     [PR #248](https://github.com/linuxfoundation/lfx-crowdfunding/pull/248), is **closed without
+     merging**; the branch (`feat/lfxv2-3323-org-token-exchange-client`) is kept, not deleted —
+     its query-service client, `Principal.RawToken` plumbing, and org-affiliation handler/service
+     are reusable once CF is gateway-fronted, only the token-exchange client itself is dead.
+
+   <details><summary>Original framing (superseded 2026-08-25, kept for history)</summary>
+
+   The architecture team's preferred order: attempt a user-scoped v2 token from the CF backend
+   first, since CF's frontend already holds a per-user session (LFXV2-2537's premise that "any
+   frontend can call the new LFX API with user-scoped tokens" per the architecture reply);
+   fall back to CF's existing M2M client (extended with a second, v2 audience) if that proves
+   impractical during implementation. Not free either way: CF's BFF currently mints and refreshes
+   an Auth0 token scoped to *CF's own* audience only (`frontend/server/routes/auth/callback.ts:111`,
+   `frontend/server/api/auth/refresh.post.ts:51`, scope `openid profile email offline_access
+   access:me` at `frontend/server/api/auth/login.get.ts:56`) — reaching the v2 API with a
+   user-scoped token needs a second Auth0 authorization or an RFC 8693 exchange, neither of which
+   exists in the repo today. The M2M fallback is comparatively cheap: a second audience on the
+   private-key-JWT client already built for the v1 api-gw (`reimbursement_client.go`), plus an
+   FGA tuple granting `auditor` (or `writer`, per what the picker actually needs) to the M2M
+   client's platform identity, `user:<client_id>@clients` — not a scope, since platform
+   permissions are plain FGA tuples on that principal, not something `PERMISSIONS.md` or an
+   `access:api`-style scope currently encodes.
+   </details>
+8. ~~**New (§3.5): does the 2026-08-25 guidance also revisit project's write gate?**~~ **Resolved
+   (CF's interpretation, pending architecture confirmation — §3.4, §3.5).** The architecture reply
+   names "adding org permissions" as the concrete case, and §3.5 applies that reasoning to *all* of
+   org attribution (M1 picker included, not just the access check). CF reads the same reasoning as
+   reopening the July sync's separate, already-approved decision to ship the hybrid per-entity
+   OR-union check (§2.2, §3.1) as project's *own* write-gate mechanism, even though that approval
+   predated this guidance and wasn't itself about attaching a new attribute — just about which FGA
+   check pattern to use for an entity CF already writes. **Practical effect:** the hybrid does not
+   ship as an interim mechanism for project either; the write gate for both attribution types waits
+   for the gateway milestone, where §3.4's idiomatic `crowdfunding_initiative` type is the plan
+   directly (§5 milestones table — the former M2 folds into that milestone). This is CF's reading of
+   guidance whose stated example was org attribution, not a ruling architecture has made against the
+   project case by name — confirm with architecture before gateway-milestone scoping rather than
+   treating this as settled.
 
 ---
 
