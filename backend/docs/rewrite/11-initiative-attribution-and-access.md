@@ -651,11 +651,11 @@ the existing SQL as a second `WHERE` branch.**
 
    The resolution is to invert the candidate source: **CF's own `initiatives` table bounds the
    candidates.** The only entities that can matter for this list are the distinct
-   `(attributed_to_type, attributed_to_id)` pairs that actually appear on non-personal CF
+   `(attributed_to_type, attributed_to_uid)` pairs that actually appear on non-personal CF
    initiatives — a set bounded by CF's own data, not by the platform's entity universe. So:
 
    ```
-   SELECT DISTINCT attributed_to_type, attributed_to_id
+   SELECT DISTINCT attributed_to_type, attributed_to_uid
      FROM initiatives WHERE attributed_to_type <> 'personal'
    ```
 
@@ -679,9 +679,13 @@ the existing SQL as a second `WHERE` branch.**
 2. **Extend the SQL, don't post-filter.** The writable set becomes a second branch on the existing
    query, matched as **(attribution type, entity UID) pairs** — not bare UIDs — so a writable
    `project` UID can never authorize a `b2b_org`-attributed initiative (or vice versa):
-   `WHERE i.owner_id = $1 OR (i.attributed_to_type, i.attributed_to_id) IN ((…,…), …)`. Count and
-   `LIMIT/OFFSET` pagination then work unchanged — totals and page sizes stay correct because the
-   filter is applied *in* the query, not after it.
+   `WHERE (i.owner_id = $1 OR (i.attributed_to_type, i.attributed_to_uid) IN ((…,…), …))`. The
+   union must be parenthesized as one group — `InitiativeRepository.List`
+   (`backend/internal/infrastructure/db/initiative_repository.go:228-259`) builds its `WHERE`
+   clause by appending each subsequent filter with a bare `AND`, so an unparenthesized `OR` lets
+   owner-owned rows bypass the status/type/search filters entirely. Count and `LIMIT/OFFSET`
+   pagination then work unchanged — totals and page sizes stay correct because the filter is
+   applied *in* the query, not after it.
 3. **Bound the set.** If a caller writes an unusually large number of entities, keep the filter
    database-side: pass the set as an array parameter (`= ANY($n::uuid[])` per attribution type)
    or a joined temporary relation instead of an inline `IN` list, so sort, count, and pagination
