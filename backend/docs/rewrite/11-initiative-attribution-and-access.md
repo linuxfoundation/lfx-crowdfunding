@@ -797,11 +797,11 @@ maintainer story is the strongest).
    - **Org-picker credential question — see open question 7.** Originally raised here; promoted to
      a top-level item below once it was resolved, since it no longer depends on the candidate-
      enumeration framing this item groups.
-5. ~~**`allowedApprovers`.**~~ **Resolved (proposal): fold it into the FGA model.**
-   [12-fga-authorization-model.md](./12-fga-authorization-model.md) proposes an `approver:
-   [team#member]` relation on `crowdfunding_initiative`, stamped at creation, mirroring
-   `b2b_org.global_org_admin` — no separate platform-admin concept needed. Pending architecture
-   sign-off on the type itself.
+5. **`allowedApprovers`. Resolved (PM, 2026-09-01): keep the env var allowlist.**
+   [12-fga-authorization-model.md](./12-fga-authorization-model.md) had proposed folding this into
+   the FGA model as an `approver: [team#member]` relation, mirroring `b2b_org.global_org_admin`.
+   PM decided against migrating it — `ALLOWED_APPROVERS` stays as-is, unaffected by the
+   `crowdfunding_initiative` type.
 6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
    `initiative_announcements` tracks *which* writer made a given change today — `initiatives` has
    no `updated_by`, and `initiative_announcements.created_by` is stamped once at creation and never
