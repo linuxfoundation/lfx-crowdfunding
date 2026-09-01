@@ -439,6 +439,10 @@ milestone directly, with the write gate absent until then (§2.2, §5). This is 
 guidance that named org attribution as its concrete case, not a statement architecture has confirmed
 against the project gate specifically — flagged for confirmation at gateway-milestone scoping.
 
+**The type sketch is now proposed** in
+[12-fga-authorization-model.md](./12-fga-authorization-model.md), tracked as
+[lfx-crowdfunding#269](https://github.com/linuxfoundation/lfx-crowdfunding/issues/269).
+
 The idiomatic alternative he proposed: add a `crowdfunding_initiative` type to the platform
 model — `define writer: [user] or writer from project or writer from b2b_org`
 (`project_membership` in `model.yaml` is an existing precedent for the shape) — have CF emit
@@ -483,6 +487,15 @@ emission (`update_access`) is asynchronous with no reply, so the migration must 
 read-after-write/convergence strategy — a create or attribution change is otherwise briefly
 inconsistent with FGA-backed decisions. The model addition and its Heimdall ruleset then
 land together, as the platform contract expects.
+
+**Correction: once the type is proposed, `EntityRoleResolver.CanManage(attrType, entityUID,
+username)` (`backend/internal/infrastructure/fga/resolver.go:43-55`) is not the seam to build
+into — its signature checks one attributed *entity* (project or org), which is exactly the
+per-entity hybrid check §3.4 is deferring, not the idiomatic
+`crowdfunding_initiative:{id}#writer` check proposed in
+[12-fga-authorization-model.md](./12-fga-authorization-model.md). Once Heimdall performs that
+check at the edge, there is no in-backend caller left for a resolver of either shape to serve.
+Treat `resolver.go` as removable at the gateway migration, not as something to extend.
 
 ### 3.5 Org attribution deferred to the same milestone (architecture team, 2026-08-25)
 
@@ -778,8 +791,11 @@ maintainer story is the strongest).
    - **Org-picker credential question — see open question 7.** Originally raised here; promoted to
      a top-level item below once it was resolved, since it no longer depends on the candidate-
      enumeration framing this item groups.
-5. **`allowedApprovers`.** Fold the env-var allowlist into the new model, or keep it as a separate
-   platform-admin concept?
+5. ~~**`allowedApprovers`.**~~ **Resolved (proposal): fold it into the FGA model.**
+   [12-fga-authorization-model.md](./12-fga-authorization-model.md) proposes an `approver:
+   [team#member]` relation on `crowdfunding_initiative`, stamped at creation, mirroring
+   `b2b_org.global_org_admin` — no separate platform-admin concept needed. Pending architecture
+   sign-off on the type itself.
 6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
    `initiative_announcements` tracks *which* writer made a given change today — `initiatives` has
    no `updated_by`, and `initiative_announcements.created_by` is stamped once at creation and never
