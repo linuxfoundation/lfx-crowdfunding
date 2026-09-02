@@ -1,18 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import type { AttributionData, AttributionKind } from '~/types/fundraise.types';
-
-export interface AttributionOption {
-  value: AttributionKind;
-  label: string;
-  description: string;
-  // Label of the select field revealed when this option is chosen — unused for 'personal'.
-  entityLabel?: string;
-  // Shown instead of the select when the user has no candidates for this kind.
-  emptyMessage?: string;
-  escapeHatchLabel?: string;
-}
+import type { AttributionData, AttributionOption } from '~/types/fundraise.types';
 
 export const ATTRIBUTION_OPTIONS: AttributionOption[] = [
   {
@@ -31,7 +20,7 @@ export const ATTRIBUTION_OPTIONS: AttributionOption[] = [
   {
     value: 'project',
     label: 'Project/Foundation',
-    description: 'For a fundraiser sponsored for a project or foundation you participate in.',
+    description: 'For a fundraiser sponsored by a project or foundation you participate in.',
     entityLabel: 'Select Project/Foundation',
     emptyMessage: "You aren't affiliated with any project or foundation yet.",
     escapeHatchLabel: "Can't find your Project or Foundation? Manage",

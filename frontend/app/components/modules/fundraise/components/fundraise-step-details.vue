@@ -338,6 +338,16 @@ watch(
   },
 );
 
+// Feature flags update live. If attribution turns off mid-flow the current step can sit past the
+// shortened wizard (advance() would then increment forever) and a hidden selection would still submit.
+watch(showAttribution, (enabled) => {
+  if (enabled) return;
+  subStep.value = Math.min(subStep.value, totalSubSteps.value - 1);
+  for (const form of [projectForm, securityAuditForm, generalFundForm, eventForm]) {
+    form.value.attribution = createDefaultAttribution();
+  }
+});
+
 const advance = () => {
   if (!isLastSubStep.value) subStep.value++;
 };

@@ -26,6 +26,8 @@ const mockFetch = vi.fn();
 globalThis.$fetch = mockFetch as typeof $fetch;
 
 import { useFundraiseSubmit } from './useFundraiseSubmit';
+import { createDefaultDonationOptions } from '~/components/modules/fundraise/config/donation-options.config';
+import type { AttributionData, GeneralFundFormData } from '~/types/fundraise.types';
 
 // Minimal valid form data per initiative type.
 const projectForms = {
@@ -266,7 +268,7 @@ describe('useFundraiseSubmit', () => {
       mockFetch.mockResolvedValue(undefined);
     });
 
-    const generalFundForm = (attribution: { kind: string; entityId: string | null }) => ({
+    const generalFundForm = (attribution: AttributionData): GeneralFundFormData => ({
       name: 'General Fund',
       elevatorPitch: '',
       topics: [],
@@ -274,14 +276,15 @@ describe('useFundraiseSubmit', () => {
       logoUrl: '',
       beneficiaries: [],
       annualFundingGoal: '100000',
+      donationOptions: createDefaultDonationOptions(),
+      compliance: { ofacConfirmed: false, termsAccepted: false },
       attribution,
     });
 
     it('omits attribution when kind is personal', async () => {
       const { submitFundraise } = useFundraiseSubmit();
       await submitFundraise('general_fund', {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        generalFundForm: generalFundForm({ kind: 'personal', entityId: null }) as any,
+        generalFundForm: generalFundForm({ kind: 'personal', entityId: null }),
       });
 
       const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;
@@ -291,8 +294,7 @@ describe('useFundraiseSubmit', () => {
     it('sends kind + entityId when attributed to an organization', async () => {
       const { submitFundraise } = useFundraiseSubmit();
       await submitFundraise('general_fund', {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        generalFundForm: generalFundForm({ kind: 'organization', entityId: 'org-1' }) as any,
+        generalFundForm: generalFundForm({ kind: 'organization', entityId: 'org-1' }),
       });
 
       const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;
@@ -302,8 +304,7 @@ describe('useFundraiseSubmit', () => {
     it('omits attribution when a non-personal kind has no entityId selected', async () => {
       const { submitFundraise } = useFundraiseSubmit();
       await submitFundraise('general_fund', {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        generalFundForm: generalFundForm({ kind: 'project', entityId: null }) as any,
+        generalFundForm: generalFundForm({ kind: 'project', entityId: null }),
       });
 
       const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;

@@ -68,6 +68,17 @@ export interface AttributionData {
   entityId: string | null;
 }
 
+export interface AttributionOption {
+  value: AttributionKind;
+  label: string;
+  description: string;
+  // Label of the select field revealed when this option is chosen — unused for 'personal'.
+  entityLabel?: string;
+  // Shown instead of the select when the user has no candidates for this kind.
+  emptyMessage?: string;
+  escapeHatchLabel?: string;
+}
+
 export type SponsorshipTierName = 'platinum' | 'gold' | 'silver' | 'bronze';
 
 export interface SponsorshipTierConfig {

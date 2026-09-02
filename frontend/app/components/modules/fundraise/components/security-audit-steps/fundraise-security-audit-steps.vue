@@ -44,6 +44,7 @@ import FundraiseStepIndicator from '../main/fundraise-step-indicator.vue';
 import FundraiseComplianceStep from '../main/fundraise-compliance-step.vue';
 import FundraiseDonationOptionsStep from '../main/fundraise-donation-options-step.vue';
 import FundraiseAttributionStep from '../main/fundraise-attribution-step.vue';
+import { STANDARD_STEPS, STANDARD_STEPS_WITH_ATTRIBUTION } from '../../config/fundraise-steps.config';
 import FundraiseSecurityAuditDetailsStep from './fundraise-security-audit-details-step.vue';
 import type { SecurityAuditFormData } from '~/types/fundraise.types';
 
@@ -58,11 +59,7 @@ const attributionStepIndex = donationOptionsStepIndex + 1;
 const complianceStepIndex = computed(() =>
   props.showAttribution ? attributionStepIndex + 1 : donationOptionsStepIndex + 1,
 );
-const STEPS = computed(() =>
-  props.showAttribution
-    ? ['Initiative details', 'Donation options', 'Attribution', 'Compliance & Terms']
-    : ['Initiative details', 'Donation options', 'Compliance & Terms'],
-);
+const STEPS = computed(() => (props.showAttribution ? STANDARD_STEPS_WITH_ATTRIBUTION : STANDARD_STEPS));
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: SecurityAuditFormData): void;

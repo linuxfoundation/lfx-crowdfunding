@@ -62,6 +62,12 @@ import FundraiseStepIndicator from '../main/fundraise-step-indicator.vue';
 import FundraiseComplianceStep from '../main/fundraise-compliance-step.vue';
 import FundraiseDonationOptionsStep from '../main/fundraise-donation-options-step.vue';
 import FundraiseAttributionStep from '../main/fundraise-attribution-step.vue';
+import {
+  PROJECT_STEPS,
+  PROJECT_STEPS_WITH_ATTRIBUTION,
+  PROJECT_GITHUB_STEPS,
+  PROJECT_GITHUB_STEPS_WITH_ATTRIBUTION,
+} from '../../config/fundraise-steps.config';
 import FundraiseProjectHostingStep from './fundraise-project-hosting-step.vue';
 import FundraiseProjectGithubStep from './github-sub-steps/fundraise-project-github-step.vue';
 import FundraiseProjectDetailsStep from './details/fundraise-project-details-step.vue';
@@ -85,11 +91,10 @@ const complianceStepIndex = computed(() =>
 );
 
 const steps = computed(() => {
-  const base =
-    props.modelValue.hostingType === 'github'
-      ? ['Project hosting', 'Connect GitHub', 'Initiative details', 'Donation options']
-      : ['Project hosting', 'Initiative details', 'Donation options'];
-  return props.showAttribution ? [...base, 'Attribution', 'Compliance & Terms'] : [...base, 'Compliance & Terms'];
+  if (props.modelValue.hostingType === 'github') {
+    return props.showAttribution ? PROJECT_GITHUB_STEPS_WITH_ATTRIBUTION : PROJECT_GITHUB_STEPS;
+  }
+  return props.showAttribution ? PROJECT_STEPS_WITH_ATTRIBUTION : PROJECT_STEPS;
 });
 </script>
 

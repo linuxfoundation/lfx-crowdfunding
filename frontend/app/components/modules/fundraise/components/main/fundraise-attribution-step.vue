@@ -100,12 +100,11 @@ SPDX-License-Identifier: MIT
 <script setup lang="ts">
 import { computed } from 'vue';
 import { ATTRIBUTION_OPTIONS, AFFILIATIONS_MANAGEMENT_PATH } from '../../config/attribution.config';
-import type { AttributionOption } from '../../config/attribution.config';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
-import type { AttributionData, AttributionKind } from '~/types/fundraise.types';
+import type { AttributionData, AttributionKind, AttributionOption } from '~/types/fundraise.types';
 import type { AffiliationEntity } from '#shared/types/affiliation.types';
 
 const props = defineProps<{
@@ -134,9 +133,13 @@ const isDisabled = (kind: AttributionKind): boolean =>
 
 // While the fetch is idle/pending we don't yet know if the user has
 // affiliations, so show a loading line instead of the "you aren't
-// affiliated" message.
-const disabledMessage = (option: AttributionOption): string | undefined =>
-  status.value === 'success' ? option.emptyMessage : 'Loading your affiliations…';
+// affiliated" message. A failed fetch gets its own message so it doesn't
+// look like a stuck loading state.
+const disabledMessage = (option: AttributionOption): string | undefined => {
+  if (status.value === 'success') return option.emptyMessage;
+  if (status.value === 'error') return "We couldn't load your affiliations — refresh and try again.";
+  return 'Loading your affiliations…';
+};
 
 const affiliationsManagementUrl = computed(
   () => `${useRuntimeConfig().public.selfServeUrl}${AFFILIATIONS_MANAGEMENT_PATH}`,
