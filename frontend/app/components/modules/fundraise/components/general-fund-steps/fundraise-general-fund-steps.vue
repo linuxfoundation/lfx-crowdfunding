@@ -20,12 +20,17 @@ SPDX-License-Identifier: MIT
         @update:model-value="emit('update:modelValue', $event)"
       />
       <fundraise-donation-options-step
-        v-else-if="currentStep === 1"
+        v-else-if="currentStep === donationOptionsStepIndex"
         :model-value="modelValue.donationOptions"
         @update:model-value="emit('update:modelValue', { ...modelValue, donationOptions: $event })"
       />
+      <fundraise-attribution-step
+        v-else-if="props.showAttribution && currentStep === attributionStepIndex"
+        :model-value="modelValue.attribution"
+        @update:model-value="emit('update:modelValue', { ...modelValue, attribution: $event })"
+      />
       <fundraise-compliance-step
-        v-else-if="currentStep === 2"
+        v-else-if="currentStep === complianceStepIndex"
         :model-value="modelValue.compliance"
         @update:model-value="emit('update:modelValue', { ...modelValue, compliance: $event })"
       />
@@ -34,18 +39,27 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import FundraiseStepIndicator from '../main/fundraise-step-indicator.vue';
 import FundraiseComplianceStep from '../main/fundraise-compliance-step.vue';
 import FundraiseDonationOptionsStep from '../main/fundraise-donation-options-step.vue';
+import FundraiseAttributionStep from '../main/fundraise-attribution-step.vue';
+import { STANDARD_STEPS, STANDARD_STEPS_WITH_ATTRIBUTION } from '../../config/fundraise-steps.config';
 import FundraiseGeneralFundDetailsStep from './fundraise-general-fund-details-step.vue';
 import type { GeneralFundFormData } from '~/types/fundraise.types';
 
-const STEPS = ['Initiative details', 'Donation options', 'Compliance & Terms'];
-
-defineProps<{
+const props = defineProps<{
   currentStep: number;
   modelValue: GeneralFundFormData;
+  showAttribution: boolean;
 }>();
+
+const donationOptionsStepIndex = 1;
+const attributionStepIndex = donationOptionsStepIndex + 1;
+const complianceStepIndex = computed(() =>
+  props.showAttribution ? attributionStepIndex + 1 : donationOptionsStepIndex + 1,
+);
+const STEPS = computed(() => (props.showAttribution ? STANDARD_STEPS_WITH_ATTRIBUTION : STANDARD_STEPS));
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: GeneralFundFormData): void;

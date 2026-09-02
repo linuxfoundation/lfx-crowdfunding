@@ -2,7 +2,7 @@
 title: Create an Initiative
 description: How to create a fundraising initiative for your open source project or event on LFX Crowdfunding.
 tags: [initiatives, create, fundraising, project, event]
-last_updated: 2026-06-17
+last_updated: 2026-09-02
 display_order: 2
 intercom_collection: LFX Crowdfunding
 ---
@@ -15,9 +15,9 @@ Your project must be related to or affiliated with the Linux Foundation. If you 
 
 ## Starting the form
 
-Click **Start a Fundraiser** in the header navigation to open the creation form. The form walks you through a series of steps.
+Click **Start a Fundraiser** in the header navigation to open the creation form. The form walks you through a series of steps; the exact sequence depends on your initiative type — project initiatives add extra hosting/GitHub steps, and a donation options step (setting sponsorship tiers or accepting open amounts) precedes attribution.
 
-### Step 1 — Choose an initiative type
+### Choose an initiative type
 
 ![Initiative type selection](/images/docs/fundraising-type-select.png)
 
@@ -30,7 +30,7 @@ Select the type that best describes your initiative:
 | **Event** | A conference, meetup, or community event |
 | **General Fund** | General-purpose fundraising not tied to a specific project or event |
 
-### Step 2 — Initiative details
+### Initiative details
 
 Fill in the details for your initiative. Fields vary by type, but all types ask for:
 
@@ -59,7 +59,17 @@ Fill in the details for your initiative. Fields vary by type, but all types ask 
 
 ![Initiative details form](/images/docs/fundraising-details-form.png)
 
-### Step 3 — Compliance and terms
+### Attribution
+
+Choose who this initiative is being created on behalf of:
+
+- **Personal** — the initiative is attributed to you. This is the default.
+- **On behalf of an organization** — attribute the initiative to a company or organization you're affiliated with.
+- **On behalf of a project or foundation** — attribute the initiative to an LF project or foundation you participate in.
+
+If you choose an organization or project, pick it from the list — only entities you're already affiliated with are shown; you can't type in an entity by hand. If you have no affiliations of that kind yet, that option is disabled with a short explanation, and a link takes you to **Work History & Affiliations** to add one before continuing.
+
+### Compliance and terms
 
 ![Compliance and terms step](/images/docs/screenshots/initiatives/create-initiative-compliance.png)
 

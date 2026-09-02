@@ -36,7 +36,7 @@ export default defineEventHandler(async (event): Promise<FundraiseResult> => {
   };
 });
 
-function buildBackendPayload(payload: FundraisePayload): Record<string, unknown> {
+export function buildBackendPayload(payload: FundraisePayload): Record<string, unknown> {
   const base = {
     initiative_type: payload.initiativeType,
     name: payload.name,
@@ -48,6 +48,9 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     // — shape matches the agreed API once it lands.
     donation_mode: payload.donationOptions?.mode,
     sponsorship_tiers: buildSponsorshipTiers(payload.donationOptions),
+    attribution: payload.attribution
+      ? { type: payload.attribution.kind, entity_uid: payload.attribution.entityId }
+      : undefined,
   };
 
   switch (payload.initiativeType) {
