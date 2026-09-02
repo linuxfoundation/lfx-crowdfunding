@@ -53,6 +53,11 @@ type JWTConfig struct {
 	Audience  string
 	Issuer    string
 	ClockSkew time.Duration
+	// Heimdall* enable dual-accept of Heimdall-shaped JWTs alongside Auth0
+	// (LFXV2-3351). All three must be set together, or all left empty.
+	HeimdallJWKSURL  string
+	HeimdallAudience string
+	HeimdallIssuer   string
 }
 
 // StripeConfig holds Stripe API settings.
@@ -196,6 +201,11 @@ func LoadConfig() (*Config, error) {
 	if !ok || jwtIssuer == "" {
 		return nil, fmt.Errorf("JWT_ISSUER is required")
 	}
+	// Heimdall dual-accept (LFXV2-3351) is opt-in and all-or-nothing; the
+	// auth package itself enforces the all-or-nothing invariant.
+	heimdallJWKSURL := getEnv("HEIMDALL_JWKS_URL", "")
+	heimdallAudience := getEnv("HEIMDALL_JWT_AUDIENCE", "")
+	heimdallIssuer := getEnv("HEIMDALL_JWT_ISSUER", "")
 	stripeKey := getEnv("STRIPE_SECRET_KEY", "")
 	if stripeKey == "" {
 		return nil, fmt.Errorf("STRIPE_SECRET_KEY is required")
@@ -297,10 +307,13 @@ func LoadConfig() (*Config, error) {
 			ConnMaxLifetime: connMaxLifetime,
 		},
 		JWT: JWTConfig{
-			JWKSURL:   jwksURL,
-			Audience:  jwtAudience,
-			Issuer:    jwtIssuer,
-			ClockSkew: auth.DefaultClockSkew,
+			JWKSURL:          jwksURL,
+			Audience:         jwtAudience,
+			Issuer:           jwtIssuer,
+			ClockSkew:        auth.DefaultClockSkew,
+			HeimdallJWKSURL:  heimdallJWKSURL,
+			HeimdallAudience: heimdallAudience,
+			HeimdallIssuer:   heimdallIssuer,
 		},
 		Stripe: StripeConfig{
 			SecretKey:                stripeKey,
