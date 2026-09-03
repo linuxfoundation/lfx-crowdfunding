@@ -14,3 +14,12 @@ AVD-KSV-01010
 # is an indirect dependency only; no code imports openpgp (or any x/crypto
 # subpackage). No fixed version exists — the package is permanently deprecated.
 GO-2026-5932
+
+# GHSA-cp6q-959q-f8rh / @tiptap/core mergeAttributes prototype pollution:
+# tiptap is only pulled in as an unmet optional peer of @nuxt/ui, itself a
+# transitive dep of the nuxt-site-config devtools layer (from @nuxtjs/sitemap
+# and @nuxtjs/robots). No app code imports @tiptap or renders a rich-text
+# editor, so the vulnerable mergeAttributes() path is never reached. Bumping
+# it clean requires forcing pnpm to re-resolve the whole @nuxt/ui peer tree,
+# which rewrites most of pnpm-lock.yaml for a package that isn't used.
+GHSA-cp6q-959q-f8rh
