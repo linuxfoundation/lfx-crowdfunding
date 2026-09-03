@@ -40,7 +40,10 @@ SPDX-License-Identifier: MIT
                 :is-loading-more-donations="donationsIsFetchingNextPage"
                 :expense-records="expenseRecords"
                 :is-loading-expenses="expensesLoading"
+                :has-more-expenses="expensesHasNextPage"
+                :is-loading-more-expenses="expensesIsFetchingNextPage"
                 @load-more-donations="donationsFetchNextPage"
+                @load-more-expenses="expensesFetchNextPage"
               />
               <initiative-detail-announcements
                 v-else-if="activeTab === 'announcements'"
@@ -117,7 +120,13 @@ const {
   computed(() => props.initiativeSlug),
   'donations',
 );
-const { data: expenseData, isLoading: expensesLoading } = useInitiativeTransactions(
+const {
+  data: expenseData,
+  isLoading: expensesLoading,
+  hasNextPage: expensesHasNextPage,
+  isFetchingNextPage: expensesIsFetchingNextPage,
+  fetchNextPage: expensesFetchNextPage,
+} = useInitiativeTransactions(
   computed(() => props.initiativeSlug),
   'expenses',
   10,
