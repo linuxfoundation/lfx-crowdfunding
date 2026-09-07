@@ -5,6 +5,7 @@ packages:
   - "."
 
 overrides:
+  "@nuxt/ui": "4.11.1"
   "@tiptap/core": ">=3.30.4"
   dompurify: ">=3.4.13"
   immutable: ">=5.1.8"
