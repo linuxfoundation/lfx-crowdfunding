@@ -442,6 +442,36 @@ func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Req
 	}
 
 	subscriptionOnly := r.URL.Query().Get("subscriptionOnly") == "true"
+	categoryType := strings.TrimSpace(r.URL.Query().Get("categoryType"))
+
+	if categoryType != "" {
+		if ledgerTxnType == "reimbursement" {
+			Error(w, fmt.Errorf("%w: categoryType is only supported for donations", domain.ErrInvalidInput))
+			return
+		}
+		categorized, err := h.svc.GetCategoryTransactions(r.Context(), initiativeID, categoryType, subscriptionOnly, limit, offset)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+
+		body, err := json.Marshal(categorized)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		etag := etagOf(body)
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("Cache-Control", cacheControl)
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		return
+	}
 
 	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, subscriptionOnly, limit, offset)
 	if err != nil {

@@ -598,6 +598,46 @@ func TestGetTransactions_SubscriptionOnly_ForwardsFlag(t *testing.T) {
 	}
 }
 
+func TestGetTransactions_CategoryType_ReturnsCategorizedResponse(t *testing.T) {
+	initiativeID := "77777779-7777-7777-7777-777777777777"
+	capture := &filterCapturingLedger{
+		list: &models.TransactionList{
+			Data: []models.Transaction{
+				{ID: "org-1", AmountCents: 1200, Category: "Mentorship", DonorType: "organization"},
+				{ID: "ind-1", AmountCents: 900, Category: "Mentorship", DonorType: "individual"},
+			},
+			TotalCount: 2,
+			Limit:      10,
+			Offset:     0,
+		},
+	}
+	repo := &initiativeRepo{
+		initiative: &models.Initiative{ID: initiativeID, Status: models.StatusPublished},
+	}
+	svc := service.NewInitiativeService(repo, &initiativeUserRepo{}, capture, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
+	h := NewInitiativeHandler(svc, nil, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?categoryType=mentorship", nil)
+	req = withURLParam(req, "id", initiativeID)
+	w := httptest.NewRecorder()
+	h.GetTransactions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if capture.lastFilter.TxnCategory != "Mentorship" {
+		t.Errorf("TxnCategory in filter = %q, want %q", capture.lastFilter.TxnCategory, "Mentorship")
+	}
+
+	var got models.CategorizedTransactions
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode categorized response: %v", err)
+	}
+	if len(got.OrganizationTransactions) != 1 || len(got.IndividualTransactions) != 1 {
+		t.Fatalf("unexpected grouped lengths: org=%d individual=%d", len(got.OrganizationTransactions), len(got.IndividualTransactions))
+	}
+}
+
 func TestGetTransactions_NotPublished_Returns404(t *testing.T) {
 	initiativeID := "88888888-8888-8888-8888-888888888888"
 	repo := &initiativeRepo{

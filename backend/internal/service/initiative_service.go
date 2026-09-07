@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -1005,12 +1006,26 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 		return nil, err
 	}
 
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
+		if ini, ok := initiatives[initiativeID]; ok {
+			for i := range list.Data {
+				list.Data[i].InitiativeName = ini.Name
+			}
+		}
+	}
+
 	out := &models.CategorizedTransactions{}
+	fullPageLen := len(list.Data)
+	hasMorePages := list.TotalCount > offset+fullPageLen
+	dropped := 0
 	for _, txn := range list.Data {
 		if txn.AmountCents <= 0 {
+			dropped++
 			continue
 		}
 		if categoryType != "" && !strings.EqualFold(strings.TrimSpace(txn.Category), categoryType) && !strings.EqualFold(strings.TrimSpace(txn.Category), ledgerCategory) {
+			dropped++
 			continue
 		}
 		if txn.DonorType == "organization" {
@@ -1019,6 +1034,19 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 		}
 		out.IndividualTransactions = append(out.IndividualTransactions, txn)
 	}
+
+	kept := len(out.OrganizationTransactions) + len(out.IndividualTransactions)
+	adjusted := list.TotalCount - dropped
+	minTotal := offset + kept
+	if hasMorePages && kept == 0 {
+		minTotal = offset + limit + 1
+	}
+	if adjusted < minTotal {
+		adjusted = minTotal
+	}
+	out.TotalCount = adjusted
+	out.Limit = limit
+	out.Offset = offset
 
 	return out, nil
 }
@@ -1033,7 +1061,11 @@ func normalizeLedgerTxnCategory(categoryType string) string {
 		if word == "" {
 			continue
 		}
-		words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+		r, size := utf8.DecodeRuneInString(word)
+		if r == utf8.RuneError && size == 0 {
+			continue
+		}
+		words[i] = string(unicode.ToUpper(r)) + word[size:]
 	}
 	return strings.Join(words, "")
 }

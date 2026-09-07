@@ -39,4 +39,7 @@ type TransactionList struct {
 type CategorizedTransactions struct {
 	IndividualTransactions   []Transaction `json:"individual_transactions"`
 	OrganizationTransactions []Transaction `json:"organization_transactions"`
+	TotalCount               int           `json:"total_count"`
+	Limit                    int           `json:"limit"`
+	Offset                   int           `json:"offset"`
 }

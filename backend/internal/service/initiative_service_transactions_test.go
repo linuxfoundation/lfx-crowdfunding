@@ -307,6 +307,32 @@ func TestGetCategoryTransactions_SplitsByDonorTypeAndCategory(t *testing.T) {
 	if list.IndividualTransactions[0].ID != "ind-1" {
 		t.Errorf("individual txn ID = %q, want ind-1", list.IndividualTransactions[0].ID)
 	}
+	if list.TotalCount != 2 {
+		t.Errorf("TotalCount = %d, want 2", list.TotalCount)
+	}
+	if list.Limit != 10 {
+		t.Errorf("Limit = %d, want 10", list.Limit)
+	}
+	if list.Offset != 0 {
+		t.Errorf("Offset = %d, want 0", list.Offset)
+	}
+}
+
+func TestNormalizeLedgerTxnCategory_PreservesCamelCaseAndUnicode(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"mentorship": "Mentorship",
+		"bugBounty":  "BugBounty",
+		"Éducation":  "Éducation",
+	}
+
+	for in, want := range tests {
+		got := normalizeLedgerTxnCategory(in)
+		if got != want {
+			t.Errorf("normalizeLedgerTxnCategory(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 // ── GetAllMyTransactions ──────────────────────────────────────────────────────
