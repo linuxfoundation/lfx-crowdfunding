@@ -5,6 +5,7 @@ packages:
   - "."
 
 overrides:
+  "@tiptap/core": ">=3.30.4"
   dompurify: ">=3.4.13"
   immutable: ">=5.1.8"
   svgo: ">=4.0.2"
