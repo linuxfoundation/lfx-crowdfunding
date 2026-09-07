@@ -11,18 +11,20 @@ Initiatives are fundraising campaigns created by open source projects, events, a
 
 ## Initiative types
 
-| Type | Description |
-|------|-------------|
-| **Project** | An open source software project seeking ongoing community funding |
-| **Security Audit** | A project seeking funds for a third-party security audit |
-| **Event** | A conference, meetup, or community event |
-| **General Fund** | General-purpose fundraising not tied to a specific project or event |
+| Type               | Description                                                         |
+| ------------------ | ------------------------------------------------------------------- |
+| **Project**        | An open source software project seeking ongoing community funding   |
+| **Security Audit** | A project seeking funds for a third-party security audit            |
+| **Event**          | A conference, meetup, or community event                            |
+| **General Fund**   | General-purpose fundraising not tied to a specific project or event |
 
 ## In this section
 
 - [Browsing Initiatives](./browsing-initiatives/) — find and explore active campaigns
 - [Create an Initiative](./create-initiative/) — start a fundraiser for your project or event
 - [Manage Your Initiative](./manage-initiative/) — update details and track financial reporting
+- [Initiative Announcements](./announcements/) — post updates for your backers
+- [Sponsorship Tiers](./sponsorship-tiers/) — offer fixed giving levels with goals and benefits
 
 ## For companies and sponsors
 

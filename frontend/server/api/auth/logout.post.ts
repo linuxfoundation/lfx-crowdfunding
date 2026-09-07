@@ -4,7 +4,7 @@
 import type { H3Event } from 'h3';
 import { isValidRedirectUrl } from '../../utils/redirect';
 
-const isLocal = !process.env.NUXT_APP_ENV;
+const isLocal = !process.env.NUXT_PUBLIC_APP_ENV;
 
 function clearAuthCookies(event: H3Event) {
   const config = useRuntimeConfig();

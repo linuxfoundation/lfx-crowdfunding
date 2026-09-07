@@ -163,19 +163,6 @@ jobs:
           OTEL_SERVICE_NAME: "initiatives-api-e2e"
           OTEL_SERVICE_VERSION: "e2e"
 
-      - name: Start frontend
-        working-directory: frontend
-        run: pnpm dev &
-        env:
-          NUXT_APP_ENV: "development"
-          NUXT_API_BASE_URL: "http://localhost:8080"
-          NUXT_JWT_SECRET: "e2e-test-jwt-secret-not-used-for-real-auth"
-          NUXT_PUBLIC_AUTH0_CLIENT_ID: "placeholder"
-          NUXT_AUTH0_CLIENT_SECRET: "placeholder"
-          NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "e2e-stripe-publishable-key-placeholder"
-          NUXT_E2E_TEST_MODE: "true"
-          NUXT_E2E_TEST_USERNAME: "e2e-test-user"
-
       - name: Wait for backend
         run: |
           for _ in $(seq 1 30); do
@@ -184,20 +171,18 @@ jobs:
           done
           echo "Backend did not become healthy in time" && exit 1
 
-      - name: Wait for frontend
-        run: |
-          for _ in $(seq 1 30); do
-            curl -sf http://localhost:3000 && exit 0
-            sleep 2
-          done
-          echo "Frontend did not become healthy in time" && exit 1
-
       - name: Run e2e tests
         working-directory: frontend
         run: pnpm test:e2e
         env:
-          E2E_BASE_URL: "http://localhost:3000"
+          NUXT_PUBLIC_APP_ENV: "development"
+          NUXT_API_BASE_URL: "http://localhost:8080"
+          NUXT_JWT_SECRET: "e2e-test-jwt-secret-not-used-for-real-auth"
+          NUXT_PUBLIC_AUTH0_CLIENT_ID: "placeholder"
+          NUXT_AUTH0_CLIENT_SECRET: "placeholder"
+          NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "e2e-stripe-publishable-key-placeholder"
           NUXT_E2E_TEST_MODE: "true"
+          NUXT_E2E_TEST_USERNAME: "e2e-test-user"
 
       - name: Upload Playwright report
         if: failure()

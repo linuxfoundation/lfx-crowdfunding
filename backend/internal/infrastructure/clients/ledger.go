@@ -168,15 +168,17 @@ type ledgerTransactionRaw struct {
 	SubmitterName  string `json:"submitterName"`
 	TxnType        string `json:"txnType"` // "credit" | "debit"
 	TxnCategory    string `json:"txnCategory"`
-	Amount         int64  `json:"amount"`  // cents
-	TxnDate        int64  `json:"txnDate"` // unix seconds
+	Amount         int64  `json:"amount"`         // cents
+	TxnDate        int64  `json:"txnDate"`        // unix seconds
+	SubscriptionID string `json:"subscriptionID"` // non-empty for recurring charges
 }
 
 type ledgerTransactionsResponse struct {
-	TransactionsPerPage int                    `json:"transactionsPerPage"`
-	CurrentPage         int                    `json:"currentPage"`
-	HasNext             bool                   `json:"hasNext"`
-	Transactions        []ledgerTransactionRaw `json:"transactions"`
+	TotalTransactionCount int                    `json:"totalTransactionCount"`
+	TransactionsPerPage   int                    `json:"transactionsPerPage"`
+	CurrentPage           int                    `json:"currentPage"`
+	HasNext               bool                   `json:"hasNext"`
+	Transactions          []ledgerTransactionRaw `json:"transactions"`
 }
 
 // GetTransactions fetches a paginated list of transactions for an initiative
@@ -253,23 +255,21 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			donorType = "organization"
 		}
 		txns = append(txns, models.Transaction{
-			ID:           raw.TxnID,
-			Type:         txnType,
-			AmountCents:  raw.Amount,
-			Date:         time.Unix(raw.TxnDate, 0).UTC(),
-			Category:     raw.TxnCategory,
-			DonorType:    donorType,
-			DonorName:    raw.SubmitterName,
-			LedgerUserID: raw.UserID,
-			LedgerOrgID:  raw.OrganizationID,
+			ID:              raw.TxnID,
+			Type:            txnType,
+			AmountCents:     raw.Amount,
+			Date:            time.Unix(raw.TxnDate, 0).UTC(),
+			Category:        raw.TxnCategory,
+			DonorType:       donorType,
+			DonorName:       raw.SubmitterName,
+			Recurring:       raw.SubscriptionID != "",
+			LedgerUserID:    raw.UserID,
+			LedgerOrgID:     raw.OrganizationID,
+			LedgerProjectID: raw.ProjectID,
 		})
 	}
 
-	// Ledger doesn't return a total count on this endpoint; use HasNext to estimate.
-	totalCount := offset + len(txns)
-	if resp.HasNext {
-		totalCount += limit // at least one more page
-	}
+	totalCount := resp.TotalTransactionCount
 
 	return &models.TransactionList{
 		Data:       txns,

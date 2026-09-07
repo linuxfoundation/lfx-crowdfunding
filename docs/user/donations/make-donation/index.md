@@ -26,6 +26,8 @@ Then choose your donation frequency:
 
 Optionally, you can allocate your donation to a specific funding goal (e.g. Development, Marketing, Travel) if the initiative has defined funding categories. By default your donation goes toward all project needs.
 
+If the initiative offers [sponsorship tiers](../../initiatives/sponsorship-tiers/), you'll see a set of tier cards (e.g. Platinum, Gold, Silver, Bronze) instead — select one to set your amount to that tier's goal, or choose a custom amount below the tiers.
+
 ## Step 2 — Payment
 
 ![Donation payment step](/images/docs/donation-step-payment.png)
@@ -57,5 +59,6 @@ An email acknowledgement is sent automatically after each successful payment.
 ## Related sections
 
 - [Managing Your Donations](../manage-donations/) — view history and cancel subscriptions
+- [Sponsorship Tiers](../../initiatives/sponsorship-tiers/) — how fixed giving levels work
 - [Backers](../../backers/) — how your name appears on the initiative page
 - [Payment Account](../../payment-account/) — update your saved card

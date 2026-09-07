@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/config"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -159,17 +160,70 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 	return out, nil
 }
 
-// GetOrgDonations returns the summed credit totals per organisation from the Ledger service.
-func (s *StatisticsService) GetOrgDonations(ctx context.Context) ([]clients.LedgerOrgDonation, error) {
-	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetOrgDonations")
+// GetInvestingCompanies returns the organizations featured on the
+// "/for-companies" page, each with its total donation amount from the
+// Ledger — the system of record for donations (CF Postgres only persists
+// one-time charges; Ledger also captures recurring/subscription charges).
+//
+// Ledger's org-donations aggregation ("GET /transactions/platform/org-donations")
+// is itself scoped to a fixed set of org IDs (mocked in non-prod), which today
+// matches internal/config/featured_orgs.json exactly. Adding a new org to that
+// config file requires a matching change in ledger-service, or it will have no
+// amount here and be skipped.
+func (s *StatisticsService) GetInvestingCompanies(ctx context.Context) ([]models.OrgContribution, error) {
+	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetInvestingCompanies")
 	defer span.End()
 
-	result, err := s.ledgerClient.GetOrgDonations(ctx)
+	raw, err := s.ledgerClient.GetOrgDonations(ctx)
 	if err != nil {
 		span.RecordError(err)
+		if errors.Is(err, domain.ErrUpstreamUnavailable) {
+			return []models.OrgContribution{}, nil
+		}
 		return nil, fmt.Errorf("get org donations: %w", err)
 	}
-	return result, nil
+
+	amounts := make(map[string]clients.LedgerOrgDonation, len(raw))
+	for _, d := range raw {
+		amounts[d.OrgID] = d
+	}
+
+	featuredIDs := config.FeaturedOrgIDs()
+	orgs, err := s.repo.GetOrganizationsByIDs(ctx, featuredIDs)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("enrich featured organizations: %w", err)
+	}
+
+	out := make([]models.OrgContribution, 0, len(featuredIDs))
+	for _, id := range featuredIDs {
+		d, ok := amounts[id]
+		if !ok {
+			continue // ponytail: ledger aggregates a fixed org set; a config-only org has no amount
+		}
+		entry := models.OrgContribution{
+			OrgID:       id,
+			Name:        d.Name,
+			AvatarURL:   d.AvatarURL,
+			AmountCents: d.AmountInCents,
+		}
+		if org, found := orgs[id]; found { // CF DB is fresher than ledger's baked-in values
+			if org.Name != "" {
+				entry.Name = org.Name
+			}
+			if org.AvatarURL != "" {
+				entry.AvatarURL = org.AvatarURL
+			}
+		}
+		if entry.Name == "" {
+			entry.Name = unknownOrgName
+		}
+		if entry.AvatarURL == "" {
+			entry.AvatarURL = generatedAvatarURL(entry.OrgID, entry.Name)
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 // GetRecentDonations returns the most recent platform-wide donations enriched

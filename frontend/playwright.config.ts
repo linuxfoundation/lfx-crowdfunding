@@ -20,6 +20,14 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
     trace: 'on-first-retry',
   },
+  webServer: {
+    command: 'pnpm dev',
+    url: 'http://localhost:3000/api/health',
+    timeout: 180_000,
+    reuseExistingServer: !process.env.CI,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  },
   projects: [
     {
       name: 'chromium',

@@ -53,11 +53,10 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: Run DB migrations
-        run: |
-          for f in backend/db/migrations/*.up.sql; do
-            psql "postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding" \
-              --variable=ON_ERROR_STOP=1 -f "$f"
-          done
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding?sslmode=disable
+        run: go run ./cmd/migrate
 
       - name: Run tests
         working-directory: backend

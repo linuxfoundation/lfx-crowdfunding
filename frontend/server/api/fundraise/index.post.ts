@@ -36,7 +36,7 @@ export default defineEventHandler(async (event): Promise<FundraiseResult> => {
   };
 });
 
-function buildBackendPayload(payload: FundraisePayload): Record<string, unknown> {
+export function buildBackendPayload(payload: FundraisePayload): Record<string, unknown> {
   const base = {
     initiative_type: payload.initiativeType,
     name: payload.name,
@@ -48,6 +48,9 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
     // — shape matches the agreed API once it lands.
     donation_mode: payload.donationOptions?.mode,
     sponsorship_tiers: buildSponsorshipTiers(payload.donationOptions),
+    attribution: payload.attribution
+      ? { type: payload.attribution.kind, entity_uid: payload.attribution.entityId }
+      : undefined,
   };
 
   switch (payload.initiativeType) {
@@ -151,13 +154,16 @@ function buildBackendPayload(payload: FundraisePayload): Record<string, unknown>
 // Distribution items are mapped to initiative_goals: label → name,
 // category → allocation, description → description, and amount_cents is
 // derived from the item's percentage share of annualFundingGoalCents.
-function buildProjectGoals(
+export function buildProjectGoals(
   annualFundingGoalCents: number | undefined,
   goals: GoalItemInput[] | undefined,
 ): Array<Record<string, unknown>> | undefined {
   const result: Array<Record<string, unknown>> = [];
+  const enabledItems = goals?.filter((item) => item.enabled) ?? [];
 
-  if (annualFundingGoalCents) {
+  // Enabled distribution items are a breakdown of the total, not additional
+  // goals — only fall back to a standalone total row when nothing is enabled.
+  if (annualFundingGoalCents && enabledItems.length === 0) {
     result.push({
       name: 'Annual Funding Goal',
       amount_cents: annualFundingGoalCents,
@@ -165,7 +171,6 @@ function buildProjectGoals(
     });
   }
 
-  const enabledItems = goals?.filter((item) => item.enabled) ?? [];
   enabledItems.forEach((item, index) => {
     result.push({
       name: item.label,

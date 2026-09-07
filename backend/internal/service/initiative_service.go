@@ -466,6 +466,24 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		input.SponsorshipTiers = nil
 	}
 
+	// Validate and default attribution (LFXV2-2956 M1). Omitting attribution
+	// defaults to personal — today's behavior. Shape-only validation; the
+	// affiliation check against the caller's real orgs/projects is blocked
+	// on the platform enumeration decision (design doc open question 4) and
+	// is out of scope here.
+	attribution := models.Attribution{Type: models.AttributionPersonal}
+	if input.Attribution != nil {
+		attribution = *input.Attribution
+	}
+	if err := attribution.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+	}
+	if input.BenefitProjectUID != "" {
+		if _, err := uuid.Parse(input.BenefitProjectUID); err != nil {
+			return nil, fmt.Errorf("%w: benefit_project_uid must be a UUID", domain.ErrInvalidInput)
+		}
+	}
+
 	// Pre-generate the UUID so the same ID is embedded in both the Stripe
 	// Product metadata and the DB INSERT — no follow-up UPDATE needed.
 	initiativeID := uuid.New().String()
@@ -507,6 +525,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		StripeProductID: productID,
 		CiiProjectID:    input.CiiProjectID,
 		DonationMode:    input.DonationMode,
+
+		Attribution:       attribution,
+		BenefitProjectUID: input.BenefitProjectUID,
 
 		// Entity-only display fields
 		EventbriteURL:  input.EventbriteURL,
@@ -609,6 +630,23 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	}
 	if input.CiiProjectID != nil {
 		existing.CiiProjectID = *input.CiiProjectID
+	}
+	// Attribution is validated but not yet gated by an entity-writer check
+	// (M2). Update is already creator-gated above, which is sufficient while
+	// an initiative has exactly one manager (design §2.2).
+	if input.Attribution != nil {
+		if err := input.Attribution.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+		}
+		existing.Attribution = *input.Attribution
+	}
+	if input.BenefitProjectUID != nil {
+		if *input.BenefitProjectUID != "" {
+			if _, err := uuid.Parse(*input.BenefitProjectUID); err != nil {
+				return nil, fmt.Errorf("%w: benefit_project_uid must be a UUID", domain.ErrInvalidInput)
+			}
+		}
+		existing.BenefitProjectUID = *input.BenefitProjectUID
 	}
 
 	if input.EventbriteURL != nil {
@@ -805,18 +843,93 @@ func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
 		domain.ErrForbidden, from, to)
 }
 
+// GetMyTransactions fetches transactions for the given initiative that belong to the
+// specified user (identified by their Auth0 subject / legacy_user_id). The userID
+// filter is forwarded to the Ledger API. If the Ledger returns rows that belong to
+// other users the param was ignored server-side — the request fails rather than
+// returning incorrect pagination metadata. The same negative-donation post-processing
+// applied by GetTransactions is also applied here.
+func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		UserID:           userID,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Detect whether the Ledger API applied the userID filter server-side.
+	// If any returned row belongs to a different user the param was ignored and
+	// we cannot produce a valid TotalCount — fail rather than expose another
+	// user's contributions or return misleading pagination metadata.
+	for _, t := range list.Data {
+		if t.LedgerUserID != userID {
+			span.RecordError(fmt.Errorf("ledger returned foreign rows for userID filter"))
+			return nil, fmt.Errorf(
+				"ledger returned rows for other users (server-side userID filtering unavailable): %w",
+				domain.ErrUpstreamUnavailable,
+			)
+		}
+	}
+
+	// The Ledger stores some grant disbursements as credit-type rows with
+	// negative amounts. Apply the same post-processing as GetTransactions so
+	// both endpoints have identical transaction-type semantics.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data)
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
+
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
+		if ini, ok := initiatives[initiativeID]; ok {
+			for i := range list.Data {
+				list.Data[i].InitiativeName = ini.Name
+			}
+		}
+	}
+	return list, nil
+}
+
 // GetTransactions fetches transactions from Ledger and enriches each with donor
 // name and avatar from the CF DB (users / organizations tables).
 // When no CF DB record matches, a generated avatar URL is returned as fallback.
-func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, limit, offset int) (*models.TransactionList, error) {
+func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetTransactions")
 	defer span.End()
 
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
-		ProjectID: initiativeID,
-		TxnType:   txnType,
-		Limit:     limit,
-		Offset:    offset,
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
 	})
 	if err != nil {
 		return nil, err
@@ -863,13 +976,18 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
-	enrichInitiativeNamesFromRepo(ctx, s.repo, list.Data)
-
+	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
+		if ini, ok := initiatives[initiativeID]; ok {
+			for i := range list.Data {
+				list.Data[i].InitiativeName = ini.Name
+			}
+		}
+	}
 	return list, nil
 }
 
 // GetCategoryTransactions returns positive credit transactions for the given
-// category, grouped into individual and organization slices.
+// category, split into organization and individual donor slices.
 func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiativeID, categoryType string, subscriptionOnly bool, limit, offset int) (*models.CategorizedTransactions, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetCategoryTransactions")
 	defer span.End()
@@ -905,8 +1023,6 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 	return out, nil
 }
 
-// normalizeLedgerTxnCategory converts a lower-case categoryType (e.g.
-// "mentorship") into the PascalCase Ledger category key ("Mentorship").
 func normalizeLedgerTxnCategory(categoryType string) string {
 	categoryType = strings.TrimSpace(categoryType)
 	if categoryType == "" {
@@ -922,36 +1038,10 @@ func normalizeLedgerTxnCategory(categoryType string) string {
 	return strings.Join(words, "")
 }
 
-// GetMyTransactions fetches transactions for a single initiative and user,
-// then enriches them with donor and initiative metadata.
-func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
-	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyTransactions")
-	defer span.End()
-
-	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
-		ProjectID:        initiativeID,
-		TxnType:          txnType,
-		UserID:           userID,
-		SubscriptionOnly: subscriptionOnly,
-		Limit:            limit,
-		Offset:           offset,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := ensureLedgerRowsBelongToUser(list.Data, userID); err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("ledger returned rows for other users (server-side userID filtering unavailable): %w", domain.ErrUpstreamUnavailable)
-	}
-	applyDonationFilter(list, txnType, offset, limit)
-	enrichTransactionsFromDB(ctx, s.repo, list.Data)
-	enrichInitiativeNamesFromRepo(ctx, s.repo, list.Data)
-
-	return list, nil
-}
-
-// GetAllMyTransactions fetches all transactions for the authenticated user
-// across every initiative, then enriches them with donor and initiative metadata.
+// GetAllMyTransactions fetches all transactions for the authenticated user across
+// every initiative by omitting the projectID filter on the Ledger API.
+// initiative_name is enriched per-item from the CF DB using the projectID returned
+// by each Ledger row.
 func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetAllMyTransactions")
 	defer span.End()
@@ -966,80 +1056,73 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 	if err != nil {
 		return nil, err
 	}
-	if err := ensureLedgerRowsBelongToUser(list.Data, userID); err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("ledger returned rows for other users (server-side userID filtering unavailable): %w", domain.ErrUpstreamUnavailable)
+
+	// Detect whether the Ledger API applied the userID filter server-side.
+	// If any returned row belongs to a different user the param was ignored and
+	// we cannot produce valid results — fail rather than expose another user's
+	// transactions or return misleading pagination metadata.
+	for _, t := range list.Data {
+		if t.LedgerUserID != userID {
+			span.RecordError(fmt.Errorf("ledger returned foreign rows for userID filter"))
+			return nil, fmt.Errorf(
+				"ledger returned rows for other users (server-side userID filtering unavailable): %w",
+				domain.ErrUpstreamUnavailable,
+			)
+		}
 	}
-	applyDonationFilter(list, txnType, offset, limit)
+
+	// The Ledger stores some grant disbursements as credit-type rows with negative
+	// amounts. Exclude them when type=donation, matching GetTransactions and
+	// GetMyTransactions semantics.
+	if txnType == "donation" {
+		fullPageLen := len(list.Data)
+		hasMorePages := list.TotalCount > offset+fullPageLen
+
+		kept := list.Data[:0]
+		for _, t := range list.Data {
+			if t.AmountCents > 0 {
+				kept = append(kept, t)
+			}
+		}
+		dropped := len(list.Data) - len(kept)
+		list.Data = kept
+
+		adjusted := list.TotalCount - dropped
+		minTotal := offset + len(kept)
+		if hasMorePages && len(kept) == 0 {
+			minTotal = offset + limit + 1
+		}
+		if adjusted < minTotal {
+			adjusted = minTotal
+		}
+		list.TotalCount = adjusted
+	}
+
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
-	enrichInitiativeNamesFromRepo(ctx, s.repo, list.Data)
+
+	// Collect unique project IDs from the page, then batch-fetch initiative names.
+	projectIDs := make([]string, 0, len(list.Data))
+	seen := map[string]bool{}
+	for _, t := range list.Data {
+		if t.LedgerProjectID != "" && !seen[t.LedgerProjectID] {
+			seen[t.LedgerProjectID] = true
+			projectIDs = append(projectIDs, t.LedgerProjectID)
+		}
+	}
+	if len(projectIDs) > 0 {
+		initiatives, batchErr := s.repo.GetInitiativesByIDs(ctx, projectIDs)
+		if batchErr != nil {
+			slog.WarnContext(ctx, "failed to look up initiative names", "error", batchErr)
+		} else {
+			for i := range list.Data {
+				if ini, ok := initiatives[list.Data[i].LedgerProjectID]; ok {
+					list.Data[i].InitiativeName = ini.Name
+				}
+			}
+		}
+	}
 
 	return list, nil
-}
-
-func applyDonationFilter(list *models.TransactionList, txnType string, offset, limit int) {
-	if txnType != "donation" {
-		return
-	}
-
-	fullPageLen := len(list.Data)
-	hasMorePages := list.TotalCount > offset+fullPageLen
-
-	kept := list.Data[:0]
-	for _, t := range list.Data {
-		if t.AmountCents > 0 {
-			kept = append(kept, t)
-		}
-	}
-	dropped := len(list.Data) - len(kept)
-	list.Data = kept
-
-	adjusted := list.TotalCount - dropped
-	minTotal := offset + len(kept)
-	if hasMorePages && len(kept) == 0 {
-		minTotal = offset + limit + 1
-	}
-	if adjusted < minTotal {
-		adjusted = minTotal
-	}
-	list.TotalCount = adjusted
-}
-
-func ensureLedgerRowsBelongToUser(txns []models.Transaction, userID string) error {
-	if userID == "" {
-		return nil
-	}
-	for _, txn := range txns {
-		if txn.LedgerUserID != userID {
-			return fmt.Errorf("foreign row detected")
-		}
-	}
-	return nil
-}
-
-func enrichInitiativeNamesFromRepo(ctx context.Context, repo domain.InitiativeRepository, txns []models.Transaction) {
-	projectIDs := make([]string, 0, len(txns))
-	seen := map[string]bool{}
-	for _, txn := range txns {
-		if txn.LedgerProjectID != "" && !seen[txn.LedgerProjectID] {
-			seen[txn.LedgerProjectID] = true
-			projectIDs = append(projectIDs, txn.LedgerProjectID)
-		}
-	}
-	if len(projectIDs) == 0 {
-		return
-	}
-
-	initiatives, batchErr := repo.GetInitiativesByIDs(ctx, projectIDs)
-	if batchErr != nil {
-		slog.WarnContext(ctx, "failed to look up initiative names", "error", batchErr)
-		return
-	}
-	for i := range txns {
-		if ini, ok := initiatives[txns[i].LedgerProjectID]; ok && ini != nil {
-			txns[i].InitiativeName = ini.Name
-		}
-	}
 }
 
 // syncReimbursementPolicy upserts the initiative's policy in the Reimbursement

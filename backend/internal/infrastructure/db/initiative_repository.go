@@ -47,6 +47,7 @@ const initiativeSelect = `
 		i.eventbrite_url, i.application_url, i.event_start_date, i.event_end_date,
 		i.country, i.city, i.is_online,
 		i.donation_mode,
+		i.attributed_to_type, i.attributed_to_uid, i.benefit_project_uid,
 		i.created_on, i.updated_on,
 		COALESCE(ls.total_raised_cents, 0)      AS total_raised_cents,
 		COALESCE(ls.total_debited_cents, 0)     AS total_disbursed_cents,
@@ -209,42 +210,6 @@ func (r *InitiativeRepository) ListPublished(ctx context.Context) ([]models.Init
 	return results, nil
 }
 
-// GetInitiativesByIDs returns a map of initiative UUID -> Initiative containing
-// at least ID and Name for all IDs provided. Missing IDs are absent from the map.
-// This method is used by transaction enrichment to avoid per-row initiative lookups.
-func (r *InitiativeRepository) GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error) {
-	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.GetInitiativesByIDs")
-	defer span.End()
-
-	result := make(map[string]*models.Initiative, len(ids))
-	if len(ids) == 0 {
-		return result, nil
-	}
-
-	const q = `SELECT id, name FROM initiatives WHERE id = ANY($1::uuid[])`
-	rows, err := r.pool.Query(ctx, q, ids)
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("get initiatives by IDs: %w", err)
-	}
-	defer rows.Close() //nolint:errcheck
-
-	for rows.Next() {
-		var id, name string
-		if err := rows.Scan(&id, &name); err != nil {
-			span.RecordError(err)
-			return nil, fmt.Errorf("scan initiative: %w", err)
-		}
-		result[id] = &models.Initiative{ID: id, Name: name}
-	}
-	if err := rows.Err(); err != nil {
-		span.RecordError(err)
-		return result, fmt.Errorf("iterate initiatives: %w", err)
-	}
-
-	return result, nil
-}
-
 // List retrieves initiatives matching the filter with pagination.
 func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")
@@ -394,9 +359,10 @@ const (
 		        description, color, logo_url, website_url, coc_url,
 		        stripe_plan_id, stripe_product_id, accept_funding, cii_project_id,
 		        eventbrite_url, application_url, event_start_date, event_end_date,
-		        country, city, is_online, donation_mode)
+		        country, city, is_online, donation_mode,
+		        attributed_to_type, attributed_to_uid, benefit_project_uid)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-		        $16,$17,$18,$19,$20,$21,$22,$23,$24)`
+		        $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`
 
 	insertGoal = `
 		INSERT INTO initiative_goals
@@ -500,7 +466,10 @@ const (
 		    country           = $17,
 		    city              = $18,
 		    is_online         = $19,
-		    donation_mode     = $20
+		    donation_mode     = $20,
+		    attributed_to_type   = $21,
+		    attributed_to_uid    = $22,
+		    benefit_project_uid  = $23
 		WHERE id = $1`
 )
 
@@ -535,6 +504,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 		string(i.DonationMode),
+		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
 	); err != nil {
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
@@ -712,6 +682,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		i.EventStartDate, i.EventEndDate,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 		string(i.DonationMode),
+		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update initiative: %w", err)
@@ -1352,6 +1323,8 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		createdOn, updatedOn                                          *time.Time
 		sponsorsJSON                                                  []byte
 		donationMode                                                  string
+		attributedToType                                              string
+		attributedToUID, benefitProjectUID                            *string
 	)
 	err := row.Scan(
 		&i.ID, &i.InitiativeType, &sourceDynamoTable, &i.OwnerID,
@@ -1363,6 +1336,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		&eventbriteURL, &applicationURL, &i.EventStartDate, &i.EventEndDate,
 		&country, &city, &isOnline,
 		&donationMode,
+		&attributedToType, &attributedToUID, &benefitProjectUID,
 		&createdOn, &updatedOn,
 		&i.Financials.TotalRaisedCents,
 		&i.Financials.TotalDisbursedCents,
@@ -1403,6 +1377,11 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	i.Country = derefString(country)
 	i.City = derefString(city)
 	i.DonationMode = models.DonationMode(donationMode)
+	i.Attribution = models.Attribution{
+		Type:      models.AttributionType(attributedToType),
+		EntityUID: derefString(attributedToUID),
+	}
+	i.BenefitProjectUID = derefString(benefitProjectUID)
 	if acceptFunding != nil {
 		i.AcceptFunding = *acceptFunding
 	}
@@ -1517,6 +1496,41 @@ func (r *InitiativeRepository) GetUsersByLegacyIDs(ctx context.Context, legacyID
 	return result, nil
 }
 
+// GetInitiativesByIDs returns a map of initiative UUID → Initiative for the given IDs.
+// IDs not found in the DB are silently omitted from the result.
+func (r *InitiativeRepository) GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetInitiativesByIDs")
+	defer span.End()
+
+	result := make(map[string]*models.Initiative, len(ids))
+	ids = filterValidUUIDs(ids)
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, name FROM initiatives WHERE id = ANY($1::uuid[])`
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get initiatives by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var i models.Initiative
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan initiative: %w", err)
+		}
+		result[i.ID] = &i
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return result, fmt.Errorf("iterate initiatives: %w", err)
+	}
+	return result, nil
+}
+
 // GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs provided.
 // Missing IDs are absent from the map.
 func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
@@ -1576,4 +1590,14 @@ func nullableString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// attributionType mirrors the attributed_to_type column default: an unset
+// type on a directly-constructed model stores as personal rather than an
+// empty string, which would bypass DEFAULT and trip the CHECK constraint.
+func attributionType(a models.Attribution) string {
+	if a.Type == "" {
+		return string(models.AttributionPersonal)
+	}
+	return string(a.Type)
 }

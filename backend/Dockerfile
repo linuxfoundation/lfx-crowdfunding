@@ -19,7 +19,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     -o /build/ledger-stats-sync ./cmd/ledger-stats-sync \
  && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags "-s -w" \
-    -o /build/mentorship-sync ./cmd/mentorship-sync
+    -o /build/mentorship-sync ./cmd/mentorship-sync \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath -ldflags "-s -w" \
+    -o /build/migrate ./cmd/migrate
 
 # ── Final stage ───────────────────────────────────────────────────────────────
 FROM alpine:3.20
@@ -33,6 +36,7 @@ WORKDIR /app
 COPY --from=builder /build/initiatives-api ./initiatives-api
 COPY --from=builder /build/ledger-stats-sync ./ledger-stats-sync
 COPY --from=builder /build/mentorship-sync ./mentorship-sync
+COPY --from=builder /build/migrate ./migrate
 COPY cmd/mentorship-sync/testdata/ /app/testdata/
 
 USER appuser

@@ -26,7 +26,14 @@ SPDX-License-Identifier: MIT
             </NuxtLink>
             <span class="text-neutral-500 mx-0.5 shrink-0">・</span>
           </template>
-          <span class="text-neutral-500 shrink-0">{{ formatTimeAgoFromUnix(donation.date) }}</span>
+          <client-only>
+            <span class="text-neutral-500 shrink-0">{{ formatTimeAgoFromUnix(donation.date) }}</span>
+            <!-- SSR/hydration fallback: "time ago" is relative to render time, so it
+                 differs between server render and client hydration (LFXV2-2700). -->
+            <template #fallback>
+              <span class="text-neutral-500 shrink-0" />
+            </template>
+          </client-only>
         </div>
       </div>
       <span class="text-xs text-neutral-900 leading-4 shrink-0">

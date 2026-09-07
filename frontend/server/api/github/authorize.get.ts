@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
 
   const state = randomBytes(16).toString('hex');
 
-  const isLocal = !process.env.NUXT_APP_ENV;
+  const isLocal = !process.env.NUXT_PUBLIC_APP_ENV;
 
   const cookieOptions = {
     httpOnly: true,

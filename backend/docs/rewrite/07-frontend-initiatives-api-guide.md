@@ -157,6 +157,32 @@ Every initiative type requires at a minimum:
 
 The top-level fields are shared by all types. Child-table fields are type-specific.
 
+### 5.0 Attribution — who the initiative is run on behalf of
+
+`attribution` and `benefit_project_uid` are top-level fields, common to every
+initiative type (LFXV2-2956 M1).
+
+```json
+{
+  "attribution": {
+    "type": "organization",
+    "entity_uid": "8b1e2c3d-4f56-4a78-9b0c-1d2e3f4a5b6c"
+  },
+  "benefit_project_uid": "0c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
+}
+```
+
+- `attribution.type` — one of `"personal"`, `"organization"`, `"project"`. Omitting
+  `attribution` entirely on create defaults to `personal`.
+- `attribution.entity_uid` — must be **absent** when `type` is `"personal"`, and a
+  valid UUID for `"organization"` / `"project"`.
+- `benefit_project_uid` — an independent, optional UUID. It is not coupled to
+  `attribution` — an initiative can be attributed to an organization while
+  benefiting a different project.
+- No authorization check is enforced on these fields yet — the API validates shape
+  only (type membership, UUID format). A writer/membership check against the
+  named organization or project is a later milestone.
+
 ### 5.1 `project`
 
 Projects can have goals, beneficiaries, custom websites, and contributors.
@@ -441,6 +467,8 @@ The PATCH endpoint uses **pointer semantics**:
 | Scalar field (e.g. `"name"`) | **Unchanged** | **Replaced** with new value |
 | Child table array (e.g. `"goals"`) | **Unchanged** (no DB writes) | **Replaces all rows** (even if empty array `[]`) |
 | Child table pointer (e.g. `"program_info"`) | **Unchanged** | **Replaces all sub-tables** |
+| `attribution` | **Unchanged** | **Replaced** — same shape/validation as create (§5.0) |
+| `benefit_project_uid` | **Unchanged** | **Replaced**; send `""` to clear it |
 
 **Example: rename an initiative, change nothing else**
 

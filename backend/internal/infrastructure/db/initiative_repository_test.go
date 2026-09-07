@@ -360,3 +360,46 @@ func TestInitiativeRepository_ListPublished(t *testing.T) {
 		}
 	}
 }
+
+// TestInitiativeRepository_Attribution_RoundTrip covers LFXV2-2956 M1:
+// omitting attribution on Create defaults to personal, and an explicit
+// organization/project attribution persists and round-trips through Update.
+func TestInitiativeRepository_Attribution_RoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "attribution-owner")
+	repo := NewInitiativeRepository(testPool)
+
+	created := seedInitiative(t, ctx, owner.ID, "Attribution Fund", "attribution-fund")
+	if created.Attribution.Type != models.AttributionPersonal {
+		t.Fatalf("Attribution.Type = %v, want personal (default)", created.Attribution.Type)
+	}
+	if created.Attribution.EntityUID != "" {
+		t.Fatalf("Attribution.EntityUID = %q, want empty", created.Attribution.EntityUID)
+	}
+
+	orgUID := uuid.New().String()
+	created.Attribution = models.Attribution{Type: models.AttributionOrganization, EntityUID: orgUID}
+	updated, err := repo.Update(ctx, created, models.InitiativeUpdateInput{})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if updated.Attribution.Type != models.AttributionOrganization {
+		t.Errorf("Attribution.Type = %v, want organization", updated.Attribution.Type)
+	}
+	if updated.Attribution.EntityUID != orgUID {
+		t.Errorf("Attribution.EntityUID = %q, want %q", updated.Attribution.EntityUID, orgUID)
+	}
+
+	got, err := repo.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if got.Attribution.Type != models.AttributionOrganization || got.Attribution.EntityUID != orgUID {
+		t.Errorf("GetByID() attribution = %+v, want {organization %s}", got.Attribution, orgUID)
+	}
+}

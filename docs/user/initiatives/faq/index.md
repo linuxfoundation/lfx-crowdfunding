@@ -3,7 +3,7 @@ title: Initiatives FAQ
 description: Answers to frequently asked questions about creating, managing, and browsing fundraising initiatives on LFX Crowdfunding.
 tags: [initiatives, faq, fundraising, project, event, security audit]
 last_updated: 2026-06-29
-display_order: 4
+display_order: 6
 intercom_collection: LFX Crowdfunding
 ---
 

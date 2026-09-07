@@ -27,6 +27,7 @@ type Config struct {
 	Local         LocalConfig
 	Approval      ApprovalConfig
 	Reimbursement ReimbursementConfig
+	FGA           FGAConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -143,6 +144,17 @@ type ReimbursementConfig struct {
 	// e.g. https://api-gw.dev.platform.linuxfoundation.org/
 	// Set via API_GW_AUTH0_AUDIENCE.
 	Auth0Audience string
+}
+
+// FGAConfig holds settings for the fga-sync NATS access-check client
+// (LFXV2-2956 M1). Optional — when NATSURL is unset the resolver is not
+// constructed and no access checks are made (M1 wires no request path
+// through it; see EntityRoleResolver in internal/infrastructure/fga).
+type FGAConfig struct {
+	// NATSURL is the fga-sync NATS connection URL. Set via FGA_NATS_URL.
+	NATSURL string
+	// Timeout caps a single access-check request/reply round trip.
+	Timeout time.Duration
 }
 
 // MandrillConfig holds Mandrill transactional email settings.
@@ -265,6 +277,11 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("FRONTEND_BASE_URL is required")
 	}
 
+	fgaTimeout, err := getDurationEnv("FGA_ACCESS_CHECK_TIMEOUT", 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Port:            port,
@@ -330,6 +347,10 @@ func LoadConfig() (*Config, error) {
 			Auth0ClientPrivateKey: getEnv("API_GW_AUTH0_CLIENT_PRIVATE_KEY", ""),
 			Auth0Audience:         getEnv("API_GW_AUTH0_AUDIENCE", ""),
 			Timeout:               10 * time.Second,
+		},
+		FGA: FGAConfig{
+			NATSURL: getEnv("FGA_NATS_URL", ""),
+			Timeout: fgaTimeout,
 		},
 	}, nil
 }

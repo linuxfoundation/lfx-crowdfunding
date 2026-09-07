@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-const isLocal = !process.env.NUXT_APP_ENV;
+const isLocal = !process.env.NUXT_PUBLIC_APP_ENV;
 
 const ALLOWED_REDIRECT_DOMAINS = isLocal
   ? ['linuxfoundation.org', 'localhost']
