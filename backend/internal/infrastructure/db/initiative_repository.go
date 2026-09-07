@@ -209,6 +209,42 @@ func (r *InitiativeRepository) ListPublished(ctx context.Context) ([]models.Init
 	return results, nil
 }
 
+// GetInitiativesByIDs returns a map of initiative UUID -> Initiative containing
+// at least ID and Name for all IDs provided. Missing IDs are absent from the map.
+// This method is used by transaction enrichment to avoid per-row initiative lookups.
+func (r *InitiativeRepository) GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.GetInitiativesByIDs")
+	defer span.End()
+
+	result := make(map[string]*models.Initiative, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const q = `SELECT id, name FROM initiatives WHERE id = ANY($1::uuid[])`
+	rows, err := r.pool.Query(ctx, q, ids)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("get initiatives by IDs: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan initiative: %w", err)
+		}
+		result[id] = &models.Initiative{ID: id, Name: name}
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return result, fmt.Errorf("iterate initiatives: %w", err)
+	}
+
+	return result, nil
+}
+
 // List retrieves initiatives matching the filter with pagination.
 func (r *InitiativeRepository) List(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.List")

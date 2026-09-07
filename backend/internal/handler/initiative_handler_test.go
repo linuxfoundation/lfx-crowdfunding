@@ -110,6 +110,9 @@ func (r *initiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSu
 func (r *initiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
+func (r *initiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
+}
 
 // initiativeUserRepo is a configurable UserRepository stub for initiative handler tests.
 type initiativeUserRepo struct {

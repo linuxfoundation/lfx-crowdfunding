@@ -31,6 +31,7 @@ type mockInitiativeRepo struct {
 	ownerEmail              string
 	ownerName               string
 	ownerEmailErr           error
+	onGetInitiativesByIDs   func(ctx context.Context, ids []string) (map[string]*models.Initiative, error)
 	onUpdateStripeProductID func(ctx context.Context, id, productID string) error
 }
 
@@ -80,6 +81,12 @@ func (m *mockInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) 
 }
 func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return map[string]models.Organization{}, nil
+}
+func (m *mockInitiativeRepo) GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error) {
+	if m.onGetInitiativesByIDs != nil {
+		return m.onGetInitiativesByIDs(ctx, ids)
+	}
+	return map[string]*models.Initiative{}, nil
 }
 func (m *mockInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	if m.ownerEmailErr != nil {
@@ -430,6 +437,9 @@ func (m *mockRepoForEnrich) GetOrganizationsByIDs(_ context.Context, _ []string)
 		return nil, m.err
 	}
 	return m.orgs, nil
+}
+func (m *mockRepoForEnrich) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
 }
 
 // mockRepoForEnrich must satisfy domain.InitiativeRepository — stub the rest.

@@ -863,7 +863,183 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	enrichInitiativeNamesFromRepo(ctx, s.repo, list.Data)
+
 	return list, nil
+}
+
+// GetCategoryTransactions returns positive credit transactions for the given
+// category, grouped into individual and organization slices.
+func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiativeID, categoryType string, subscriptionOnly bool, limit, offset int) (*models.CategorizedTransactions, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetCategoryTransactions")
+	defer span.End()
+
+	ledgerCategory := normalizeLedgerTxnCategory(categoryType)
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		ProjectID:        initiativeID,
+		TxnType:          "donation",
+		TxnCategory:      ledgerCategory,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := &models.CategorizedTransactions{}
+	for _, txn := range list.Data {
+		if txn.AmountCents <= 0 {
+			continue
+		}
+		if categoryType != "" && !strings.EqualFold(strings.TrimSpace(txn.Category), categoryType) && !strings.EqualFold(strings.TrimSpace(txn.Category), ledgerCategory) {
+			continue
+		}
+		if txn.DonorType == "organization" {
+			out.OrganizationTransactions = append(out.OrganizationTransactions, txn)
+			continue
+		}
+		out.IndividualTransactions = append(out.IndividualTransactions, txn)
+	}
+
+	return out, nil
+}
+
+// normalizeLedgerTxnCategory converts a lower-case categoryType (e.g.
+// "mentorship") into the PascalCase Ledger category key ("Mentorship").
+func normalizeLedgerTxnCategory(categoryType string) string {
+	categoryType = strings.TrimSpace(categoryType)
+	if categoryType == "" {
+		return ""
+	}
+	words := strings.FieldsFunc(categoryType, func(r rune) bool { return r == '_' || r == '-' || r == ' ' })
+	for i, word := range words {
+		if word == "" {
+			continue
+		}
+		words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+	}
+	return strings.Join(words, "")
+}
+
+// GetMyTransactions fetches transactions for a single initiative and user,
+// then enriches them with donor and initiative metadata.
+func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		ProjectID:        initiativeID,
+		TxnType:          txnType,
+		UserID:           userID,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureLedgerRowsBelongToUser(list.Data, userID); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger returned rows for other users (server-side userID filtering unavailable): %w", domain.ErrUpstreamUnavailable)
+	}
+	applyDonationFilter(list, txnType, offset, limit)
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	enrichInitiativeNamesFromRepo(ctx, s.repo, list.Data)
+
+	return list, nil
+}
+
+// GetAllMyTransactions fetches all transactions for the authenticated user
+// across every initiative, then enriches them with donor and initiative metadata.
+func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, txnType string, subscriptionOnly bool, limit, offset int) (*models.TransactionList, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetAllMyTransactions")
+	defer span.End()
+
+	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
+		TxnType:          txnType,
+		UserID:           userID,
+		SubscriptionOnly: subscriptionOnly,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureLedgerRowsBelongToUser(list.Data, userID); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger returned rows for other users (server-side userID filtering unavailable): %w", domain.ErrUpstreamUnavailable)
+	}
+	applyDonationFilter(list, txnType, offset, limit)
+	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	enrichInitiativeNamesFromRepo(ctx, s.repo, list.Data)
+
+	return list, nil
+}
+
+func applyDonationFilter(list *models.TransactionList, txnType string, offset, limit int) {
+	if txnType != "donation" {
+		return
+	}
+
+	fullPageLen := len(list.Data)
+	hasMorePages := list.TotalCount > offset+fullPageLen
+
+	kept := list.Data[:0]
+	for _, t := range list.Data {
+		if t.AmountCents > 0 {
+			kept = append(kept, t)
+		}
+	}
+	dropped := len(list.Data) - len(kept)
+	list.Data = kept
+
+	adjusted := list.TotalCount - dropped
+	minTotal := offset + len(kept)
+	if hasMorePages && len(kept) == 0 {
+		minTotal = offset + limit + 1
+	}
+	if adjusted < minTotal {
+		adjusted = minTotal
+	}
+	list.TotalCount = adjusted
+}
+
+func ensureLedgerRowsBelongToUser(txns []models.Transaction, userID string) error {
+	if userID == "" {
+		return nil
+	}
+	for _, txn := range txns {
+		if txn.LedgerUserID != userID {
+			return fmt.Errorf("foreign row detected")
+		}
+	}
+	return nil
+}
+
+func enrichInitiativeNamesFromRepo(ctx context.Context, repo domain.InitiativeRepository, txns []models.Transaction) {
+	projectIDs := make([]string, 0, len(txns))
+	seen := map[string]bool{}
+	for _, txn := range txns {
+		if txn.LedgerProjectID != "" && !seen[txn.LedgerProjectID] {
+			seen[txn.LedgerProjectID] = true
+			projectIDs = append(projectIDs, txn.LedgerProjectID)
+		}
+	}
+	if len(projectIDs) == 0 {
+		return
+	}
+
+	initiatives, batchErr := repo.GetInitiativesByIDs(ctx, projectIDs)
+	if batchErr != nil {
+		slog.WarnContext(ctx, "failed to look up initiative names", "error", batchErr)
+		return
+	}
+	for i := range txns {
+		if ini, ok := initiatives[txns[i].LedgerProjectID]; ok && ini != nil {
+			txns[i].InitiativeName = ini.Name
+		}
+	}
 }
 
 // syncReimbursementPolicy upserts the initiative's policy in the Reimbursement

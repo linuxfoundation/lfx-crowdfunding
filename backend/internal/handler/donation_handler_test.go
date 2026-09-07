@@ -125,6 +125,9 @@ func (r *donationInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []st
 	}
 	return make(map[string]models.Organization), nil
 }
+func (r *donationInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
+}
 
 // donationUserRepo is a configurable UserRepository stub for donation tests.
 type donationUserRepo struct {

@@ -72,6 +72,9 @@ func (r *stubInitiativeRepoForListForUser) ListPublished(_ context.Context) ([]m
 func (r *stubInitiativeRepoForListForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
 	return nil, nil
 }
+func (r *stubInitiativeRepoForListForUser) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
+}
 func (r *stubInitiativeRepoForListForUser) UpdateStripeProductID(_ context.Context, _, _ string) error {
 	return nil
 }

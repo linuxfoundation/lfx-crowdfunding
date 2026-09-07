@@ -8,11 +8,13 @@ import "time"
 
 // Transaction represents a single donation or disbursement returned by the Ledger service.
 type Transaction struct {
-	ID          string    `json:"id"`
-	Type        string    `json:"type"` // "donation" | "reimbursement"
-	AmountCents int64     `json:"amount_cents"`
-	Date        time.Time `json:"date"`
-	Category    string    `json:"category,omitempty"`
+	ID              string    `json:"id"`
+	Type            string    `json:"type"` // "donation" | "reimbursement"
+	AmountCents     int64     `json:"amount_cents"`
+	Date            time.Time `json:"date"`
+	Category        string    `json:"category,omitempty"`
+	LedgerProjectID string    `json:"-"`
+	InitiativeName  string    `json:"initiative_name,omitempty"`
 
 	DonorName     string `json:"donor_name,omitempty"`
 	DonorType     string `json:"donor_type,omitempty"` // "organization" | "individual"
@@ -30,4 +32,11 @@ type TransactionList struct {
 	TotalCount int           `json:"total_count"`
 	Limit      int           `json:"limit"`
 	Offset     int           `json:"offset"`
+}
+
+// CategorizedTransactions groups positive credit transactions into individual
+// and organization slices for category-specific views.
+type CategorizedTransactions struct {
+	IndividualTransactions   []Transaction `json:"individual_transactions"`
+	OrganizationTransactions []Transaction `json:"organization_transactions"`
 }

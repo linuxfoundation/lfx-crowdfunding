@@ -143,6 +143,9 @@ func (r *subscriptionInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ 
 	}
 	return make(map[string]models.Organization), nil
 }
+func (r *subscriptionInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
+	return map[string]*models.Initiative{}, nil
+}
 
 // subscriptionUserRepo is a configurable UserRepository stub for subscription tests.
 type subscriptionUserRepo struct {
