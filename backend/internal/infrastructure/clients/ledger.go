@@ -41,7 +41,8 @@ type LedgerBalance struct {
 // TransactionFilter holds query parameters for the Ledger paginate endpoint.
 type TransactionFilter struct {
 	ProjectID        string
-	TxnType          string // "donation" | "reimbursement" — empty = all
+	TxnType          string // models.TransactionTypeDonation | models.TransactionTypeReimbursement — empty = all
+	TxnCategory      string // Ledger txnCategory filter; empty = all categories
 	UserID           string // Auth0 subject (legacy_user_id) — empty = all users
 	SubscriptionOnly bool   // when true, appends subscriptionOnly=true to filter recurring charges only
 	Limit            int    // page size; 0 defaults to 10
@@ -211,15 +212,18 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 	q.Set("perPage", fmt.Sprintf("%d", limit))
 	q.Set("page", fmt.Sprintf("%d", page))
 	if filter.TxnType != "" {
-		// Ledger uses "credit"/"debit"; our API accepts "donation"/"reimbursement"
+		// Ledger uses "credit"/"debit"; our API uses models transaction type constants.
 		switch filter.TxnType {
-		case "donation":
+		case models.TransactionTypeDonation:
 			q.Set("txnType", "credit")
-		case "reimbursement":
+		case models.TransactionTypeReimbursement:
 			q.Set("txnType", "debit")
 		default:
 			q.Set("txnType", filter.TxnType)
 		}
+	}
+	if filter.TxnCategory != "" {
+		q.Set("txnCategory", filter.TxnCategory)
 	}
 	if filter.UserID != "" {
 		q.Set("userID", filter.UserID)
@@ -242,9 +246,9 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 
 	txns := make([]models.Transaction, 0, len(resp.Transactions))
 	for _, raw := range resp.Transactions {
-		txnType := "donation"
+		txnType := models.TransactionTypeDonation
 		if raw.TxnType == "debit" {
-			txnType = "reimbursement"
+			txnType = models.TransactionTypeReimbursement
 		}
 		donorType := "individual"
 		if raw.OrganizationID != "" {
