@@ -34,6 +34,19 @@ export const initiativeTypeConfigMap: Record<string, InitiativeTypeConfig> = {
     colorClass: 'text-positive-600',
     gradient: 'linear-gradient(180deg, rgba(240, 253, 244, 0.5) 0%, rgba(255, 255, 255, 0.5) 50%)',
   },
+  // Legacy types that surface under the General Fund tab without DB renaming.
+  other: {
+    label: 'General Fund',
+    icon: 'hand-holding-dollar',
+    colorClass: 'text-positive-600',
+    gradient: 'linear-gradient(180deg, rgba(240, 253, 244, 0.5) 0%, rgba(255, 255, 255, 0.5) 50%)',
+  },
+  community: {
+    label: 'General Fund',
+    icon: 'hand-holding-dollar',
+    colorClass: 'text-positive-600',
+    gradient: 'linear-gradient(180deg, rgba(240, 253, 244, 0.5) 0%, rgba(255, 255, 255, 0.5) 50%)',
+  },
 };
 
 export const defaultInitiativeTypeConfig: InitiativeTypeConfig = {
