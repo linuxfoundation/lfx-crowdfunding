@@ -21,6 +21,9 @@ SPDX-License-Identifier: MIT
       v-if="expenseRecords.length || isLoadingExpenses"
       :expenses="expenseRecords"
       :is-loading="isLoadingExpenses"
+      :has-more="hasMoreExpenses"
+      :is-loading-more="isLoadingMoreExpenses"
+      @load-more="$emit('load-more-expenses')"
     />
   </div>
 </template>
@@ -39,10 +42,13 @@ defineProps<{
   isLoadingMoreDonations?: boolean;
   expenseRecords: ExpenseRecord[];
   isLoadingExpenses?: boolean;
+  hasMoreExpenses?: boolean;
+  isLoadingMoreExpenses?: boolean;
 }>();
 
 defineEmits<{
   'load-more-donations': [];
+  'load-more-expenses': [];
 }>();
 </script>
 
