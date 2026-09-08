@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -883,7 +882,7 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 	// The Ledger stores some grant disbursements as credit-type rows with
 	// negative amounts. Apply the same post-processing as GetTransactions so
 	// both endpoints have identical transaction-type semantics.
-	if txnType == "donation" {
+	if txnType == models.TransactionTypeDonation {
 		fullPageLen := len(list.Data)
 		hasMorePages := list.TotalCount > offset+fullPageLen
 
@@ -895,16 +894,7 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 		}
 		dropped := len(list.Data) - len(kept)
 		list.Data = kept
-
-		adjusted := list.TotalCount - dropped
-		minTotal := offset + len(kept)
-		if hasMorePages && len(kept) == 0 {
-			minTotal = offset + limit + 1
-		}
-		if adjusted < minTotal {
-			adjusted = minTotal
-		}
-		list.TotalCount = adjusted
+		list.TotalCount = clampFilteredTotalCount(list.TotalCount, dropped, offset, limit, len(kept), hasMorePages)
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
@@ -915,6 +905,7 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 			}
 		}
 	}
+	list.ResponseType = models.TransactionResponseTypeList
 	return list, nil
 }
 
@@ -939,10 +930,9 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	// The Ledger stores some grant disbursements as credit-type rows with
 	// negative amounts (e.g. SOS pays grants out of its fund). These are not
 	// donations and must not appear in the "Donations received" table.
-	if txnType == "donation" {
+	if txnType == models.TransactionTypeDonation {
 		fullPageLen := len(list.Data) // capture before filtering
-		// The ledger client encodes HasNext by adding list.Limit to TotalCount;
-		// if TotalCount > offset+fullPageLen the Ledger signalled more pages.
+		// If TotalCount > offset+fullPageLen the Ledger signalled more pages.
 		hasMorePages := list.TotalCount > offset+fullPageLen
 
 		kept := list.Data[:0]
@@ -953,27 +943,7 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 		}
 		dropped := len(list.Data) - len(kept)
 		list.Data = kept
-		// Adjust the Ledger's total estimate by the number of rows dropped
-		// from this page.  Two clamp rules keep the frontend's
-		// "nextOffset < totalCount" guard from stopping pagination early:
-		//
-		//  1. Normal case (some items kept): TotalCount ≥ offset+len(kept)
-		//     so the items already delivered are accounted for.
-		//
-		//  2. Entire page filtered out but HasNext=true: TotalCount must be
-		//     > nextOffset (offset+limit) or the frontend halts before
-		//     reaching later pages that may still contain positive entries
-		//     (e.g. the manual_from_lf $1M credit on SOS page 6, which sits
-		//     behind five all-negative disbursement pages).
-		adjusted := list.TotalCount - dropped
-		minTotal := offset + len(kept)
-		if hasMorePages && len(kept) == 0 {
-			minTotal = offset + limit + 1
-		}
-		if adjusted < minTotal {
-			adjusted = minTotal
-		}
-		list.TotalCount = adjusted
+		list.TotalCount = clampFilteredTotalCount(list.TotalCount, dropped, offset, limit, len(kept), hasMorePages)
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
@@ -984,20 +954,19 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 			}
 		}
 	}
+	list.ResponseType = models.TransactionResponseTypeList
 	return list, nil
 }
 
 // GetCategoryTransactions returns positive credit transactions for the given
 // category, split into organization and individual donor slices.
-func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiativeID, categoryType string, subscriptionOnly bool, limit, offset int) (*models.CategorizedTransactions, error) {
+func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiativeID, txnType, categoryType string, subscriptionOnly bool, limit, offset int) (*models.CategorizedTransactions, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetCategoryTransactions")
 	defer span.End()
 
-	ledgerCategory := normalizeLedgerTxnCategory(categoryType)
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
 		ProjectID:        initiativeID,
-		TxnType:          "donation",
-		TxnCategory:      ledgerCategory,
+		TxnType:          txnType,
 		SubscriptionOnly: subscriptionOnly,
 		Limit:            limit,
 		Offset:           offset,
@@ -1024,11 +993,11 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 			dropped++
 			continue
 		}
-		if categoryType != "" && !strings.EqualFold(strings.TrimSpace(txn.Category), categoryType) && !strings.EqualFold(strings.TrimSpace(txn.Category), ledgerCategory) {
+		if categoryType != "" && !strings.EqualFold(strings.TrimSpace(txn.Category), categoryType) {
 			dropped++
 			continue
 		}
-		if txn.DonorType == "organization" {
+		if txn.DonorType == donorTypeOrganization {
 			out.OrganizationTransactions = append(out.OrganizationTransactions, txn)
 			continue
 		}
@@ -1036,38 +1005,12 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 	}
 
 	kept := len(out.OrganizationTransactions) + len(out.IndividualTransactions)
-	adjusted := list.TotalCount - dropped
-	minTotal := offset + kept
-	if hasMorePages && kept == 0 {
-		minTotal = offset + limit + 1
-	}
-	if adjusted < minTotal {
-		adjusted = minTotal
-	}
-	out.TotalCount = adjusted
+	out.TotalCount = clampFilteredTotalCount(list.TotalCount, dropped, offset, limit, kept, hasMorePages)
 	out.Limit = limit
 	out.Offset = offset
+	out.ResponseType = models.TransactionResponseTypeCategorized
 
 	return out, nil
-}
-
-func normalizeLedgerTxnCategory(categoryType string) string {
-	categoryType = strings.TrimSpace(categoryType)
-	if categoryType == "" {
-		return ""
-	}
-	words := strings.FieldsFunc(categoryType, func(r rune) bool { return r == '_' || r == '-' || r == ' ' })
-	for i, word := range words {
-		if word == "" {
-			continue
-		}
-		r, size := utf8.DecodeRuneInString(word)
-		if r == utf8.RuneError && size == 0 {
-			continue
-		}
-		words[i] = string(unicode.ToUpper(r)) + word[size:]
-	}
-	return strings.Join(words, "")
 }
 
 // GetAllMyTransactions fetches all transactions for the authenticated user across
@@ -1106,7 +1049,7 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 	// The Ledger stores some grant disbursements as credit-type rows with negative
 	// amounts. Exclude them when type=donation, matching GetTransactions and
 	// GetMyTransactions semantics.
-	if txnType == "donation" {
+	if txnType == models.TransactionTypeDonation {
 		fullPageLen := len(list.Data)
 		hasMorePages := list.TotalCount > offset+fullPageLen
 
@@ -1118,16 +1061,7 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 		}
 		dropped := len(list.Data) - len(kept)
 		list.Data = kept
-
-		adjusted := list.TotalCount - dropped
-		minTotal := offset + len(kept)
-		if hasMorePages && len(kept) == 0 {
-			minTotal = offset + limit + 1
-		}
-		if adjusted < minTotal {
-			adjusted = minTotal
-		}
-		list.TotalCount = adjusted
+		list.TotalCount = clampFilteredTotalCount(list.TotalCount, dropped, offset, limit, len(kept), hasMorePages)
 	}
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
@@ -1154,7 +1088,23 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 		}
 	}
 
+	list.ResponseType = models.TransactionResponseTypeList
+
 	return list, nil
+}
+
+// clampFilteredTotalCount adjusts a paginated total after page-level filtering so
+// callers can continue paging when more upstream pages are available.
+func clampFilteredTotalCount(totalCount, dropped, offset, limit, kept int, hasMorePages bool) int {
+	adjusted := totalCount - dropped
+	minTotal := offset + kept
+	if hasMorePages && kept == 0 {
+		minTotal = offset + limit + 1
+	}
+	if adjusted < minTotal {
+		adjusted = minTotal
+	}
+	return adjusted
 }
 
 // syncReimbursementPolicy upserts the initiative's policy in the Reimbursement

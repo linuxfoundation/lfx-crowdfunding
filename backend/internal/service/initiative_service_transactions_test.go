@@ -80,7 +80,7 @@ const (
 func txn(userID string, amountCents int64) models.Transaction {
 	return models.Transaction{
 		ID:           "txn-" + userID,
-		Type:         "donation",
+		Type:         models.TransactionTypeDonation,
 		AmountCents:  amountCents,
 		Date:         time.Time{},
 		LedgerUserID: userID,
@@ -161,7 +161,7 @@ func TestGetMyTransactions_ForeignRowsError(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, 10, 0)
+	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, models.TransactionTypeDonation, false, 10, 0)
 	if err == nil {
 		t.Fatal("expected error for foreign rows, got nil")
 	}
@@ -182,7 +182,7 @@ func TestGetMyTransactions_AllForeignRowsError(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, 2, 0)
+	_, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, models.TransactionTypeDonation, false, 2, 0)
 	if err == nil {
 		t.Fatal("expected error for all-foreign page, got nil")
 	}
@@ -197,7 +197,7 @@ func TestGetMyTransactions_AllForeignRowsError(t *testing.T) {
 func TestGetMyTransactions_ExcludesNegativeDonations(t *testing.T) {
 	rows := []models.Transaction{
 		txn(testUserID, 500),
-		{ID: "grant", Type: "donation", AmountCents: -1000, LedgerUserID: testUserID}, // disbursement
+		{ID: "grant", Type: models.TransactionTypeDonation, AmountCents: -1000, LedgerUserID: testUserID}, // disbursement
 		txn(testUserID, 300),
 	}
 	// TotalCount=3, no HasNext (TotalCount == offset+len(rows))
@@ -206,7 +206,7 @@ func TestGetMyTransactions_ExcludesNegativeDonations(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, 10, 0)
+	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, models.TransactionTypeDonation, false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -229,8 +229,8 @@ func TestGetMyTransactions_ExcludesNegativeDonations(t *testing.T) {
 // TotalCount is kept above the next page's offset so the caller continues paginating.
 func TestGetMyTransactions_NegativeDonationsPaginationClamp(t *testing.T) {
 	rows := []models.Transaction{
-		{ID: "g1", Type: "donation", AmountCents: -500, LedgerUserID: testUserID},
-		{ID: "g2", Type: "donation", AmountCents: -200, LedgerUserID: testUserID},
+		{ID: "g1", Type: models.TransactionTypeDonation, AmountCents: -500, LedgerUserID: testUserID},
+		{ID: "g2", Type: models.TransactionTypeDonation, AmountCents: -200, LedgerUserID: testUserID},
 	}
 	const (
 		limit      = 2
@@ -242,7 +242,7 @@ func TestGetMyTransactions_NegativeDonationsPaginationClamp(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, limit, offset)
+	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, models.TransactionTypeDonation, false, limit, offset)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestGetMyTransactions_EmptyPage(t *testing.T) {
 	ledger := &capturingLedger{resp: &models.TransactionList{Limit: 10}}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, "donation", false, 10, 0)
+	list, err := svc.GetMyTransactions(context.Background(), testInitiativeID, testUserID, models.TransactionTypeDonation, false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -277,10 +277,10 @@ func TestGetCategoryTransactions_SplitsByDonorTypeAndCategory(t *testing.T) {
 	ledger := &capturingLedger{
 		resp: &models.TransactionList{
 			Data: []models.Transaction{
-				{ID: "org-1", Type: "donation", AmountCents: 1500, Category: "Mentorship", DonorType: "organization"},
-				{ID: "ind-1", Type: "donation", AmountCents: 900, Category: "mentorship", DonorType: "individual"},
-				{ID: "drop-neg", Type: "donation", AmountCents: -50, Category: "Mentorship", DonorType: "organization"},
-				{ID: "drop-cat", Type: "donation", AmountCents: 100, Category: "Development", DonorType: "individual"},
+				{ID: "org-1", Type: models.TransactionTypeDonation, AmountCents: 1500, Category: "Mentorship", DonorType: "organization"},
+				{ID: "ind-1", Type: models.TransactionTypeDonation, AmountCents: 900, Category: "mentorship", DonorType: "individual"},
+				{ID: "drop-neg", Type: models.TransactionTypeDonation, AmountCents: -50, Category: "Mentorship", DonorType: "organization"},
+				{ID: "drop-cat", Type: models.TransactionTypeDonation, AmountCents: 100, Category: "Development", DonorType: "individual"},
 			},
 			TotalCount: 4,
 			Limit:      10,
@@ -288,12 +288,15 @@ func TestGetCategoryTransactions_SplitsByDonorTypeAndCategory(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetCategoryTransactions(context.Background(), testInitiativeID, "mentorship", false, 10, 0)
+	list, err := svc.GetCategoryTransactions(context.Background(), testInitiativeID, models.TransactionTypeDonation, "mentorship", false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if ledger.lastFilter.TxnCategory != "Mentorship" {
-		t.Errorf("TxnCategory in filter = %q, want %q", ledger.lastFilter.TxnCategory, "Mentorship")
+	if ledger.lastFilter.TxnCategory != "" {
+		t.Errorf("TxnCategory in filter = %q, want empty (case-insensitive matching happens locally)", ledger.lastFilter.TxnCategory)
+	}
+	if ledger.lastFilter.TxnType != models.TransactionTypeDonation {
+		t.Errorf("TxnType in filter = %q, want %q", ledger.lastFilter.TxnType, models.TransactionTypeDonation)
 	}
 	if len(list.OrganizationTransactions) != 1 {
 		t.Fatalf("organization slice length = %d, want 1", len(list.OrganizationTransactions))
@@ -316,22 +319,8 @@ func TestGetCategoryTransactions_SplitsByDonorTypeAndCategory(t *testing.T) {
 	if list.Offset != 0 {
 		t.Errorf("Offset = %d, want 0", list.Offset)
 	}
-}
-
-func TestNormalizeLedgerTxnCategory_PreservesCamelCaseAndUnicode(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]string{
-		"mentorship": "Mentorship",
-		"bugBounty":  "BugBounty",
-		"Éducation":  "Éducation",
-	}
-
-	for in, want := range tests {
-		got := normalizeLedgerTxnCategory(in)
-		if got != want {
-			t.Errorf("normalizeLedgerTxnCategory(%q) = %q, want %q", in, got, want)
-		}
+	if list.ResponseType != models.TransactionResponseTypeCategorized {
+		t.Errorf("ResponseType = %q, want categorized", list.ResponseType)
 	}
 }
 
@@ -372,7 +361,7 @@ func TestGetAllMyTransactions_ForeignRowsError(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	_, err := svc.GetAllMyTransactions(context.Background(), testUserID, "donation", false, 10, 0)
+	_, err := svc.GetAllMyTransactions(context.Background(), testUserID, models.TransactionTypeDonation, false, 10, 0)
 	if err == nil {
 		t.Fatal("expected error for foreign rows, got nil")
 	}
@@ -387,7 +376,7 @@ func TestGetAllMyTransactions_ForeignRowsError(t *testing.T) {
 func TestGetAllMyTransactions_ExcludesNegativeDonations(t *testing.T) {
 	rows := []models.Transaction{
 		txn(testUserID, 500),
-		{ID: "grant", Type: "donation", AmountCents: -1000, LedgerUserID: testUserID},
+		{ID: "grant", Type: models.TransactionTypeDonation, AmountCents: -1000, LedgerUserID: testUserID},
 		txn(testUserID, 300),
 	}
 	ledger := &capturingLedger{
@@ -395,7 +384,7 @@ func TestGetAllMyTransactions_ExcludesNegativeDonations(t *testing.T) {
 	}
 	svc := newMyTxnSvc(t, ledger)
 
-	list, err := svc.GetAllMyTransactions(context.Background(), testUserID, "donation", false, 10, 0)
+	list, err := svc.GetAllMyTransactions(context.Background(), testUserID, models.TransactionTypeDonation, false, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

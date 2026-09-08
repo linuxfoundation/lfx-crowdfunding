@@ -617,7 +617,7 @@ func TestGetTransactions_CategoryType_ReturnsCategorizedResponse(t *testing.T) {
 	svc := service.NewInitiativeService(repo, &initiativeUserRepo{}, capture, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?categoryType=mentorship", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?type=donations&categoryType=mentorship", nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetTransactions(w, req)
@@ -625,8 +625,11 @@ func TestGetTransactions_CategoryType_ReturnsCategorizedResponse(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if capture.lastFilter.TxnCategory != "Mentorship" {
-		t.Errorf("TxnCategory in filter = %q, want %q", capture.lastFilter.TxnCategory, "Mentorship")
+	if capture.lastFilter.TxnCategory != "" {
+		t.Errorf("TxnCategory in filter = %q, want empty", capture.lastFilter.TxnCategory)
+	}
+	if capture.lastFilter.TxnType != models.TransactionTypeDonation {
+		t.Errorf("TxnType in filter = %q, want donation", capture.lastFilter.TxnType)
 	}
 
 	var got models.CategorizedTransactions
@@ -635,6 +638,39 @@ func TestGetTransactions_CategoryType_ReturnsCategorizedResponse(t *testing.T) {
 	}
 	if len(got.OrganizationTransactions) != 1 || len(got.IndividualTransactions) != 1 {
 		t.Fatalf("unexpected grouped lengths: org=%d individual=%d", len(got.OrganizationTransactions), len(got.IndividualTransactions))
+	}
+	if got.ResponseType != models.TransactionResponseTypeCategorized {
+		t.Fatalf("expected response_type=categorized, got %q", got.ResponseType)
+	}
+}
+
+func TestGetTransactions_CategoryType_RequiresDonationType(t *testing.T) {
+	initiativeID := "77777770-7777-7777-7777-777777777777"
+	repo := &initiativeRepo{initiative: &models.Initiative{ID: initiativeID, Status: models.StatusPublished}}
+	h := newInitiativeHandler(repo, &initiativeUserRepo{})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?categoryType=mentorship", nil)
+	req = withURLParam(req, "id", initiativeID)
+	w := httptest.NewRecorder()
+	h.GetTransactions(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetTransactions_CategoryType_RejectsUnsupportedCharacters(t *testing.T) {
+	initiativeID := "77777771-7777-7777-7777-777777777777"
+	repo := &initiativeRepo{initiative: &models.Initiative{ID: initiativeID, Status: models.StatusPublished}}
+	h := newInitiativeHandler(repo, &initiativeUserRepo{})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?type=donations&categoryType=%3Cscript%3E", nil)
+	req = withURLParam(req, "id", initiativeID)
+	w := httptest.NewRecorder()
+	h.GetTransactions(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
