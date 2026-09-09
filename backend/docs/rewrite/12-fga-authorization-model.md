@@ -40,13 +40,18 @@ Grounded in `lfx-v2-helm/charts/lfx-platform/files/model.fga`, two existing prec
 - `vote_response` — single owner plus parent, and the model's own guidance that a relation which
   is a mere alias of another (e.g. a `writer` defined as just `owner`) should not exist.
 
-An earlier version of this proposal also modeled CF's approvers as a `team#member` relation
-(mirroring `b2b_org.global_org_admin`), to retire the `ALLOWED_APPROVERS` env allowlist. **PM
-decided against that (2026-09-01, doc 11 open question 5): `ALLOWED_APPROVERS` stays as-is.**
-Approval/decline authorization stays a CF-backend check against that allowlist
+An earlier version of this proposal modeled CF's approvers as a **per-initiative**
+`team#member` relation on `crowdfunding_initiative` itself (mirroring
+`b2b_org.global_org_admin`), to retire the `ALLOWED_APPROVERS` env allowlist. PM decided
+against that (2026-09-01, doc 11 open question 5): `ALLOWED_APPROVERS` stays as-is. That
+decision is **reopened** as of 2026-09-09 — see "Approvers as a global team grant" below,
+which proposes a different shape (one platform-wide team, no per-object tuple) that avoids
+the objections the per-initiative shape raised. Until that proposal is accepted, approvers
+hold no FGA tuple and are not part of `writer` or `viewer` below; approval/decline
+authorization stays a CF-backend check against the env allowlist
 (`backend/cmd/initiatives-api/config.go:110-112`,
-`backend/internal/handler/initiative_handler.go:568-579`, `isApprover`), entirely outside this
-type — approvers hold no FGA tuple and are not part of `writer` or `viewer` below.
+`backend/internal/handler/initiative_handler.go:568-579`, `isApprover`), entirely outside
+this type.
 
 ```
 type crowdfunding_initiative
@@ -70,8 +75,8 @@ Notes:
   the creator, the attributed entity's writers, and approvers may view a non-public initiative —
   no wider audience (e.g. project/org auditors). `writer` already covers creator + entity writer;
   `viewer: [user:*] or writer` extends that to public visibility once published, without adding
-  any inherited-auditor population. Approvers view via the separate `isApprover` backend check
-  above, not through this relation.
+  any inherited-auditor population. Approvers view via the separate `isApprover` check (backend
+  today, gateway-side under the proposal below), not through this relation.
 - `viewer: [user:*]` is a **per-object** wildcard tuple, emitted only while `status == 'published'`
   (`backend/internal/domain/models/initiative.go:29-62`). `hidden` is the only path back down from
   `published` (`validateOwnerStatusTransition`, `backend/internal/service/initiative_service.go:818-833`
@@ -82,6 +87,67 @@ Notes:
 - `b2b_org`-attributed writer access is deliberately non-cascading, PM-confirmed (2026-09-01, open
   question B below): only the org actually assigned to the initiative gets writer access — no
   parent- or child-org population is ever granted it.
+
+## Approvers as a global team grant (proposed, reopens 2026-09-01 decision)
+
+The earlier per-initiative proposal was `approver: [team#member]` on `crowdfunding_initiative`
+itself — a tuple written to every initiative object at creation. PM rejected it for three
+reasons: no known team to point at, no operational path to administer one, and
+`delete_access` orphaning the per-initiative tuple, since fga-sync deliberately never deletes
+a tuple whose subject is `team:*` (`lfx-v2-fga-sync/fga.go:274-283` — "these are managed by a
+separate workflow and must not be clobbered by resource service sync operations"). All three
+were sound objections to that shape.
+
+The proposal below is a different shape: **one platform-wide team, checked as a global grant,
+with no tuple ever written per initiative.** It resolves all three objections because the
+condition each one depends on — a per-object tuple existing — never arises:
+
+| Objection (2026-09-01) | Per-initiative shape | Global shape |
+|---|---|---|
+| No known team to point at | New team, no precedent | `team.member` (`[user]`) already carries other services' global capabilities as `@fgadoc:jtbd` lines — no new relation or type |
+| No operational path to administer a team | None existed | Already shipped: `lfx-v2-member-service`'s `charts/lfx-v2-member-service/templates/ruleset.yaml:78-82` gates `POST /b2b_orgs` and `POST /admin/reindex` on `relation: member`, `object: "team:{{ globalOrgAdminTeamName }}"` — a constant object, no path param, proven pattern |
+| `delete_access` orphans the per-object `team:` tuple | Fatal — every initiative deletion leaves one behind forever | Does not apply — no tuple is ever written against a `crowdfunding_initiative` object, so there is nothing for `delete_access` to orphan |
+
+Team provisioning is self-service, not a request to a platform team: a team object exists
+the moment a member tuple names it. `lfx-v2-member-service/scripts/setup-global-org-admin-team.sh`
+is the reference implementation — read existing members, diff against a desired list, write
+what's missing, verify. CF would adapt this into its own script (`backend/scripts/`)
+against `team:crowdfunding_approvers`, with a matching revoke script (removal is not free:
+fga-sync's `team:*` retention means there is no code path that deletes a membership tuple).
+
+Two things that must accompany any writer of a `team:*` tuple directly against OpenFGA (as
+opposed to going through a service that fga-sync itself manages): the LFID-username format
+convention (Heimdall/CF principals are plain usernames, no `auth0|` prefix — getting this
+wrong silently 403s every approver), and busting the `fga-sync-cache` KV's `inv` key after
+the write, since fga-sync's cache invalidation only triggers on writes it makes itself
+(`lfx-v2-fga-sync/docs/fga-sync-contract.md:276-295`) — a direct OpenFGA write does not bump
+it, so a cached `false` for a newly-added approver can otherwise survive the grant.
+
+**Rollout is two phases, because CF is not yet behind Heimdall** (no `ruleset.yaml` or
+`httproute.yaml` in this repo's chart — CF serves through its own Traefik ingress today, per
+the gateway-milestone framing in doc 11 §3.4). The tuples are the same in both phases; only
+the caller changes:
+
+1. **Now:** seed `team:crowdfunding_approvers`, and have CF's backend check it itself. CF
+   already has the transport — `backend/internal/infrastructure/fga/resolver.go`'s
+   `NATSResolver` does `object#relation@user` checks over `lfx.access_check.request`, and
+   `FGA_NATS_URL` is already configured in every environment
+   (`lfx-v2-argocd/values/global/lfx-crowdfunding-backend.yaml:86`). Add one method
+   alongside the existing `CanManage` for `team:<name>#member@user:<username>`, and change
+   `isApprover` (`initiative_handler.go:570`) to call it, with `ALLOWED_APPROVERS` kept as a
+   fallback while `FGA_NATS_URL` is unset. This already retires the env var as the source of
+   truth — an approver can be added or removed without a deploy.
+2. **At the gateway milestone:** move the check to a Heimdall `openfga_check` rule on CF's
+   own chart, exactly like member-service's `object: "team:{{ approversTeamName }}"` rule,
+   and delete `isApprover` and the resolver method entirely. The read path
+   (`GET /v1/initiatives/{id}`, approver-visible pre-publish) would use the
+   `openfga_or_check` authorizer (`lfx-v2-helm/charts/lfx-platform/values.yaml:363-419`):
+   `viewer` on the initiative OR `member` on the approvers team, one `BatchCheck`. That
+   authorizer is defined in the platform chart but has no shipped `RuleSet` reference found
+   in this repo's environment — verify it against OpenFGA in Docker before relying on it.
+
+This section proposes the shape; it does not change `ALLOWED_APPROVERS` today. See "Decided"
+below for the status of the reopened decision.
 
 ## Emission (summary, not a full contract)
 
@@ -100,6 +166,8 @@ not that the DSL parses. Minimum negative cases: a project-A writer is denied `w
 project-B-attributed initiative; a `hidden` initiative grants no `viewer@user:*`. Minimum
 inheritance case: a parent-project writer reaches an initiative attributed to the child project.
 Validate locally against OpenFGA in Docker before proposing — a mis-scoped relation fails *open*.
+(The global approver-team proposal above adds no scenarios here — it touches no relation on
+`crowdfunding_initiative` and requires no platform model change.)
 
 ## Decided (PM, 2026-09-01)
 
@@ -115,7 +183,13 @@ Resolved during review — kept here for the record rather than left in the open
   access** — only the org actually assigned to the initiative does. No change needed; `writer from
   b2b_org` already has this shape.
 - **`ALLOWED_APPROVERS` (was open question C).** Keep the current env var allowlist; approvers are
-  not modeled in FGA. See "The type" above and doc 11 open question 5.
+  not modeled in FGA. See "The type" above and doc 11 open question 5. **Reopened 2026-09-09:**
+  new evidence (a shipped global-team-check precedent in `lfx-v2-member-service`, and
+  confirmation that a global grant writes no per-object tuple, so the `delete_access` orphan
+  objection doesn't apply) supports a different approver shape than the one this decision
+  rejected. See "Approvers as a global team grant" above. The 2026-09-01 objections stand
+  against the per-initiative shape they were made against; they were not re-litigated for the
+  global shape until this reopening.
 - **Private-view population (was open question E).** No wider audience than creator, entity
   writer, and approver — the `auditor` relation and its project/org inheritance are dropped from
   the type; see "The type" above.
@@ -144,9 +218,10 @@ Resolved during review — kept here for the record rather than left in the open
 | D | **Ordering.** Model + `tests.yaml` in `lfx-v2-helm` first, Heimdall RuleSets second, CF-side tuple emission third — a RuleSet referencing a relation that doesn't exist yet fails closed. | Model lands first, as its own PR; RuleSet wiring and CF emission are tracked separately once the model is accepted. | Architecture team |
 
 (Open question F — `delete_access` orphaning a per-initiative `approver@team:…#member` tuple — no
-longer applies now that approvers are not modeled in FGA at all, per the "Decided" section above.
-Open question G — the `GET /v1/me/initiatives` list mechanism — is resolved above via a bounded
-batched `Check`, no longer open.)
+longer applies: approvers are not modeled in FGA today, and the reopened global-team proposal in
+"Approvers as a global team grant" above writes no per-initiative tuple either, so this objection
+does not resurface under it. Open question G — the `GET /v1/me/initiatives` list mechanism — is
+resolved above via a bounded batched `Check`, no longer open.)
 
 ## Prerequisite (named, not solved here)
 
@@ -154,3 +229,7 @@ batched `Check`, no longer open.)
 `attributed_to_uid` is typed `UUID` (migration `007_initiative_attribution.up.sql`), but a real
 `b2b_org` uid may be an 18-character Salesforce Account SFID. Emitting a `b2b_org` reference
 tuple is blocked on resolving that mismatch first.
+
+This does **not** block the global approver-team proposal above: that proposal writes only
+`user:<lfid>` → `member` → `team:crowdfunding_approvers` tuples, never a `b2b_org` reference,
+so it can proceed independently of #263.
