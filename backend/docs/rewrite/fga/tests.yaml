@@ -1,3 +1,6 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+#
 # SUGGESTED EXAMPLE ONLY — see README.md.
 #
 # Regression suite for model.fga, run via the OpenFGA CLI:

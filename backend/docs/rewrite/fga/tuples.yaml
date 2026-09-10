@@ -1,3 +1,6 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+
 # SUGGESTED EXAMPLE ONLY — see README.md. Fixture tuples for model.fga,
 # covering every attribution shape doc 12 proposes (project, b2b_org,
 # personal/non-LF) plus the global approver-team grant.
