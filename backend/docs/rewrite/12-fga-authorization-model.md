@@ -6,7 +6,11 @@
 Status: Proposal — for Architecture team review
 Related: [11-initiative-attribution-and-access.md](./11-initiative-attribution-and-access.md)
 (the product design this authorizes), tracked as
-[lfx-crowdfunding#269](https://github.com/linuxfoundation/lfx-crowdfunding/issues/269)
+[lfx-crowdfunding#269](https://github.com/linuxfoundation/lfx-crowdfunding/issues/269) —
+**stale as of this revision**: the issue still reflects a pre-2026-09-01 version of the model
+(`approver`/`auditor` relations, per-initiative approver tuple, old open-questions A-D); this
+doc's "The type," "Decided," and "Open questions" sections above supersede it. Needs a sync pass
+before architecture review.
 
 Doc 11 §3.4 already concluded that the idiomatic `crowdfunding_initiative` FGA type is the
 gateway-milestone plan, but never wrote the model down. This doc proposes it — one type, not a
@@ -28,6 +32,12 @@ governs single-object *gating* (can this request proceed), which moves to the ga
 It does not forbid one bounded, batched `Check` call issued by CF itself to *populate a list view*
 — that's a read-model concern, not an authorization decision, and the same shape doc 11 §5.1
 already proposed for the hybrid model.
+
+**Carve-out for the approver Phase-1 rollout (see "Rollout is two phases" below):** until CF sits
+behind Heimdall, CF's backend does query FGA at request time to gate a single request (approver
+check via `NATSResolver`). This is a temporary, explicitly-scoped exception to the Principle, not
+a second pattern — it is retired at the gateway milestone when the check moves to a Heimdall
+`openfga_check` rule.
 
 ## The type
 
@@ -177,7 +187,10 @@ Resolved during review — kept here for the record rather than left in the open
   this question raised is unnecessary: **the original creator always retains access to their
   initiative**, including the ability to move it to a different org/project they now belong to.
   Attribution changes are authorized by the standard `writer` check alone (owner, or the target
-  entity's writer) — no separate check against the *current* attributed entity is required.
+  entity's writer) — no separate check against the *current* attributed entity is required. This
+  is a check against the target `project`/`b2b_org` object directly (`writer@user:X` on the
+  entity being moved to), not the initiative's own `crowdfunding_initiative#writer` relation,
+  which reflects only the current attribution.
 - **`b2b_org` writer non-cascading (was open question B).** Confirmed as the intended design, not
   just an accepted platform limitation: **no parent- or child-org population ever gains writer
   access** — only the org actually assigned to the initiative does. No change needed; `writer from
@@ -197,14 +210,19 @@ Resolved during review — kept here for the record rather than left in the open
   external service, using only Postgres + a bounded batched FGA `Check` (no `ListObjects`, no new
   dependency):
   1. Postgres: `SELECT id FROM initiatives WHERE owner_id = $1` — owned initiatives need no check.
-  2. Postgres: `SELECT DISTINCT attributed_to_type, attributed_to_uid FROM initiatives` — the
-     candidate set is bounded by *how many distinct orgs/projects have ever been attributed an
-     initiative*, not by total initiatives or total platform entities.
-  3. One batched FGA `Check` call (OpenFGA's `BatchCheck` RPC) against that candidate set: "is
-     `$1` a writer on `project:X` / `b2b_org:Y`" for each entity, one round trip.
-  4. Postgres: `SELECT id FROM initiatives WHERE owner_id = $1 OR (attributed_to_type,
-     attributed_to_uid) IN (<entities that came back true>)` — same parenthesized-OR shape as
-     doc 11 §5.1's builder fix, so pagination/sorting/search stay ordinary SQL.
+  2. Postgres: `SELECT DISTINCT attributed_to_type, attributed_to_uid FROM initiatives WHERE
+     attributed_to_type <> 'personal'` — the candidate set is bounded by *how many distinct
+     orgs/projects have ever been attributed an initiative*, not by total initiatives or total
+     platform entities.
+  3. One batched `access_check.request` over NATS (transit C, fga-sync's own batching — not a
+     direct OpenFGA call, per the Principle above) against that candidate set: "is `$1` a writer
+     on `project:X` / `b2b_org:Y`" for each entity, one round trip. Bound and chunk the batch per
+     doc 11 §5.1's bounding note (never silently truncate).
+  4. Postgres: `SELECT id FROM initiatives WHERE (owner_id = $1 OR (attributed_to_type,
+     attributed_to_uid) IN (<entities that came back true>))` — same parenthesized-OR shape as
+     doc 11 §5.1's builder fix (the outer parens matter: `InitiativeRepository.List` appends
+     further filters with a bare `AND`, so an unparenthesized `OR` would let owner-owned rows
+     bypass them), so pagination/sorting/search stay ordinary SQL.
 
   This is the same batched-candidate-set shape doc 11 §5.1 already proposed for the hybrid model,
   and the same shape `lfx-self-serve`'s `AccessCheckService.checkAccess()` uses in production to
@@ -215,7 +233,8 @@ Resolved during review — kept here for the record rather than left in the open
 
 | # | Question | Proposed default | Directed to |
 |---|---|---|---|
-| D | **Ordering.** Model + `tests.yaml` in `lfx-v2-helm` first, Heimdall RuleSets second, CF-side tuple emission third — a RuleSet referencing a relation that doesn't exist yet fails closed. | Model lands first, as its own PR; RuleSet wiring and CF emission are tracked separately once the model is accepted. | Architecture team |
+| D | **Ordering.** Model + `tests.yaml` in `lfx-v2-helm` first, CF-side tuple emission (with backfill) second, Heimdall RuleSets third — turning on enforcement before tuples exist fails every check closed, locking out every caller until backfill completes. | Model lands first, as its own PR; CF emission and backfill land next; RuleSet wiring (enforcement) lands last, once tuples are known to be present for every initiative. | Architecture team |
+| H | **Slug-vs-UUID route contract.** `GET/PUT /v1/initiatives/{id}` accepts either a slug or a UUID in `{id}`; a Heimdall `openfga_check` RuleSet at the gateway milestone evaluates `object: "crowdfunding_initiative:{id}"` templated straight off the path param, before CF's handler can resolve a slug to the canonical UUID. A slug-addressed request would then check a `crowdfunding_initiative` object that never got any tuples (they're all emitted under the UUID), and fail closed for every valid slug-based request. | Either canonicalize slug-to-UUID upstream of the RuleSet (a Heimdall-side lookup or route-level redirect), or split the route so only the UUID-addressed path carries the `openfga_check` RuleSet and the slug-addressed path resolves first, then re-checks. | Architecture team |
 
 (Open question F — `delete_access` orphaning a per-initiative `approver@team:…#member` tuple — no
 longer applies: approvers are not modeled in FGA today, and the reopened global-team proposal in

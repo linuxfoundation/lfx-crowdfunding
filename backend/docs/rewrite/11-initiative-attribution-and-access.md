@@ -7,7 +7,10 @@
 
 **Status:** Design proposal, July 2026 — reviewed at the July architecture sync, settled in the
 follow-up exchange, then partially superseded 2026-08-25. Three decisions: **(1)** transit — CF
-reaches the FGA checks over direct NATS (option C), approved by Eric and Jordan (§3.1); **(2)**
+reaches the FGA checks over direct NATS (option C), approved by Eric and Jordan (§3.1) — this
+governs how CF talks to FGA wherever it does (today: the §5.1 list batch-check, and doc 12's
+approver Phase-1 check), not a shipped per-request initiative-access check, which decision (2)
+defers entirely; **(2)**
 approach — **the hybrid per-entity write gate is deferred, not shipped as an interim step; the
 idiomatic `crowdfunding_initiative` type is the plan for the gateway milestone, with no mechanism
 before it** (§3.4) — Eric's July initial-step exception is read as superseded by the 2026-08-25
@@ -103,9 +106,12 @@ managed. Users with multiple affiliations simply see them all in the single-sele
 **Eligibility gate: affiliation, not writer (decided).** A user may attribute to any org/project
 they are *affiliated* with — they need not be a `writer` on it (PM decision, 2026-07). This is the
 weaker of the two gates: someone affiliated with, but not a writer on, an org can publish a page
-carrying that org's name and logo without a writer signing off first. The org's writers *can*
-correct or remove it — but only once the gateway milestone ships the access rule that grants them
-management (§3.4, §3.5, §5 — deferred from M2, which no longer exists as a separate milestone). Two
+carrying that org's name and logo without a writer signing off first. The org's writers cannot
+correct or remove it themselves — detaching to `personal` is authorized by the owner/creator only
+(doc 12, "Decided," attribution-change authorization: owner, or the target entity's writer; there
+is no target entity for `personal`). Only the creator can undo a false attribution once the
+gateway milestone ships the access rule that grants entity writers management in the first place
+(§3.4, §3.5, §5 — deferred from M2, which no longer exists as a separate milestone). Two
 consequences follow directly (see §5): the public attribution label cannot ship in a standalone
 M1, and server-side validation checks an *affiliation* source, not an FGA `writer` relation.
 
@@ -449,7 +455,7 @@ The idiomatic alternative he proposed: add a `crowdfunding_initiative` type to t
 model — `define writer: [user] or writer from project or writer from b2b_org`
 (`project_membership` in `model.yaml` is an existing precedent for the shape) — have CF emit
 `update_access`/`delete_access` tuples on create/attribution-change/delete (including the creator
-as a direct `writer` tuple, so *all* access decisions move to FGA), backfill existing initiatives,
+as an `owner` tuple, with `writer` computed from it, so *all* access decisions move to FGA), backfill existing initiatives,
 and reduce every runtime check to one `crowdfunding_initiative:{id}#writer` query. A side benefit:
 the platform's auto-generated access documentation would then describe the type's roles and
 permission inheritance — visibility an in-backend union never gets.
@@ -458,7 +464,7 @@ permission inheritance — visibility an in-backend union never gets.
 for one) to model a non-LF *project entity* with multiple managers. If non-LF support ever lands,
 the scope is the trivial one Eric identified: an initiative with no `project`/`b2b_org` attribution,
 managed by its owner only — which today's `personal` attribution already covers, and which the
-idiomatic type would cover via the creator's direct `writer` tuple. The more complex path (a CF-
+idiomatic type would cover via the creator's `owner` tuple (with `writer` computed from it). The more complex path (a CF-
 defined non-LF project with its own multi-user membership, e.g. a future `crowdfunding_group` type)
 is explicitly out of scope until such a requirement is real.
 
@@ -689,8 +695,10 @@ the existing SQL as a second `WHERE` branch.**
    pagination then work unchanged — totals and page sizes stay correct because the filter is
    applied *in* the query, not after it.
 3. **Bound the set.** If a caller writes an unusually large number of entities, keep the filter
-   database-side: pass the set as an array parameter (`= ANY($n::uuid[])` per attribution type)
-   or a joined temporary relation instead of an inline `IN` list, so sort, count, and pagination
+   database-side: pass the set as an array parameter (`= ANY($n::uuid[])` for `project` UIDs;
+   `b2b_org` UIDs need the actual column type once the SFID-vs-UUID question above is settled —
+   see the prerequisite note in doc 12, #263) or a joined temporary relation instead of an inline
+   `IN` list, so sort, count, and pagination
    stay in the query at any set size. If a hard cap is ever imposed, log when it is hit (no
    silent truncation).
 
