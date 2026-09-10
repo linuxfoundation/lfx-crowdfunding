@@ -1,0 +1,84 @@
+# SUGGESTED EXAMPLE ONLY — see README.md. Fixture tuples for model.fga,
+# covering every attribution shape doc 12 proposes (project, b2b_org,
+# personal/non-LF) plus the global approver-team grant.
+
+# --- LF project hierarchy: lf-child under lf-parent ---
+- user: project:lf-parent
+  relation: parent
+  object: project:lf-child
+
+- user: user:pwriter-parent
+  relation: writer
+  object: project:lf-parent
+
+- user: user:pwriter-child
+  relation: writer
+  object: project:lf-child
+
+# --- Unrelated project, for the cross-project negative ---
+- user: user:pwriter-other
+  relation: writer
+  object: project:other
+
+# --- b2b_org: acme, and an unrelated "parent" org proving non-cascading ---
+- user: user:orgwriter
+  relation: writer
+  object: b2b_org:acme
+
+# b2b_org:acme-parent deliberately gets NO tuple relating it to acme, and no
+# writer relation of its own — there is no parent-org concept in the model,
+# so a writer on any other org must never reach acme. See tests.yaml.
+
+# --- Initiative attributed to a project, published ---
+- user: project:lf-child
+  relation: project
+  object: crowdfunding_initiative:proj-published
+
+- user: user:creator
+  relation: owner
+  object: crowdfunding_initiative:proj-published
+
+- user: user:*
+  relation: viewer
+  object: crowdfunding_initiative:proj-published
+
+# --- Same project attribution, but hidden: wildcard withdrawn ---
+- user: project:lf-child
+  relation: project
+  object: crowdfunding_initiative:proj-hidden
+
+- user: user:creator
+  relation: owner
+  object: crowdfunding_initiative:proj-hidden
+
+# no user:* viewer tuple here — this is the "published -> hidden withdraws
+# the wildcard" case from doc 12's model notes.
+
+# --- Initiative attributed to a b2b_org, published ---
+- user: b2b_org:acme
+  relation: b2b_org
+  object: crowdfunding_initiative:org-published
+
+- user: user:orgcreator
+  relation: owner
+  object: crowdfunding_initiative:org-published
+
+- user: user:*
+  relation: viewer
+  object: crowdfunding_initiative:org-published
+
+# --- Personal / non-LF initiative: no project, no b2b_org, no wildcard ---
+- user: user:solo
+  relation: owner
+  object: crowdfunding_initiative:personal-draft
+
+# --- Global approver team (doc 12 "Approvers as a global team grant") ---
+# `team:crowdfunding_approvers` is not a distinct FGA type — it's a single
+# object of the generic `team` type (stubbed in model.fga), instantiated
+# by CF per doc 12 (12-fga-authorization-model.md:125,141). Membership here
+# is the entire mechanism: there is no per-initiative approver tuple.
+- user: user:approver
+  relation: member
+  object: team:crowdfunding_approvers
+
+# user:notapprover and user:creator are deliberately NOT members.

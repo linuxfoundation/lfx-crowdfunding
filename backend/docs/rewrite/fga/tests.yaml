@@ -1,0 +1,120 @@
+# SUGGESTED EXAMPLE ONLY — see README.md.
+#
+# Regression suite for model.fga, run via the OpenFGA CLI:
+#   fga model test --tests tests.yaml
+#
+# Covers doc 12's named "tests.yaml merge gate" scenarios (cross-project
+# denial, hidden withdraws the wildcard, parent-project inheritance) plus
+# the attribution shapes a project-rooted model can't express (personal,
+# b2b_org, non-cascading org writers), and the global approver-team grant.
+
+name: Crowdfunding Authorization Model Tests (example)
+model_file: model.fga
+tuple_file: tuples.yaml
+
+tests:
+  - name: merge gate — a project-A writer is denied on a project-B-attributed initiative
+    check:
+      - user: user:pwriter-other
+        object: crowdfunding_initiative:proj-published
+        assertions:
+          writer: false
+          viewer: false
+
+  - name: merge gate — a hidden initiative grants no viewer@user:* (wildcard withdrawn)
+    check:
+      - user: user:pwriter-other
+        object: crowdfunding_initiative:proj-hidden
+        assertions:
+          viewer: false
+      - user: user:creator
+        object: crowdfunding_initiative:proj-hidden
+        assertions:
+          viewer: true
+          writer: true
+
+  - name: merge gate — a parent-project writer reaches an initiative attributed to the child project
+    check:
+      - user: user:pwriter-parent
+        object: crowdfunding_initiative:proj-published
+        assertions:
+          writer: true
+          viewer: true
+
+  - name: creator always retains access, published or hidden (doc 12 Decided A)
+    check:
+      - user: user:creator
+        object: crowdfunding_initiative:proj-published
+        assertions:
+          writer: true
+      - user: user:creator
+        object: crowdfunding_initiative:proj-hidden
+        assertions:
+          writer: true
+
+  - name: personal / non-LF initiative — owner-only, no project or org needed
+    check:
+      - user: user:solo
+        object: crowdfunding_initiative:personal-draft
+        assertions:
+          writer: true
+          viewer: true
+      - user: user:pwriter-child
+        object: crowdfunding_initiative:personal-draft
+        assertions:
+          writer: false
+      - user: user:orgwriter
+        object: crowdfunding_initiative:personal-draft
+        assertions:
+          writer: false
+
+  - name: b2b_org writer access is non-cascading (doc 12 Decided B)
+    check:
+      - user: user:orgwriter
+        object: crowdfunding_initiative:org-published
+        assertions:
+          writer: true
+      # no writer relation exists between b2b_org:acme-parent and acme, or
+      # to org-published at all — asserting a non-member here would be a
+      # tautology, not a real cascade check. The absence of any tuple
+      # linking a parent org to acme *is* the non-cascading proof.
+
+  - name: an org writer is scoped to their own org, not other initiatives
+    check:
+      - user: user:orgwriter
+        object: crowdfunding_initiative:proj-published
+        assertions:
+          writer: false
+
+  # --- Approver: a global team grant, not a per-initiative relation ---
+  # These checks are against team:crowdfunding_approvers#member, not against
+  # any crowdfunding_initiative object — that's the point of the global-team
+  # shape (doc 12 "Approvers as a global team grant"): can_review is
+  # evaluated as a *second*, separate check (openfga_or_check at the
+  # gateway milestone), never folded into the initiative's own `writer` or
+  # `viewer` relation.
+  - name: approver is a global grant, unrelated to any initiative's writer relation
+    check:
+      - user: user:approver
+        object: team:crowdfunding_approvers
+        assertions:
+          member: true
+      - user: user:notapprover
+        object: team:crowdfunding_approvers
+        assertions:
+          member: false
+      - user: user:approver
+        object: crowdfunding_initiative:proj-published
+        assertions:
+          writer: false
+
+  - name: owner cannot self-approve — creator is not a member of the approvers team
+    check:
+      - user: user:creator
+        object: team:crowdfunding_approvers
+        assertions:
+          member: false
+      - user: user:pwriter-child
+        object: team:crowdfunding_approvers
+        assertions:
+          member: false
