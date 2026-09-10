@@ -730,6 +730,181 @@ func TestNewJWTAuthenticator_EnforcesValidMethods(t *testing.T) {
 	})
 }
 
+// ── dual-accept (LFXV2-3351): Heimdall alongside Auth0 ──────────────────────────
+
+func newJWKSServer(t *testing.T, kid string, key *rsa.PrivateKey) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": []map[string]any{{
+				"kty": "RSA", "use": "sig", "kid": kid, "alg": "RS256",
+				"n": n, "e": e,
+			}},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestNewJWTAuthenticator_HeimdallFieldsAllOrNothing(t *testing.T) {
+	jwksServer := newJWKSServer(t, "auth0-key", testRSAKey)
+
+	_, err := NewJWTAuthenticator(context.Background(), JWTAuthConfig{
+		JWKSURL:         jwksServer.URL,
+		Audience:        testAudience,
+		Issuer:          testIssuer,
+		HeimdallJWKSURL: "https://heimdall.example/.well-known/jwks",
+		// HeimdallAudience and HeimdallIssuer intentionally left empty.
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil {
+		t.Fatal("expected error when only some Heimdall fields are set")
+	}
+	if !strings.Contains(err.Error(), "must all be set or all be empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewJWTAuthenticator_HeimdallIssuerMustDifferFromAuth0(t *testing.T) {
+	jwksServer := newJWKSServer(t, "auth0-key", testRSAKey)
+
+	_, err := NewJWTAuthenticator(context.Background(), JWTAuthConfig{
+		JWKSURL:          jwksServer.URL,
+		Audience:         testAudience,
+		Issuer:           testIssuer,
+		HeimdallJWKSURL:  jwksServer.URL,
+		HeimdallAudience: "heimdall-audience",
+		HeimdallIssuer:   testIssuer, // same as Issuer — invalid
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil {
+		t.Fatal("expected error when HeimdallIssuer equals Issuer")
+	}
+	if !strings.Contains(err.Error(), "must differ from JWT_ISSUER") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestDualAccept_AcceptsBothAuth0AndHeimdallTokens builds an authenticator with
+// two independent JWKS backends (distinct keys, issuers, audiences) and verifies
+// tokens from either are accepted, while a token whose issuer matches neither is
+// rejected.
+func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
+	const heimdallIssuer = "https://heimdall.example"
+	const heimdallAudience = "lfx-crowdfunding-backend"
+
+	auth0Server := newJWKSServer(t, "test-kid", testRSAKey)
+	heimdallKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate heimdall RSA key: %v", err)
+	}
+	heimdallServer := newJWKSServer(t, "heimdall-key", heimdallKey)
+
+	a, err := NewJWTAuthenticator(context.Background(), JWTAuthConfig{
+		JWKSURL:          auth0Server.URL,
+		Audience:         testAudience,
+		Issuer:           testIssuer,
+		HeimdallJWKSURL:  heimdallServer.URL,
+		HeimdallAudience: heimdallAudience,
+		HeimdallIssuer:   heimdallIssuer,
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewJWTAuthenticator: %v", err)
+	}
+
+	handler := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := PrincipalFromContext(r.Context())
+		if p != nil {
+			w.Header().Set("X-User-ID", p.UserID)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Run("accepts Auth0 token", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, makeRequest(userToken()))
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 for Auth0 token, got %d", w.Code)
+		}
+	})
+
+	t.Run("accepts Heimdall token", func(t *testing.T) {
+		signed, err := signRS256(map[string]any{
+			"sub": "heimdall|testuser",
+			"iss": heimdallIssuer,
+			"aud": heimdallAudience,
+			"exp": time.Now().Add(time.Hour).Unix(),
+		}, heimdallKey, "heimdall-key")
+		if err != nil {
+			t.Fatalf("sign Heimdall token: %v", err)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, makeRequest(signed))
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 for Heimdall token, got %d", w.Code)
+		}
+		if got := w.Header().Get("X-User-ID"); got != "heimdall|testuser" {
+			t.Errorf("UserID = %q, want %q", got, "heimdall|testuser")
+		}
+	})
+
+	t.Run("rejects token signed by Heimdall key but claiming Auth0 issuer", func(t *testing.T) {
+		signed, err := signRS256(map[string]any{
+			"sub": "heimdall|testuser",
+			"iss": testIssuer, // claims Auth0's issuer, routed to the Auth0 validator
+			"aud": testAudience,
+			"exp": time.Now().Add(time.Hour).Unix(),
+		}, heimdallKey, "heimdall-key")
+		if err != nil {
+			t.Fatalf("sign token: %v", err)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, makeRequest(signed))
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for cross-signed token, got %d", w.Code)
+		}
+	})
+
+	t.Run("rejects token with unknown issuer", func(t *testing.T) {
+		signed, err := signRS256(map[string]any{
+			"sub": "someone",
+			"iss": "https://unknown-issuer.example",
+			"aud": testAudience,
+			"exp": time.Now().Add(time.Hour).Unix(),
+		}, testRSAKey, "test-kid")
+		if err != nil {
+			t.Fatalf("sign token: %v", err)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, makeRequest(signed))
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for unknown-issuer token, got %d", w.Code)
+		}
+	})
+}
+
+func TestUnverifiedIssuer(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "valid token", raw: userToken(), want: testIssuer},
+		{name: "malformed - too few segments", raw: "not.a.jwt.token", want: ""},
+		{name: "malformed - bad base64", raw: "header.!!!not-base64!!!.sig", want: ""},
+		{name: "malformed - not JSON", raw: "header." + base64.RawURLEncoding.EncodeToString([]byte("not json")) + ".sig", want: ""},
+		{name: "empty", raw: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := unverifiedIssuer(tt.raw); got != tt.want {
+				t.Errorf("unverifiedIssuer(%q) = %q, want %q", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAuthFailureCategory(t *testing.T) {
 	tests := []struct {
 		name string
