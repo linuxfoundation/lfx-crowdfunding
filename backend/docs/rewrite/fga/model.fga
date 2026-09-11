@@ -1,0 +1,54 @@
+model
+  schema 1.1
+
+# ============================================================================
+# SUGGESTED EXAMPLE ONLY — not the authoritative model, not a proposed change
+# to lfx-v2-helm. This illustrates the `crowdfunding_initiative` type proposed
+# in ../12-fga-authorization-model.md so it can be validated with the OpenFGA
+# CLI (`fga model test --tests tests.yaml`). See README.md in this directory.
+#
+# `user`, `project`, `b2b_org`, and `team` below are minimal stand-ins for
+# types that already exist in the shared lfx-v2-helm platform model. They are
+# included only so this file runs standalone, the same device used by the
+# reviewed team-member suggestion this responds to.
+# ============================================================================
+
+type user
+
+# Stand-in for the real platform `project` type. The real one has more
+# relations; this carries only what's needed to exercise parent-project
+# writer inheritance (doc 12 "The type" note on `writer from project`).
+type project
+  relations
+    define parent: [project]
+    define writer: [user] or writer from parent
+
+# Stand-in for the real platform `b2b_org` type.
+type b2b_org
+  relations
+    define writer: [user]
+
+# Stand-in for the real platform `team` type (defined in
+# lfx-v2-helm/charts/lfx-platform/files/model.fga, not in this repo).
+# `team` itself is generic — object *names* like `team:crowdfunding_approvers`
+# are not a distinct FGA type, just an object of this type that a service
+# instantiates by writing membership tuples against it. Doc 12
+# ("Approvers as a global team grant", 12-fga-authorization-model.md:125,141)
+# proposes CF seed exactly one such object, `team:crowdfunding_approvers`,
+# as the reviewer/approver grant — see its `member` tuples in tuples.yaml.
+type team
+  relations
+    define member: [user]
+
+# The proposed CF type, verbatim from ../12-fga-authorization-model.md.
+type crowdfunding_initiative
+  relations
+    # exclusive attribution; personal initiatives have neither
+    define project: [project]
+    define b2b_org: [b2b_org]
+    # @fgadoc:alias Creator
+    define owner: [user]
+    # @fgadoc:jtbd Update, publish, hide & delete an initiative
+    define writer: owner or writer from project or writer from b2b_org
+    # @fgadoc:jtbd View & discover an initiative
+    define viewer: [user:*] or writer
