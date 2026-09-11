@@ -1,0 +1,66 @@
+model
+  schema 1.1
+
+# ============================================================================
+# SUGGESTED EXAMPLE ONLY — not the authoritative model, not a proposed change
+# to lfx-v2-helm. Option B for the architecture team, alongside model.fga
+# (Option A, doc 12's flat writer/viewer). See README.md "Option A vs Option B".
+#
+# This is our attribution shape (project | b2b_org | personal, from
+# ../12-fga-authorization-model.md) redrawn in the reviewed team-member
+# suggestion's style: named per-action permissions aliasing one `admin`
+# relation, instead of a single flat `writer`. It deliberately does NOT make
+# `project` a mandatory root — that would break `personal` and `b2b_org`
+# attribution, which was the original objection to his model and is still
+# true here. What carries over is the *naming convention*, not the hierarchy.
+#
+# It also fixes his model's one bug: `can_review` here goes through the
+# global `team:crowdfunding_approvers` grant, not `admin`/`project_writer` —
+# so an owner who is also a project writer still cannot review their own
+# initiative. See tests.yaml's "owner cannot self-approve" case, which
+# applies unchanged to this variant.
+# ============================================================================
+
+type user
+
+type project
+  relations
+    define parent: [project]
+    define writer: [user] or writer from parent
+
+type b2b_org
+  relations
+    define writer: [user]
+
+type team
+  relations
+    define member: [user]
+
+type crowdfunding_initiative
+  relations
+    # exclusive attribution; personal initiatives have neither
+    define project: [project]
+    define b2b_org: [b2b_org]
+    # @fgadoc:alias Creator
+    define owner: [user]
+
+    define project_writer: writer from project
+    define org_writer: writer from b2b_org
+
+    # Everything doc 12's flat `writer` covers, renamed to match the
+    # reviewed suggestion's `admin` — one alias, fanned out below into
+    # named permissions per action.
+    define admin: owner or project_writer or org_writer
+
+    define can_view: [user:*] or admin
+    define can_edit: admin
+    define can_manage_announcements: admin
+    define can_archive: admin
+    define can_activate: admin
+
+    # NOT admin — a global grant, same as doc 12's "Approvers as a global
+    # team grant." This is the fix for the reviewed suggestion's bug: his
+    # `can_review: project_writer` lets an owner who is also a project
+    # writer approve their own initiative. Routing through the approvers
+    # team closes that hole regardless of which shape (A or B) is chosen.
+    define can_review: [team:crowdfunding_approvers#member]

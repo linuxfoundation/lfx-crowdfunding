@@ -17,9 +17,35 @@ stale — treat doc 12 as the source of truth for the reasoning, and these as il
 
 | File | Purpose |
 |---|---|
-| `model.fga` | The `crowdfunding_initiative` type from doc 12, plus minimal stand-in types (`project`, `b2b_org`, `team`) for the ones that really live in the shared platform model |
-| `tuples.yaml` | Sample tuples covering every attribution shape |
-| `tests.yaml` | Regression tests for doc 12's named merge-gate scenarios, via the OpenFGA CLI |
+| `model.fga` | Option A: the `crowdfunding_initiative` type from doc 12, plus minimal stand-in types (`project`, `b2b_org`, `team`) for the ones that really live in the shared platform model |
+| `model-option-b-named-permissions.fga` | Option B: same attribution shape, redrawn with named per-action permissions (`can_view`/`can_edit`/`can_archive`/...) aliasing one `admin` relation, in the style of the reviewed team-member suggestion — for the architecture team to choose between |
+| `tuples.yaml` | Sample tuples covering every attribution shape (Option A) |
+| `tests.yaml` | Regression tests for doc 12's named merge-gate scenarios, via the OpenFGA CLI (Option A) |
+
+## Option A vs Option B
+
+Both keep `project | b2b_org | personal` attribution — that part isn't up for debate, it's
+what makes `personal-draft` and `org-published` in `tuples.yaml` possible at all. What's
+actually different:
+
+|  | Option A (`model.fga`, doc 12) | Option B (`model-option-b-named-permissions.fga`) |
+|---|---|---|
+| Manage capability | One flat `writer` | One `admin`, aliased into five named permissions (`can_edit`, `can_archive`, ...) |
+| View | `viewer: [user:*] or writer` | `can_view: [user:*] or admin` |
+| Approve | `isApprover`/global team, outside this type entirely (Phase 1), later `team:crowdfunding_approvers` global grant | `can_review: [team:crowdfunding_approvers#member]` — same global grant, modeled as a named permission on the type itself |
+| Relation count | 5 | 10 |
+
+The platform model's own guidance is that a relation which is a mere alias of another should
+not exist (doc 12, citing `vote_response`) — that's the case against Option B's `can_edit`/
+`can_archive`/`can_activate`, which today have no independent logic from `admin` and would
+only earn their keep if one of them needs to diverge (e.g. archiving becoming project-writer-only
+while editing stays owner-only). Option A defers that split until a divergence actually shows up.
+Option B's win is readability for a team unfamiliar with the codebase — the reviewed
+suggestion's tables (action × role) came from these names, not from `writer`.
+
+Either option fixes the reviewed suggestion's actual bug: `can_review`/approval must route
+through the `team:crowdfunding_approvers` global grant, never through `admin`/`project_writer`/
+`writer`, or an owner who is also a project writer can approve their own initiative.
 
 ## Why this shape, not a project-rooted one
 
