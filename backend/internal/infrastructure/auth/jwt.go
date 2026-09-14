@@ -85,6 +85,20 @@ func (c *JWTClaims) effectiveEmail() string {
 	return strings.TrimSpace(c.Email)
 }
 
+// effectiveUsername returns the LF SSO username used to resolve the caller's
+// CF user row (service.GetByUsername). Auth0 tokens carry it as the
+// namespaced "username" claim; Heimdall-issued tokens (LFXV2-3351) are not
+// guaranteed to set that claim and instead carry the plain LF username
+// directly as "sub" (doc backend/docs/rewrite/12-fga-authorization-model.md,
+// "Heimdall/CF principals are plain usernames, no auth0| prefix") — fall
+// back to sub so user resolution doesn't silently break for those tokens.
+func (c *JWTClaims) effectiveUsername() string {
+	if v := strings.TrimSpace(c.Username); v != "" {
+		return v
+	}
+	return strings.TrimSpace(c.Subject)
+}
+
 const (
 	authCategoryUnknown                    = "unknown"
 	authCategoryMissingAuthorizationHeader = "missing_authorization_header"
@@ -306,7 +320,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		}
 
 		principalUserID := strings.TrimSpace(claims.Subject)
-		principalUsername := strings.TrimSpace(claims.Username)
+		principalUsername := claims.effectiveUsername()
 		if principalUserID == "" {
 			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "category", authCategoryMissingSubject, "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid token claims")
@@ -350,7 +364,7 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 			if claims != nil && claims.Subject != "" {
 				principal := &models.Principal{
 					UserID:        claims.Subject,
-					Username:      claims.Username,
+					Username:      claims.effectiveUsername(),
 					Scope:         claims.Scope,
 					Email:         claims.effectiveEmail(),
 					EmailVerified: claims.EmailVerified,

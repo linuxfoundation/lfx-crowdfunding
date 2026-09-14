@@ -817,6 +817,7 @@ func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
 		p := PrincipalFromContext(r.Context())
 		if p != nil {
 			w.Header().Set("X-User-ID", p.UserID)
+			w.Header().Set("X-Username", p.Username)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -846,6 +847,12 @@ func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
 		}
 		if got := w.Header().Get("X-User-ID"); got != "heimdall|testuser" {
 			t.Errorf("UserID = %q, want %q", got, "heimdall|testuser")
+		}
+		// Heimdall tokens aren't guaranteed to carry the Auth0-style namespaced
+		// username claim; Principal.Username must fall back to sub so that
+		// user resolution (service.GetByUsername) doesn't silently break.
+		if got := w.Header().Get("X-Username"); got != "heimdall|testuser" {
+			t.Errorf("Username = %q, want %q (fallback to sub)", got, "heimdall|testuser")
 		}
 	})
 
