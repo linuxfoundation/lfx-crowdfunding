@@ -14,6 +14,10 @@
       "comment": "App-relative image paths served by the Nuxt frontend (frontend/public/images/) — not resolvable by offline link checkers"
     },
     {
+      "pattern": "^/files/",
+      "comment": "App-relative file paths served by the Nuxt frontend (frontend/public/files/) — not resolvable by offline link checkers"
+    },
+    {
       "pattern": "^/for-companies",
       "comment": "App-relative route (frontend/app/pages/for-companies.vue) — not resolvable by offline link checkers"
     },

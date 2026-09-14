@@ -2,7 +2,7 @@
 title: Reimbursements
 description: How expense reimbursements work for initiative owners and beneficiaries on LFX Crowdfunding.
 tags: [reimbursements, expenses, beneficiaries, expensify]
-last_updated: 2026-06-17
+last_updated: 2026-08-27
 display_order: 7
 intercom_collection: LFX Crowdfunding
 ---
@@ -26,6 +26,17 @@ Anyone listed as a **beneficiary** on an initiative can submit expense reports. 
 1. Wait to receive access to the external reimbursement service — this is sent automatically once you are added as a beneficiary on a published initiative.
 2. Submit your expense report through the reimbursement service outside of LFX Crowdfunding.
 3. Categorise the expense using the funding goals defined on the initiative (e.g. Development, Marketing, Travel).
+
+### Submit an expense from outside the US (international beneficiaries)
+
+International beneficiaries need a completed wire transfer form attached to their expense report so payment can be sent to a foreign bank account.
+
+1. [Download the Wire Transfer Form (PDF)](/files/docs/reimbursements/lf-wire-transfer-form.pdf) and fill in your bank details.
+2. In the reimbursement service, add **"International Bank"** after your name in the merchant field.
+3. Attach the completed form as a receipt on your expense report.
+4. If the reimbursement service prompts for account details directly, provide them for faster processing.
+
+International wire transfers can take up to six weeks from approval to reach your account. Even after the report is marked reimbursed, allow 3–4 additional weeks for the bank credit to appear — longer if the bank details on the form are missing or incorrect.
 
 ### Approve or reject an expense (initiative owner)
 

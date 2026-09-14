@@ -66,14 +66,14 @@ func (h *StatisticsHandler) GetPlatformMonthly(w http.ResponseWriter, r *http.Re
 	cachedJSON(w, r, monthly)
 }
 
-// GetOrgDonations handles GET /v1/statistics/org-donations
-func (h *StatisticsHandler) GetOrgDonations(w http.ResponseWriter, r *http.Request) {
-	donations, err := h.svc.GetOrgDonations(r.Context())
+// GetInvestingCompanies handles GET /v1/statistics/investing-companies
+func (h *StatisticsHandler) GetInvestingCompanies(w http.ResponseWriter, r *http.Request) {
+	companies, err := h.svc.GetInvestingCompanies(r.Context())
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	cachedJSON(w, r, donations)
+	cachedJSON(w, r, companies)
 }
 
 // GetRecentDonations handles GET /v1/statistics/recent-donations

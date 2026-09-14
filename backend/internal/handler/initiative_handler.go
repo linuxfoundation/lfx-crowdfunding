@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -27,6 +28,8 @@ const (
 	maxTransactionPageSize     = 100
 	defaultTransactionPageSize = 10
 )
+
+var categoryTypeAllowedRune = regexp.MustCompile(`^[\p{L}\p{N} _\-./&()']+$`)
 
 // InitiativeHandler holds Chi handlers for the /v1/initiatives resource.
 type InitiativeHandler struct {
@@ -286,10 +289,10 @@ func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Req
 	txnTypeParam := strings.ToLower(r.URL.Query().Get("type"))
 	var ledgerTxnType string
 	switch txnTypeParam {
-	case "donations":
-		ledgerTxnType = "donation"
-	case "expenses":
-		ledgerTxnType = "reimbursement"
+	case models.TransactionQueryTypeDonations:
+		ledgerTxnType = models.TransactionTypeDonation
+	case models.TransactionQueryTypeExpenses:
+		ledgerTxnType = models.TransactionTypeReimbursement
 	}
 
 	limit, offset, ok := parsePaginationParams(w, r)
@@ -345,10 +348,10 @@ func (h *InitiativeHandler) GetAllMyTransactions(w http.ResponseWriter, r *http.
 	txnTypeParam := strings.ToLower(r.URL.Query().Get("type"))
 	var ledgerTxnType string
 	switch txnTypeParam {
-	case "donations":
-		ledgerTxnType = "donation"
-	case "expenses":
-		ledgerTxnType = "reimbursement"
+	case models.TransactionQueryTypeDonations:
+		ledgerTxnType = models.TransactionTypeDonation
+	case models.TransactionQueryTypeExpenses:
+		ledgerTxnType = models.TransactionTypeReimbursement
 	}
 
 	limit, offset, ok := parsePaginationParams(w, r)
@@ -422,10 +425,10 @@ func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Req
 	txnTypeParam := strings.ToLower(r.URL.Query().Get("type"))
 	var ledgerTxnType string
 	switch txnTypeParam {
-	case "donations":
-		ledgerTxnType = "donation"
-	case "expenses":
-		ledgerTxnType = "reimbursement"
+	case models.TransactionQueryTypeDonations:
+		ledgerTxnType = models.TransactionTypeDonation
+	case models.TransactionQueryTypeExpenses:
+		ledgerTxnType = models.TransactionTypeReimbursement
 	}
 
 	limit, offset, ok := parsePaginationParams(w, r)
@@ -442,6 +445,27 @@ func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Req
 	}
 
 	subscriptionOnly := r.URL.Query().Get("subscriptionOnly") == "true"
+	categoryType := strings.TrimSpace(r.URL.Query().Get("categoryType"))
+
+	if categoryType != "" {
+		if txnTypeParam != models.TransactionQueryTypeDonations {
+			Error(w, fmt.Errorf("%w: categoryType requires type=donations", domain.ErrInvalidInput))
+			return
+		}
+		if err := validateCategoryType(categoryType); err != nil {
+			Error(w, err)
+			return
+		}
+		categorized, err := h.svc.GetCategoryTransactions(r.Context(), initiativeID, ledgerTxnType, categoryType, subscriptionOnly, limit, offset)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		if err := writeCachedJSON(w, r, cacheControl, categorized); err != nil {
+			Error(w, err)
+		}
+		return
+	}
 
 	list, err := h.svc.GetTransactions(r.Context(), initiativeID, ledgerTxnType, subscriptionOnly, limit, offset)
 	if err != nil {
@@ -449,21 +473,9 @@ func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	body, err := json.Marshal(list)
-	if err != nil {
+	if err := writeCachedJSON(w, r, cacheControl, list); err != nil {
 		Error(w, err)
-		return
 	}
-	etag := etagOf(body)
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	w.Header().Set("Cache-Control", cacheControl)
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
 }
 
 // ProcessApproval handles POST /v1/initiatives/{id}/process-approval/{action} — requires JWT.
@@ -583,4 +595,47 @@ func (h *InitiativeHandler) isApprover(principal *models.Principal) bool {
 func etagOf(body []byte) string {
 	sum := md5.Sum(body) //nolint:gosec // MD5 is fine for ETags (not security-sensitive)
 	return `"` + hex.EncodeToString(sum[:]) + `"`
+}
+
+func writeCachedJSON(w http.ResponseWriter, r *http.Request, cacheControl string, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	etag := etagOf(body)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+	w.Header().Set("Cache-Control", cacheControl)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+	return nil
+}
+
+func validateCategoryType(categoryType string) error {
+	if categoryType == "" {
+		return fmt.Errorf("%w: categoryType cannot be empty", domain.ErrInvalidInput)
+	}
+	if len([]rune(categoryType)) > 120 {
+		return fmt.Errorf("%w: categoryType must be 120 characters or fewer", domain.ErrInvalidInput)
+	}
+	hasLetterOrDigit := false
+	for _, r := range categoryType {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("%w: categoryType contains control characters", domain.ErrInvalidInput)
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			hasLetterOrDigit = true
+		}
+	}
+	if !hasLetterOrDigit {
+		return fmt.Errorf("%w: categoryType must include at least one letter or number", domain.ErrInvalidInput)
+	}
+	if !categoryTypeAllowedRune.MatchString(categoryType) {
+		return fmt.Errorf("%w: categoryType contains unsupported characters", domain.ErrInvalidInput)
+	}
+	return nil
 }

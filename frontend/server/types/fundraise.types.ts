@@ -38,6 +38,14 @@ export interface DonationOptionsInput {
   tiers: SponsorshipTierInput[];
 }
 
+// Matches backend §5.0 of docs/rewrite/07-frontend-initiatives-api-guide.md
+// (LFXV2-2956): wire shape is `attribution: { type, entity_uid }`, mapped in
+// buildBackendPayload. entity_uid must be a UUID.
+export interface AttributionInput {
+  kind: 'organization' | 'project';
+  entityId: string;
+}
+
 export interface ProjectFundraisePayload {
   initiativeType: 'project';
   name: string;
@@ -52,6 +60,7 @@ export interface ProjectFundraisePayload {
   annualFundingGoalCents?: number;
   goals?: GoalItemInput[];
   donationOptions?: DonationOptionsInput;
+  attribution?: AttributionInput;
 }
 
 export interface SecurityAuditFundraisePayload {
@@ -71,6 +80,7 @@ export interface SecurityAuditFundraisePayload {
   secondaryContact?: FundraiseContactInput;
   technicalLead?: FundraiseContactInput;
   donationOptions?: DonationOptionsInput;
+  attribution?: AttributionInput;
 }
 
 export interface EventFundraisePayload {
@@ -90,6 +100,7 @@ export interface EventFundraisePayload {
   sponsorshipGoalCents?: number;
   budgetDistribution?: GoalItemInput[];
   donationOptions?: DonationOptionsInput;
+  attribution?: AttributionInput;
 }
 
 export interface GeneralFundFundraisePayload {
@@ -102,6 +113,7 @@ export interface GeneralFundFundraisePayload {
   beneficiaries?: FundraiseBeneficiaryInput[];
   annualFundingGoalCents?: number;
   donationOptions?: DonationOptionsInput;
+  attribution?: AttributionInput;
 }
 
 export type FundraisePayload =

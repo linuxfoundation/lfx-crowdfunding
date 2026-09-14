@@ -26,6 +26,8 @@ const mockFetch = vi.fn();
 globalThis.$fetch = mockFetch as typeof $fetch;
 
 import { useFundraiseSubmit } from './useFundraiseSubmit';
+import { createDefaultDonationOptions } from '~/components/modules/fundraise/config/donation-options.config';
+import type { AttributionData, GeneralFundFormData } from '~/types/fundraise.types';
 
 // Minimal valid form data per initiative type.
 const projectForms = {
@@ -257,6 +259,56 @@ describe('useFundraiseSubmit', () => {
       expect(body.initiativeType).toBe('general_fund');
       expect(body.name).toBe('General Fund');
       expect(body.annualFundingGoalCents).toBeGreaterThan(0);
+    });
+  });
+
+  describe('buildPayload — attribution', () => {
+    beforeEach(() => {
+      mockAuthState.value.isAuthenticated = true;
+      mockFetch.mockResolvedValue(undefined);
+    });
+
+    const generalFundForm = (attribution: AttributionData): GeneralFundFormData => ({
+      name: 'General Fund',
+      elevatorPitch: '',
+      topics: [],
+      websiteUrl: '',
+      logoUrl: '',
+      beneficiaries: [],
+      annualFundingGoal: '100000',
+      donationOptions: createDefaultDonationOptions(),
+      compliance: { ofacConfirmed: false, termsAccepted: false },
+      attribution,
+    });
+
+    it('omits attribution when kind is personal', async () => {
+      const { submitFundraise } = useFundraiseSubmit();
+      await submitFundraise('general_fund', {
+        generalFundForm: generalFundForm({ kind: 'personal', entityId: null }),
+      });
+
+      const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;
+      expect(body.attribution).toBeUndefined();
+    });
+
+    it('sends kind + entityId when attributed to an organization', async () => {
+      const { submitFundraise } = useFundraiseSubmit();
+      await submitFundraise('general_fund', {
+        generalFundForm: generalFundForm({ kind: 'organization', entityId: 'org-1' }),
+      });
+
+      const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;
+      expect(body.attribution).toEqual({ kind: 'organization', entityId: 'org-1' });
+    });
+
+    it('omits attribution when a non-personal kind has no entityId selected', async () => {
+      const { submitFundraise } = useFundraiseSubmit();
+      await submitFundraise('general_fund', {
+        generalFundForm: generalFundForm({ kind: 'project', entityId: null }),
+      });
+
+      const body = (mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }])[1].body;
+      expect(body.attribution).toBeUndefined();
     });
   });
 });
