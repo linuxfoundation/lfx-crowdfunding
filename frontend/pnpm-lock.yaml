@@ -97,7 +97,7 @@ importers:
         specifier: ^6.1.3
         version: 6.2.3
       js-yaml:
-        specifier: ^4.3.2
+        specifier: ">=4.3.2 <5"
         version: 4.3.2
       launchdarkly-js-client-sdk:
         specifier: ^3.9.3
