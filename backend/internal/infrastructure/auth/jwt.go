@@ -472,11 +472,19 @@ func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, erro
 // Heimdall) should perform the real, signature-checked validation. Returns
 // "" if the token is malformed; callers must not treat that as authentication.
 func unverifiedIssuer(raw string) string {
-	parts := strings.Split(raw, ".")
-	if len(parts) != 3 {
+	firstDot := strings.IndexByte(raw, '.')
+	if firstDot < 0 {
 		return ""
 	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	secondDot := strings.IndexByte(raw[firstDot+1:], '.')
+	if secondDot < 0 {
+		return ""
+	}
+	secondDot += firstDot + 1
+	if strings.IndexByte(raw[secondDot+1:], '.') >= 0 {
+		return "" // more than 3 segments
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(raw[firstDot+1 : secondDot])
 	if err != nil {
 		return ""
 	}
