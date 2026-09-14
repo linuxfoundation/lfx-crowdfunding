@@ -125,7 +125,7 @@ app:
 
 traefik:
   gateway:
-    name: lfx-gateway
+    name: lfx-platform-gateway
     namespace: lfx
 
 # ── Additional environment variables ─────────────────────────────────────────

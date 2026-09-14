@@ -5,10 +5,6 @@
 # default_rule in lfx-platform is deny_all, so every path must be listed here
 # explicitly — an omitted path 403s instead of falling through to a sane default.
 #
-# DRAFT: path glob syntax below (/*) follows the pattern used by
-# lfx-v2-access-check and lfx-v2-query-service's rulesets, but none of those
-# cover a path *parameter* (e.g. {id}). Confirm the correct dadrus Heimdall
-# capture syntax for parameterized segments before this PR merges.
 {{- if .Values.heimdall.enabled }}
 ---
 apiVersion: heimdall.dadrus.github.com/v1alpha4
@@ -55,10 +51,10 @@ spec:
           - path: /v1/statistics/platform
           - path: /v1/statistics/monthly
           - path: /v1/statistics/recent-donations
-          - path: /v1/statistics/org-donations
+          - path: /v1/statistics/investing-companies
           - path: /v1/initiatives
-          - path: /v1/initiatives/*/transactions
-          - path: /v1/initiatives/*/announcements
+          - path: /v1/initiatives/:*/transactions
+          - path: /v1/initiatives/:*/announcements
       execute:
         - authenticator: anonymous_authenticator
         - authorizer: allow_all
@@ -74,7 +70,7 @@ spec:
         methods:
           - GET
         routes:
-          - path: /v1/initiatives/*
+          - path: /v1/initiatives/:*
       execute:
         - authenticator: oidc
         - authenticator: anonymous_authenticator
@@ -87,11 +83,12 @@ spec:
             values:
               aud: {{ .Values.app.audience }}
 
-    # Authenticated user routes — /v1/me/*, access:me scope today.
+    # Authenticated user routes — /v1/me and its descendants, access:me scope today.
     - id: "rule:lfx:lfx-crowdfunding-backend:me"
       allow_encoded_slashes: "off"
       match:
         routes:
+          - path: /v1/me
           - path: /v1/me/**
       execute:
         - authenticator: oidc
@@ -111,7 +108,7 @@ spec:
         methods:
           - POST
         routes:
-          - path: /v1/initiatives/*/process-approval/*
+          - path: /v1/initiatives/:*/process-approval/:*
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -130,7 +127,7 @@ spec:
         methods:
           - GET
         routes:
-          - path: /v1/initiatives/*/owner-info
+          - path: /v1/initiatives/:*/owner-info
           - path: /v1/initiatives/published-list
       execute:
         - authenticator: oidc
@@ -150,7 +147,7 @@ spec:
         methods:
           - POST
         routes:
-          - path: /v1/expense/*/*
+          - path: /v1/expense/:*/:*
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}

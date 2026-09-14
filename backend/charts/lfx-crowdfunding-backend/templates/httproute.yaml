@@ -21,14 +21,12 @@ spec:
         - path:
             type: Exact
             value: /v1/stripe/webhook
-      {{- if .Values.heimdall.add_middleware }}
       filters:
         - type: ExtensionRef
           extensionRef:
             group: traefik.io
             kind: Middleware
             name: heimdall-forward-body
-      {{- end }}
       backendRefs:
         - group: ""
           kind: Service
@@ -40,14 +38,12 @@ spec:
         - path:
             type: PathPrefix
             value: /
-      {{- if .Values.heimdall.add_middleware }}
       filters:
         - type: ExtensionRef
           extensionRef:
             group: traefik.io
             kind: Middleware
             name: heimdall
-      {{- end }}
       backendRefs:
         - group: ""
           kind: Service
