@@ -109,6 +109,16 @@ func signRS256(claims map[string]any, key *rsa.PrivateKey, kid string) (string, 
 	})
 }
 
+// signPS256 signs with RSA-PSS/SHA256 — the algorithm Heimdall's create_jwt
+// finalizer uses (see LFXV2-3351).
+func signPS256(claims map[string]any, key *rsa.PrivateKey, kid string) (string, error) {
+	header := map[string]any{"alg": "PS256", "typ": "JWT", "kid": kid}
+	return signJWT(claims, header, func(signingInput string) ([]byte, error) {
+		h := sha256.Sum256([]byte(signingInput))
+		return rsa.SignPSS(rand.Reader, key, crypto.SHA256, h[:], &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+	})
+}
+
 func signHS256WithSecret(claims map[string]any, secret []byte) (string, error) {
 	header := map[string]any{"alg": "HS256", "typ": "JWT"}
 	return signJWT(claims, header, func(signingInput string) ([]byte, error) {
@@ -791,7 +801,9 @@ func TestNewJWTAuthenticator_HeimdallIssuerMustDifferFromAuth0(t *testing.T) {
 // tokens from either are accepted, while a token whose issuer matches neither is
 // rejected.
 func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
-	const heimdallIssuer = "https://heimdall.example"
+	// Heimdall's real contract: bare issuer (not a URL), plain in-cluster
+	// HTTP JWKS endpoint, PS256 signing — none of which match Auth0's shape.
+	const heimdallIssuer = "heimdall"
 	const heimdallAudience = "lfx-crowdfunding-backend"
 
 	auth0Server := newJWKSServer(t, "test-kid", testRSAKey)
@@ -831,7 +843,7 @@ func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
 	})
 
 	t.Run("accepts Heimdall token", func(t *testing.T) {
-		signed, err := signRS256(map[string]any{
+		signed, err := signPS256(map[string]any{
 			"sub": "heimdall|testuser",
 			"iss": heimdallIssuer,
 			"aud": heimdallAudience,

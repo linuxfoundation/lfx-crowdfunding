@@ -188,7 +188,7 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 		return nil, errors.New("JWKS_URL is required")
 	}
 
-	jwtValidator, err := newJWKSValidator(ctx, jwksURLStr, audience, issuer, clockSkew, "JWKS_URL", "JWT_ISSUER")
+	jwtValidator, err := newJWKSValidator(ctx, jwksURLStr, audience, issuer, clockSkew, "JWKS_URL", "JWT_ISSUER", validator.RS256, true)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,11 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 	case 0:
 		// Dual-accept disabled — Auth0-only validation, matching pre-LFXV2-3351 behavior.
 	case 3:
-		heimdallValidator, err = newJWKSValidator(ctx, heimdallJWKSURL, heimdallAudience, heimdallIssuer, clockSkew, "HEIMDALL_JWKS_URL", "HEIMDALL_JWT_ISSUER")
+		// Heimdall's issuer is the bare string "heimdall" (not a URL), its
+		// JWKS is served over plain in-cluster HTTP, and its create_jwt
+		// finalizer signs with PS256 — none of which match Auth0's shape, so
+		// this call skips the https/absolute-issuer checks used for Auth0.
+		heimdallValidator, err = newJWKSValidator(ctx, heimdallJWKSURL, heimdallAudience, heimdallIssuer, clockSkew, "HEIMDALL_JWKS_URL", "HEIMDALL_JWT_ISSUER", validator.PS256, false)
 		if err != nil {
 			return nil, err
 		}
@@ -229,16 +233,18 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 // newJWKSValidator builds a validator.Validator backed by the given JWKS
 // endpoint, issuer, and audience. Shared by the Auth0 and Heimdall (LFXV2-3351)
 // validator setups in NewJWTAuthenticator.
-func newJWKSValidator(ctx context.Context, jwksURLStr, audience, issuer string, clockSkew time.Duration, jwksEnvName, issuerEnvName string) (*validator.Validator, error) {
+func newJWKSValidator(ctx context.Context, jwksURLStr, audience, issuer string, clockSkew time.Duration, jwksEnvName, issuerEnvName string, signingAlg validator.SignatureAlgorithm, requireHTTPS bool) (*validator.Validator, error) {
 	issuerURL, err := url.Parse(issuer)
 	if err != nil {
 		return nil, fmt.Errorf("parse issuer URL: %w", err)
 	}
-	if !issuerURL.IsAbs() || issuerURL.Host == "" {
-		return nil, fmt.Errorf("%s must be an absolute URL", issuerEnvName)
-	}
-	if err := validateSecureURL(issuerURL, issuerEnvName); err != nil {
-		return nil, err
+	if requireHTTPS {
+		if !issuerURL.IsAbs() || issuerURL.Host == "" {
+			return nil, fmt.Errorf("%s must be an absolute URL", issuerEnvName)
+		}
+		if err := validateSecureURL(issuerURL, issuerEnvName); err != nil {
+			return nil, err
+		}
 	}
 	jwksURL, err := url.Parse(jwksURLStr)
 	if err != nil {
@@ -247,8 +253,10 @@ func newJWKSValidator(ctx context.Context, jwksURLStr, audience, issuer string, 
 	if !jwksURL.IsAbs() || jwksURL.Host == "" {
 		return nil, fmt.Errorf("%s must be an absolute URL", jwksEnvName)
 	}
-	if err := validateSecureURL(jwksURL, jwksEnvName); err != nil {
-		return nil, err
+	if requireHTTPS {
+		if err := validateSecureURL(jwksURL, jwksEnvName); err != nil {
+			return nil, err
+		}
 	}
 	jwksProvider := jwks.NewCachingProvider(issuerURL, 5*time.Minute, jwks.WithCustomJWKSURI(jwksURL))
 	keyFunc := func(reqCtx context.Context) (interface{}, error) {
@@ -261,7 +269,7 @@ func newJWKSValidator(ctx context.Context, jwksURLStr, audience, issuer string, 
 	}
 	jwtValidator, err := validator.New(
 		keyFunc,
-		validator.RS256,
+		signingAlg,
 		issuer,
 		[]string{audience},
 		validator.WithCustomClaims(func() validator.CustomClaims { return &JWTClaims{} }),
