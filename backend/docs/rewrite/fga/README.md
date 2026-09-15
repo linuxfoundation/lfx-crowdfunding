@@ -21,41 +21,27 @@ fgadoc skill from deployed Heimdall RuleSets and must never be carried into a re
 
 | File | Purpose |
 |---|---|
-| `model.fga` | Option A: the `crowdfunding_initiative` type from doc 12, plus minimal stand-in types (`project`, `b2b_org`, `team`) for the ones that really live in the shared platform model |
-| `model-option-b-named-permissions.fga` | Option B: same attribution shape, redrawn with named per-action permissions (`can_view`/`can_edit`/`can_archive`/...) aliasing one `admin` relation, in the style of the reviewed team-member suggestion — kept as the recorded alternative; Architecture (provisionally) favors Option A, see below |
-| `tuples.yaml` | Sample tuples covering every attribution shape (Option A) |
-| `tests.yaml` | Regression tests for doc 12's named merge-gate scenarios, via the OpenFGA CLI (Option A) |
+| `model.fga` | The accepted `crowdfunding_initiative` type from doc 12, plus minimal stand-in types (`project`, `b2b_org`, `team`) for the ones that really live in the shared platform model |
+| `tuples.yaml` | Sample tuples covering every attribution shape |
+| `tests.yaml` | Regression tests for doc 12's named merge-gate scenarios, via the OpenFGA CLI |
 
-## Option A vs Option B
+## Why not named permissions
 
-Both keep `project | b2b_org | personal` attribution — that part isn't up for debate, it's
-what makes `personal-draft` and `org-published` in `tuples.yaml` possible at all. What's
-actually different:
+A team-member-circulated alternative modeled this as named per-action permissions
+(`can_view`/`can_edit`/`can_archive`/...) aliasing one `admin` relation, instead of a single flat
+`writer`. The platform model's own guidance is that a relation which is a mere alias of another
+should not exist (doc 12, citing `vote_response`) — `can_edit`/`can_archive`/`can_activate` would
+have had no independent logic from `admin`, and would only earn their keep if one of them needs to
+diverge (e.g. archiving becoming project-writer-only while editing stays owner-only). The flat
+`writer`/`viewer` shape in `model.fga` defers that split until a divergence actually shows up; its
+one real win against the alternative — readability for a team unfamiliar with the codebase — was
+outweighed by the alias-relation guidance. **Decided (Eric and Jordan, 2026-09-15):** go with the
+flat shape. See doc 12's "Architecture feedback" section for the full note, including why
+`@fgadoc:jtbd` lines must never be hand-added to an actual model PR.
 
-|  | Option A (`model.fga`, doc 12) | Option B (`model-option-b-named-permissions.fga`) |
-|---|---|---|
-| Manage capability | One flat `writer` | One `admin`, aliased into five named permissions (`can_edit`, `can_archive`, ...) |
-| View | `viewer: [user:*] or writer` | `can_view: [user:*] or admin` |
-| Approve | `isApprover`/global team, outside this type entirely (Phase 1), later `team:crowdfunding_approvers` global grant | `can_review: [team:crowdfunding_approvers#member]` — same global grant, modeled as a named permission on the type itself |
-| Relation count | 5 | 10 |
-
-The platform model's own guidance is that a relation which is a mere alias of another should
-not exist (doc 12, citing `vote_response`) — that's the case against Option B's `can_edit`/
-`can_archive`/`can_activate`, which today have no independent logic from `admin` and would
-only earn their keep if one of them needs to diverge (e.g. archiving becoming project-writer-only
-while editing stays owner-only). Option A defers that split until a divergence actually shows up.
-Option B's win is readability for a team unfamiliar with the codebase — the reviewed
-suggestion's tables (action × role) came from these names, not from `writer`.
-
-Either option fixes the reviewed suggestion's actual bug: `can_review`/approval must route
-through the `team:crowdfunding_approvers` global grant, never through `admin`/`project_writer`/
-`writer`, or an owner who is also a project writer can approve their own initiative.
-
-**Architecture feedback (provisional — 2026-09-14, pending Jordan sign-off):** Eric's read is to
-go with Option A until a split-out is actually needed, per the alias-relation argument above.
-Option B stays in this directory as the recorded alternative rather than being deleted, since the
-decision isn't final yet. See doc 12's "Architecture feedback" section for the full note,
-including why `@fgadoc:jtbd` lines must never be hand-added to an actual model PR.
+Either shape fixes the reviewed suggestion's actual bug: `can_review`/approval must route through
+the `team:crowdfunding_approvers` global grant, never through `admin`/`project_writer`/`writer`,
+or an owner who is also a project writer could approve their own initiative.
 
 ## Why this shape, not a project-rooted one
 

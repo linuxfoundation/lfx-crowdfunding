@@ -3,7 +3,8 @@
 
 # Initiative Attribution — 12: FGA Authorization Model
 
-Status: Proposal — for Architecture team review
+Status: Accepted (Eric and Jordan, 2026-09-15) — Option A model, plus the global
+approver-team shape below
 Related: [11-initiative-attribution-and-access.md](./11-initiative-attribution-and-access.md)
 (the product design this authorizes), tracked as
 [lfx-crowdfunding#269](https://github.com/linuxfoundation/lfx-crowdfunding/issues/269) —
@@ -102,7 +103,7 @@ Notes:
   question B below): only the org actually assigned to the initiative gets writer access — no
   parent- or child-org population is ever granted it.
 
-## Approvers as a global team grant (proposed, reopens 2026-09-01 decision)
+## Approvers as a global team grant (accepted, reopens 2026-09-01 decision)
 
 The earlier per-initiative proposal was `approver: [team#member]` on `crowdfunding_initiative`
 itself — a tuple written to every initiative object at creation. PM rejected it for three
@@ -160,8 +161,9 @@ the caller changes:
    authorizer is defined in the platform chart but has no shipped `RuleSet` reference found
    in this repo's environment — verify it against OpenFGA in Docker before relying on it.
 
-This section proposes the shape; it does not change `ALLOWED_APPROVERS` today. See "Decided"
-below for the status of the reopened decision.
+This section is accepted (Eric and Jordan, 2026-09-15). `ALLOWED_APPROVERS` stays as the
+fallback until Phase 1 ships per the rollout above; see "Decided" below for the status of the
+reopened decision.
 
 ## Emission (summary, not a full contract)
 
@@ -173,15 +175,15 @@ a one-time backfill of existing initiatives. Delivery guarantees (outbox, reconc
 convergence after a missed publish — the gap doc 11 §3.4 names and leaves open) belong to a
 separate CF-side emission issue once this model is accepted, not to this proposal.
 
-## Architecture feedback (provisional — 2026-09-14, pending Jordan sign-off)
+## Architecture feedback (decided — 2026-09-15, Eric and Jordan)
 
-Eric (Architecture) reviewed this proposal and `fga/` in Slack. This is one reviewer's read, not
-yet a decision — Jordan still has to sign off. Recorded here so it isn't lost before that happens.
+Eric (Architecture) reviewed this proposal and `fga/` in Slack; Jordan has since signed off.
+Option A is accepted.
 
 - **Option A over Option B.** Go with the flat `writer`/`viewer` shape (`fga/model.fga`) until a
   split-out is actually needed, per the "no alias relations" guidance already cited above
-  (`vote_response`). `fga/model-option-b-named-permissions.fga` stays as the considered
-  alternative, not adopted.
+  (`vote_response`). Option B (named per-action permissions aliasing one `admin` relation) was
+  considered and not adopted; its file has been removed from `fga/`.
 - **The permission-matrix mechanism already exists upstream.** A platform skill reads deployed
   Heimdall RuleSets (API guards) and writes them back into
   [`lfx-v2-helm`'s `model.fga`](https://github.com/linuxfoundation/lfx-v2-helm/blob/main/charts/lfx-platform/files/model.fga#L287-L300)
@@ -225,14 +227,14 @@ Resolved during review — kept here for the record rather than left in the open
   just an accepted platform limitation: **no parent- or child-org population ever gains writer
   access** — only the org actually assigned to the initiative does. No change needed; `writer from
   b2b_org` already has this shape.
-- **`ALLOWED_APPROVERS` (was open question C).** Keep the current env var allowlist; approvers are
-  not modeled in FGA. See "The type" above and doc 11 open question 5. **Reopened 2026-09-09:**
-  new evidence (a shipped global-team-check precedent in `lfx-v2-member-service`, and
-  confirmation that a global grant writes no per-object tuple, so the `delete_access` orphan
-  objection doesn't apply) supports a different approver shape than the one this decision
-  rejected. See "Approvers as a global team grant" above. The 2026-09-01 objections stand
-  against the per-initiative shape they were made against; they were not re-litigated for the
-  global shape until this reopening.
+- **`ALLOWED_APPROVERS` (was open question C).** Originally kept as the env var allowlist
+  (2026-09-01); approvers were not modeled in FGA. See "The type" above and doc 11 open
+  question 5. **Reopened 2026-09-09, accepted 2026-09-15 (Eric and Jordan):** new evidence (a
+  shipped global-team-check precedent in `lfx-v2-member-service`, and confirmation that a global
+  grant writes no per-object tuple, so the `delete_access` orphan objection doesn't apply)
+  supports the different approver shape in "Approvers as a global team grant" above, which is now
+  accepted. `ALLOWED_APPROVERS` remains as the Phase-1 fallback per that section's rollout, not as
+  the long-term source of truth.
 - **Private-view population (was open question E).** No wider audience than creator, entity
   writer, and approver — the `auditor` relation and its project/org inheritance are dropped from
   the type; see "The type" above.

@@ -805,14 +805,15 @@ maintainer story is the strongest).
    - **Org-picker credential question — see open question 7.** Originally raised here; promoted to
      a top-level item below once it was resolved, since it no longer depends on the candidate-
      enumeration framing this item groups.
-5. **`allowedApprovers`. Reopened 2026-09-09** (previously resolved PM, 2026-09-01: keep the
-   env var allowlist). [12-fga-authorization-model.md](./12-fga-authorization-model.md) had
-   proposed folding this into the FGA model as a *per-initiative* `approver: [team#member]`
-   relation, mirroring `b2b_org.global_org_admin`; PM decided against migrating it, and
-   `ALLOWED_APPROVERS` stayed as-is, unaffected by the `crowdfunding_initiative` type. New
-   evidence supports a different shape — one platform-wide team grant, no per-object tuple —
-   that avoids the objections raised against the per-initiative version. See doc 12's
-   "Approvers as a global team grant" for the proposal and status.
+5. **`allowedApprovers`. Reopened 2026-09-09, accepted 2026-09-15** (Eric and Jordan; previously
+   resolved PM, 2026-09-01: keep the env var allowlist).
+   [12-fga-authorization-model.md](./12-fga-authorization-model.md) had proposed folding this into
+   the FGA model as a *per-initiative* `approver: [team#member]` relation, mirroring
+   `b2b_org.global_org_admin`; PM decided against migrating it, and `ALLOWED_APPROVERS` stayed
+   as-is, unaffected by the `crowdfunding_initiative` type. New evidence supported a different
+   shape — one platform-wide team grant, no per-object tuple — that avoids the objections raised
+   against the per-initiative version; that shape is now accepted. See doc 12's "Approvers as a
+   global team grant" for the proposal, rollout, and status.
 6. **Edit attribution once multiple writers exist.** Neither `initiatives` nor
    `initiative_announcements` tracks *which* writer made a given change today — `initiatives` has
    no `updated_by`, and `initiative_announcements.created_by` is stamped once at creation and never
