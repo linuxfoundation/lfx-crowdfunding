@@ -836,7 +836,12 @@ maintainer story is the strongest).
      **closed without merging**. It wasn't just deferred-and-shelved: the gateway migration
      removes the audience mismatch it bridges (CF's Auth0-audience tokens vs. Heimdall-audience
      ones), so there's nothing to resume post-migration either — see the PR's closing comment for
-     the full reasoning.
+     the full reasoning. This is also the reasoning behind
+     [#268](https://github.com/linuxfoundation/lfx-crowdfunding/issues/268)'s expected direction:
+     Heimdall's OIDC layer bridges the mismatch itself (authenticating against CF's existing
+     Auth0 issuer, then minting its own downstream JWT — already true of #265's shipped
+     dual-accept middleware, which validates a Heimdall-minted PS256 token, not a reconfigured
+     Auth0 one), so CF's Auth0 application/API is not expected to need reconfiguring.
    - The M2M fallback (a second audience on `reimbursement_client.go`) was never built and is
      dropped for the same reason, not picked as the alternative.
    - [LFXV2-3323](https://linuxfoundation.atlassian.net/browse/LFXV2-3323) (the CF-side consumer
