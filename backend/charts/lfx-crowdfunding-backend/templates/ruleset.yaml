@@ -127,6 +127,7 @@ spec:
           config:
             values:
               aud: {{ .Values.app.audience }}
+              scope: access:me
 
     # Reads on a specific owned initiative — kept allow_all even once
     # openfga.enabled is true. lfx-self-serve calls these with a slug, not a
@@ -154,6 +155,7 @@ spec:
           config:
             values:
               aud: {{ .Values.app.audience }}
+              scope: access:me
 
     # Internal-only: called by lfx-v2-helm's crowdfunding_slug_resolver_contextualizer
     # (from other services' Heimdall pipelines, e.g. lfx-self-serve), never
@@ -211,6 +213,7 @@ spec:
           config:
             values:
               aud: {{ .Values.app.audience }}
+              scope: access:me
 
     # Announcement create — POST /v1/me/initiatives/:id/announcements.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-announcement-create"
@@ -238,6 +241,7 @@ spec:
           config:
             values:
               aud: {{ .Values.app.audience }}
+              scope: access:me
 
     # Announcement update/delete — PUT/DELETE on a specific announcement,
     # separate rule from create because it's a different method set.
@@ -267,6 +271,7 @@ spec:
           config:
             values:
               aud: {{ .Values.app.audience }}
+              scope: access:me
 
     # Donations/subscriptions on a specific initiative — the caller is the
     # donor/subscriber, not an initiative owner or writer; donation
@@ -288,11 +293,12 @@ spec:
           config:
             values:
               aud: {{ .Values.app.audience }}
+              scope: access:me
 
     # Approval action — checked against a global approvers team, not the
     # per-initiative object, so no path capture is needed and the slug/UUID
     # ambiguity on :id doesn't apply here. Static object, same shape as
-    # lfx-v2-member-service's "team:{{ globalOrgAdminTeamName }}" rule.
+    # lfx-v2-member-service's "team:{{`{{ globalOrgAdminTeamName }}`}}" rule.
     # ALLOWED_APPROVERS stays as the in-app fallback until this is enabled.
     - id: "rule:lfx:lfx-crowdfunding-backend:process-approval"
       allow_encoded_slashes: "off"
@@ -319,6 +325,7 @@ spec:
           config:
             values:
               aud: {{ .Values.app.audience }}
+              scope: access:me
 
     # Internal/management routes — access:manage scope (M2M) enforced in-app.
     # owner-info is looked up by slug, not UUID, and has no per-initiative FGA
@@ -341,6 +348,7 @@ spec:
           config:
             values:
               aud: {{ .Values.app.audience }}
+              scope: access:manage
 
     # Expense actions — authenticated, no scope check today. reportId is an
     # Expensify report id, not an FGA object.
