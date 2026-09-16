@@ -155,6 +155,33 @@ spec:
             values:
               aud: {{ .Values.app.audience }}
 
+    # Internal-only: called by lfx-v2-helm's crowdfunding_slug_resolver_contextualizer
+    # (from other services' Heimdall pipelines, e.g. lfx-self-serve), never
+    # directly by an end user. No anonymous_authenticator pairing here — the
+    # oidc authenticator accepts the raw end-user token the contextualizer
+    # forwards. Pairing it with anonymous_authenticator would let
+    # unauthenticated callers reach allow_all and get a free create_jwt token
+    # that then satisfies this endpoint's own auth check — i.e. anonymous
+    # slug-to-UID enumeration. Do not add it back. Mirrors
+    # lfx-v2-project-service's projects:slug-to-uid rule.
+    - id: "rule:lfx:lfx-crowdfunding-backend:slug-to-uid"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /v1/initiatives/slug-to-uid/:slug
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+
     # Mutations on a specific owned initiative — UUID-only in practice (no
     # frontend or self-serve caller sends a slug here), so this is the route
     # that gets a real per-object openfga_check once openfga.enabled.
