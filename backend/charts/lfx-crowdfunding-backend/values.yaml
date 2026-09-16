@@ -110,6 +110,13 @@ heimdall:
   add_middleware: false
   url: http://lfx-platform-heimdall.lfx.svc.cluster.local:4456
 
+# openfga.enabled gates the openfga_check authorizers in ruleset.yaml. Stays
+# false until lfx-v2-helm#172 (crowdfunding_initiative FGA type) merges AND
+# this backend emits FGA tuples for its initiatives — until both are true
+# there are no tuples to check against, so a real check would deny everyone.
+openfga:
+  enabled: false
+
 lfx:
   # domain is the base domain used to build the Heimdall HTTPRoute hostname
   # (lfx-api.<domain>). Per-environment — set via ArgoCD values.
@@ -122,6 +129,10 @@ app:
   # tokens forwarded to this service, and what JWT_AUDIENCE must match once
   # dual-accept (LFXV2-3351) is live.
   audience: lfx-crowdfunding-backend
+  # approversTeamName is the OpenFGA team object process-approval is checked
+  # against (relation: member) once openfga.enabled is true. Name fixed by
+  # the accepted ADR (backend/docs/rewrite/12-fga-authorization-model.md).
+  approversTeamName: crowdfunding_approvers
 
 traefik:
   gateway:

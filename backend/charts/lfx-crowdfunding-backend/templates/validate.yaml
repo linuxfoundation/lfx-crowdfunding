@@ -12,3 +12,7 @@ No Kubernetes resource is rendered; this file only produces errors.
 {{- if and .Values.mentorshipSyncCronJob.enabled (not .Values.mentorshipSyncCronJob.image.tag) }}
 {{- fail (printf "\n\nvalues.yaml: mentorshipSyncCronJob.image.tag is required when mentorshipSyncCronJob.enabled is true.\nSet it to the mentorship-sync image tag to deploy, e.g.:\n  mentorshipSyncCronJob:\n    image:\n      tag: \"abc1234\"\nFalling back to the main API image tag would pull from the wrong image repository.") }}
 {{- end }}
+
+{{- if and .Values.openfga.enabled (not .Values.app.approversTeamName) }}
+{{- fail (printf "\n\nvalues.yaml: app.approversTeamName is required when openfga.enabled is true.\nSet it to the OpenFGA team object process-approval is checked against, e.g.:\n  app:\n    approversTeamName: \"crowdfunding_approvers\"\nLeaving it empty renders an openfga_check rule with an empty object, which fails closed but denies every approval action.") }}
+{{- end }}
