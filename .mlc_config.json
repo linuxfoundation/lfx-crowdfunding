@@ -28,6 +28,10 @@
     {
       "pattern": "^https://app\\.lfx\\.dev/",
       "comment": "Requires Auth0 SSO login — unreachable by an unauthenticated link checker"
+    },
+    {
+      "pattern": "^https://github\\.com/linuxfoundation/auth0-terraform",
+      "comment": "Private repo — GitHub returns 404 to an unauthenticated link checker"
     }
   ],
   "timeout": "20s",
