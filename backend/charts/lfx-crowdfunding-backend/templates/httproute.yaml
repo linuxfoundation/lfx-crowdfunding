@@ -16,7 +16,9 @@ spec:
   hostnames:
     - "lfx-api.{{ .Values.lfx.domain }}"
   rules:
-    # Stripe webhook — needs the raw body forwarded for HMAC verification.
+    # Stripe webhook — Traefik always forwards the original body to the
+    # backend regardless of the auth middleware; no forwardBody needed since
+    # the RuleSet doesn't inspect the body (anonymous_authenticator + allow_all).
     - matches:
         - path:
             type: Exact
@@ -26,7 +28,7 @@ spec:
           extensionRef:
             group: traefik.io
             kind: Middleware
-            name: heimdall-forward-body
+            name: heimdall
       backendRefs:
         - group: ""
           kind: Service

@@ -126,8 +126,8 @@ app:
   # use_oidc_contextualizer is a boolean to determine if the OIDC contextualizer should be used
   use_oidc_contextualizer: false
   # audience is the JWT aud claim Heimdall's create_jwt finalizer stamps onto
-  # tokens forwarded to this service, and what JWT_AUDIENCE must match once
-  # dual-accept (LFXV2-3351) is live.
+  # tokens forwarded to this service, and what HEIMDALL_JWT_AUDIENCE must
+  # match once dual-accept (LFXV2-3351) is live.
   audience: lfx-crowdfunding-backend
   # approversTeamName is the OpenFGA team object process-approval is checked
   # against (relation: member) once openfga.enabled is true. Name fixed by
