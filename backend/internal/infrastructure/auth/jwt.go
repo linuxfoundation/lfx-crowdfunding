@@ -6,6 +6,7 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,6 +45,13 @@ type JWTAuthConfig struct {
 	Audience  string
 	Issuer    string
 	ClockSkew time.Duration
+	// Heimdall* fields enable dual-accept of Heimdall-shaped JWTs alongside the
+	// Auth0 config above (LFXV2-3351). All three must be set together, or all
+	// left empty to keep Auth0-only validation. Remove once Heimdall cutover
+	// (LFXV2-3356/3357) is confirmed and the Auth0 branch is no longer needed.
+	HeimdallJWKSURL  string
+	HeimdallAudience string
+	HeimdallIssuer   string
 	// AllowMockPrincipalBypass must be true to permit DisabledMockLocalPrincipal.
 	// Keep false in all shared/non-local environments.
 	AllowMockPrincipalBypass bool
@@ -77,6 +85,20 @@ func (c *JWTClaims) effectiveEmail() string {
 	return strings.TrimSpace(c.Email)
 }
 
+// effectiveUsername returns the LF SSO username used to resolve the caller's
+// CF user row (service.GetByUsername). Auth0 tokens carry it as the
+// namespaced "username" claim; Heimdall-issued tokens (LFXV2-3351) are not
+// guaranteed to set that claim and instead carry the plain LF username
+// directly as "sub" (doc backend/docs/rewrite/12-fga-authorization-model.md,
+// "Heimdall/CF principals are plain usernames, no auth0| prefix") — fall
+// back to sub so user resolution doesn't silently break for those tokens.
+func (c *JWTClaims) effectiveUsername() string {
+	if v := strings.TrimSpace(c.Username); v != "" {
+		return v
+	}
+	return strings.TrimSpace(c.Subject)
+}
+
 const (
 	authCategoryUnknown                    = "unknown"
 	authCategoryMissingAuthorizationHeader = "missing_authorization_header"
@@ -104,10 +126,14 @@ var (
 
 // JWTAuthenticator validates JWTs using a JWKS endpoint.
 type JWTAuthenticator struct {
-	cfg       JWTAuthConfig
-	baseCtx   context.Context
+	cfg     JWTAuthConfig
+	baseCtx context.Context
+	// validator validates Auth0-issued tokens (identified by cfg.Issuer).
 	validator *validator.Validator
-	logger    *slog.Logger
+	// heimdallValidator, when set, validates Heimdall-issued tokens
+	// (identified by cfg.HeimdallIssuer) alongside validator. See LFXV2-3351.
+	heimdallValidator *validator.Validator
+	logger            *slog.Logger
 }
 
 // NewJWTAuthenticator creates a JWTAuthenticator backed by the given JWKS URL.
@@ -162,25 +188,75 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 		return nil, errors.New("JWKS_URL is required")
 	}
 
+	jwtValidator, err := newJWKSValidator(ctx, jwksURLStr, audience, issuer, clockSkew, "JWKS_URL", "JWT_ISSUER", validator.RS256, true)
+	if err != nil {
+		return nil, err
+	}
+
+	heimdallJWKSURL := strings.TrimSpace(cfg.HeimdallJWKSURL)
+	heimdallAudience := strings.TrimSpace(cfg.HeimdallAudience)
+	heimdallIssuer := strings.TrimSpace(cfg.HeimdallIssuer)
+	cfg.HeimdallJWKSURL = heimdallJWKSURL
+	cfg.HeimdallAudience = heimdallAudience
+	cfg.HeimdallIssuer = heimdallIssuer
+
+	var heimdallValidator *validator.Validator
+	heimdallFieldsSet := boolToInt(heimdallJWKSURL != "") + boolToInt(heimdallAudience != "") + boolToInt(heimdallIssuer != "")
+	switch heimdallFieldsSet {
+	case 0:
+		// Dual-accept disabled — Auth0-only validation, matching pre-LFXV2-3351 behavior.
+	case 3:
+		// Heimdall's issuer is the bare string "heimdall" (not a URL), its
+		// JWKS is served over plain in-cluster HTTP, and its create_jwt
+		// finalizer signs with PS256 — none of which match Auth0's shape, so
+		// this call skips the https/absolute-issuer checks used for Auth0.
+		heimdallValidator, err = newJWKSValidator(ctx, heimdallJWKSURL, heimdallAudience, heimdallIssuer, clockSkew, "HEIMDALL_JWKS_URL", "HEIMDALL_JWT_ISSUER", validator.PS256, false)
+		if err != nil {
+			return nil, err
+		}
+		if heimdallIssuer == issuer {
+			return nil, errors.New("HEIMDALL_JWT_ISSUER must differ from JWT_ISSUER")
+		}
+	default:
+		return nil, errors.New("HEIMDALL_JWKS_URL, HEIMDALL_JWT_AUDIENCE, and HEIMDALL_JWT_ISSUER must all be set or all be empty")
+	}
+
+	return &JWTAuthenticator{
+		cfg:               cfg,
+		baseCtx:           ctx,
+		validator:         jwtValidator,
+		heimdallValidator: heimdallValidator,
+		logger:            logger,
+	}, nil
+}
+
+// newJWKSValidator builds a validator.Validator backed by the given JWKS
+// endpoint, issuer, and audience. Shared by the Auth0 and Heimdall (LFXV2-3351)
+// validator setups in NewJWTAuthenticator.
+func newJWKSValidator(ctx context.Context, jwksURLStr, audience, issuer string, clockSkew time.Duration, jwksEnvName, issuerEnvName string, signingAlg validator.SignatureAlgorithm, requireHTTPS bool) (*validator.Validator, error) {
 	issuerURL, err := url.Parse(issuer)
 	if err != nil {
 		return nil, fmt.Errorf("parse issuer URL: %w", err)
 	}
-	if !issuerURL.IsAbs() || issuerURL.Host == "" {
-		return nil, errors.New("JWT_ISSUER must be an absolute URL")
-	}
-	if err := validateSecureURL(issuerURL, "JWT_ISSUER"); err != nil {
-		return nil, err
+	if requireHTTPS {
+		if !issuerURL.IsAbs() || issuerURL.Host == "" {
+			return nil, fmt.Errorf("%s must be an absolute URL", issuerEnvName)
+		}
+		if err := validateSecureURL(issuerURL, issuerEnvName); err != nil {
+			return nil, err
+		}
 	}
 	jwksURL, err := url.Parse(jwksURLStr)
 	if err != nil {
 		return nil, fmt.Errorf("parse JWKS URL: %w", err)
 	}
 	if !jwksURL.IsAbs() || jwksURL.Host == "" {
-		return nil, errors.New("JWKS_URL must be an absolute URL")
+		return nil, fmt.Errorf("%s must be an absolute URL", jwksEnvName)
 	}
-	if err := validateSecureURL(jwksURL, "JWKS_URL"); err != nil {
-		return nil, err
+	if requireHTTPS {
+		if err := validateSecureURL(jwksURL, jwksEnvName); err != nil {
+			return nil, err
+		}
 	}
 	jwksProvider := jwks.NewCachingProvider(issuerURL, 5*time.Minute, jwks.WithCustomJWKSURI(jwksURL))
 	keyFunc := func(reqCtx context.Context) (interface{}, error) {
@@ -193,7 +269,7 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 	}
 	jwtValidator, err := validator.New(
 		keyFunc,
-		validator.RS256,
+		signingAlg,
 		issuer,
 		[]string{audience},
 		validator.WithCustomClaims(func() validator.CustomClaims { return &JWTClaims{} }),
@@ -202,13 +278,14 @@ func NewJWTAuthenticator(ctx context.Context, cfg JWTAuthConfig, logger *slog.Lo
 	if err != nil {
 		return nil, fmt.Errorf("build JWT validator: %w", err)
 	}
+	return jwtValidator, nil
+}
 
-	return &JWTAuthenticator{
-		cfg:       cfg,
-		baseCtx:   ctx,
-		validator: jwtValidator,
-		logger:    logger,
-	}, nil
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // Validate satisfies validator.CustomClaims.
@@ -251,7 +328,7 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 		}
 
 		principalUserID := strings.TrimSpace(claims.Subject)
-		principalUsername := strings.TrimSpace(claims.Username)
+		principalUsername := claims.effectiveUsername()
 		if principalUserID == "" {
 			a.logger.WarnContext(r.Context(), "auth: empty subject in token", "category", authCategoryMissingSubject, "path", r.URL.Path)
 			jsonError(w, http.StatusUnauthorized, "invalid token claims")
@@ -295,7 +372,7 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 			if claims != nil && claims.Subject != "" {
 				principal := &models.Principal{
 					UserID:        claims.Subject,
-					Username:      claims.Username,
+					Username:      claims.effectiveUsername(),
 					Scope:         claims.Scope,
 					Email:         claims.effectiveEmail(),
 					EmailVerified: claims.EmailVerified,
@@ -366,8 +443,17 @@ func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, erro
 		return nil, errMissingBearerToken
 	}
 
-	if a.validator != nil {
-		validated, err := a.validator.ValidateToken(r.Context(), raw)
+	jwtValidator := a.validator
+	// Dual-accept (LFXV2-3351): route to the Heimdall validator when the
+	// token's unverified issuer claim matches it. Falls back to the Auth0
+	// validator for anything else, including tokens that fail to parse here —
+	// their real validation error surfaces from jwtValidator.ValidateToken below.
+	if a.heimdallValidator != nil && unverifiedIssuer(raw) == a.cfg.HeimdallIssuer {
+		jwtValidator = a.heimdallValidator
+	}
+
+	if jwtValidator != nil {
+		validated, err := jwtValidator.ValidateToken(r.Context(), raw)
 		if err != nil {
 			return nil, fmt.Errorf("validate token: %w", err)
 		}
@@ -387,6 +473,36 @@ func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, erro
 	}
 
 	return nil, errValidatorNotConfigured
+}
+
+// unverifiedIssuer extracts the "iss" claim from a JWT's payload without
+// verifying its signature — used only to pick which validator (Auth0 vs.
+// Heimdall) should perform the real, signature-checked validation. Returns
+// "" if the token is malformed; callers must not treat that as authentication.
+func unverifiedIssuer(raw string) string {
+	firstDot := strings.IndexByte(raw, '.')
+	if firstDot < 0 {
+		return ""
+	}
+	secondDot := strings.IndexByte(raw[firstDot+1:], '.')
+	if secondDot < 0 {
+		return ""
+	}
+	secondDot += firstDot + 1
+	if strings.IndexByte(raw[secondDot+1:], '.') >= 0 {
+		return "" // more than 3 segments
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(raw[firstDot+1 : secondDot])
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Issuer string `json:"iss"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	return claims.Issuer
 }
 
 func withValidatorRequestContext(baseCtx context.Context, requestCtx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
