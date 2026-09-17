@@ -111,9 +111,10 @@ heimdall:
   url: http://lfx-platform-heimdall.lfx.svc.cluster.local:4456
 
 # openfga.enabled gates the openfga_check authorizers in ruleset.yaml. Stays
-# false until lfx-v2-helm#172 (crowdfunding_initiative FGA type) merges AND
-# this backend emits FGA tuples for its initiatives — until both are true
-# there are no tuples to check against, so a real check would deny everyone.
+# false until this backend emits FGA tuples for its initiatives — the
+# crowdfunding_initiative FGA type (lfx-v2-helm#172) has merged, but until
+# tuples exist there's nothing to check against, so a real check would deny
+# everyone.
 openfga:
   enabled: false
 

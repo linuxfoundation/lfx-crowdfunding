@@ -5,6 +5,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -50,5 +51,19 @@ func TestResolveSlugToUID_NotFound_Returns404(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestResolveSlugToUID_RepoError_Returns500(t *testing.T) {
+	repo := &initiativeRepo{getErr: errors.New("boom")}
+	h := newInitiativeHandler(repo, &initiativeUserRepo{})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/slug-to-uid/save-the-bees", nil)
+	req = withURLParam(req, "slug", "save-the-bees")
+	w := httptest.NewRecorder()
+	h.ResolveSlugToUID(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
 	}
 }

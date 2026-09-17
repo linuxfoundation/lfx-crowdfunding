@@ -327,28 +327,12 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Internal/management routes — access:manage scope (M2M) enforced in-app.
-    # owner-info is looked up by slug, not UUID, and has no per-initiative FGA
-    # relation of its own; not called by any known consumer.
-    - id: "rule:lfx:lfx-crowdfunding-backend:manage"
-      allow_encoded_slashes: "off"
-      match:
-        methods:
-          - GET
-        routes:
-          - path: /v1/initiatives/:*/owner-info
-          - path: /v1/initiatives/published-list
-      execute:
-        - authenticator: oidc
-        {{- if .Values.app.use_oidc_contextualizer }}
-        - contextualizer: oidc_contextualizer
-        {{- end }}
-        - authorizer: allow_all
-        - finalizer: create_jwt
-          config:
-            values:
-              aud: {{ .Values.app.audience }}
-              scope: access:manage
+    # M2M routes (owner-info, published-list) are deliberately NOT wired here.
+    # Consumer is the Reimbursement Service (04-target-architecture.md:261,347),
+    # which authenticates with its own Auth0 M2M token. No authorizer today
+    # can assert a client-credentials caller, and allow_all + minted
+    # access:manage would grant M2M access to any logged-in user. Falls
+    # through to default_rule (deny_all). Cutover blocker: see #281.
 
     # Expense actions — authenticated, no scope check today. reportId is an
     # Expensify report id, not an FGA object.
