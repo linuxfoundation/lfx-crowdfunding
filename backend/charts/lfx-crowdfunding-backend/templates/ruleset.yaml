@@ -75,6 +75,27 @@ spec:
             values:
               aud: {{ .Values.app.audience }}
 
+    # /v1/initiatives/published-list is a single path segment, so without this
+    # rule it falls into the initiative-detail wildcard below (path:
+    # /v1/initiatives/:*) and becomes public — undoing the manage rule's
+    # removal above. Heimdall matches the literal path over the wildcard
+    # regardless of rule order (see slug-to-uid vs. this same wildcard,
+    # below), but an explicit deny here documents the intent instead of
+    # relying on that ordering being incidental. Cutover blocker: see #281.
+    - id: "rule:lfx:lfx-crowdfunding-backend:published-list-denied"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /v1/initiatives/published-list
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: deny_all
+
     # Initiative detail — auth optional, principal used if present but not required.
     # viewer on crowdfunding_initiative is [user:*] or writer, i.e. public by design,
     # so this stays allow_all even once openfga.enabled is true.
