@@ -189,6 +189,13 @@ spec:
     # that then satisfies this endpoint's own auth check — i.e. anonymous
     # slug-to-UID enumeration. Do not add it back. Mirrors
     # lfx-v2-project-service's projects:slug-to-uid rule.
+    #
+    # TODO: any caller with a *valid* token (not just the contextualizer) can
+    # still hit this directly and learn a non-published initiative's slug
+    # resolves to a real UUID (ResolveSlugToUID ignores status). The UUID
+    # alone doesn't grant access — GetByID still denies non-approvers — but
+    # it does confirm existence. Tighten with a dedicated M2M scope or
+    # network boundary once the contextualizer integration is wired up.
     - id: "rule:lfx:lfx-crowdfunding-backend:slug-to-uid"
       allow_encoded_slashes: "off"
       match:
