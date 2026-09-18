@@ -61,9 +61,14 @@ type JWTAuthConfig struct {
 
 // JWTClaims extends standard JWT claims with LFX-specific fields.
 type JWTClaims struct {
-	Subject  string `json:"sub"`
-	Username string `json:"https://sso.linuxfoundation.org/claims/username"`
-	SSOEmail string `json:"https://sso.linuxfoundation.org/claims/email"`
+	Subject string `json:"sub"`
+	// Principal is the platform's subject claim: Heimdall's create_jwt finalizer
+	// stamps "principal" and never "sub" (lfx-v2-helm charts/lfx-platform/values.yaml,
+	// create_jwt claims template), matching the shape lfx-v2-member-service and
+	// lfx-v2-meeting-service parse. Falls into Subject in parseClaims.
+	Principal string `json:"principal"`
+	Username  string `json:"https://sso.linuxfoundation.org/claims/username"`
+	SSOEmail  string `json:"https://sso.linuxfoundation.org/claims/email"`
 	// Scope is a space-separated list of OAuth2 scopes granted to this token.
 	// Route-group middleware checks for access:me or access:manage.
 	Scope         string `json:"scope"`
@@ -89,9 +94,10 @@ func (c *JWTClaims) effectiveEmail() string {
 // CF user row (service.GetByUsername). Auth0 tokens carry it as the
 // namespaced "username" claim; Heimdall-issued tokens (LFXV2-3351) are not
 // guaranteed to set that claim and instead carry the plain LF username
-// directly as "sub" (doc backend/docs/rewrite/12-fga-authorization-model.md,
+// directly as their subject claim, which parseClaims normalizes into Subject
+// from "principal" (doc backend/docs/rewrite/12-fga-authorization-model.md,
 // "Heimdall/CF principals are plain usernames, no auth0| prefix") — fall
-// back to sub so user resolution doesn't silently break for those tokens.
+// back to Subject so user resolution doesn't silently break for those tokens.
 func (c *JWTClaims) effectiveUsername() string {
 	if v := strings.TrimSpace(c.Username); v != "" {
 		return v
@@ -114,6 +120,11 @@ const (
 	authCategoryInvalidSignature           = "invalid_signature"
 	authCategoryTokenValidationFailed      = "token_validation_failed"
 )
+
+// anonymousPrincipal is the literal principal Heimdall's create_jwt finalizer
+// stamps for anonymous_authenticator pipelines (lfx-v2-helm
+// charts/lfx-platform/values.yaml). It must never be treated as a real subject.
+const anonymousPrincipal = "_anonymous"
 
 var (
 	errMissingAuthorizationHeader = errors.New("missing Authorization header")
@@ -466,6 +477,13 @@ func (a *JWTAuthenticator) extractAndValidate(r *http.Request) (*JWTClaims, erro
 			return nil, errors.New("unexpected custom claims type")
 		}
 		claims.Subject = validatedClaims.RegisteredClaims.Subject
+		// Heimdall-minted tokens (LFXV2-3351) carry the caller as "principal",
+		// not "sub". Anonymous Heimdall pipelines stamp the literal
+		// "_anonymous", which must stay unauthenticated rather than become a
+		// principal named "_anonymous" on the public/optional-auth routes.
+		if strings.TrimSpace(claims.Subject) == "" && claims.Principal != anonymousPrincipal {
+			claims.Subject = strings.TrimSpace(claims.Principal)
+		}
 		if strings.TrimSpace(claims.Subject) == "" {
 			return nil, errMissingSubjectClaim
 		}

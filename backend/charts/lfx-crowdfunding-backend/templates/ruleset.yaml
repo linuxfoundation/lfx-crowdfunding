@@ -152,6 +152,10 @@ spec:
       match:
         routes:
           - path: /v1/me
+          # chi registers r.Patch("/") inside r.Route("/v1/me") as the literal
+          # "/v1/me/" — list both shapes so SyncProfile doesn't fall through
+          # to the default deny_all rule.
+          - path: /v1/me/
           - path: /v1/me/donations
           - path: /v1/me/donations/csv
           - path: /v1/me/transactions

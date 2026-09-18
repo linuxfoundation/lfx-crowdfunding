@@ -843,11 +843,14 @@ func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
 	})
 
 	t.Run("accepts Heimdall token", func(t *testing.T) {
+		// Heimdall's create_jwt finalizer stamps "principal", never "sub"
+		// (lfx-v2-helm charts/lfx-platform/values.yaml) — this is the real
+		// shape a Heimdall-minted token has on the wire.
 		signed, err := signPS256(map[string]any{
-			"sub": "heimdall|testuser",
-			"iss": heimdallIssuer,
-			"aud": heimdallAudience,
-			"exp": time.Now().Add(time.Hour).Unix(),
+			"principal": "heimdall|testuser",
+			"iss":       heimdallIssuer,
+			"aud":       heimdallAudience,
+			"exp":       time.Now().Add(time.Hour).Unix(),
 		}, heimdallKey, "heimdall-key")
 		if err != nil {
 			t.Fatalf("sign Heimdall token: %v", err)
@@ -882,6 +885,42 @@ func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
 		handler.ServeHTTP(w, makeRequest(signed))
 		if w.Code != http.StatusUnauthorized {
 			t.Fatalf("expected 401 for cross-signed token, got %d", w.Code)
+		}
+	})
+
+	t.Run("rejects Heimdall token with no principal or sub", func(t *testing.T) {
+		signed, err := signPS256(map[string]any{
+			"iss": heimdallIssuer,
+			"aud": heimdallAudience,
+			"exp": time.Now().Add(time.Hour).Unix(),
+		}, heimdallKey, "heimdall-key")
+		if err != nil {
+			t.Fatalf("sign Heimdall token: %v", err)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, makeRequest(signed))
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for Heimdall token missing both claims, got %d", w.Code)
+		}
+	})
+
+	t.Run("rejects Heimdall token stamped _anonymous as unauthenticated", func(t *testing.T) {
+		// anonymous_authenticator pipelines stamp the literal "_anonymous"
+		// principal; it must not be treated as a real subject on routes that
+		// require auth.
+		signed, err := signPS256(map[string]any{
+			"principal": "_anonymous",
+			"iss":       heimdallIssuer,
+			"aud":       heimdallAudience,
+			"exp":       time.Now().Add(time.Hour).Unix(),
+		}, heimdallKey, "heimdall-key")
+		if err != nil {
+			t.Fatalf("sign Heimdall token: %v", err)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, makeRequest(signed))
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for _anonymous-principal token, got %d", w.Code)
 		}
 	})
 
