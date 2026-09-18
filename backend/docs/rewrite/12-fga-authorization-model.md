@@ -165,6 +165,39 @@ This section is accepted (Eric and Jordan, 2026-09-15). `ALLOWED_APPROVERS` stay
 fallback until Phase 1 ships per the rollout above; see "Decided" below for the status of the
 reopened decision.
 
+## M2M/client-credentials callers as team members (decided — 2026-09-17, Eric via Architecture call)
+
+[lfx-crowdfunding#281](https://github.com/linuxfoundation/lfx-crowdfunding/issues/281) asked
+whether a machine caller (the Reimbursement Service, authenticating M2M via Auth0 client
+credentials) can be given an FGA subject at all, since doc 11's only precedent for the
+`user:<client_id>@clients` shape was marked superseded. Decided:
+
+1. **Yes.** In V2, people and machines are both Auth0 identities; a machine is just
+   `user:<client_id>@clients`. Heimdall already renders a client-credentials caller as that
+   identity, and the shared `openfga_check` authorizer already accepts it — this is live in prod
+   today on `lfx-v2-member-service`'s member-tiers route, called by the Insights Worker and LFX
+   One.
+2. **Same shape as the approvers grant above: a static team, checked with `relation: member`,
+   no per-object tuple.** Not per-initiative — Eric's reasoning is that a per-initiative grant
+   means touching every initiative again the day a second service needs the same access, where a
+   team membership is one row. No platform model change (`team.member: [user]` already covers
+   it), and no `delete_access` orphan risk (same as "Approvers as a global team grant" above).
+   **No machine-only routes**: the machine passes the identical Heimdall rule a user would on the
+   same route (`relation: member`, `object: "team:crowdfunding-services"`) — never a bespoke
+   authorizer that special-cases a client-credentials caller.
+3. **Team name is `crowdfunding-services`, not `*-m2m*`.** The platform's existing teams are
+   role-named (`product-support`, `marketing-ops`); this follows that convention rather than
+   naming the mechanism.
+
+Provisioning/ownership of the `team:crowdfunding-services` membership tuple follows the same
+self-service pattern as `team:crowdfunding_approvers` above (own script, matching revoke script,
+`fga-sync-cache` busted after a direct write) — not repeated here.
+
+CF's `ruleset.yaml` rewires `owner-info`/`published-list` on this team once `openfga.enabled` is
+true (`app.servicesTeamName`); until then it fails closed (`deny_all`), not `allow_all` — unlike
+the approvers rule, these two routes have no in-app fallback check, so an `allow_all` fallback
+would recreate the `access:manage` exposure #281 exists to fix.
+
 ## Emission (summary, not a full contract)
 
 Enough to judge the model, not a delivery design: `update_access` on initiative creation; on

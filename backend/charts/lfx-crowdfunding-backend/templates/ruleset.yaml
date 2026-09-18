@@ -75,28 +75,52 @@ spec:
             values:
               aud: {{ .Values.app.audience }}
 
-    # /v1/initiatives/published-list is a single path segment, so without this
-    # rule it falls into the initiative-detail wildcard below (path:
-    # /v1/initiatives/:*) and becomes public — undoing the manage rule's
-    # removal above. Heimdall matches the literal path over the wildcard
-    # regardless of rule order (see slug-to-uid vs. this same wildcard,
-    # below), but an explicit deny here documents the intent instead of
-    # relying on that ordering being incidental. Cutover blocker: see #281.
+    # M2M routes (owner-info, published-list) — consumer is the Reimbursement
+    # Service (04-target-architecture.md:261,347), an M2M/client-credentials
+    # caller. Decided in #281 (Architecture, 2026-09-17): machine callers get
+    # the same FGA-team check a user would on this route, not a bespoke
+    # machine-only authorizer — Heimdall already renders a client-credentials
+    # caller as user:<client_id>@clients (openfga_check config below), so
+    # putting that identity in team:{{ "{{ .Values.app.servicesTeamName }}" }}
+    # and checking relation: member is the same shape as process-approval's
+    # team check further down. No path capture needed — static object.
+    #
+    # Without this rule, published-list (a single path segment) would fall
+    # into the initiative-detail wildcard below (/v1/initiatives/:*) and
+    # become public; owner-info falls through to default_rule (deny_all in
+    # staging/prod) instead. While openfga.enabled is false there is no
+    # in-app fallback check on these two routes (unlike process-approval's
+    # ALLOWED_APPROVERS), so the fallback here is deny_all, not allow_all —
+    # allow_all would recreate the access:manage exposure #281 exists to fix.
     # No anonymous_authenticator pairing: anonymous callers 401 here (fail
     # auth) rather than 403 (denied authz) like an authenticated caller does.
-    - id: "rule:lfx:lfx-crowdfunding-backend:published-list-denied"
+    - id: "rule:lfx:lfx-crowdfunding-backend:services"
       allow_encoded_slashes: "off"
       match:
         methods:
           - GET
         routes:
+          - path: /v1/initiatives/:*/owner-info
           - path: /v1/initiatives/published-list
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
         - contextualizer: oidc_contextualizer
         {{- end }}
+        {{- if .Values.openfga.enabled }}
+        - authorizer: openfga_check
+          config:
+            values:
+              relation: member
+              object: "team:{{ .Values.app.servicesTeamName }}"
+        {{- else }}
         - authorizer: deny_all
+        {{- end }}
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:manage
 
     # Initiative detail — auth optional, principal used if present but not required.
     # viewer on crowdfunding_initiative is [user:*] or writer, i.e. public by design,
@@ -391,13 +415,6 @@ spec:
             values:
               aud: {{ .Values.app.audience }}
               scope: access:me
-
-    # M2M routes (owner-info, published-list) are deliberately NOT wired here.
-    # Consumer is the Reimbursement Service (04-target-architecture.md:261,347),
-    # which authenticates with its own Auth0 M2M token. No authorizer today
-    # can assert a client-credentials caller, and allow_all + minted
-    # access:manage would grant M2M access to any logged-in user. Falls
-    # through to default_rule (deny_all). Cutover blocker: see #281.
 
     # Expense actions — authenticated, no scope check today. reportId is an
     # Expensify report id, not an FGA object. Pre-existing gap, not

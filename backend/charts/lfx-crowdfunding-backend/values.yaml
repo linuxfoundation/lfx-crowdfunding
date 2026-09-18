@@ -144,6 +144,13 @@ app:
   # against (relation: member) once openfga.enabled is true. Name fixed by
   # the accepted ADR (backend/docs/rewrite/12-fga-authorization-model.md).
   approversTeamName: crowdfunding_approvers
+  # servicesTeamName is the OpenFGA team object the owner-info/published-list
+  # M2M routes are checked against (relation: member) once openfga.enabled is
+  # true. Members are client-credentials callers as user:<client_id>@clients
+  # (e.g. the Reimbursement Service), added the same way a user would be.
+  # Name decided by Architecture (#281, 2026-09-17): role-named like the
+  # platform's other teams, not "m2m"-named.
+  servicesTeamName: crowdfunding-services
 
 traefik:
   gateway:
