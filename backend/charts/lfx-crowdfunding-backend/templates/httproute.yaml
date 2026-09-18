@@ -35,11 +35,29 @@ spec:
           name: {{ include "lfx-v2-initiatives-service.fullname" . }}
           port: {{ .Values.service.port }}
           weight: 1
-    # Everything else.
+    # Everything else — scoped to this backend's real path families instead of
+    # PathPrefix: / on the shared lfx-api host, matching the pattern used by
+    # lfx-v2-project-service (/projects) and lfx-v2-query-service (/query).
+    # PathPrefix: / would make crowdfunding the default backend for every
+    # unmatched path on lfx-api, including future services' paths and health
+    # checks — Gateway API resolves any conflicting "/" rule from another
+    # chart by object creation timestamp (nondeterministic). Health checks
+    # (/livez, /healthz, /readyz) are deliberately not exposed here: they're
+    # not meant to be reachable on the shared public host, and the Deployment's
+    # liveness/readiness probes hit the pod directly, not through the Gateway.
     - matches:
         - path:
             type: PathPrefix
-            value: /
+            value: /v1/initiatives
+        - path:
+            type: PathPrefix
+            value: /v1/statistics
+        - path:
+            type: PathPrefix
+            value: /v1/me
+        - path:
+            type: PathPrefix
+            value: /v1/expense
       filters:
         - type: ExtensionRef
           extensionRef:

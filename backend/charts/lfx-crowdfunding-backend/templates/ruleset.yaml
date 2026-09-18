@@ -7,10 +7,10 @@
 # every path is still listed explicitly here so behavior doesn't depend on that
 # default and an omitted path 403s in staging/prod instead of falling through.
 #
-# openfga.enabled gates the openfga_check authorizers below. It defaults to false:
-# the crowdfunding_initiative FGA type is still an open PR (lfx-v2-helm#172) and
-# this backend does not yet emit any FGA tuples for it, so there is nothing to
-# check against yet. See values.yaml for details.
+# openfga.enabled gates the openfga_check authorizers below. It defaults to
+# false: the crowdfunding_initiative FGA type has merged (lfx-v2-helm#172),
+# but this backend does not yet emit any FGA tuples for it, so there is
+# nothing to check against yet. See values.yaml for details.
 {{- if .Values.heimdall.enabled }}
 ---
 apiVersion: heimdall.dadrus.github.com/v1alpha4
@@ -82,6 +82,8 @@ spec:
     # regardless of rule order (see slug-to-uid vs. this same wildcard,
     # below), but an explicit deny here documents the intent instead of
     # relying on that ordering being incidental. Cutover blocker: see #281.
+    # No anonymous_authenticator pairing: anonymous callers 401 here (fail
+    # auth) rather than 403 (denied authz) like an authenticated caller does.
     - id: "rule:lfx:lfx-crowdfunding-backend:published-list-denied"
       allow_encoded_slashes: "off"
       match:
@@ -294,13 +296,48 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Donations/subscriptions on a specific initiative — the caller is the
-    # donor/subscriber, not an initiative owner or writer; donation
-    # view/mutation is deliberately not CF-authorization-gated (Slack
-    # decision), so this stays allow_all regardless of openfga.enabled.
-    - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-donate"
+    # Donations/subscriptions list on a specific initiative — allow_all
+    # regardless of openfga.enabled, but for a different reason per resource:
+    # DonationHandler.List/SubscriptionHandler.List never check the caller's
+    # principal (list any initiative's donations/subscriptions, not just the
+    # caller's own). Donations are already public via the unauthenticated
+    # /v1/initiatives/{id}/transactions projection (same DonationSummary
+    # shape, no new exposure — donation view/mutation is deliberately not
+    # CF-authorization-gated, Slack decision). Subscription list has no public
+    # equivalent elsewhere, so this does grant any authenticated user the
+    # per-initiative subscription schedule (amount/frequency/next charge
+    # date) — Subscription.UserID/OrganizationID/Stripe IDs stay json:"-", so
+    # no PII/payment identifiers leak. Accepted for now; split further or add
+    # an ownership check if that needs tightening.
+    - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-donate-list"
       allow_encoded_slashes: "off"
       match:
+        methods:
+          - GET
+        routes:
+          - path: /v1/me/initiatives/:id/donations
+          - path: /v1/me/initiatives/:id/subscriptions
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
+    # Donation/subscription creation on a specific initiative — the caller is
+    # genuinely the donor/subscriber here (DonationService.Create /
+    # SubscriptionService.Create record the authenticated principal), so
+    # allow_all is correct for these methods regardless of openfga.enabled.
+    - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-donate-create"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - POST
         routes:
           - path: /v1/me/initiatives/:id/donations
           - path: /v1/me/initiatives/:id/subscriptions
@@ -356,7 +393,12 @@ spec:
     # through to default_rule (deny_all). Cutover blocker: see #281.
 
     # Expense actions — authenticated, no scope check today. reportId is an
-    # Expensify report id, not an FGA object.
+    # Expensify report id, not an FGA object. Pre-existing gap, not
+    # introduced by this PR: ExpenseHandler.ProcessAction never checks that
+    # the caller's principal is tied to the report/initiative being
+    # approved/rejected — any authenticated LF user can act on any report ID.
+    # Onboarding to Heimdall ratifies this as the gateway contract rather
+    # than leaving it an internal TODO. Tracked in #283.
     - id: "rule:lfx:lfx-crowdfunding-backend:expense"
       allow_encoded_slashes: "off"
       match:

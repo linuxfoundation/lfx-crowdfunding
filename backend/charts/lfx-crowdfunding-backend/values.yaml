@@ -41,6 +41,11 @@ service:
   targetPort: 8080
 
 ingress:
+  # Must be disabled before/at the same time heimdall.enabled is flipped to
+  # true (in lfx-v2-argocd values) — otherwise the backend stays reachable
+  # directly via this Ingress, bypassing every Heimdall RuleSet-only control
+  # (published-list/owner-info denies, process-approval openfga_check).
+  # Tracked in #282.
   enabled: false
   className: ""
   annotations: {}
@@ -107,6 +112,11 @@ config:
 # See lfx-v2-query-service's chart for the reference pattern.
 heimdall:
   enabled: false
+  # add_middleware must be true in THIS chart when heimdall.enabled is true:
+  # unlike lfx-namespace platform services, the HTTPRoute's Middleware
+  # ExtensionRef is namespace-local, so Middleware/heimdall must exist in
+  # crowdfunding-backend's own namespace. false is not a viable steady state
+  # once heimdall.enabled is true.
   add_middleware: false
   url: http://lfx-platform-heimdall.lfx.svc.cluster.local:4456
 
