@@ -41,6 +41,11 @@ service:
   targetPort: 8080
 
 ingress:
+  # Must be disabled before/at the same time heimdall.enabled is flipped to
+  # true (in lfx-v2-argocd values) — otherwise the backend stays reachable
+  # directly via this Ingress, bypassing every Heimdall RuleSet-only control
+  # (published-list/owner-info denies, process-approval openfga_check).
+  # Tracked in #282.
   enabled: false
   className: ""
   annotations: {}
@@ -101,6 +106,56 @@ config:
   # to disable; no access checks are made on any request path yet (M2).
   FGA_NATS_URL: ""
   FGA_ACCESS_CHECK_TIMEOUT: "5s"
+
+# ── Heimdall API gateway onboarding (LFXV2-3352, draft — not yet cut over) ───
+# Disabled by default so this chart is a no-op until lfx-v2-argocd flips it.
+# See lfx-v2-query-service's chart for the reference pattern.
+heimdall:
+  enabled: false
+  # add_middleware must be true in THIS chart when heimdall.enabled is true:
+  # unlike lfx-namespace platform services, the HTTPRoute's Middleware
+  # ExtensionRef is namespace-local, so Middleware/heimdall must exist in
+  # crowdfunding-backend's own namespace. false is not a viable steady state
+  # once heimdall.enabled is true.
+  add_middleware: false
+  url: http://lfx-platform-heimdall.lfx.svc.cluster.local:4456
+
+# openfga.enabled gates the openfga_check authorizers in ruleset.yaml. Stays
+# false until this backend emits FGA tuples for its initiatives — the
+# crowdfunding_initiative FGA type (lfx-v2-helm#172) has merged, but until
+# tuples exist there's nothing to check against, so a real check would deny
+# everyone.
+openfga:
+  enabled: false
+
+lfx:
+  # domain is the base domain used to build the Heimdall HTTPRoute hostname
+  # (lfx-api.<domain>). Per-environment — set via ArgoCD values.
+  domain: k8s.orb.local
+
+app:
+  # use_oidc_contextualizer is a boolean to determine if the OIDC contextualizer should be used
+  use_oidc_contextualizer: false
+  # audience is the JWT aud claim Heimdall's create_jwt finalizer stamps onto
+  # tokens forwarded to this service, and what HEIMDALL_JWT_AUDIENCE must
+  # match once dual-accept (LFXV2-3351) is live.
+  audience: lfx-crowdfunding-backend
+  # approversTeamName is the OpenFGA team object process-approval is checked
+  # against (relation: member) once openfga.enabled is true. Name fixed by
+  # the accepted ADR (backend/docs/rewrite/12-fga-authorization-model.md).
+  approversTeamName: crowdfunding_approvers
+  # servicesTeamName is the OpenFGA team object the owner-info/published-list
+  # M2M routes are checked against (relation: member) once openfga.enabled is
+  # true. Members are client-credentials callers as user:<client_id>@clients
+  # (e.g. the Reimbursement Service), added the same way a user would be.
+  # Name decided by Architecture (#281, 2026-09-17): role-named like the
+  # platform's other teams, not "m2m"-named.
+  servicesTeamName: crowdfunding-services
+
+traefik:
+  gateway:
+    name: lfx-platform-gateway
+    namespace: lfx
 
 # ── Additional environment variables ─────────────────────────────────────────
 # Rendered as a Kubernetes env: list on the Deployment and CronJob.

@@ -186,6 +186,22 @@ func (h *InitiativeHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, initiative)
 }
 
+// ResolveSlugToUID handles GET /v1/initiatives/slug-to-uid/{slug} — requires
+// a valid JWT (any scope). Internal-only: called by lfx-v2-helm's
+// crowdfunding_slug_resolver_contextualizer from other services' Heimdall
+// pipelines (e.g. lfx-self-serve's slug-based reads), never directly by an
+// end user. Resolves regardless of initiative status, mirroring
+// lfx-v2-project-service's slug-to-uid endpoint.
+func (h *InitiativeHandler) ResolveSlugToUID(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id, err := h.svc.ResolveSlug(r.Context(), slug)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"uid": id})
+}
+
 // Create handles POST /v1/initiatives — requires JWT.
 func (h *InitiativeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())

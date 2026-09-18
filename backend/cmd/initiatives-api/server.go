@@ -225,6 +225,13 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// view non-published initiatives if a valid token is supplied.
 	r.With(jwtAuth.OptionalMiddleware).Get("/v1/initiatives/{id}", initiativeH.GetByID)
 
+	// Slug-to-UID resolver — requires a valid bearer token (any scope); no
+	// specific scope is enforced because it's called via Heimdall's
+	// crowdfunding_slug_resolver_contextualizer forwarding the original
+	// caller's token, which may hold any scope. Internal-only: not meant for
+	// direct end-user use, mirroring lfx-v2-project-service's equivalent.
+	r.With(jwtAuth.Middleware).Get("/v1/initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
+
 	// Protected API — requires a valid bearer token with access:me scope.
 	// All routes are under /v1/me/* to make the identity-scoped contract explicit.
 	r.Route("/v1/me", func(r chi.Router) {

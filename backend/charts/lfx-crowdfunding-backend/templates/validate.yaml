@@ -12,3 +12,15 @@ No Kubernetes resource is rendered; this file only produces errors.
 {{- if and .Values.mentorshipSyncCronJob.enabled (not .Values.mentorshipSyncCronJob.image.tag) }}
 {{- fail (printf "\n\nvalues.yaml: mentorshipSyncCronJob.image.tag is required when mentorshipSyncCronJob.enabled is true.\nSet it to the mentorship-sync image tag to deploy, e.g.:\n  mentorshipSyncCronJob:\n    image:\n      tag: \"abc1234\"\nFalling back to the main API image tag would pull from the wrong image repository.") }}
 {{- end }}
+
+{{- if and .Values.openfga.enabled (not .Values.app.approversTeamName) }}
+{{- fail (printf "\n\nvalues.yaml: app.approversTeamName is required when openfga.enabled is true.\nSet it to the OpenFGA team object process-approval is checked against, e.g.:\n  app:\n    approversTeamName: \"crowdfunding_approvers\"\nLeaving it empty renders an openfga_check rule with an empty object, which fails closed but denies every approval action.") }}
+{{- end }}
+
+{{- if and .Values.heimdall.enabled .Values.ingress.enabled }}
+{{- fail (printf "\n\nvalues.yaml: heimdall.enabled and ingress.enabled cannot both be true.\nThe legacy Ingress reaches this backend's Service directly, bypassing every Heimdall RuleSet-only control (published-list/owner-info denies, and process-approval's openfga_check once openfga.enabled).\nDisable the Ingress at the same time you enable Heimdall:\n  ingress:\n    enabled: false\nTracked in #282.") }}
+{{- end }}
+
+{{- if and .Values.heimdall.enabled (not .Values.heimdall.add_middleware) }}
+{{- fail (printf "\n\nvalues.yaml: heimdall.add_middleware is required when heimdall.enabled is true.\nUnlike lfx-namespace platform services, this chart's HTTPRoute Middleware ExtensionRef is namespace-local, so Middleware/heimdall must exist in this backend's own namespace or every route becomes unavailable.\nSet it to true:\n  heimdall:\n    add_middleware: true") }}
+{{- end }}

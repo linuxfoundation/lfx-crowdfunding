@@ -1,0 +1,15 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+{{ if .Values.heimdall.add_middleware }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: heimdall
+  namespace: {{ .Release.Namespace }}
+spec:
+  forwardAuth:
+    address: "{{ .Values.heimdall.url }}"
+    authResponseHeaders:
+      - Authorization
+{{- end }}
