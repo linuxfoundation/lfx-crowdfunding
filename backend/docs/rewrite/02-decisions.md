@@ -574,10 +574,16 @@ for _, a := range h.allowedApprovers {
 }
 ```
 
-**3. Email approval links — HMAC-signed token, no Auth0**
-Initiative and expense approval email links use HMAC HS256-signed tokens (not Auth0). The token encodes `{ initiativeID, action: "approve"|"reject" }` and has an expiry. The `POST /crowdfunding/initiatives/approvals` endpoint verifies the HMAC signature — the signed token is the sole authorization mechanism for this flow. No Auth0 JWT is required or checked.
+**3. Email approval links — superseded, approval uses the Auth0 JWT + approver allowlist**
+The original plan was for initiative and expense approval email links to carry HMAC HS256-signed tokens verified at a `POST /initiatives/approvals` endpoint, so an approver could act straight from the email without logging in to CF.
 
-This is intentional: the approver clicks a link in email without needing to be logged in to CF. The HMAC secret is stored in AWS Secrets Manager (`CF_APPROVAL_SIGNING_SECRET`).
+**That was never implemented.** There is no HMAC approval handler and no `CF_APPROVAL_SIGNING_SECRET` in the service. The implemented flow is:
+
+```
+POST /crowdfunding/initiatives/{id}/process-approval/{action}
+```
+
+where `{action}` is `approve` or `decline` (see `cmd/initiatives-api/server.go` and `InitiativeHandler.ProcessApproval`). It requires a normal Auth0 RS256 bearer token with the `access:me` scope, and the handler then enforces the `ALLOWED_APPROVERS` allowlist described in point 2 above — so the approver does have to be logged in. Email links point the approver at the CF UI rather than authorizing the action by themselves.
 
 ### Reimbursement and Ledger on Lambda — network path
 
