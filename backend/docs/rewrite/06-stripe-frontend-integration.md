@@ -31,9 +31,9 @@ automatically from the user's HTTP-only session cookie.
 
 | # | Method | Path | Auth | Headers | What it does |
 |---|--------|------|------|---------|--------------|
-| 5 | `POST` | `/crowdfunding/initiatives/{id}/donations` | JWT | `Idempotency-Key: <uuid>` | Creates a one-time donation using a saved `pm_xxx`. |
-| 6 | `POST` | `/crowdfunding/initiatives/{id}/subscriptions` | JWT | `Idempotency-Key: <uuid>` | Creates a recurring subscription using a saved `pm_xxx`. |
-| 7 | `DELETE` | `/crowdfunding/subscriptions/{id}` | JWT | — | Cancels an active subscription. Returns `204`. |
+| 5 | `POST` | `/crowdfunding/me/initiatives/{id}/donations` | JWT | `Idempotency-Key: <uuid>` | Creates a one-time donation using a saved `pm_xxx`. |
+| 6 | `POST` | `/crowdfunding/me/initiatives/{id}/subscriptions` | JWT | `Idempotency-Key: <uuid>` | Creates a recurring subscription using a saved `pm_xxx`. |
+| 7 | `DELETE` | `/crowdfunding/me/subscriptions/{id}` | JWT | — | Cancels an active subscription. Returns `204`. |
 | 8 | `GET` | `/crowdfunding/me/subscriptions` | JWT | — | Lists the authenticated user's own subscriptions (paginated). |
 | 9 | `GET` | `/crowdfunding/me/subscriptions/{id}` | JWT | — | Returns one authenticated user's subscription by ID. |
 
@@ -307,7 +307,7 @@ export default defineEventHandler(async (event) => {
   const id = event.context.params!.id
   const idempotencyKey = getHeader(event, 'idempotency-key') ?? ''
   const body = await readBody(event)
-  return useBackendFetch(event, `/crowdfunding/initiatives/${id}/donations`, {
+  return useBackendFetch(event, `/crowdfunding/me/initiatives/${id}/donations`, {
     method: 'POST',
     body,
     headers: { 'Idempotency-Key': idempotencyKey },
@@ -328,7 +328,7 @@ export default defineEventHandler(async (event) => {
   const id = event.context.params!.id
   const idempotencyKey = getHeader(event, 'idempotency-key') ?? ''
   const body = await readBody(event)
-  return useBackendFetch(event, `/crowdfunding/initiatives/${id}/subscriptions`, {
+  return useBackendFetch(event, `/crowdfunding/me/initiatives/${id}/subscriptions`, {
     method: 'POST',
     body,
     headers: { 'Idempotency-Key': idempotencyKey },
@@ -346,7 +346,7 @@ import { useBackendFetch } from '~/server/utils/backend-fetch'
 // DELETE /api/subscriptions/:id
 export default defineEventHandler(async (event) => {
   const id = event.context.params!.id
-  return useBackendFetch(event, `/crowdfunding/subscriptions/${id}`, { method: 'DELETE' })
+  return useBackendFetch(event, `/crowdfunding/me/subscriptions/${id}`, { method: 'DELETE' })
 })
 ```
 

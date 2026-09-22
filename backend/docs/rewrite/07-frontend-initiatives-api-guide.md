@@ -10,7 +10,7 @@
 1. [Quick-start cheat sheet](#1-quick-start-cheat-sheet)
 2. [Authentication](#2-authentication)
 3. [Initiative types and statuses](#3-initiative-types-and-statuses)
-4. [Creating an initiative — POST /crowdfunding/initiatives](#4-creating-an-initiative)
+4. [Creating an initiative — POST /crowdfunding/me/initiatives](#4-creating-an-initiative)
 5. [Full payload reference by type](#5-full-payload-reference-by-type)
    - 5.1 project
    - 5.2 event
@@ -18,7 +18,7 @@
    - 5.4 security_audit
    - 5.5 general_fund / other
    - 5.6 ostif
-6. [Updating an initiative — PATCH /crowdfunding/initiatives/{id}](#6-updating-an-initiative)
+6. [Updating an initiative — PATCH /crowdfunding/me/initiatives/{id}](#6-updating-an-initiative)
 7. [Child-table replace semantics (IMPORTANT)](#7-child-table-replace-semantics)
 8. [Status lifecycle and the approval workflow](#8-status-lifecycle-and-the-approval-workflow)
 9. [The email approval flow — step by step](#9-the-email-approval-flow)
@@ -34,13 +34,13 @@
 |--------|--------|------|-------|
 | List initiatives (public) | `GET` | `/crowdfunding/initiatives` | No |
 | Get one initiative (public) | `GET` | `/crowdfunding/initiatives/{slug-or-uuid}` | No |
-| **Create initiative** | `POST` | `/crowdfunding/initiatives` | **Yes** (user JWT) |
-| **Update initiative** | `PATCH` | `/crowdfunding/initiatives/{uuid}` | **Yes** (owner JWT) |
-| Delete initiative | `DELETE` | `/crowdfunding/initiatives/{uuid}` | **Yes** (owner JWT) |
+| **Create initiative** | `POST` | `/crowdfunding/me/initiatives` | **Yes** (user JWT) |
+| **Update initiative** | `PATCH` | `/crowdfunding/me/initiatives/{uuid}` | **Yes** (owner JWT) |
+| Delete initiative | `DELETE` | `/crowdfunding/me/initiatives/{uuid}` | **Yes** (owner JWT) |
 | **Approve / decline** | `POST` | `/crowdfunding/initiatives/{uuid}/process-approval/{action}` | **Yes** (approver JWT) |
 
 Base URL (production): `https://api-gw.platform.linuxfoundation.org`  
-All endpoints are under `/crowdfunding/initiatives`.
+Public reads are under `/crowdfunding/initiatives`; authenticated writes are under `/crowdfunding/me/initiatives`.
 
 ---
 
@@ -92,7 +92,7 @@ The **approval** endpoint additionally requires that the authenticated user's `u
                   ┌────────────────────────────────────────┐
                   │                                        │
   User submits    │                                        ▼
-  POST /crowdfunding/initiatives ──► submitted ──► pending ──► published
+  POST /crowdfunding/me/initiatives ──► submitted ──► pending ──► published
                                     │
                                     └──────────────► declined
                                           ▲
@@ -103,7 +103,7 @@ The **approval** endpoint additionally requires that the authenticated user's `u
 
 **In plain English:**
 
-1. User fills in the form and hits Submit → `POST /crowdfunding/initiatives` → status is auto-set to `submitted`.
+1. User fills in the form and hits Submit → `POST /crowdfunding/me/initiatives` → status is auto-set to `submitted`.
 2. An email is sent to the reviewer inbox with a link to approve or decline.
 3. Reviewer clicks a link in the email → a page in your frontend authenticates them and calls `POST /crowdfunding/initiatives/{id}/process-approval/approve` (or `/decline`).
 4. If approved → status becomes `published` and the initiative is live.
@@ -116,7 +116,7 @@ The **approval** endpoint additionally requires that the authenticated user's `u
 ### Endpoint
 
 ```
-POST /crowdfunding/initiatives
+POST /crowdfunding/me/initiatives
 Content-Type: application/json
 Authorization: Bearer <token>
 ```
@@ -444,7 +444,7 @@ OSTIF initiatives have an `ostif_detail` block and a `contacts` array. These rep
 ### Endpoint
 
 ```
-PATCH /crowdfunding/initiatives/{uuid}
+PATCH /crowdfunding/me/initiatives/{uuid}
 Content-Type: application/json
 Authorization: Bearer <token>
 ```
@@ -556,7 +556,7 @@ if (goalsChanged) {
   }));
 }
 
-await $fetch(`/crowdfunding/initiatives/${id}`, { method: 'PATCH', body: patch });
+await $fetch(`/crowdfunding/me/initiatives/${id}`, { method: 'PATCH', body: patch });
 ```
 
 ---
@@ -565,7 +565,7 @@ await $fetch(`/crowdfunding/initiatives/${id}`, { method: 'PATCH', body: patch }
 
 ### What the API automatically does
 
-When an initiative is created (`POST /crowdfunding/initiatives`):
+When an initiative is created (`POST /crowdfunding/me/initiatives`):
 
 1. Status is **always** set to `submitted` by the API — you cannot override this.
 2. The API fetches the owner's profile (name + email) from the database.
@@ -588,7 +588,7 @@ This is the complete sequence from submission to a live initiative:
                                                       Mandrill
   Submitter                Backend API              Email Service           Reviewer Inbox
      │                         │                         │                       │
-     │  POST /crowdfunding/initiatives   │                         │                       │
+     │  POST /crowdfunding/me/initiatives   │                         │                       │
      │────────────────────────►│                         │                       │
      │                         │ save to DB (submitted)  │                       │
      │                         │─────────────────────────►                       │
@@ -835,7 +835,7 @@ This example walks through creating a `project` initiative and then simulating t
 ### Step 1 — Create the initiative (from the UI)
 
 ```http
-POST /crowdfunding/initiatives
+POST /crowdfunding/me/initiatives
 Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6...
 Content-Type: application/json
 
@@ -918,7 +918,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1Ni...  (reviewer's token)
 ### Step 3 — Owner updates the logo after approval (PATCH)
 
 ```http
-PATCH /crowdfunding/initiatives/b4a1e2c3-dead-beef-1234-56789abcdef0
+PATCH /crowdfunding/me/initiatives/b4a1e2c3-dead-beef-1234-56789abcdef0
 Authorization: Bearer eyJhbGciOiJSUzI1Ni...  (owner's token)
 Content-Type: application/json
 

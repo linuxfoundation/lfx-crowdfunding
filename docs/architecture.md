@@ -298,7 +298,7 @@ sequenceDiagram
     participant Stripe
 
     Donor->>FE: Fill donation form, click Pay
-    FE->>API: POST /crowdfunding/initiatives/{id}/donations
+    FE->>API: POST /crowdfunding/me/initiatives/{id}/donations
     API->>DB: INSERT INTO donations, status = pending
     DB-->>API: donation record
     API->>Stripe: Create PaymentIntent with amount and initiative metadata
@@ -327,7 +327,7 @@ sequenceDiagram
     participant Stripe
 
     Donor->>FE: Choose monthly/annual, click Subscribe
-    FE->>API: POST /crowdfunding/initiatives/{id}/subscriptions
+    FE->>API: POST /crowdfunding/me/initiatives/{id}/subscriptions
     API->>Stripe: Create Customer if new, then create Subscription
     Stripe-->>API: subscription_id + payment client_secret
     API->>DB: INSERT INTO subscriptions, status = active

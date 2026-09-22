@@ -146,7 +146,7 @@ account settings.
 
 ---
 
-### 5. `POST /crowdfunding/initiatives/{id}/donations`
+### 5. `POST /crowdfunding/me/initiatives/{id}/donations`
 
 **Purpose:** Make a one-time donation to a crowdfunding initiative.
 
@@ -210,7 +210,7 @@ response is sent.
 
 ---
 
-### 6. `POST /crowdfunding/initiatives/{id}/subscriptions`
+### 6. `POST /crowdfunding/me/initiatives/{id}/subscriptions`
 
 **Purpose:** Start a recurring donation to a crowdfunding initiative.
 
@@ -276,7 +276,7 @@ webhook. `client_secret` is **never stored**.
 
 ---
 
-### 7. `DELETE /crowdfunding/subscriptions/{id}`
+### 7. `DELETE /crowdfunding/me/subscriptions/{id}`
 
 **Purpose:** Cancel a recurring donation subscription.
 
@@ -412,9 +412,9 @@ export const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_K
 | `POST` | `/crowdfunding/me/payment-method` | JWT | Record the card after Stripe confirms it |
 | `GET`  | `/crowdfunding/me/payment-account` | JWT | Fetch saved card details |
 | `DELETE` | `/crowdfunding/me/payment-method` | JWT | Remove saved card |
-| `POST` | `/crowdfunding/initiatives/{id}/donations` | JWT | Create a one-time donation |
-| `POST` | `/crowdfunding/initiatives/{id}/subscriptions` | JWT | Create a recurring subscription |
-| `DELETE` | `/crowdfunding/subscriptions/{id}` | JWT | Cancel a subscription |
+| `POST` | `/crowdfunding/me/initiatives/{id}/donations` | JWT | Create a one-time donation |
+| `POST` | `/crowdfunding/me/initiatives/{id}/subscriptions` | JWT | Create a recurring subscription |
+| `DELETE` | `/crowdfunding/me/subscriptions/{id}` | JWT | Cancel a subscription |
 
 ---
 
@@ -541,7 +541,7 @@ try {
 ```
 Frontend                         Backend (API)                  Stripe / Webhook
    │                                   │                              │
-   │── POST /crowdfunding/initiatives/:id/donations ──────────────────────────▶│
+   │── POST /crowdfunding/me/initiatives/:id/donations ──────────────────────────▶│
    │   { amount_in_cents: 5000,        │   PaymentIntents.New         │
    │     stripe_payment_method_id:     │   (Confirm=true,             │
    │     pm_xxx }                      │    3DS=automatic)            │
@@ -582,7 +582,7 @@ Frontend                         Backend (API)                  Stripe / Webhook
 #### Submit the donation
 
 ```ts
-const donation = await api.post(`/crowdfunding/initiatives/${initiativeID}/donations`, {
+const donation = await api.post(`/crowdfunding/me/initiatives/${initiativeID}/donations`, {
   amount_in_cents: 5000,
   stripe_payment_method_id: card.payment_method_id,
 })
@@ -639,7 +639,7 @@ payment_intent.succeeded   payment_intent.payment_failed
 ```
 Frontend                         Backend (API)                  Stripe / Webhook
    │                                   │                              │
-   │── POST /crowdfunding/initiatives/:id/subscriptions ──────────────────────▶│
+   │── POST /crowdfunding/me/initiatives/:id/subscriptions ──────────────────────▶│
    │   { amount_in_cents: 1000,        │   Prices.New (fresh price)   │
    │     frequency: "monthly",         │   Subscriptions.New          │
    │     stripe_payment_method_id:     │   (default_incomplete,       │
@@ -683,7 +683,7 @@ Frontend                         Backend (API)                  Stripe / Webhook
 #### Submit the subscription
 
 ```ts
-const subscription = await api.post(`/crowdfunding/initiatives/${initiativeID}/subscriptions`, {
+const subscription = await api.post(`/crowdfunding/me/initiatives/${initiativeID}/subscriptions`, {
   amount_in_cents: 1000,
   frequency: 'monthly', // 'monthly' | 'yearly' | 'weekly' | 'daily'
   stripe_payment_method_id: card.payment_method_id,
@@ -830,7 +830,7 @@ await api.delete('/crowdfunding/me/payment-method')
 ### Flow 6 — Cancel a Subscription
 
 ```ts
-await api.delete(`/crowdfunding/subscriptions/${subscriptionID}`)
+await api.delete(`/crowdfunding/me/subscriptions/${subscriptionID}`)
 // 204 No Content — cancelled immediately in Stripe and DB
 ```
 
