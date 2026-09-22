@@ -26,7 +26,12 @@
 #
 #   OPENFGA_STORE_ID=<store-id> \
 #   SERVICE_CLIENT_IDS="<rs-client-id>" \
-#   ./scripts/revoke-crowdfunding-services-team.sh [--dry-run]
+#   ./scripts/revoke-crowdfunding-services-team.sh [--dry-run] [--yes]
+#
+# This is destructive: a live run (no --dry-run) prompts for the store ID to
+# confirm, since --dry-run is the only thing that distinguishes a live
+# invocation and shell-history recall is an easy mistake. Pass --yes to skip
+# the prompt for scripted/non-interactive use.
 
 set -euo pipefail
 
@@ -34,10 +39,12 @@ BASE_URL="${OPENFGA_URL:-http://localhost:8080}"
 STORE_ID="${OPENFGA_STORE_ID:?OPENFGA_STORE_ID must be set}"
 SERVICE_CLIENT_IDS="${SERVICE_CLIENT_IDS:?SERVICE_CLIENT_IDS must be set (comma-separated Auth0 client IDs)}"
 DRY_RUN=false
+ASSUME_YES=false
 
 for arg in "$@"; do
 	case "$arg" in
 		--dry-run) DRY_RUN=true ;;
+		--yes) ASSUME_YES=true ;;
 		*) echo "Unknown argument: $arg"; exit 1 ;;
 	esac
 done
@@ -52,6 +59,42 @@ echo "Store:    $STORE_ID"
 echo "Team:     $TEAM_OBJECT"
 echo "Base URL: $BASE_URL"
 echo ""
+
+# fga_read paginates through /read for a given tuple_key JSON fragment,
+# collecting all results into stdout as newline-separated user strings.
+fga_read() {
+	local filter_json="$1"
+	local token=""
+	while true; do
+		local body
+		if [[ -z "$token" ]]; then
+			body=$(jq -n --argjson tk "$filter_json" '{"tuple_key":$tk,"page_size":100}')
+		else
+			body=$(jq -n --argjson tk "$filter_json" --arg ct "$token" \
+				'{"tuple_key":$tk,"page_size":100,"continuation_token":$ct}')
+		fi
+		local resp
+		if ! resp=$(curl -sf --show-error -X POST "${BASE_URL}/stores/${STORE_ID}/read" \
+			-H 'Content-Type: application/json' \
+			-d "$body" 2>&1); then
+			echo "ERROR: curl failed: $resp" >&2
+			exit 1
+		fi
+		if echo "$resp" | jq -e '.code' >/dev/null 2>&1; then
+			echo "ERROR reading tuples: $(echo "$resp" | jq -r '.message')" >&2
+			exit 1
+		fi
+		echo "$resp" | jq -r '.tuples[]?.key.user'
+		token=$(echo "$resp" | jq -r '.continuation_token // ""')
+		[[ -z "$token" ]] && break
+	done
+}
+
+# ---------------------------------------------------------------------------
+# Step 1: Computing deletes
+# ---------------------------------------------------------------------------
+
+echo "=== Step 1: Computing deletes ==="
 
 tuples_to_delete="[]"
 while IFS= read -r client_id; do
@@ -76,7 +119,37 @@ if [[ "$DRY_RUN" == true ]]; then
 	exit 0
 fi
 
-payload=$(jq -n --argjson keys "$tuples_to_delete" '{"deletes":{"tuple_keys":$keys}}')
+# ---------------------------------------------------------------------------
+# Step 2: Confirm
+# ---------------------------------------------------------------------------
+
+if [[ "$ASSUME_YES" == false ]]; then
+	if [[ ! -t 0 ]]; then
+		echo "ERROR: refusing to delete without confirmation on a non-interactive stdin (pass --yes)." >&2
+		exit 1
+	fi
+	echo "=== Step 2: Confirm ==="
+	read -r -p "About to delete $delete_count tuple(s). Type the store ID to confirm: " confirm
+	if [[ "$confirm" != "$STORE_ID" ]]; then
+		echo "Store ID did not match — aborting."
+		exit 1
+	fi
+	echo ""
+fi
+
+# ---------------------------------------------------------------------------
+# Step 3: Deleting tuples
+# ---------------------------------------------------------------------------
+
+echo "=== Step 3: Deleting $delete_count tuple(s) ==="
+
+# on_missing: ignore makes a delete of an already-absent tuple a no-op
+# instead of failing the whole batch — otherwise one already-removed client
+# ID in the list causes the entire request to fail and the other client IDs
+# keep access. Requires OpenFGA server v1.10.0+ — confirm with
+# `kubectl -n lfx exec <openfga-pod> -- /openfga version` before relying on
+# this against a given store.
+payload=$(jq -n --argjson keys "$tuples_to_delete" '{"deletes":{"tuple_keys":$keys,"on_missing":"ignore"}}')
 delete_resp=""
 if ! delete_resp=$(curl -sf --show-error -X POST "${BASE_URL}/stores/${STORE_ID}/write" \
 	-H 'Content-Type: application/json' \
@@ -93,3 +166,16 @@ echo "  Done — $delete_count tuple(s) deleted."
 echo ""
 echo "NOTE: bust fga-sync-cache for this store after this write so cached"
 echo "checks don't serve stale results (see lfx-v2-fga-sync)."
+echo ""
+
+# ---------------------------------------------------------------------------
+# Step 4: Verify (paginated)
+# ---------------------------------------------------------------------------
+
+echo "=== Step 4: Verifying ==="
+
+echo "Current members of $TEAM_OBJECT:"
+fga_read "$(jq -n --arg obj "$TEAM_OBJECT" '{"object":$obj,"relation":"member"}')" | \
+	while IFS= read -r line; do echo "  $line"; done
+echo ""
+echo "=== Done ==="

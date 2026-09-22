@@ -147,7 +147,12 @@ if [[ "$DRY_RUN" == true ]]; then
 	exit 0
 fi
 
-payload=$(jq -n --argjson keys "$tuples_to_write" '{"writes":{"tuple_keys":$keys}}')
+# on_duplicate: ignore makes a write of an already-existing tuple a no-op
+# instead of failing the whole batch — closes the race between the Step 1
+# read and this write. Requires OpenFGA server v1.10.0+ — confirm with
+# `kubectl -n lfx exec <openfga-pod> -- /openfga version` before relying on
+# this against a given store.
+payload=$(jq -n --argjson keys "$tuples_to_write" '{"writes":{"tuple_keys":$keys,"on_duplicate":"ignore"}}')
 write_resp=""
 if ! write_resp=$(curl -sf --show-error -X POST "${BASE_URL}/stores/${STORE_ID}/write" \
 	-H 'Content-Type: application/json' \
