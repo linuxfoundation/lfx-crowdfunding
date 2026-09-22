@@ -146,9 +146,9 @@ echo "=== Step 3: Deleting $delete_count tuple(s) ==="
 # on_missing: ignore makes a delete of an already-absent tuple a no-op
 # instead of failing the whole batch — otherwise one already-removed client
 # ID in the list causes the entire request to fail and the other client IDs
-# keep access. Requires OpenFGA server v1.10.0+ — confirm with
-# `kubectl -n lfx exec <openfga-pod> -- /openfga version` before relying on
-# this against a given store.
+# keep access. Requires OpenFGA server v1.10.0+; both dev and prod run
+# v1.14.0 (openfga/openfga:v1.14.0 in the lfx-v2-helm chart), confirmed via
+# `kubectl -n lfx exec <openfga-pod> -- /openfga version`.
 payload=$(jq -n --argjson keys "$tuples_to_delete" '{"deletes":{"tuple_keys":$keys,"on_missing":"ignore"}}')
 delete_resp=""
 if ! delete_resp=$(curl -sf --show-error -X POST "${BASE_URL}/stores/${STORE_ID}/write" \

@@ -149,9 +149,9 @@ fi
 
 # on_duplicate: ignore makes a write of an already-existing tuple a no-op
 # instead of failing the whole batch — closes the race between the Step 1
-# read and this write. Requires OpenFGA server v1.10.0+ — confirm with
-# `kubectl -n lfx exec <openfga-pod> -- /openfga version` before relying on
-# this against a given store.
+# read and this write. Requires OpenFGA server v1.10.0+; both dev and prod
+# run v1.14.0 (openfga/openfga:v1.14.0 in the lfx-v2-helm chart), confirmed
+# via `kubectl -n lfx exec <openfga-pod> -- /openfga version`.
 payload=$(jq -n --argjson keys "$tuples_to_write" '{"writes":{"tuple_keys":$keys,"on_duplicate":"ignore"}}')
 write_resp=""
 if ! write_resp=$(curl -sf --show-error -X POST "${BASE_URL}/stores/${STORE_ID}/write" \
