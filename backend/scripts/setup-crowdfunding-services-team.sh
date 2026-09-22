@@ -114,12 +114,8 @@ echo ""
 
 echo "=== Step 2: Computing writes ==="
 
-IFS=',' read -ra clients <<< "$SERVICE_CLIENT_IDS"
-
 tuples_to_write="[]"
-for raw_client in "${clients[@]}"; do
-	client_id=$(echo "$raw_client" | tr -d '[:space:]')
-	[[ -z "$client_id" ]] && continue
+while IFS= read -r client_id; do
 	fga_user="user:${client_id}@clients"
 
 	if echo "$existing_users" | grep -qxF "$fga_user"; then
@@ -130,7 +126,7 @@ for raw_client in "${clients[@]}"; do
 			--arg u "$fga_user" --arg r "member" --arg o "$TEAM_OBJECT" \
 			'. + [{"user":$u,"relation":$r,"object":$o}]')
 	fi
-done
+done < <(echo "$SERVICE_CLIENT_IDS" | tr ',' '\n' | tr -d '[:blank:]' | awk 'NF && !seen[$0]++')
 echo ""
 
 write_count=$(echo "$tuples_to_write" | jq 'length')

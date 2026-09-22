@@ -53,19 +53,15 @@ echo "Team:     $TEAM_OBJECT"
 echo "Base URL: $BASE_URL"
 echo ""
 
-IFS=',' read -ra clients <<< "$SERVICE_CLIENT_IDS"
-
 tuples_to_delete="[]"
-for raw_client in "${clients[@]}"; do
-	client_id=$(echo "$raw_client" | tr -d '[:space:]')
-	[[ -z "$client_id" ]] && continue
+while IFS= read -r client_id; do
 	fga_user="user:${client_id}@clients"
 
 	echo "  DELETE: $fga_user -> member -> $TEAM_OBJECT"
 	tuples_to_delete=$(echo "$tuples_to_delete" | jq \
 		--arg u "$fga_user" --arg r "member" --arg o "$TEAM_OBJECT" \
 		'. + [{"user":$u,"relation":$r,"object":$o}]')
-done
+done < <(echo "$SERVICE_CLIENT_IDS" | tr ',' '\n' | tr -d '[:blank:]' | awk 'NF && !seen[$0]++')
 echo ""
 
 delete_count=$(echo "$tuples_to_delete" | jq 'length')
