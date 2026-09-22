@@ -79,7 +79,7 @@ var testPrincipal = &models.Principal{Username: "testuser"}
 func TestOrgList_NoPrincipal_Returns401(t *testing.T) {
 	h := newOrgHandler(&orgServiceStub{})
 	w := httptest.NewRecorder()
-	h.List(w, orgReq(http.MethodGet, "/v1/me/organizations", "", nil))
+	h.List(w, orgReq(http.MethodGet, "/crowdfunding/me/organizations", "", nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", w.Code)
 	}
@@ -93,7 +93,7 @@ func TestOrgList_ServiceError_Returns500(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	h.List(w, orgReq(http.MethodGet, "/v1/me/organizations", "", testPrincipal))
+	h.List(w, orgReq(http.MethodGet, "/crowdfunding/me/organizations", "", testPrincipal))
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
 	}
@@ -113,7 +113,7 @@ func TestOrgList_Success_WrapsInDataField(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	h.List(w, orgReq(http.MethodGet, "/v1/me/organizations", "", testPrincipal))
+	h.List(w, orgReq(http.MethodGet, "/crowdfunding/me/organizations", "", testPrincipal))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -138,7 +138,7 @@ func TestOrgList_NilFromService_ReturnsEmptyArray(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	h.List(w, orgReq(http.MethodGet, "/v1/me/organizations", "", testPrincipal))
+	h.List(w, orgReq(http.MethodGet, "/crowdfunding/me/organizations", "", testPrincipal))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -159,7 +159,7 @@ func TestOrgList_NilFromService_ReturnsEmptyArray(t *testing.T) {
 func TestOrgCreate_NoPrincipal_Returns401(t *testing.T) {
 	h := newOrgHandler(&orgServiceStub{})
 	w := httptest.NewRecorder()
-	h.Create(w, orgReq(http.MethodPost, "/v1/me/organizations", `{"name":"Acme"}`, nil))
+	h.Create(w, orgReq(http.MethodPost, "/crowdfunding/me/organizations", `{"name":"Acme"}`, nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", w.Code)
 	}
@@ -168,7 +168,7 @@ func TestOrgCreate_NoPrincipal_Returns401(t *testing.T) {
 func TestOrgCreate_InvalidJSON_Returns400(t *testing.T) {
 	h := newOrgHandler(&orgServiceStub{})
 	w := httptest.NewRecorder()
-	h.Create(w, orgReq(http.MethodPost, "/v1/me/organizations", `{bad json}`, testPrincipal))
+	h.Create(w, orgReq(http.MethodPost, "/crowdfunding/me/organizations", `{bad json}`, testPrincipal))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
@@ -182,7 +182,7 @@ func TestOrgCreate_ServiceError_Returns500(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	h.Create(w, orgReq(http.MethodPost, "/v1/me/organizations", `{"name":"Acme"}`, testPrincipal))
+	h.Create(w, orgReq(http.MethodPost, "/crowdfunding/me/organizations", `{"name":"Acme"}`, testPrincipal))
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
 	}
@@ -204,7 +204,7 @@ func TestOrgCreate_Success_Returns201WithOrg(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	h.Create(w, orgReq(http.MethodPost, "/v1/me/organizations", `{"name":"Acme Corp"}`, testPrincipal))
+	h.Create(w, orgReq(http.MethodPost, "/crowdfunding/me/organizations", `{"name":"Acme Corp"}`, testPrincipal))
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
@@ -223,7 +223,7 @@ func TestOrgCreate_Success_Returns201WithOrg(t *testing.T) {
 func TestOrgUpdate_NoPrincipal_Returns401(t *testing.T) {
 	h := newOrgHandler(&orgServiceStub{})
 	w := httptest.NewRecorder()
-	h.Update(w, orgReq(http.MethodPatch, "/v1/me/organizations/org-1", `{"name":"New"}`, nil))
+	h.Update(w, orgReq(http.MethodPatch, "/crowdfunding/me/organizations/org-1", `{"name":"New"}`, nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", w.Code)
 	}
@@ -235,7 +235,7 @@ func TestOrgUpdate_InvalidJSON_Returns400(t *testing.T) {
 	// can also test invalid JSON by skipping URL param and relying on the JSON decode path.
 	// Here we test explicitly via the JSON decode error path.
 	w := httptest.NewRecorder()
-	req := orgReq(http.MethodPatch, "/v1/me/organizations/org-1", `{bad}`, testPrincipal)
+	req := orgReq(http.MethodPatch, "/crowdfunding/me/organizations/org-1", `{bad}`, testPrincipal)
 	// inject a non-empty id via a minimal chi context shim
 	req = withURLParam(req, "id", "org-1")
 	h.Update(w, req)
@@ -252,7 +252,7 @@ func TestOrgUpdate_ServiceError_Returns500(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	req := orgReq(http.MethodPatch, "/v1/me/organizations/org-1", `{"name":"New"}`, testPrincipal)
+	req := orgReq(http.MethodPatch, "/crowdfunding/me/organizations/org-1", `{"name":"New"}`, testPrincipal)
 	req = withURLParam(req, "id", "org-1")
 	h.Update(w, req)
 	if w.Code != http.StatusInternalServerError {
@@ -279,7 +279,7 @@ func TestOrgUpdate_Success_Returns200WithOrg(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	req := orgReq(http.MethodPatch, "/v1/me/organizations/org-1", `{"name":"New Name"}`, testPrincipal)
+	req := orgReq(http.MethodPatch, "/crowdfunding/me/organizations/org-1", `{"name":"New Name"}`, testPrincipal)
 	req = withURLParam(req, "id", "org-1")
 	h.Update(w, req)
 
@@ -300,7 +300,7 @@ func TestOrgUpdate_Success_Returns200WithOrg(t *testing.T) {
 func TestOrgDelete_NoPrincipal_Returns401(t *testing.T) {
 	h := newOrgHandler(&orgServiceStub{})
 	w := httptest.NewRecorder()
-	h.Delete(w, orgReq(http.MethodDelete, "/v1/me/organizations/org-1", "", nil))
+	h.Delete(w, orgReq(http.MethodDelete, "/crowdfunding/me/organizations/org-1", "", nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", w.Code)
 	}
@@ -314,7 +314,7 @@ func TestOrgDelete_NotFound_Returns404(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	req := orgReq(http.MethodDelete, "/v1/me/organizations/org-1", "", testPrincipal)
+	req := orgReq(http.MethodDelete, "/crowdfunding/me/organizations/org-1", "", testPrincipal)
 	req = withURLParam(req, "id", "org-1")
 	h.Delete(w, req)
 	if w.Code != http.StatusNotFound {
@@ -338,7 +338,7 @@ func TestOrgDelete_Success_Returns204(t *testing.T) {
 	}
 	h := newOrgHandler(svc)
 	w := httptest.NewRecorder()
-	req := orgReq(http.MethodDelete, "/v1/me/organizations/org-1", "", testPrincipal)
+	req := orgReq(http.MethodDelete, "/crowdfunding/me/organizations/org-1", "", testPrincipal)
 	req = withURLParam(req, "id", "org-1")
 	h.Delete(w, req)
 

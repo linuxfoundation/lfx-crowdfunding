@@ -7,6 +7,6 @@ import type { MonthlyDonations } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<MonthlyDonations> => {
   const { apiBaseUrl } = useRuntimeConfig();
-  const res = await $fetch<BackendPlatformMonthly>(`${apiBaseUrl}/v1/statistics/monthly`);
+  const res = await $fetch<BackendPlatformMonthly>(`${apiBaseUrl}/crowdfunding/statistics/monthly`);
   return { buckets: (res.buckets ?? []).map(mapToMonthlyBucket) };
 });

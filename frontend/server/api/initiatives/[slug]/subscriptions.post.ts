@@ -15,16 +15,16 @@ export default defineEventHandler(async (event): Promise<SubscriptionResult> => 
   }
 
   const { apiBaseUrl } = useRuntimeConfig();
-  const initiative = await $fetch<BackendInitiative>(`${apiBaseUrl}/v1/initiatives/${slug}`).catch(
-    () => {
-      throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
-    },
-  );
+  const initiative = await $fetch<BackendInitiative>(
+    `${apiBaseUrl}/crowdfunding/initiatives/${slug}`,
+  ).catch(() => {
+    throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
+  });
 
   const body = await readBody<SubscriptionRequest>(event);
   const raw = await useBackendFetch<SubscriptionResultWire>(
     event,
-    `/v1/me/initiatives/${initiative.id}/subscriptions`,
+    `/crowdfunding/me/initiatives/${initiative.id}/subscriptions`,
     {
       method: 'POST',
       body: {

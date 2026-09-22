@@ -35,7 +35,7 @@ func NewUploadHandler(s3 clients.S3PresignClient) *UploadHandler {
 	return &UploadHandler{s3: s3}
 }
 
-// presignedURLRequest is the JSON body for POST /v1/presigned-url.
+// presignedURLRequest is the JSON body for POST /crowdfunding/presigned-url.
 type presignedURLRequest struct {
 	// ContentType is the MIME type of the file to be uploaded (e.g. "image/png").
 	ContentType string `json:"content_type"`
@@ -53,7 +53,7 @@ type presignedURLResponse struct {
 	RequiredHeaders map[string]string `json:"required_headers"`
 }
 
-// CreatePresignedURL handles POST /v1/presigned-url.
+// CreatePresignedURL handles POST /crowdfunding/presigned-url.
 // Returns a presigned S3 PUT URL and the resulting permanent object URL.
 // Requires JWT authentication.
 func (h *UploadHandler) CreatePresignedURL(w http.ResponseWriter, r *http.Request) {

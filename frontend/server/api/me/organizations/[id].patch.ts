@@ -14,10 +14,14 @@ interface UpdateOrganizationBody {
 export default defineEventHandler(async (event): Promise<Organization> => {
   const id = getRouterParam(event, 'id');
   const body = await readBody<UpdateOrganizationBody>(event);
-  const raw = await useBackendFetch<OrganizationResponse>(event, `/v1/me/organizations/${id}`, {
-    method: 'PATCH',
-    body,
-  });
+  const raw = await useBackendFetch<OrganizationResponse>(
+    event,
+    `/crowdfunding/me/organizations/${id}`,
+    {
+      method: 'PATCH',
+      body,
+    },
+  );
   return {
     id: raw.id,
     name: raw.name,

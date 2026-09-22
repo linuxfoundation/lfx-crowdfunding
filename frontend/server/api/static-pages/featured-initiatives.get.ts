@@ -9,7 +9,7 @@ export default defineEventHandler(async (): Promise<FeaturedInitiativesResponse>
   const { apiBaseUrl } = useRuntimeConfig();
 
   const res = await $fetch<BackendResponse>(
-    `${apiBaseUrl}/v1/initiatives?status=published&limit=6&offset=0&sort_by=total_raised&sort_dir=desc`,
+    `${apiBaseUrl}/crowdfunding/initiatives?status=published&limit=6&offset=0&sort_by=total_raised&sort_dir=desc`,
   );
 
   return {

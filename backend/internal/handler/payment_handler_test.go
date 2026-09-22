@@ -136,7 +136,7 @@ func TestCreateSetupIntent_NoPrincipal_Returns401(t *testing.T) {
 	stripeClient := &paymentStripeClient{}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodPost, "/v1/me/setup-intent", "", nil)
+	req := paymentReq(http.MethodPost, "/crowdfunding/me/setup-intent", "", nil)
 	w := httptest.NewRecorder()
 
 	h.CreateSetupIntent(w, req)
@@ -151,7 +151,7 @@ func TestCreateSetupIntent_ProfileNotSynced_Returns400(t *testing.T) {
 	stripeClient := &paymentStripeClient{}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodPost, "/v1/me/setup-intent", "", &models.Principal{Username: "testuser"})
+	req := paymentReq(http.MethodPost, "/crowdfunding/me/setup-intent", "", &models.Principal{Username: "testuser"})
 	w := httptest.NewRecorder()
 
 	h.CreateSetupIntent(w, req)
@@ -179,7 +179,7 @@ func TestCreateSetupIntent_Success_Returns201(t *testing.T) {
 	}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodPost, "/v1/me/setup-intent", "", &models.Principal{Username: username})
+	req := paymentReq(http.MethodPost, "/crowdfunding/me/setup-intent", "", &models.Principal{Username: username})
 	w := httptest.NewRecorder()
 
 	h.CreateSetupIntent(w, req)
@@ -202,7 +202,7 @@ func TestAttachPaymentMethod_NoPrincipal_Returns401(t *testing.T) {
 	stripeClient := &paymentStripeClient{}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodPost, "/v1/me/payment-method", `{"payment_method_id":"pm_xxx"}`, nil)
+	req := paymentReq(http.MethodPost, "/crowdfunding/me/payment-method", `{"payment_method_id":"pm_xxx"}`, nil)
 	w := httptest.NewRecorder()
 
 	h.AttachPaymentMethod(w, req)
@@ -217,7 +217,7 @@ func TestAttachPaymentMethod_MissingBody_Returns400(t *testing.T) {
 	stripeClient := &paymentStripeClient{}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodPost, "/v1/me/payment-method", `{}`, &models.Principal{Username: "testuser"})
+	req := paymentReq(http.MethodPost, "/crowdfunding/me/payment-method", `{}`, &models.Principal{Username: "testuser"})
 	w := httptest.NewRecorder()
 
 	h.AttachPaymentMethod(w, req)
@@ -251,7 +251,7 @@ func TestAttachPaymentMethod_Success_Returns200(t *testing.T) {
 	}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodPost, "/v1/me/payment-method",
+	req := paymentReq(http.MethodPost, "/crowdfunding/me/payment-method",
 		`{"payment_method_id":"pm_xxx"}`, &models.Principal{Username: username})
 	w := httptest.NewRecorder()
 
@@ -275,7 +275,7 @@ func TestGetPaymentAccount_NoPrincipal_Returns401(t *testing.T) {
 	stripeClient := &paymentStripeClient{}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodGet, "/v1/me/payment-account", "", nil)
+	req := paymentReq(http.MethodGet, "/crowdfunding/me/payment-account", "", nil)
 	w := httptest.NewRecorder()
 
 	h.GetPaymentAccount(w, req)
@@ -300,7 +300,7 @@ func TestGetPaymentAccount_NotFound_Returns404(t *testing.T) {
 	}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodGet, "/v1/me/payment-account", "", &models.Principal{Username: username})
+	req := paymentReq(http.MethodGet, "/crowdfunding/me/payment-account", "", &models.Principal{Username: username})
 	w := httptest.NewRecorder()
 
 	h.GetPaymentAccount(w, req)
@@ -333,7 +333,7 @@ func TestGetPaymentAccount_Success_Returns200(t *testing.T) {
 	}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodGet, "/v1/me/payment-account", "", &models.Principal{Username: username})
+	req := paymentReq(http.MethodGet, "/crowdfunding/me/payment-account", "", &models.Principal{Username: username})
 	w := httptest.NewRecorder()
 
 	h.GetPaymentAccount(w, req)
@@ -356,7 +356,7 @@ func TestDeletePaymentMethod_NoPrincipal_Returns401(t *testing.T) {
 	stripeClient := &paymentStripeClient{}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodDelete, "/v1/me/payment-method", "", nil)
+	req := paymentReq(http.MethodDelete, "/crowdfunding/me/payment-method", "", nil)
 	w := httptest.NewRecorder()
 
 	h.DeletePaymentMethod(w, req)
@@ -382,7 +382,7 @@ func TestDeletePaymentMethod_Success_Returns204(t *testing.T) {
 	}
 	h := newPaymentHandler(userRepo, stripeClient)
 
-	req := paymentReq(http.MethodDelete, "/v1/me/payment-method", "", &models.Principal{Username: username})
+	req := paymentReq(http.MethodDelete, "/crowdfunding/me/payment-method", "", &models.Principal{Username: username})
 	w := httptest.NewRecorder()
 
 	h.DeletePaymentMethod(w, req)

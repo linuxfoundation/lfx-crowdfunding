@@ -20,7 +20,7 @@ Uploading a file through the backend API is wasteful: the file travels from the 
 The API never touches the binary file at all.
 
 ```
-Browser ──POST /api/presigned-url──► Nuxt BFF ──POST /v1/presigned-url──► Go API ──► S3 (signs URL)
+Browser ──POST /api/presigned-url──► Nuxt BFF ──POST /crowdfunding/presigned-url──► Go API ──► S3 (signs URL)
                                                                                          │
                                      ◄── { upload_url, destination_url } ───────────────┘
                                                          │
@@ -34,7 +34,7 @@ Browser saves destination_url as logo_url in the initiative form
 
 ## Backend endpoint reference
 
-### `POST /v1/presigned-url`
+### `POST /crowdfunding/presigned-url`
 
 **Auth:** JWT required (send via the Nuxt BFF — see Step 1 below)
 
@@ -112,7 +112,7 @@ export interface PresignedURLResult {
 export default defineEventHandler(async (event): Promise<PresignedURLResult> => {
   const body = await readBody<{ contentType: string }>(event)
 
-  const raw = await useBackendFetch<PresignedURLWire>(event, '/v1/presigned-url', {
+  const raw = await useBackendFetch<PresignedURLWire>(event, '/crowdfunding/presigned-url', {
     method: 'POST',
     body: { content_type: body.contentType },
   })

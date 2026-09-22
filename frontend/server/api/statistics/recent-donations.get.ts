@@ -8,7 +8,7 @@ import type { RecentDonationsResponse } from '#shared/types/statistics.types';
 export default defineEventHandler(async (): Promise<RecentDonationsResponse> => {
   const { apiBaseUrl } = useRuntimeConfig();
   const res = await $fetch<BackendRecentDonationsResponse>(
-    `${apiBaseUrl}/v1/statistics/recent-donations`,
+    `${apiBaseUrl}/crowdfunding/statistics/recent-donations`,
   );
   return { data: (res.data ?? []).map(mapToRecentDonation) };
 });

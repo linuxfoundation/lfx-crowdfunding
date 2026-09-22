@@ -10,11 +10,11 @@ export default defineEventHandler(async (event): Promise<AnnouncementList> => {
   const { limit, offset } = getQuery(event);
   const { apiBaseUrl } = useRuntimeConfig();
 
-  const initiative = await $fetch<BackendInitiative>(`${apiBaseUrl}/v1/initiatives/${slug}`).catch(
-    () => {
-      throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
-    },
-  );
+  const initiative = await $fetch<BackendInitiative>(
+    `${apiBaseUrl}/crowdfunding/initiatives/${slug}`,
+  ).catch(() => {
+    throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
+  });
 
   const params = new URLSearchParams();
   if (limit) params.set('limit', String(limit));
@@ -22,7 +22,7 @@ export default defineEventHandler(async (event): Promise<AnnouncementList> => {
   const qs = params.toString() ? `?${params}` : '';
 
   const raw = await $fetch<BackendAnnouncementList>(
-    `${apiBaseUrl}/v1/initiatives/${initiative.id}/announcements${qs}`,
+    `${apiBaseUrl}/crowdfunding/initiatives/${initiative.id}/announcements${qs}`,
   );
 
   return {

@@ -6,7 +6,9 @@ import type { DonorBreakdown } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<DonorBreakdown> => {
   const { apiBaseUrl } = useRuntimeConfig();
-  const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform`);
+  const res = await $fetch<BackendPlatformDetails>(
+    `${apiBaseUrl}/crowdfunding/statistics/platform`,
+  );
 
   const totalCents = res.organizations_cents + res.individuals_cents;
   const totalDonations = (res.categories ?? []).reduce((sum, c) => sum + c.count, 0);

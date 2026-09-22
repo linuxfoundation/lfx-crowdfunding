@@ -22,7 +22,7 @@ import (
 )
 
 // csvDownloaders is the comma-separated allowlist of LF SSO usernames that may
-// call the org-donors CSV export endpoint (GET /v1/me/donations/csv).
+// call the org-donors CSV export endpoint (GET /crowdfunding/me/donations/csv).
 // To grant access to additional users, append their username to this constant.
 const csvDownloaders = "lewisoj"
 
@@ -37,7 +37,7 @@ var csvDownloaderSet = func() map[string]struct{} {
 	return m
 }()
 
-// DonationHandler holds Chi handlers for the /v1/initiatives/{id}/donations resource.
+// DonationHandler holds Chi handlers for the /crowdfunding/initiatives/{id}/donations resource.
 type DonationHandler struct {
 	svc *service.DonationService
 }
@@ -47,7 +47,7 @@ func NewDonationHandler(svc *service.DonationService) *DonationHandler {
 	return &DonationHandler{svc: svc}
 }
 
-// List handles GET /v1/initiatives/{id}/donations
+// List handles GET /crowdfunding/initiatives/{id}/donations
 func (h *DonationHandler) List(w http.ResponseWriter, r *http.Request) {
 	initiativeID := chi.URLParam(r, "id")
 	limit, offset, ok := parsePaginationParams(w, r)
@@ -71,7 +71,7 @@ func (h *DonationHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ListForUser handles GET /v1/me/donations — requires JWT.
+// ListForUser handles GET /crowdfunding/me/donations — requires JWT.
 // Returns the authenticated user's own donations across all initiatives, paginated.
 func (h *DonationHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
@@ -104,7 +104,7 @@ func (h *DonationHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Create handles POST /v1/initiatives/{id}/donations — requires JWT.
+// Create handles POST /crowdfunding/initiatives/{id}/donations — requires JWT.
 // Clients MUST supply an Idempotency-Key header (a UUID they generate per
 // logical donation attempt). The backend passes it verbatim to Stripe so
 // that retries of the same timed-out request are de-duped rather than
@@ -138,7 +138,7 @@ func (h *DonationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, created)
 }
 
-// ExportOrgCSV handles GET /v1/me/donations/csv — restricted to csvDownloaders.
+// ExportOrgCSV handles GET /crowdfunding/me/donations/csv — restricted to csvDownloaders.
 // Query param: type=detail (default) | type=summary
 //
 //   - detail  — one row per donation with org, initiative, donor, amount, date

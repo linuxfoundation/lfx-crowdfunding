@@ -12,7 +12,7 @@ type PlatformStatistics struct {
 	TotalInitiatives int64 `json:"total_initiatives"`
 }
 
-// PlatformDetails is returned by GET /v1/statistics/platform.
+// PlatformDetails is returned by GET /crowdfunding/statistics/platform.
 // Aggregates category totals, donor split, and top sponsors from Ledger.
 type PlatformDetails struct {
 	TotalRaisedCents   int64           `json:"total_raised_cents"`
@@ -39,7 +39,7 @@ type SponsorEntry struct {
 	TotalCents int64  `json:"total_cents"`
 }
 
-// PlatformMonthly is returned by GET /v1/statistics/monthly.
+// PlatformMonthly is returned by GET /crowdfunding/statistics/monthly.
 type PlatformMonthly struct {
 	Buckets []MonthlyBucket `json:"buckets"`
 }
@@ -72,7 +72,7 @@ type RecentDonationsResponse struct {
 }
 
 // OrgContribution is one organization's total succeeded-donation amount,
-// returned by GET /v1/statistics/investing-companies. JSON tags match the
+// returned by GET /crowdfunding/statistics/investing-companies. JSON tags match the
 // legacy Ledger org-donations wire shape so frontend consumers need no changes.
 type OrgContribution struct {
 	OrgID       string `json:"orgId"`

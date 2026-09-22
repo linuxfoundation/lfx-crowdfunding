@@ -22,20 +22,20 @@ automatically from the user's HTTP-only session cookie.
 
 | # | Method | Path | Auth | What it does |
 |---|--------|------|------|--------------|
-| 1 | `POST` | `/v1/me/setup-intent` | JWT | Creates a Stripe SetupIntent. Returns `{ client_secret }`. |
-| 2 | `POST` | `/v1/me/payment-method` | JWT | After Stripe.js confirms the SetupIntent, send the resulting `pm_xxx` here to attach it to the user's Stripe Customer and save it in the DB. Returns `CardDetails`. |
-| 3 | `GET`  | `/v1/me/payment-account` | JWT | Returns the user's saved card info (last4, brand, expiry, and `payment_method_id`). Returns `404` if no card is saved. |
-| 4 | `DELETE` | `/v1/me/payment-method` | JWT | Detaches the card from Stripe and clears it from the DB. Returns `204 No Content`. |
+| 1 | `POST` | `/crowdfunding/me/setup-intent` | JWT | Creates a Stripe SetupIntent. Returns `{ client_secret }`. |
+| 2 | `POST` | `/crowdfunding/me/payment-method` | JWT | After Stripe.js confirms the SetupIntent, send the resulting `pm_xxx` here to attach it to the user's Stripe Customer and save it in the DB. Returns `CardDetails`. |
+| 3 | `GET`  | `/crowdfunding/me/payment-account` | JWT | Returns the user's saved card info (last4, brand, expiry, and `payment_method_id`). Returns `404` if no card is saved. |
+| 4 | `DELETE` | `/crowdfunding/me/payment-method` | JWT | Detaches the card from Stripe and clears it from the DB. Returns `204 No Content`. |
 
 ### Payments
 
 | # | Method | Path | Auth | Headers | What it does |
 |---|--------|------|------|---------|--------------|
-| 5 | `POST` | `/v1/initiatives/{id}/donations` | JWT | `Idempotency-Key: <uuid>` | Creates a one-time donation using a saved `pm_xxx`. |
-| 6 | `POST` | `/v1/initiatives/{id}/subscriptions` | JWT | `Idempotency-Key: <uuid>` | Creates a recurring subscription using a saved `pm_xxx`. |
-| 7 | `DELETE` | `/v1/subscriptions/{id}` | JWT | — | Cancels an active subscription. Returns `204`. |
-| 8 | `GET` | `/v1/me/subscriptions` | JWT | — | Lists the authenticated user's own subscriptions (paginated). |
-| 9 | `GET` | `/v1/me/subscriptions/{id}` | JWT | — | Returns one authenticated user's subscription by ID. |
+| 5 | `POST` | `/crowdfunding/initiatives/{id}/donations` | JWT | `Idempotency-Key: <uuid>` | Creates a one-time donation using a saved `pm_xxx`. |
+| 6 | `POST` | `/crowdfunding/initiatives/{id}/subscriptions` | JWT | `Idempotency-Key: <uuid>` | Creates a recurring subscription using a saved `pm_xxx`. |
+| 7 | `DELETE` | `/crowdfunding/subscriptions/{id}` | JWT | — | Cancels an active subscription. Returns `204`. |
+| 8 | `GET` | `/crowdfunding/me/subscriptions` | JWT | — | Lists the authenticated user's own subscriptions (paginated). |
+| 9 | `GET` | `/crowdfunding/me/subscriptions/{id}` | JWT | — | Returns one authenticated user's subscription by ID. |
 
 ### Response shapes
 
@@ -68,7 +68,7 @@ automatically from the user's HTTP-only session cookie.
 }
 ```
 
-**`GET /v1/me/subscriptions`** (endpoint 8):
+**`GET /crowdfunding/me/subscriptions`** (endpoint 8):
 ```json
 {
   "data": [
@@ -85,7 +85,7 @@ automatically from the user's HTTP-only session cookie.
 }
 ```
 
-**`GET /v1/me/subscriptions/{id}`** (endpoint 9):
+**`GET /crowdfunding/me/subscriptions/{id}`** (endpoint 9):
 ```json
 {
   "id": "uuid",
@@ -187,7 +187,7 @@ import { getHeader } from 'h3'
  * Authorization header that the Nuxt auth middleware already validates.
  *
  * Usage inside a server route:
- *   return useBackendFetch(event, '/v1/me/setup-intent', { method: 'POST' })
+ *   return useBackendFetch(event, '/crowdfunding/me/setup-intent', { method: 'POST' })
  */
 export const useBackendFetch = async <T = unknown>(
   event: H3Event,
@@ -246,7 +246,7 @@ import { useBackendFetch } from '~/server/utils/backend-fetch'
 // POST /api/payment/setup-intent
 // Creates a Stripe SetupIntent. Returns { client_secret }.
 export default defineEventHandler(async (event) => {
-  return useBackendFetch(event, '/v1/me/setup-intent', { method: 'POST' })
+  return useBackendFetch(event, '/crowdfunding/me/setup-intent', { method: 'POST' })
 })
 ```
 
@@ -262,7 +262,7 @@ import { useBackendFetch } from '~/server/utils/backend-fetch'
 // Returns CardDetails.
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ payment_method_id: string }>(event)
-  return useBackendFetch(event, '/v1/me/payment-method', { method: 'POST', body })
+  return useBackendFetch(event, '/crowdfunding/me/payment-method', { method: 'POST', body })
 })
 ```
 
@@ -276,7 +276,7 @@ import { useBackendFetch } from '~/server/utils/backend-fetch'
 // GET /api/payment/account
 // Returns the user's saved CardDetails, or 404 if none.
 export default defineEventHandler(async (event) => {
-  return useBackendFetch(event, '/v1/me/payment-account', { method: 'GET' })
+  return useBackendFetch(event, '/crowdfunding/me/payment-account', { method: 'GET' })
 })
 ```
 
@@ -290,7 +290,7 @@ import { useBackendFetch } from '~/server/utils/backend-fetch'
 // DELETE /api/payment/method
 // Detaches the user's card. Returns 204.
 export default defineEventHandler(async (event) => {
-  return useBackendFetch(event, '/v1/me/payment-method', { method: 'DELETE' })
+  return useBackendFetch(event, '/crowdfunding/me/payment-method', { method: 'DELETE' })
 })
 ```
 
@@ -307,7 +307,7 @@ export default defineEventHandler(async (event) => {
   const id = event.context.params!.id
   const idempotencyKey = getHeader(event, 'idempotency-key') ?? ''
   const body = await readBody(event)
-  return useBackendFetch(event, `/v1/initiatives/${id}/donations`, {
+  return useBackendFetch(event, `/crowdfunding/initiatives/${id}/donations`, {
     method: 'POST',
     body,
     headers: { 'Idempotency-Key': idempotencyKey },
@@ -328,7 +328,7 @@ export default defineEventHandler(async (event) => {
   const id = event.context.params!.id
   const idempotencyKey = getHeader(event, 'idempotency-key') ?? ''
   const body = await readBody(event)
-  return useBackendFetch(event, `/v1/initiatives/${id}/subscriptions`, {
+  return useBackendFetch(event, `/crowdfunding/initiatives/${id}/subscriptions`, {
     method: 'POST',
     body,
     headers: { 'Idempotency-Key': idempotencyKey },
@@ -346,7 +346,7 @@ import { useBackendFetch } from '~/server/utils/backend-fetch'
 // DELETE /api/subscriptions/:id
 export default defineEventHandler(async (event) => {
   const id = event.context.params!.id
-  return useBackendFetch(event, `/v1/subscriptions/${id}`, { method: 'DELETE' })
+  return useBackendFetch(event, `/crowdfunding/subscriptions/${id}`, { method: 'DELETE' })
 })
 ```
 
@@ -363,7 +363,7 @@ export default defineEventHandler(async (event) => {
   const { limit = '20', offset = '0' } = getQuery(event)
   return useBackendFetch(
     event,
-    `/v1/me/subscriptions?limit=${limit}&offset=${offset}`,
+    `/crowdfunding/me/subscriptions?limit=${limit}&offset=${offset}`,
     { method: 'GET' },
   )
 })
@@ -382,7 +382,7 @@ export default defineEventHandler(async (event) => {
   const { limit = '20', offset = '0' } = getQuery(event)
   return useBackendFetch(
     event,
-    `/v1/me/donations?limit=${limit}&offset=${offset}`,
+    `/crowdfunding/me/donations?limit=${limit}&offset=${offset}`,
     { method: 'GET' },
   )
 })

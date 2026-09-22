@@ -202,7 +202,7 @@ The column is named `jobspring_project_id` (preserving the DynamoDB field name `
 
 Current system: fully editable — no restrictions on any field. This is a latent bug; Mentorship sync overwrites CF edits silently.
 
-New system: field ownership split enforced at the API layer (`PATCH /v1/me/initiatives/:id` rejects Mentorship-owned fields when `initiative_type = mentorship`).
+New system: field ownership split enforced at the API layer (`PATCH /crowdfunding/me/initiatives/:id` rejects Mentorship-owned fields when `initiative_type = mentorship`).
 
 | Field group | Owner | Editable via CF UI |
 |---|---|---|
@@ -238,9 +238,20 @@ Rationale: the API surface is well-understood from the existing system inventory
 
 Update: if this decision is reversed, use `oapi-codegen` (Go server stubs) and `openapi-typescript` (Nuxt client types).
 
-### API version stays `/v1/`
+### API namespace — `/crowdfunding/*` product prefix, no version in path
 
-No versioning changes. New endpoints keep `/v1/` prefix to preserve compatibility with any existing consumers.
+All API endpoints live under the `/crowdfunding/*` prefix (e.g. `GET /crowdfunding/initiatives`, `PATCH /crowdfunding/me`, `POST /crowdfunding/stripe/webhook`). There is **no version segment** in the path.
+
+This supersedes the earlier decision "API version stays `/v1/`" (new endpoints originally kept the `/v1/` prefix for consumer compatibility). After [PR #276](https://github.com/linuxfoundation/lfx-crowdfunding/pull/276) merged, Jordan Evans flagged that `/v1/me` and `/v1/initiatives` are not properly namespaced for the shared LFX v2 gateway, and asked for all endpoints to be namespaced under `/crowdfunding/` before they get external consumers.
+
+Rationale — this is the established LFX v2 gateway convention:
+
+- Every v2 service owns a product/resource path prefix at the root of the shared `lfx-api.<domain>` host: `/projects`, `/committees`, `/query/orgs`, `/b2b_orgs`, `/itx/meetings`, etc. None of them put a version in the path (see `lfx-v2-helm/docs/entity-design.md`, "Any OpenFGA type is served from the root of the LFX API path").
+- Versioning, when a breaking change ever requires it, is a `v` query parameter — e.g. `/query/resources?v=1` — per Jordan: "Typically we pass the version in the query param."
+- Path namespacing is load-bearing for authorization: Heimdall rule sets and the gateway `HTTPRoute` match on the path prefix, and the default rule is deny-all. A service-owned prefix keeps CF's rules scoped to CF.
+- Health endpoints (`/livez`, `/readyz`) stay at the bare root — the k8s convention across all v2 services — and are deliberately not exposed through the gateway.
+
+Transition: the router dual-mounts the same handlers under `/crowdfunding/*` (canonical) and `/v1/*` (interim) for one release, so the CF frontend, Self Serve, and the registered Stripe webhook URL can migrate without a breakage window. The interim mount is tagged `TODO(v1-namespace)` per the cleanup convention below.
 
 ### URLs
 
@@ -269,16 +280,17 @@ Tags go on the first line of the relevant handler, function, or block — not on
 
 | Label | Trigger for removal | What to remove |
 |---|---|---|
-| `TODO(ledger-k8s)` | Ledger Service migrated to Kubernetes and updated to call `/v1/initiatives/{id}` | `GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}` legacy shim handlers and their middleware |
+| `TODO(ledger-k8s)` | Ledger Service migrated to Kubernetes and updated to call `/crowdfunding/initiatives/{id}` | `GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}` legacy shim handlers and their middleware |
 | `TODO(rs-k8s)` | Reimbursement Service migrated to Kubernetes | Internal RS-facing HTTP endpoints, any RS-specific auth middleware, OpenSearch queue writes |
 | `TODO(post-cutover)` | Old LFF Lambda stack decommissioned | DynamoDB string ID → UUID resolution fallback in any endpoint that accepts legacy IDs; `source_dynamo_table` column and any code that reads it |
+| `TODO(v1-namespace)` | CF frontend, Self Serve, and the Stripe webhook URL all call `/crowdfunding/*` | The interim `r.Route("/v1", apiRoutes)` mount in `cmd/initiatives-api/server.go` |
 
 Add new labels to this table when new temporary code is introduced. Each label must have a named trigger (a concrete event, not "someday") and a named owner or Jira epic if one exists.
 
 ### Finding all cleanup points
 
 ```bash
-grep -rn 'TODO(' cmd/ internal/ | grep -E 'TODO\((ledger-k8s|rs-k8s|post-cutover)\)'
+grep -rn 'TODO(' cmd/ internal/ | grep -E 'TODO\((ledger-k8s|rs-k8s|post-cutover|v1-namespace)\)'
 ```
 
 Run this after each follow-on milestone to find what can now be deleted.
@@ -325,7 +337,7 @@ Reviewed with Eric Searcy (chief architect, May 2026). Any Go API endpoint that 
 - **Private / authenticated endpoints** (response varies by user identity or contains personal data): `Cache-Control: private, max-age=<N>`. Do not expose to CDN caches. Browser caching is acceptable — `private` ensures the response is only stored by the end-user's browser, not shared caches. Use `must-revalidate` if stale responses must never be served.
 - **Unauthenticated view of a public page that also has an authenticated view**: serve `Vary: Cookie` so CDN does not re-serve an anonymous-user response to a logged-in user with a different cookie.
 
-**What qualifies as public:** initiative listing (`GET /v1/initiatives`), initiative detail (`GET /v1/initiatives/{id}`), backer list, organization detail — any read endpoint that does not expose per-user data.
+**What qualifies as public:** initiative listing (`GET /crowdfunding/initiatives`), initiative detail (`GET /crowdfunding/initiatives/{id}`), backer list, organization detail — any read endpoint that does not expose per-user data.
 
 **ETag implementation:** compute `ETag` as the hex-encoded MD5 or xxHash of the JSON response body. Chi middleware is the right place to intercept the response writer, capture the body, hash it, and set the header. Return 304 if the request `If-None-Match` matches.
 
@@ -349,14 +361,14 @@ Ledger's `SendNotifications()` function calls the CF API to resolve project name
 - `GET /v1/entities/{id}` — fallback if project lookup returns empty
 - `GET /v1/organizations/{id}` — resolves org name for org/invoice donations (called unauthenticated — no auth header sent; must remain a public endpoint)
 
-These three routes are **Ledger-only legacy shims** — they exist solely because the Ledger Service has these URLs hardcoded and cannot be changed without a Ledger PR. They are not part of the public CF API and should not be used by any other caller. When the Ledger Service is migrated to Kubernetes, it must be updated to call `GET /v1/initiatives/{id}` instead, and these three routes must be removed.
+These three routes are **Ledger-only legacy shims** — they exist solely because the Ledger Service has these URLs hardcoded and cannot be changed without a Ledger PR. They are not part of the public CF API and should not be used by any other caller. When the Ledger Service is migrated to Kubernetes, it must be updated to call `GET /crowdfunding/initiatives/{id}` instead, and these three routes must be removed.
 
 Mark each handler in the Go code with:
 
 ```go
 // TODO(ledger-k8s): remove once Ledger Service is migrated to Kubernetes.
 // Ledger calls this path from fundspring.go to resolve initiative name/owner for notification emails.
-// Replace with GET /v1/initiatives/{id} in the Ledger Service, then delete this handler.
+// Replace with GET /crowdfunding/initiatives/{id} in the Ledger Service, then delete this handler.
 ```
 
 Search for `TODO(ledger-k8s)` to find all removal points.
@@ -523,7 +535,7 @@ This was reviewed with Eric Searcy (chief architect, May 2026). His position: pa
 
 Consequence for non-LF projects (future): since initiatives are decoupled, supporting non-LF projects is a per-initiative policy decision, not a structural schema change.
 
-**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /v1/initiatives`, `GET /v1/me/subscriptions`). These endpoints must be redesigned through the Query Service when full platform stack integration is implemented.
+**Known divergence from LFX v2 API patterns:** LFX v2 resource APIs never serve collections — all list queries go through the Query Service (OpenSearch-backed, access-control-aware). CF's initial release serves collection endpoints directly from the Go API (e.g., `GET /crowdfunding/initiatives`, `GET /crowdfunding/me/subscriptions`). These endpoints must be redesigned through the Query Service when full platform stack integration is implemented.
 
 **LFX Self Serve integration auth:** LFX Self Serve reads CF data from Snowflake — there are no live API calls from LFX Self Serve to the CF Go API. Auth between LFX Self Serve and the CF API is not needed until full platform stack integration (see below) is implemented. Deferred to OQ-11.
 
@@ -563,7 +575,7 @@ for _, a := range h.allowedApprovers {
 ```
 
 **3. Email approval links — HMAC-signed token, no Auth0**
-Initiative and expense approval email links use HMAC HS256-signed tokens (not Auth0). The token encodes `{ initiativeID, action: "approve"|"reject" }` and has an expiry. The `POST /v1/initiatives/approvals` endpoint verifies the HMAC signature — the signed token is the sole authorization mechanism for this flow. No Auth0 JWT is required or checked.
+Initiative and expense approval email links use HMAC HS256-signed tokens (not Auth0). The token encodes `{ initiativeID, action: "approve"|"reject" }` and has an expiry. The `POST /crowdfunding/initiatives/approvals` endpoint verifies the HMAC signature — the signed token is the sole authorization mechanism for this flow. No Auth0 JWT is required or checked.
 
 This is intentional: the approver clicks a link in email without needing to be logged in to CF. The HMAC secret is stored in AWS Secrets Manager (`CF_APPROVAL_SIGNING_SECRET`).
 
@@ -658,7 +670,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `JWT_ISSUER` | Expected `iss` claim | New — environment-specific; see `09` |
 | `JWT_AUDIENCE` | Expected `aud` claim | New — `https://crowdfunding-api.{env}.lfx.dev`; see `09` |
 | `STRIPE_SECRET_KEY` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
-| `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /v1/stripe/webhook` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
+| `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /crowdfunding/stripe/webhook` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
 | `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
 | `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
 | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |

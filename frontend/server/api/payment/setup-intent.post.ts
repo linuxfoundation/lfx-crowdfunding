@@ -7,7 +7,7 @@ import type { SetupIntentWire } from '../../types/payment.types';
 import type { SetupIntentResult } from '#shared/types/payment.types';
 
 export default defineEventHandler(async (event): Promise<SetupIntentResult> => {
-  const raw = await useBackendFetch<SetupIntentWire>(event, '/v1/me/setup-intent', {
+  const raw = await useBackendFetch<SetupIntentWire>(event, '/crowdfunding/me/setup-intent', {
     method: 'POST',
   });
   return { clientSecret: raw.client_secret };

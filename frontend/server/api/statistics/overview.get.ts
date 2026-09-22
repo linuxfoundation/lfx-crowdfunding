@@ -6,7 +6,7 @@ import type { StatisticsOverview } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<StatisticsOverview> => {
   const { apiBaseUrl } = useRuntimeConfig();
-  const res = await $fetch<BackendStatistics>(`${apiBaseUrl}/v1/statistics`);
+  const res = await $fetch<BackendStatistics>(`${apiBaseUrl}/crowdfunding/statistics`);
   return {
     totalRaisedCents: res.total_raised_cents,
     supporterCount: res.total_supporters,

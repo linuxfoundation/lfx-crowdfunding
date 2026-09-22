@@ -656,7 +656,7 @@ func TestDonationService_Create_UserRepoTransientError(t *testing.T) {
 func TestDonationService_Create_UserNotFound_DescriptiveError(t *testing.T) {
 	// When the user has not yet synced their profile, GetByUsername returns
 	// ErrUserNotFound. The service converts this to ErrProfileNotSynced with
-	// a PATCH /v1/me hint so the API response is actionable (maps to 400).
+	// a PATCH /crowdfunding/me hint so the API response is actionable (maps to 400).
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
 			return nil, domain.ErrUserNotFound
@@ -670,8 +670,8 @@ func TestDonationService_Create_UserNotFound_DescriptiveError(t *testing.T) {
 	if !errors.Is(err, domain.ErrProfileNotSynced) {
 		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "PATCH /v1/me") {
-		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
+	if !strings.Contains(err.Error(), "PATCH /crowdfunding/me") {
+		t.Errorf("error should mention PATCH /crowdfunding/me, got: %v", err)
 	}
 }
 
@@ -707,7 +707,7 @@ func TestDonationService_Create_DBError(t *testing.T) {
 func TestDonationService_Create_EmptyEmail_RequiresProfileSync(t *testing.T) {
 	// A legacy/migrated user row may exist without an email address.
 	// Stripe requires a non-empty email, so the service must fail fast and
-	// direct the caller to PATCH /v1/me before creating a Stripe customer.
+	// direct the caller to PATCH /crowdfunding/me before creating a Stripe customer.
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
 			return &models.User{ID: "u-uuid", Username: "u1", Email: ""}, nil
@@ -732,8 +732,8 @@ func TestDonationService_Create_EmptyEmail_RequiresProfileSync(t *testing.T) {
 	if !errors.Is(err, domain.ErrProfileNotSynced) {
 		t.Fatalf("expected ErrProfileNotSynced for empty email, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "PATCH /v1/me") {
-		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
+	if !strings.Contains(err.Error(), "PATCH /crowdfunding/me") {
+		t.Errorf("error should mention PATCH /crowdfunding/me, got: %v", err)
 	}
 	if customerCreated {
 		t.Error("CreateCustomer must not be called when user email is empty")

@@ -8,7 +8,7 @@ import type { CardDetails } from '#shared/types/payment.types';
 
 export default defineEventHandler(async (event): Promise<CardDetails> => {
   const { paymentMethodId } = await readBody<{ paymentMethodId: string }>(event);
-  const raw = await useBackendFetch<CardDetailsWire>(event, '/v1/me/payment-method', {
+  const raw = await useBackendFetch<CardDetailsWire>(event, '/crowdfunding/me/payment-method', {
     method: 'POST',
     body: { payment_method_id: paymentMethodId },
   });

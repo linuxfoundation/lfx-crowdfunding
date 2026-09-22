@@ -24,7 +24,7 @@ func TestListPublished_ReturnsData(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/published-list", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/published-list", nil)
 	w := httptest.NewRecorder()
 	h.ListPublished(w, req)
 
@@ -53,7 +53,7 @@ func TestListPublished_EmptyResult_ReturnsEmptyArray(t *testing.T) {
 	repo := &initiativeRepo{listPublishedResult: nil}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/published-list", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/published-list", nil)
 	w := httptest.NewRecorder()
 	h.ListPublished(w, req)
 
@@ -79,7 +79,7 @@ func TestListPublished_SetsNoCacheHeaders(t *testing.T) {
 	repo := &initiativeRepo{}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/published-list", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/published-list", nil)
 	w := httptest.NewRecorder()
 	h.ListPublished(w, req)
 
@@ -95,7 +95,7 @@ func TestListPublished_DBError_Returns500WithCacheHeaders(t *testing.T) {
 	repo := &initiativeRepo{listPublishedErr: errors.New("db connection reset")}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/published-list", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/published-list", nil)
 	w := httptest.NewRecorder()
 	h.ListPublished(w, req)
 
@@ -119,7 +119,7 @@ func TestListPublished_ResponseContainsOnlyIDAndName(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/published-list", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/published-list", nil)
 	w := httptest.NewRecorder()
 	h.ListPublished(w, req)
 

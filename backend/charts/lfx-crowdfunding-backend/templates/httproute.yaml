@@ -16,48 +16,27 @@ spec:
   hostnames:
     - "lfx-api.{{ .Values.lfx.domain }}"
   rules:
-    # Stripe webhook — Traefik always forwards the original body to the
-    # backend regardless of the auth middleware; no forwardBody needed since
-    # the RuleSet doesn't inspect the body (anonymous_authenticator + allow_all).
-    - matches:
-        - path:
-            type: Exact
-            value: /v1/stripe/webhook
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: traefik.io
-            kind: Middleware
-            name: heimdall
-      backendRefs:
-        - group: ""
-          kind: Service
-          name: {{ include "lfx-v2-initiatives-service.fullname" . }}
-          port: {{ .Values.service.port }}
-          weight: 1
-    # Everything else — scoped to this backend's real path families instead of
-    # PathPrefix: / on the shared lfx-api host, matching the pattern used by
-    # lfx-v2-project-service (/projects) and lfx-v2-query-service (/query).
-    # PathPrefix: / would make crowdfunding the default backend for every
-    # unmatched path on lfx-api, including future services' paths and health
-    # checks — Gateway API resolves any conflicting "/" rule from another
+    # All endpoints live under the /crowdfunding namespace (LFX v2 gateway
+    # convention: one product/resource prefix per service at the root of the
+    # shared lfx-api host, no version segment in the path — versioning, when
+    # needed, is a `v` query parameter). A single PathPrefix keeps this
+    # backend scoped to its own namespace instead of PathPrefix: /, which
+    # would make crowdfunding the default backend for every unmatched path on
+    # lfx-api — Gateway API resolves any conflicting "/" rule from another
     # chart by object creation timestamp (nondeterministic). Health checks
     # (/livez, /healthz, /readyz) are deliberately not exposed here: they're
     # not meant to be reachable on the shared public host, and the Deployment's
     # liveness/readiness probes hit the pod directly, not through the Gateway.
+    #
+    # The Stripe webhook (/crowdfunding/stripe/webhook) needs no special
+    # handling: Traefik always forwards the original body to the backend
+    # regardless of the auth middleware, and no forwardBody is needed since
+    # the RuleSet doesn't inspect the body (anonymous_authenticator +
+    # allow_all).
     - matches:
         - path:
             type: PathPrefix
-            value: /v1/initiatives
-        - path:
-            type: PathPrefix
-            value: /v1/statistics
-        - path:
-            type: PathPrefix
-            value: /v1/me
-        - path:
-            type: PathPrefix
-            value: /v1/expense
+            value: /crowdfunding
       filters:
         - type: ExtensionRef
           extensionRef:

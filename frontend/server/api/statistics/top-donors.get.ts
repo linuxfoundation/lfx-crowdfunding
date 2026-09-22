@@ -7,7 +7,9 @@ import type { TopDonorsResponse } from '#shared/types/statistics.types';
 
 export default defineEventHandler(async (): Promise<TopDonorsResponse> => {
   const { apiBaseUrl } = useRuntimeConfig();
-  const res = await $fetch<BackendPlatformDetails>(`${apiBaseUrl}/v1/statistics/platform`);
+  const res = await $fetch<BackendPlatformDetails>(
+    `${apiBaseUrl}/crowdfunding/statistics/platform`,
+  );
   return {
     organizations: (res.top_organizations ?? []).map(mapToTopDonor),
     individuals: (res.top_individuals ?? []).map(mapToTopDonor),

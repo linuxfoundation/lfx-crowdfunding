@@ -19,7 +19,7 @@ func TestGetOwnerInfo_ReturnsEmail(t *testing.T) {
 	repo := &initiativeRepo{ownerEmail: "owner@example.com"}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/my-slug/owner-info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/my-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "my-slug")
 	w := httptest.NewRecorder()
 	h.GetOwnerInfo(w, req)
@@ -44,7 +44,7 @@ func TestGetOwnerInfo_SetsNoCacheHeaders(t *testing.T) {
 	repo := &initiativeRepo{ownerEmail: "owner@example.com"}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/my-slug/owner-info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/my-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "my-slug")
 	w := httptest.NewRecorder()
 	h.GetOwnerInfo(w, req)
@@ -61,7 +61,7 @@ func TestGetOwnerInfo_NotFound_Returns404(t *testing.T) {
 	repo := &initiativeRepo{ownerEmailErr: domain.ErrInitiativeNotFound}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/missing-slug/owner-info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/missing-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "missing-slug")
 	w := httptest.NewRecorder()
 	h.GetOwnerInfo(w, req)
@@ -75,7 +75,7 @@ func TestGetOwnerInfo_UnexpectedError_Returns500(t *testing.T) {
 	repo := &initiativeRepo{ownerEmailErr: errors.New("db timeout")}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/some-slug/owner-info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/some-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "some-slug")
 	w := httptest.NewRecorder()
 	h.GetOwnerInfo(w, req)
@@ -89,7 +89,7 @@ func TestGetOwnerInfo_NullEmail_Returns400(t *testing.T) {
 	repo := &initiativeRepo{ownerEmailErr: domain.ErrProfileNotSynced}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/some-slug/owner-info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/some-slug/owner-info", nil)
 	req = withURLParam(req, "slug", "some-slug")
 	w := httptest.NewRecorder()
 	h.GetOwnerInfo(w, req)

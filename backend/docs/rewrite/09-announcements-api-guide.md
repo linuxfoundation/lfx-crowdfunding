@@ -10,10 +10,10 @@
 1. [Quick-start cheat sheet](#1-quick-start-cheat-sheet)
 2. [Authentication](#2-authentication)
 3. [Data model](#3-data-model)
-4. [List announcements — GET /v1/initiatives/{id}/announcements](#4-list-announcements)
-5. [Create an announcement — POST /v1/me/initiatives/{id}/announcements](#5-create-an-announcement)
-6. [Update an announcement — PUT /v1/me/initiatives/{id}/announcements/{announcementId}](#6-update-an-announcement)
-7. [Delete an announcement — DELETE /v1/me/initiatives/{id}/announcements/{announcementId}](#7-delete-an-announcement)
+4. [List announcements — GET /crowdfunding/initiatives/{id}/announcements](#4-list-announcements)
+5. [Create an announcement — POST /crowdfunding/me/initiatives/{id}/announcements](#5-create-an-announcement)
+6. [Update an announcement — PUT /crowdfunding/me/initiatives/{id}/announcements/{announcementId}](#6-update-an-announcement)
+7. [Delete an announcement — DELETE /crowdfunding/me/initiatives/{id}/announcements/{announcementId}](#7-delete-an-announcement)
 8. [Pagination](#8-pagination)
 9. [Validation rules](#9-validation-rules)
 10. [Error reference](#10-error-reference)
@@ -26,14 +26,14 @@
 
 | Action | Method | Path | Auth? | Who can call |
 |--------|--------|------|-------|--------------|
-| List announcements | `GET` | `/v1/initiatives/{id}/announcements` | No | Anyone (public) |
-| **Create announcement** | `POST` | `/v1/me/initiatives/{id}/announcements` | **Yes** | Initiative owner |
-| **Update announcement** | `PUT` | `/v1/me/initiatives/{id}/announcements/{announcementId}` | **Yes** | Initiative owner |
-| **Delete announcement** | `DELETE` | `/v1/me/initiatives/{id}/announcements/{announcementId}` | **Yes** | Initiative owner |
+| List announcements | `GET` | `/crowdfunding/initiatives/{id}/announcements` | No | Anyone (public) |
+| **Create announcement** | `POST` | `/crowdfunding/me/initiatives/{id}/announcements` | **Yes** | Initiative owner |
+| **Update announcement** | `PUT` | `/crowdfunding/me/initiatives/{id}/announcements/{announcementId}` | **Yes** | Initiative owner |
+| **Delete announcement** | `DELETE` | `/crowdfunding/me/initiatives/{id}/announcements/{announcementId}` | **Yes** | Initiative owner |
 
 `{id}` — the initiative UUID  
 `{announcementId}` — the announcement UUID  
-All write endpoints live under `/v1/me/` — same auth group as initiative mutations.
+All write endpoints live under `/crowdfunding/me/` — same auth group as initiative mutations.
 
 ---
 
@@ -78,7 +78,7 @@ interface Announcement {
 ## 4. List announcements
 
 ```
-GET /v1/initiatives/{id}/announcements
+GET /crowdfunding/initiatives/{id}/announcements
 ```
 
 **Auth:** None  
@@ -121,7 +121,7 @@ Results are ordered **newest first** (`created_on` descending).
 ## 5. Create an announcement
 
 ```
-POST /v1/me/initiatives/{id}/announcements
+POST /crowdfunding/me/initiatives/{id}/announcements
 ```
 
 **Auth:** JWT required — caller must own the initiative  
@@ -169,7 +169,7 @@ POST /v1/me/initiatives/{id}/announcements
 ## 6. Update an announcement
 
 ```
-PUT /v1/me/initiatives/{id}/announcements/{announcementId}
+PUT /crowdfunding/me/initiatives/{id}/announcements/{announcementId}
 ```
 
 **Auth:** JWT required — caller must own the initiative  
@@ -206,7 +206,7 @@ Returns the updated announcement in the same shape as Create.
 ## 7. Delete an announcement
 
 ```
-DELETE /v1/me/initiatives/{id}/announcements/{announcementId}
+DELETE /crowdfunding/me/initiatives/{id}/announcements/{announcementId}
 ```
 
 **Auth:** JWT required — caller must own the initiative  
@@ -231,9 +231,9 @@ Empty body on success.
 The List endpoint supports standard cursor-free pagination:
 
 ```
-GET /v1/initiatives/{id}/announcements?limit=10&offset=0   # page 1
-GET /v1/initiatives/{id}/announcements?limit=10&offset=10  # page 2
-GET /v1/initiatives/{id}/announcements?limit=10&offset=20  # page 3
+GET /crowdfunding/initiatives/{id}/announcements?limit=10&offset=0   # page 1
+GET /crowdfunding/initiatives/{id}/announcements?limit=10&offset=10  # page 2
+GET /crowdfunding/initiatives/{id}/announcements?limit=10&offset=20  # page 3
 ```
 
 `meta.total` always contains the full count so you can compute `hasNextPage`:
@@ -288,14 +288,14 @@ The Nuxt server acts as a BFF — it forwards requests to the Go API and attache
 
 ```typescript
 // GET  /api/initiatives/:id/announcements  → proxies to Go public endpoint
-// POST /api/initiatives/:id/announcements  → proxies to Go /v1/me endpoint (auth required)
+// POST /api/initiatives/:id/announcements  → proxies to Go /crowdfunding/me endpoint (auth required)
 export default defineEventHandler(async (event) => {
   const initiativeId = getRouterParam(event, 'id')
   const method = getMethod(event)
 
   if (method === 'GET') {
     const query = getQuery(event)
-    return proxyRequest(event, `/v1/initiatives/${initiativeId}/announcements`, {
+    return proxyRequest(event, `/crowdfunding/initiatives/${initiativeId}/announcements`, {
       query,
     })
   }
@@ -303,7 +303,7 @@ export default defineEventHandler(async (event) => {
   if (method === 'POST') {
     const session = await requireUserSession(event)
     const body = await readBody(event)
-    return proxyRequest(event, `/v1/me/initiatives/${initiativeId}/announcements`, {
+    return proxyRequest(event, `/crowdfunding/me/initiatives/${initiativeId}/announcements`, {
       method: 'POST',
       body,
       headers: { Authorization: `Bearer ${session.token}` },
@@ -323,7 +323,7 @@ export default defineEventHandler(async (event) => {
   const method = getMethod(event)
   const session = await requireUserSession(event)
 
-  const upstreamPath = `/v1/me/initiatives/${initiativeId}/announcements/${announcementId}`
+  const upstreamPath = `/crowdfunding/me/initiatives/${initiativeId}/announcements/${announcementId}`
 
   if (method === 'PUT') {
     const body = await readBody(event)

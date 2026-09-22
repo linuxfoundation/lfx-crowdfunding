@@ -49,7 +49,7 @@ func newMyTxnHandler(repo *initiativeRepo, ledger clients.LedgerClient) *Initiat
 func TestGetMyTransactions_NoPrincipal_Returns401(t *testing.T) {
 	h := newMyTxnHandler(&initiativeRepo{}, &apprLedgerClient{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/some-id/my-transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/some-id/my-transactions", nil)
 	req = withURLParam(req, "id", "some-id")
 	w := httptest.NewRecorder()
 	h.GetMyTransactions(w, req)
@@ -62,7 +62,7 @@ func TestGetMyTransactions_NoPrincipal_Returns401(t *testing.T) {
 func TestGetMyTransactions_EmptyUserID_Returns401(t *testing.T) {
 	h := newMyTxnHandler(&initiativeRepo{}, &apprLedgerClient{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/some-id/my-transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/some-id/my-transactions", nil)
 	req = withURLParam(req, "id", "some-id")
 	// Principal present but UserID is empty (Username-only token from an older flow).
 	req = withPrincipal(req, &models.Principal{Username: "user", UserID: ""})
@@ -84,7 +84,7 @@ func TestGetMyTransactions_UnpublishedByID_Returns404(t *testing.T) {
 	}
 	h := newMyTxnHandler(repo, &apprLedgerClient{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{UserID: "auth0|u1"})
 	w := httptest.NewRecorder()
@@ -101,7 +101,7 @@ func TestGetMyTransactions_UnpublishedBySlug_Returns404(t *testing.T) {
 	repo := &initiativeRepo{getErr: domain.ErrInitiativeNotFound}
 	h := newMyTxnHandler(repo, &apprLedgerClient{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/my-project/my-transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/my-project/my-transactions", nil)
 	req = withURLParam(req, "id", "my-project") // slug (no UUID pattern)
 	req = withPrincipal(req, &models.Principal{UserID: "auth0|u1"})
 	w := httptest.NewRecorder()
@@ -136,7 +136,7 @@ func TestGetMyTransactions_MixedUserRows_Returns503(t *testing.T) {
 	}
 	h := newMyTxnHandler(repo, ledger)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{UserID: callerUserID})
 	w := httptest.NewRecorder()
@@ -170,7 +170,7 @@ func TestGetMyTransactions_ForwardsUserIDInLedgerFilter(t *testing.T) {
 	}
 	h := newMyTxnHandler(repo, ledger)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{UserID: callerUserID})
 	w := httptest.NewRecorder()
@@ -210,7 +210,7 @@ func TestGetMyTransactions_PrivateCacheHeaders(t *testing.T) {
 	}
 	h := newMyTxnHandler(repo, ledger)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{UserID: callerUserID})
 	w := httptest.NewRecorder()
@@ -254,7 +254,7 @@ func TestGetMyTransactions_304IncludesCacheHeaders(t *testing.T) {
 	h := newMyTxnHandler(repo, ledger)
 
 	// First request: get the ETag.
-	req1 := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions", nil)
+	req1 := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions", nil)
 	req1 = withURLParam(req1, "id", initiativeID)
 	req1 = withPrincipal(req1, &models.Principal{UserID: callerUserID})
 	w1 := httptest.NewRecorder()
@@ -269,7 +269,7 @@ func TestGetMyTransactions_304IncludesCacheHeaders(t *testing.T) {
 	}
 
 	// Second request: conditional GET with matching ETag.
-	req2 := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions", nil)
 	req2 = withURLParam(req2, "id", initiativeID)
 	req2 = withPrincipal(req2, &models.Principal{UserID: callerUserID})
 	req2.Header.Set("If-None-Match", etag)
@@ -314,7 +314,7 @@ func TestGetMyTransactions_SubscriptionOnly_ForwardsFlag(t *testing.T) {
 	}
 	h := newMyTxnHandler(repo, capture)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions?subscriptionOnly=true", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions?subscriptionOnly=true", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{UserID: callerUserID})
 	w := httptest.NewRecorder()
@@ -350,7 +350,7 @@ func TestGetMyTransactions_Returns200WithData(t *testing.T) {
 	}
 	h := newMyTxnHandler(repo, ledger)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/my-transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{UserID: callerUserID})
 	w := httptest.NewRecorder()

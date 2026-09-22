@@ -174,7 +174,7 @@ func TestList_ReturnsInitiatives(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives", nil)
 	w := httptest.NewRecorder()
 	h.List(w, req)
 
@@ -199,7 +199,7 @@ func TestList_ReturnsInitiatives(t *testing.T) {
 func TestList_EmptyResult_ReturnsEmptyArray(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives", nil)
 	w := httptest.NewRecorder()
 	h.List(w, req)
 
@@ -220,7 +220,7 @@ func TestList_EmptyResult_ReturnsEmptyArray(t *testing.T) {
 func TestList_InvalidPagination_Returns400(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives?limit=notanumber", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives?limit=notanumber", nil)
 	w := httptest.NewRecorder()
 	h.List(w, req)
 
@@ -242,7 +242,7 @@ func TestGetByID_Published_Returns200(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID, nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetByID(w, req)
@@ -270,7 +270,7 @@ func TestGetByID_NotPublished_NoApprover_Returns404(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID, nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetByID(w, req)
@@ -293,7 +293,7 @@ func TestGetByID_NotPublished_Approver_Returns200(t *testing.T) {
 	svc := service.NewInitiativeService(repo, &initiativeUserRepo{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, []string{approver}, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID, nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: approver})
 	w := httptest.NewRecorder()
@@ -308,7 +308,7 @@ func TestGetByID_NotFound_Returns404(t *testing.T) {
 	repo := &initiativeRepo{getErr: domain.ErrInitiativeNotFound}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/no-such-slug", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/no-such-slug", nil)
 	req = withURLParam(req, "id", "no-such-slug")
 	w := httptest.NewRecorder()
 	h.GetByID(w, req)
@@ -329,7 +329,7 @@ func TestGetByID_ETagNotModified_Returns304(t *testing.T) {
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
 	// First request to obtain the ETag.
-	req1 := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID, nil)
+	req1 := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID, nil)
 	req1 = withURLParam(req1, "id", initiativeID)
 	w1 := httptest.NewRecorder()
 	h.GetByID(w1, req1)
@@ -342,7 +342,7 @@ func TestGetByID_ETagNotModified_Returns304(t *testing.T) {
 	}
 
 	// Second request with the ETag — must return 304.
-	req2 := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID, nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID, nil)
 	req2 = withURLParam(req2, "id", initiativeID)
 	req2.Header.Set("If-None-Match", etag)
 	w2 := httptest.NewRecorder()
@@ -358,7 +358,7 @@ func TestGetByID_ETagNotModified_Returns304(t *testing.T) {
 func TestCreate_NoPrincipal_Returns401(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/initiatives",
+	req := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives",
 		strings.NewReader(`{"name":"Test","initiative_type":"project"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -372,7 +372,7 @@ func TestCreate_NoPrincipal_Returns401(t *testing.T) {
 func TestCreate_InvalidJSON_Returns400(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/initiatives",
+	req := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives",
 		strings.NewReader(`not-json`))
 	req.Header.Set("Content-Type", "application/json")
 	req = withPrincipal(req, &models.Principal{Username: "testuser"})
@@ -389,7 +389,7 @@ func TestCreate_UserNotFound_Returns403(t *testing.T) {
 	userRepo := &initiativeUserRepo{err: domain.ErrUserNotFound}
 	h := newInitiativeHandler(&initiativeRepo{}, userRepo)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/initiatives",
+	req := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives",
 		strings.NewReader(`{"name":"Test","initiative_type":"project"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req = withPrincipal(req, &models.Principal{Username: "unknown"})
@@ -407,7 +407,7 @@ func TestCreate_MissingName_Returns400(t *testing.T) {
 	}
 	h := newInitiativeHandler(&initiativeRepo{}, userRepo)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/initiatives",
+	req := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives",
 		strings.NewReader(`{"initiative_type":"project"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req = withPrincipal(req, &models.Principal{Username: "testuser"})
@@ -426,7 +426,7 @@ func TestCreate_Success_Returns201(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, userRepo)
 
 	body := `{"name":"My Initiative","initiative_type":"project"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/initiatives", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = withPrincipal(req, &models.Principal{Username: "testuser"})
 	w := httptest.NewRecorder()
@@ -452,7 +452,7 @@ func TestCreate_Success_Returns201(t *testing.T) {
 func TestUpdate_NoPrincipal_Returns401(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodPatch, "/v1/initiatives/some-id",
+	req := httptest.NewRequest(http.MethodPatch, "/crowdfunding/initiatives/some-id",
 		strings.NewReader(`{"name":"New Name"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req = withURLParam(req, "id", "some-id")
@@ -479,7 +479,7 @@ func TestUpdate_NotOwner_Returns403(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, userRepo)
 
-	req := httptest.NewRequest(http.MethodPatch, "/v1/initiatives/"+initiativeID,
+	req := httptest.NewRequest(http.MethodPatch, "/crowdfunding/initiatives/"+initiativeID,
 		strings.NewReader(`{"name":"Hacked"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req = withURLParam(req, "id", initiativeID)
@@ -510,7 +510,7 @@ func TestUpdate_Success_Returns200(t *testing.T) {
 	h := newInitiativeHandler(repo, userRepo)
 
 	body := `{"name":"Updated Name"}`
-	req := httptest.NewRequest(http.MethodPatch, "/v1/initiatives/"+initiativeID,
+	req := httptest.NewRequest(http.MethodPatch, "/crowdfunding/initiatives/"+initiativeID,
 		strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = withURLParam(req, "id", initiativeID)
@@ -549,7 +549,7 @@ func TestGetTransactions_Published_Returns200(t *testing.T) {
 	svc := service.NewInitiativeService(repo, &initiativeUserRepo{}, ledger, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetTransactions(w, req)
@@ -585,7 +585,7 @@ func TestGetTransactions_SubscriptionOnly_ForwardsFlag(t *testing.T) {
 	svc := service.NewInitiativeService(repo, &initiativeUserRepo{}, capture, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?subscriptionOnly=true", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/transactions?subscriptionOnly=true", nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetTransactions(w, req)
@@ -617,7 +617,7 @@ func TestGetTransactions_CategoryType_ReturnsCategorizedResponse(t *testing.T) {
 	svc := service.NewInitiativeService(repo, &initiativeUserRepo{}, capture, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?type=donations&categoryType=mentorship", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/transactions?type=donations&categoryType=mentorship", nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetTransactions(w, req)
@@ -649,7 +649,7 @@ func TestGetTransactions_CategoryType_RequiresDonationType(t *testing.T) {
 	repo := &initiativeRepo{initiative: &models.Initiative{ID: initiativeID, Status: models.StatusPublished}}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?categoryType=mentorship", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/transactions?categoryType=mentorship", nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetTransactions(w, req)
@@ -664,7 +664,7 @@ func TestGetTransactions_CategoryType_RejectsUnsupportedCharacters(t *testing.T)
 	repo := &initiativeRepo{initiative: &models.Initiative{ID: initiativeID, Status: models.StatusPublished}}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions?type=donations&categoryType=%3Cscript%3E", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/transactions?type=donations&categoryType=%3Cscript%3E", nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetTransactions(w, req)
@@ -684,7 +684,7 @@ func TestGetTransactions_NotPublished_Returns404(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	w := httptest.NewRecorder()
 	h.GetTransactions(w, req)
@@ -699,7 +699,7 @@ func TestGetTransactions_NotPublished_Returns404(t *testing.T) {
 func TestGetTransactionsForUser_NoPrincipal_Returns401(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/some-id/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/some-id/transactions", nil)
 	req = withURLParam(req, "id", "some-id")
 	w := httptest.NewRecorder()
 	h.GetTransactionsForUser(w, req)
@@ -724,7 +724,7 @@ func TestGetTransactionsForUser_NotOwner_Returns404(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, userRepo)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: "other"})
 	w := httptest.NewRecorder()
@@ -757,7 +757,7 @@ func TestGetTransactionsForUser_Owner_Returns200(t *testing.T) {
 	svc := service.NewInitiativeService(repo, userRepo, ledger, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+initiativeID+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: "owner"})
 	w := httptest.NewRecorder()
@@ -777,7 +777,7 @@ func TestGetTransactionsForUser_Owner_Returns200(t *testing.T) {
 func TestDelete_NoPrincipal_Returns401(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodDelete, "/v1/initiatives/some-id", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/crowdfunding/initiatives/some-id", nil)
 	req = withURLParam(req, "id", "some-id")
 	w := httptest.NewRecorder()
 	h.Delete(w, req)
@@ -800,7 +800,7 @@ func TestDelete_NotOwner_Returns403(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, userRepo)
 
-	req := httptest.NewRequest(http.MethodDelete, "/v1/initiatives/"+initiativeID, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/crowdfunding/initiatives/"+initiativeID, nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: "other"})
 	w := httptest.NewRecorder()
@@ -818,7 +818,7 @@ func TestDelete_NotFound_Returns404(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, userRepo)
 
-	req := httptest.NewRequest(http.MethodDelete, "/v1/initiatives/missing", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/crowdfunding/initiatives/missing", nil)
 	req = withURLParam(req, "id", "missing")
 	req = withPrincipal(req, &models.Principal{Username: "testuser"})
 	w := httptest.NewRecorder()
@@ -843,7 +843,7 @@ func TestDelete_Success_Returns204(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, userRepo)
 
-	req := httptest.NewRequest(http.MethodDelete, "/v1/initiatives/"+initiativeID, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/crowdfunding/initiatives/"+initiativeID, nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: "owner"})
 	w := httptest.NewRecorder()

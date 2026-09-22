@@ -220,7 +220,7 @@ Design rules:
 
 ```mermaid
 flowchart LR
-    SS[Self Serve<br/>lens pages] -->|HTTP /v1/me/*| API
+    SS[Self Serve<br/>lens pages] -->|HTTP /crowdfunding/me/*| API
     FE[CF frontend<br/>Nuxt BFF] -->|HTTP| API
 
     subgraph CF[Crowdfunding Go API]
@@ -326,7 +326,7 @@ sequenceDiagram
     participant DB as Postgres
     participant FS as fga-sync (NATS)
 
-    U->>API: PATCH /v1/me/initiatives/{id}
+    U->>API: PATCH /crowdfunding/me/initiatives/{id}
     API->>DB: load initiative (owner_id, attribution)
     alt caller is creator
         API-->>U: 200 OK
