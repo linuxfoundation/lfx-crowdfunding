@@ -186,8 +186,8 @@ func (h *InitiativeHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, initiative)
 }
 
-// ResolveSlugToUID handles GET /v1/initiatives/slug-to-uid/{slug} — requires
-// a valid JWT (any scope). Internal-only: called by lfx-v2-helm's
+// ResolveSlugToUID handles GET /crowdfunding_initiatives/slug-to-uid/{slug} —
+// requires a valid JWT (any scope). Internal-only: called by lfx-v2-helm's
 // crowdfunding_slug_resolver_contextualizer from other services' Heimdall
 // pipelines (e.g. lfx-self-serve's slug-based reads), never directly by an
 // end user. Resolves regardless of initiative status, mirroring

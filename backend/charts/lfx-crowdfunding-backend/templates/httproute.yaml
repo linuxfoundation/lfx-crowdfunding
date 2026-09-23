@@ -58,6 +58,9 @@ spec:
         - path:
             type: PathPrefix
             value: /v1/expense
+        - path:
+            type: PathPrefix
+            value: /crowdfunding_initiatives
       filters:
         - type: ExtensionRef
           extensionRef:

@@ -230,7 +230,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// crowdfunding_slug_resolver_contextualizer forwarding the original
 	// caller's token, which may hold any scope. Internal-only: not meant for
 	// direct end-user use, mirroring lfx-v2-project-service's equivalent.
-	r.With(jwtAuth.Middleware).Get("/v1/initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
+	// Namespaced under the entity name (crowdfunding_initiatives), not a
+	// service subdirectory — see lfx-v2-helm#175 review discussion.
+	r.With(jwtAuth.Middleware).Get("/crowdfunding_initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
 
 	// Protected API — requires a valid bearer token with access:me scope.
 	// All routes are under /v1/me/* to make the identity-scoped contract explicit.

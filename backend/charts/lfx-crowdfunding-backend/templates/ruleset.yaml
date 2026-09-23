@@ -224,13 +224,16 @@ spec:
     # alone doesn't grant access — GetByID still denies non-approvers — but
     # it does confirm existence. Tighten with a dedicated M2M scope or
     # network boundary once the contextualizer integration is wired up.
+    #
+    # Namespaced under the entity name (crowdfunding_initiatives), not a
+    # service subdirectory — see lfx-v2-helm#175 review discussion.
     - id: "rule:lfx:lfx-crowdfunding-backend:slug-to-uid"
       allow_encoded_slashes: "off"
       match:
         methods:
           - GET
         routes:
-          - path: /v1/initiatives/slug-to-uid/:slug
+          - path: /crowdfunding_initiatives/slug-to-uid/:slug
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
