@@ -32,7 +32,7 @@ describe('PATCH /api/me BFF handler', () => {
     vi.clearAllMocks();
   });
 
-  it('proxies to PATCH /v1/me and returns the backend response', async () => {
+  it('proxies to PATCH /crowdfunding/me and returns the backend response', async () => {
     const fakeResponse: UserResponse = {
       id: 'uuid-1',
       username: 'jdoe',
@@ -46,7 +46,7 @@ describe('PATCH /api/me BFF handler', () => {
     const result = await (syncProfileHandler as (e: unknown) => Promise<UserResponse>)(mockEvent);
 
     expect(mockUseBackendFetch).toHaveBeenCalledOnce();
-    expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/v1/me', {
+    expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/crowdfunding/me', {
       method: 'PATCH',
     });
     expect(result).toEqual(fakeResponse);

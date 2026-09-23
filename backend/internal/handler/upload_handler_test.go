@@ -31,7 +31,7 @@ func (m *mockS3PresignClient) PresignLogoUpload(_ context.Context, _ string) (st
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-// uploadReq builds a POST request for POST /v1/presigned-url with an optional principal.
+// uploadReq builds a POST request for POST /crowdfunding/presigned-url with an optional principal.
 func uploadReq(contentType string, principal *models.Principal) *http.Request {
 	body := ""
 	if contentType != "" {
@@ -39,7 +39,7 @@ func uploadReq(contentType string, principal *models.Principal) *http.Request {
 	} else {
 		body = `{}`
 	}
-	r := httptest.NewRequest(http.MethodPost, "/v1/presigned-url", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/crowdfunding/presigned-url", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))

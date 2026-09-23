@@ -20,7 +20,7 @@ type CardDetails struct {
 	ExpiryYear      int    `json:"expiry_year"`
 }
 
-// SetupIntentResult is returned by POST /v1/me/setup-intent.
+// SetupIntentResult is returned by POST /crowdfunding/me/setup-intent.
 // The frontend passes ClientSecret to the Stripe.js Payment Element to collect
 // and 3DS-authenticate the card before attaching it to the customer.
 type SetupIntentResult struct {

@@ -41,7 +41,7 @@ spec:
         methods:
           - POST
         routes:
-          - path: /v1/stripe/webhook
+          - path: /crowdfunding/stripe/webhook
       execute:
         - authenticator: anonymous_authenticator
         - authorizer: allow_all
@@ -55,14 +55,14 @@ spec:
         methods:
           - GET
         routes:
-          - path: /v1/statistics
-          - path: /v1/statistics/platform
-          - path: /v1/statistics/monthly
-          - path: /v1/statistics/recent-donations
-          - path: /v1/statistics/investing-companies
-          - path: /v1/initiatives
-          - path: /v1/initiatives/:*/transactions
-          - path: /v1/initiatives/:*/announcements
+          - path: /crowdfunding/statistics
+          - path: /crowdfunding/statistics/platform
+          - path: /crowdfunding/statistics/monthly
+          - path: /crowdfunding/statistics/recent-donations
+          - path: /crowdfunding/statistics/investing-companies
+          - path: /crowdfunding/initiatives
+          - path: /crowdfunding/initiatives/:*/transactions
+          - path: /crowdfunding/initiatives/:*/announcements
       execute:
         - authenticator: oidc
         - authenticator: anonymous_authenticator
@@ -86,7 +86,7 @@ spec:
     # team check further down. No path capture needed — static object.
     #
     # Without this rule, published-list (a single path segment) would fall
-    # into the initiative-detail wildcard below (/v1/initiatives/:*) and
+    # into the initiative-detail wildcard below (/crowdfunding/initiatives/:*) and
     # become public; owner-info falls through to default_rule (deny_all in
     # staging/prod) instead. While openfga.enabled is false there is no
     # in-app fallback check on these two routes (unlike process-approval's
@@ -100,8 +100,8 @@ spec:
         methods:
           - GET
         routes:
-          - path: /v1/initiatives/:*/owner-info
-          - path: /v1/initiatives/published-list
+          - path: /crowdfunding/initiatives/:*/owner-info
+          - path: /crowdfunding/initiatives/published-list
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -131,7 +131,7 @@ spec:
         methods:
           - GET
         routes:
-          - path: /v1/initiatives/:*
+          - path: /crowdfunding/initiatives/:*
       execute:
         - authenticator: oidc
         - authenticator: anonymous_authenticator
@@ -151,23 +151,23 @@ spec:
       allow_encoded_slashes: "off"
       match:
         routes:
-          - path: /v1/me
-          # chi registers r.Patch("/") inside r.Route("/v1/me") as the literal
-          # "/v1/me/" — list both shapes so SyncProfile doesn't fall through
+          - path: /crowdfunding/me
+          # chi registers r.Patch("/") inside the /me route group as the literal
+          # "/crowdfunding/me/" — list both shapes so SyncProfile doesn't fall through
           # to the default deny_all rule.
-          - path: /v1/me/
-          - path: /v1/me/donations
-          - path: /v1/me/donations/csv
-          - path: /v1/me/transactions
-          - path: /v1/me/subscriptions
-          - path: /v1/me/subscriptions/:*
-          - path: /v1/me/organizations
-          - path: /v1/me/organizations/:*
-          - path: /v1/me/setup-intent
-          - path: /v1/me/payment-method
-          - path: /v1/me/payment-account
-          - path: /v1/me/presigned-url
-          - path: /v1/me/initiatives
+          - path: /crowdfunding/me/
+          - path: /crowdfunding/me/donations
+          - path: /crowdfunding/me/donations/csv
+          - path: /crowdfunding/me/transactions
+          - path: /crowdfunding/me/subscriptions
+          - path: /crowdfunding/me/subscriptions/:*
+          - path: /crowdfunding/me/organizations
+          - path: /crowdfunding/me/organizations/:*
+          - path: /crowdfunding/me/setup-intent
+          - path: /crowdfunding/me/payment-method
+          - path: /crowdfunding/me/payment-account
+          - path: /crowdfunding/me/presigned-url
+          - path: /crowdfunding/me/initiatives
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -193,9 +193,9 @@ spec:
         methods:
           - GET
         routes:
-          - path: /v1/me/initiatives/:id
-          - path: /v1/me/initiatives/:id/transactions
-          - path: /v1/me/initiatives/:id/my-transactions
+          - path: /crowdfunding/me/initiatives/:id
+          - path: /crowdfunding/me/initiatives/:id/transactions
+          - path: /crowdfunding/me/initiatives/:id/my-transactions
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -230,7 +230,7 @@ spec:
         methods:
           - GET
         routes:
-          - path: /v1/initiatives/slug-to-uid/:slug
+          - path: /crowdfunding/initiatives/slug-to-uid/:slug
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -252,7 +252,7 @@ spec:
           - PATCH
           - DELETE
         routes:
-          - path: /v1/me/initiatives/:id
+          - path: /crowdfunding/me/initiatives/:id
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -273,14 +273,14 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Announcement create — POST /v1/me/initiatives/:id/announcements.
+    # Announcement create — POST /crowdfunding/me/initiatives/:id/announcements.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-announcement-create"
       allow_encoded_slashes: "off"
       match:
         methods:
           - POST
         routes:
-          - path: /v1/me/initiatives/:id/announcements
+          - path: /crowdfunding/me/initiatives/:id/announcements
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -310,7 +310,7 @@ spec:
           - PUT
           - DELETE
         routes:
-          - path: /v1/me/initiatives/:id/announcements/:announcementId
+          - path: /crowdfunding/me/initiatives/:id/announcements/:announcementId
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -336,7 +336,7 @@ spec:
     # DonationHandler.List/SubscriptionHandler.List never check the caller's
     # principal (list any initiative's donations/subscriptions, not just the
     # caller's own). Donations are already public via the unauthenticated
-    # /v1/initiatives/{id}/transactions projection (same DonationSummary
+    # /crowdfunding/initiatives/{id}/transactions projection (same DonationSummary
     # shape, no new exposure — donation view/mutation is deliberately not
     # CF-authorization-gated, Slack decision). Subscription list has no public
     # equivalent elsewhere, so this does grant any authenticated user the
@@ -350,8 +350,8 @@ spec:
         methods:
           - GET
         routes:
-          - path: /v1/me/initiatives/:id/donations
-          - path: /v1/me/initiatives/:id/subscriptions
+          - path: /crowdfunding/me/initiatives/:id/donations
+          - path: /crowdfunding/me/initiatives/:id/subscriptions
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -374,8 +374,8 @@ spec:
         methods:
           - POST
         routes:
-          - path: /v1/me/initiatives/:id/donations
-          - path: /v1/me/initiatives/:id/subscriptions
+          - path: /crowdfunding/me/initiatives/:id/donations
+          - path: /crowdfunding/me/initiatives/:id/subscriptions
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -399,7 +399,7 @@ spec:
         methods:
           - POST
         routes:
-          - path: /v1/initiatives/:*/process-approval/:*
+          - path: /crowdfunding/initiatives/:*/process-approval/:*
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -433,7 +433,7 @@ spec:
         methods:
           - POST
         routes:
-          - path: /v1/expense/:*/:*
+          - path: /crowdfunding/expense/:*/:*
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}

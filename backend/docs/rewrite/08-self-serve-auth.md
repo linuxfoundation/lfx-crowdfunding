@@ -16,7 +16,7 @@ document only adds the SS-specific integration details.
 ## 1. How SS authenticates to CF
 
 SS obtains a **user-issued access token scoped to the CF audience** and forwards it to CF. There is
-no M2M token and no identity header — all SS→CF calls are me-style endpoints (`/v1/me/*`), and the
+no M2M token and no identity header — all SS→CF calls are me-style endpoints (`/crowdfunding/me/*`), and the
 access token carries the acting user's identity via the LF SSO username — a custom claim (per
 Design Rule 3 in [`09`](../../../docs/authentication-architecture.md#design-rules)).
 
@@ -24,7 +24,7 @@ Design Rule 3 in [`09`](../../../docs/authentication-architecture.md#design-rule
 User action in SS that needs CF data
   └─ SS BFF obtains a CF-audience access token (cached in session, or acquired
        via a silent second auth-code flow on first navigation — see §1)
-  └─ SS BFF proxies to CF /v1/me/*
+  └─ SS BFF proxies to CF /crowdfunding/me/*
        Authorization: Bearer {CF-audience user access token}
 ```
 
@@ -86,7 +86,7 @@ Key components in `lfx-self-serve`:
 | `server/services/crowdfunding-auth.service.ts` | Builds the Auth0 `/authorize` URL for the CF audience, exchanges the auth code for a token at `/oauth/token`, validates the token `sub`, stores in session |
 | `server/controllers/crowdfunding.controller.ts` | Handles `/crowdfunding/callback`; retries without `prompt=none` on `consent_required`/`interaction_required`; returns `?error=login_required` without re-triggering the silent redirect |
 | `server/middleware/auth.middleware.ts` | `extractCrowdfundingToken` reads the cached CF token from session onto `req.crowdfundingToken` on every authenticated request |
-| `server/services/crowdfunding.service.ts` | All `/api/crowdfunding/*` proxy calls forward `req.crowdfundingToken` as `Authorization: Bearer` to CF `/v1/me/*` |
+| `server/services/crowdfunding.service.ts` | All `/api/crowdfunding/*` proxy calls forward `req.crowdfundingToken` as `Authorization: Bearer` to CF `/crowdfunding/me/*` |
 
 **Environment variables (lfx-v2-argocd `values/*/lfx-self-serve.yaml`):**
 

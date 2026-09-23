@@ -50,7 +50,7 @@ CF → RS auth uses a static API token (`X-API-KEY` header, `REIMBURSEMENTS_API_
 
 **When RS moves to Kubernetes (timeline TBD):**
 - RS migrates its three OpenSearch indices (`lfx-expense-log`, `beneficiary-actions`, `travel-funds-tickets`) to its own Postgres DB on the shared RDS
-- RS switches CF data reads to the CF HTTP API (already available: `GET /v1/initiatives/{slug}/owner-info` with Auth0 M2M `access:manage`)
+- RS switches CF data reads to the CF HTTP API (already available: `GET /crowdfunding/initiatives/{slug}/owner-info` with Auth0 M2M `access:manage`)
 - OpenSearch decommissions at this point
 
 **Notes:**
@@ -102,7 +102,7 @@ The `spring-projects` index is owned and written by the Mentorship service (jobs
 
 **Action:** Lewis to confirm no Ledger code path assumes `project_id` is in a non-UUID format before this approach is adopted.
 
-**Blocking:** Stripe integration for post-cutover initiatives; `ledger-stats-sync` CronJob; backer list (`GET /v1/initiatives/{id}/backers`).
+**Blocking:** Stripe integration for post-cutover initiatives; `ledger-stats-sync` CronJob; backer list (`GET /crowdfunding/initiatives/{id}/backers`).
 
 ---
 
@@ -146,7 +146,7 @@ Key decisions:
 | # | Question | Resolution |
 |---|---|---|
 | OQ-21 | Ledger txnCategory ↔ CF goal name mismatch | Not a release blocker. Deferred post-release pending finance team conversation on canonical category mapping. Tracked in [LFXV2-2202](https://linuxfoundation.atlassian.net/browse/LFXV2-2202). |
-| OQ-23 | Auth0 sub → LFID username migration | Complete. New CF uses LFID username everywhere from day one. Migration script bulk-resolves Auth0 subs to LFID usernames via Auth0 Management API. `users.legacy_user_id` stores the Auth0 `sub` — set on every profile sync (`PATCH /v1/me`) and used for Ledger user lookups; not migration-only. Tracked in [LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025). |
+| OQ-23 | Auth0 sub → LFID username migration | Complete. New CF uses LFID username everywhere from day one. Migration script bulk-resolves Auth0 subs to LFID usernames via Auth0 Management API. `users.legacy_user_id` stores the Auth0 `sub` — set on every profile sync (`PATCH /crowdfunding/me`) and used for Ledger user lookups; not migration-only. Tracked in [LFXV2-2025](https://linuxfoundation.atlassian.net/browse/LFXV2-2025). |
 | OQ-19 | Ledger API shape for stats-sync | Resolved. `ledger-stats-sync` is fully implemented: uses bulk `GET /balance` (single HTTP call for all projects), fields confirmed (`totalCredit`, `totalDebit`, `totalBalance`, `availableBalance`, `feeBalance`, `backers`, `sponsors`). See `cmd/ledger-stats-sync/` and `internal/infrastructure/clients/ledger.go`. |
 | OQ-15 | Ledger balance lookup for post-cutover initiatives | Resolved. Ledger's `project_id` validation regex (`^[0-9a-zA-Z\_\-]+$`) accepts UUIDs. CF already passes `initiative.ID` (Postgres UUID) directly to Ledger API calls. No Ledger code changes required. |
 | OQ-11 | Full scope of CF data in LFX Self Serve | Resolved. LFX Self Serve calls the CF Go API directly using a user-issued access token (`access:me`). No Fivetran CF→Snowflake sync required for SS integration. See `docs/authentication-architecture.md` Flow 2. |

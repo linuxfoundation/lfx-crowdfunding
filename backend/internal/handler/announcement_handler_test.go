@@ -108,7 +108,7 @@ func TestAnnouncementList_Success(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.List(w, announcementReq(http.MethodGet, "/v1/initiatives/init-123/announcements", "", map[string]string{"id": "init-123"}, nil))
+	h.List(w, announcementReq(http.MethodGet, "/crowdfunding/initiatives/init-123/announcements", "", map[string]string{"id": "init-123"}, nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -128,7 +128,7 @@ func TestAnnouncementList_InitiativeNotFound_Returns404(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.List(w, announcementReq(http.MethodGet, "/v1/initiatives/missing/announcements", "", map[string]string{"id": "missing"}, nil))
+	h.List(w, announcementReq(http.MethodGet, "/crowdfunding/initiatives/missing/announcements", "", map[string]string{"id": "missing"}, nil))
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
@@ -143,7 +143,7 @@ func TestAnnouncementList_ServiceError_Returns500(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.List(w, announcementReq(http.MethodGet, "/v1/initiatives/init-123/announcements", "", map[string]string{"id": "init-123"}, nil))
+	h.List(w, announcementReq(http.MethodGet, "/crowdfunding/initiatives/init-123/announcements", "", map[string]string{"id": "init-123"}, nil))
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
@@ -155,7 +155,7 @@ func TestAnnouncementList_ServiceError_Returns500(t *testing.T) {
 func TestAnnouncementCreate_NoPrincipal_Returns401(t *testing.T) {
 	h := newAnnouncementHandler(&announcementServiceStub{})
 	w := httptest.NewRecorder()
-	h.Create(w, announcementReq(http.MethodPost, "/v1/me/initiatives/init-123/announcements", `{"title":"T","description":"D"}`, map[string]string{"id": "init-123"}, nil))
+	h.Create(w, announcementReq(http.MethodPost, "/crowdfunding/me/initiatives/init-123/announcements", `{"title":"T","description":"D"}`, map[string]string{"id": "init-123"}, nil))
 
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", w.Code)
@@ -165,7 +165,7 @@ func TestAnnouncementCreate_NoPrincipal_Returns401(t *testing.T) {
 func TestAnnouncementCreate_InvalidJSON_Returns400(t *testing.T) {
 	h := newAnnouncementHandler(&announcementServiceStub{})
 	w := httptest.NewRecorder()
-	h.Create(w, announcementReq(http.MethodPost, "/v1/me/initiatives/init-123/announcements", `not-json`, map[string]string{"id": "init-123"}, announcementPrincipal))
+	h.Create(w, announcementReq(http.MethodPost, "/crowdfunding/me/initiatives/init-123/announcements", `not-json`, map[string]string{"id": "init-123"}, announcementPrincipal))
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
@@ -180,7 +180,7 @@ func TestAnnouncementCreate_Forbidden_Returns403(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.Create(w, announcementReq(http.MethodPost, "/v1/me/initiatives/init-123/announcements", `{"title":"T","description":"D"}`, map[string]string{"id": "init-123"}, announcementPrincipal))
+	h.Create(w, announcementReq(http.MethodPost, "/crowdfunding/me/initiatives/init-123/announcements", `{"title":"T","description":"D"}`, map[string]string{"id": "init-123"}, announcementPrincipal))
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", w.Code)
@@ -203,7 +203,7 @@ func TestAnnouncementCreate_Success(t *testing.T) {
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
 	body := `{"title":"Spring Update","description":"<p>Details here</p>"}`
-	h.Create(w, announcementReq(http.MethodPost, "/v1/me/initiatives/init-123/announcements", body, map[string]string{"id": "init-123"}, announcementPrincipal))
+	h.Create(w, announcementReq(http.MethodPost, "/crowdfunding/me/initiatives/init-123/announcements", body, map[string]string{"id": "init-123"}, announcementPrincipal))
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", w.Code)
@@ -221,7 +221,7 @@ func TestAnnouncementCreate_Success(t *testing.T) {
 func TestAnnouncementUpdate_NoPrincipal_Returns401(t *testing.T) {
 	h := newAnnouncementHandler(&announcementServiceStub{})
 	w := httptest.NewRecorder()
-	h.Update(w, announcementReq(http.MethodPut, "/v1/me/initiatives/init-123/announcements/ann-1", `{"title":"T","description":"D"}`,
+	h.Update(w, announcementReq(http.MethodPut, "/crowdfunding/me/initiatives/init-123/announcements/ann-1", `{"title":"T","description":"D"}`,
 		map[string]string{"id": "init-123", "announcementId": "ann-1"}, nil))
 
 	if w.Code != http.StatusUnauthorized {
@@ -237,7 +237,7 @@ func TestAnnouncementUpdate_Forbidden_Returns403(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.Update(w, announcementReq(http.MethodPut, "/v1/me/initiatives/init-123/announcements/ann-1",
+	h.Update(w, announcementReq(http.MethodPut, "/crowdfunding/me/initiatives/init-123/announcements/ann-1",
 		`{"title":"T","description":"D"}`,
 		map[string]string{"id": "init-123", "announcementId": "ann-1"}, announcementPrincipal))
 
@@ -254,7 +254,7 @@ func TestAnnouncementUpdate_NotFound_Returns404(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.Update(w, announcementReq(http.MethodPut, "/v1/me/initiatives/init-123/announcements/missing",
+	h.Update(w, announcementReq(http.MethodPut, "/crowdfunding/me/initiatives/init-123/announcements/missing",
 		`{"title":"T","description":"D"}`,
 		map[string]string{"id": "init-123", "announcementId": "missing"}, announcementPrincipal))
 
@@ -276,7 +276,7 @@ func TestAnnouncementUpdate_Success(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.Update(w, announcementReq(http.MethodPut, "/v1/me/initiatives/init-123/announcements/ann-1",
+	h.Update(w, announcementReq(http.MethodPut, "/crowdfunding/me/initiatives/init-123/announcements/ann-1",
 		`{"title":"Updated","description":"<b>new</b>"}`,
 		map[string]string{"id": "init-123", "announcementId": "ann-1"}, announcementPrincipal))
 
@@ -290,7 +290,7 @@ func TestAnnouncementUpdate_Success(t *testing.T) {
 func TestAnnouncementDelete_NoPrincipal_Returns401(t *testing.T) {
 	h := newAnnouncementHandler(&announcementServiceStub{})
 	w := httptest.NewRecorder()
-	h.Delete(w, announcementReq(http.MethodDelete, "/v1/me/initiatives/init-123/announcements/ann-1", "",
+	h.Delete(w, announcementReq(http.MethodDelete, "/crowdfunding/me/initiatives/init-123/announcements/ann-1", "",
 		map[string]string{"id": "init-123", "announcementId": "ann-1"}, nil))
 
 	if w.Code != http.StatusUnauthorized {
@@ -306,7 +306,7 @@ func TestAnnouncementDelete_NotFound_Returns404(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.Delete(w, announcementReq(http.MethodDelete, "/v1/me/initiatives/init-123/announcements/missing", "",
+	h.Delete(w, announcementReq(http.MethodDelete, "/crowdfunding/me/initiatives/init-123/announcements/missing", "",
 		map[string]string{"id": "init-123", "announcementId": "missing"}, announcementPrincipal))
 
 	if w.Code != http.StatusNotFound {
@@ -322,7 +322,7 @@ func TestAnnouncementDelete_Forbidden_Returns403(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.Delete(w, announcementReq(http.MethodDelete, "/v1/me/initiatives/init-123/announcements/ann-1", "",
+	h.Delete(w, announcementReq(http.MethodDelete, "/crowdfunding/me/initiatives/init-123/announcements/ann-1", "",
 		map[string]string{"id": "init-123", "announcementId": "ann-1"}, announcementPrincipal))
 
 	if w.Code != http.StatusForbidden {
@@ -341,7 +341,7 @@ func TestAnnouncementDelete_Success(t *testing.T) {
 	}
 	h := newAnnouncementHandler(svc)
 	w := httptest.NewRecorder()
-	h.Delete(w, announcementReq(http.MethodDelete, "/v1/me/initiatives/init-123/announcements/ann-1", "",
+	h.Delete(w, announcementReq(http.MethodDelete, "/crowdfunding/me/initiatives/init-123/announcements/ann-1", "",
 		map[string]string{"id": "init-123", "announcementId": "ann-1"}, announcementPrincipal))
 
 	if w.Code != http.StatusNoContent {

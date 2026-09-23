@@ -32,7 +32,7 @@ func NewAnnouncementHandler(svc announcementService) *AnnouncementHandler {
 	return &AnnouncementHandler{svc: svc}
 }
 
-// List handles GET /v1/initiatives/{id}/announcements — public, paginated.
+// List handles GET /crowdfunding/initiatives/{id}/announcements — public, paginated.
 func (h *AnnouncementHandler) List(w http.ResponseWriter, r *http.Request) {
 	initiativeID := chi.URLParam(r, "id")
 
@@ -55,7 +55,7 @@ func (h *AnnouncementHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Create handles POST /v1/me/initiatives/{id}/announcements — requires JWT + ownership.
+// Create handles POST /crowdfunding/me/initiatives/{id}/announcements — requires JWT + ownership.
 func (h *AnnouncementHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -79,7 +79,7 @@ func (h *AnnouncementHandler) Create(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, result)
 }
 
-// Update handles PUT /v1/me/initiatives/{id}/announcements/{announcementId} — requires JWT + ownership.
+// Update handles PUT /crowdfunding/me/initiatives/{id}/announcements/{announcementId} — requires JWT + ownership.
 func (h *AnnouncementHandler) Update(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -104,7 +104,7 @@ func (h *AnnouncementHandler) Update(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, result)
 }
 
-// Delete handles DELETE /v1/me/initiatives/{id}/announcements/{announcementId} — requires JWT + ownership.
+// Delete handles DELETE /crowdfunding/me/initiatives/{id}/announcements/{announcementId} — requires JWT + ownership.
 func (h *AnnouncementHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {

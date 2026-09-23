@@ -33,7 +33,7 @@ describe('POST /api/me/organizations BFF handler', () => {
     vi.clearAllMocks();
   });
 
-  it('proxies body to POST /v1/me/organizations and maps the response', async () => {
+  it('proxies body to POST /crowdfunding/me/organizations and maps the response', async () => {
     const body = { name: 'Acme Corp', avatar_url: 'https://example.com/logo.png' };
     const raw: OrganizationResponse = {
       id: 'org-new',
@@ -50,7 +50,7 @@ describe('POST /api/me/organizations BFF handler', () => {
     const result = await (handler as (e: unknown) => Promise<unknown>)(mockEvent);
 
     expect(mockUseBackendFetch).toHaveBeenCalledOnce();
-    expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/v1/me/organizations', {
+    expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/crowdfunding/me/organizations', {
       method: 'POST',
       body,
     });

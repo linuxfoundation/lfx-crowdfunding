@@ -42,13 +42,13 @@ func (s *stubRSClient) ProcessExpenseAction(_ context.Context, action, reportID 
 
 func expenseRouter(h *ExpenseHandler) chi.Router {
 	r := chi.NewRouter()
-	r.Post("/v1/expense/{action}/{reportId}", h.ProcessAction)
+	r.Post("/crowdfunding/expense/{action}/{reportId}", h.ProcessAction)
 	return r
 }
 
 func expenseReq(action, reportID string) *http.Request {
 	return httptest.NewRequest(http.MethodPost,
-		"/v1/expense/"+action+"/"+reportID, nil)
+		"/crowdfunding/expense/"+action+"/"+reportID, nil)
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────

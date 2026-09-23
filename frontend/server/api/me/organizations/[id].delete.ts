@@ -6,5 +6,5 @@ import { useBackendFetch } from '../../../utils/backend-fetch';
 
 export default defineEventHandler(async (event): Promise<void> => {
   const id = getRouterParam(event, 'id');
-  await useBackendFetch(event, `/v1/me/organizations/${id}`, { method: 'DELETE' });
+  await useBackendFetch(event, `/crowdfunding/me/organizations/${id}`, { method: 'DELETE' });
 });

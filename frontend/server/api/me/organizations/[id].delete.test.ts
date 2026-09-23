@@ -33,15 +33,19 @@ describe('DELETE /api/me/organizations/:id BFF handler', () => {
     mockGetRouterParam.mockReturnValue('org-1');
   });
 
-  it('proxies DELETE /v1/me/organizations/:id and returns void', async () => {
+  it('proxies DELETE /crowdfunding/me/organizations/:id and returns void', async () => {
     mockUseBackendFetch.mockResolvedValue(undefined);
 
     const result = await (handler as (e: unknown) => Promise<unknown>)(mockEvent);
 
     expect(mockUseBackendFetch).toHaveBeenCalledOnce();
-    expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/v1/me/organizations/org-1', {
-      method: 'DELETE',
-    });
+    expect(mockUseBackendFetch).toHaveBeenCalledWith(
+      mockEvent,
+      '/crowdfunding/me/organizations/org-1',
+      {
+        method: 'DELETE',
+      },
+    );
     expect(result).toBeUndefined();
   });
 

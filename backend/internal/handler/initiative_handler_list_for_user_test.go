@@ -120,7 +120,7 @@ func TestListForUser_ReturnsOwnedInitiatives(t *testing.T) {
 	svc := service.NewInitiativeService(initiativeRepo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives", nil)
 	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), &models.Principal{
 		Username: username,
 	}))
@@ -156,7 +156,7 @@ func TestListForUser_NoPrincipal_Returns401(t *testing.T) {
 	svc := service.NewInitiativeService(&stubInitiativeRepoForListForUser{}, &stubUserRepoForListForUser{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives", nil)
 	w := httptest.NewRecorder()
 
 	h.ListForUser(w, req)
@@ -175,7 +175,7 @@ func TestListForUser_NoStatusParam_ReturnsAll(t *testing.T) {
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	// No ?status param — handler must apply no status filter (return all statuses).
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives?limit=10&offset=0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives?limit=10&offset=0", nil)
 	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), &models.Principal{Username: "testuser"}))
 	w := httptest.NewRecorder()
 
@@ -197,7 +197,7 @@ func TestListForUser_MultiStatus_PassedToRepo(t *testing.T) {
 	svc := service.NewInitiativeService(initiativeRepo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives?status=hidden&status=declined", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives?status=hidden&status=declined", nil)
 	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), &models.Principal{Username: "testuser"}))
 	w := httptest.NewRecorder()
 
@@ -227,7 +227,7 @@ func TestListForUser_UnknownStatus_Returns400(t *testing.T) {
 	svc := service.NewInitiativeService(initiativeRepo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives?status=bogus", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives?status=bogus", nil)
 	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), &models.Principal{Username: "testuser"}))
 	w := httptest.NewRecorder()
 
@@ -247,7 +247,7 @@ func TestListForUser_UserNotFound_ReturnsEmptyList(t *testing.T) {
 	svc := service.NewInitiativeService(&stubInitiativeRepoForListForUser{}, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives?limit=10&offset=5", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives?limit=10&offset=5", nil)
 	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), &models.Principal{
 		Username: "unknown",
 	}))

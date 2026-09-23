@@ -21,7 +21,7 @@ func TestResolveSlugToUID_Found_Returns200(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/slug-to-uid/save-the-bees", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/slug-to-uid/save-the-bees", nil)
 	req = withURLParam(req, "slug", "save-the-bees")
 	w := httptest.NewRecorder()
 	h.ResolveSlugToUID(w, req)
@@ -44,7 +44,7 @@ func TestResolveSlugToUID_NotFound_Returns404(t *testing.T) {
 	repo := &initiativeRepo{getErr: domain.ErrInitiativeNotFound}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/slug-to-uid/no-such-slug", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/slug-to-uid/no-such-slug", nil)
 	req = withURLParam(req, "slug", "no-such-slug")
 	w := httptest.NewRecorder()
 	h.ResolveSlugToUID(w, req)
@@ -58,7 +58,7 @@ func TestResolveSlugToUID_RepoError_Returns500(t *testing.T) {
 	repo := &initiativeRepo{getErr: errors.New("boom")}
 	h := newInitiativeHandler(repo, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/initiatives/slug-to-uid/save-the-bees", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/slug-to-uid/save-the-bees", nil)
 	req = withURLParam(req, "slug", "save-the-bees")
 	w := httptest.NewRecorder()
 	h.ResolveSlugToUID(w, req)

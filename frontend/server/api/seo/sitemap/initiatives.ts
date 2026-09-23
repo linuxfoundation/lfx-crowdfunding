@@ -8,7 +8,9 @@ export default defineSitemapEventHandler(async () => {
 
   // Fetch all published initiatives in one request. The backend defaults to
   // status=published; we request a large limit to avoid pagination loops.
-  const res = await $fetch<BackendResponse>(`${apiBaseUrl}/v1/initiatives?limit=10000&offset=0`);
+  const res = await $fetch<BackendResponse>(
+    `${apiBaseUrl}/crowdfunding/initiatives?limit=10000&offset=0`,
+  );
 
   return (res.data ?? []).map((initiative) => ({
     loc: `/initiatives/${initiative.slug}`,

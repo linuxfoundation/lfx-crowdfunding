@@ -258,13 +258,13 @@ A narrow read-only M2M endpoint for RS to replace its OpenSearch reads of CF-own
 
 | Method | Path | Returns | Used by |
 |---|---|---|---|
-| `GET` | `/v1/initiatives/{slug}/owner-info` | `{email, name}` of the initiative owner | RS — resolve owner email for expense/beneficiary notifications |
+| `GET` | `/crowdfunding/initiatives/{slug}/owner-info` | `{email, name}` of the initiative owner | RS — resolve owner email for expense/beneficiary notifications |
 
 `{slug}` is the initiative slug. No status filter is applied — the endpoint works for any initiative status so RS can resolve owner details regardless of publication state.
 
 ### Stripe Webhook
 
-`POST /v1/stripe/webhook` — handles `customer.subscription.deleted` → cancel subscription in Postgres. Stripe signature verification required.
+`POST /crowdfunding/stripe/webhook` — handles `customer.subscription.deleted` → cancel subscription in Postgres. Stripe signature verification required.
 
 `invoice.payment_succeeded` is handled by the Ledger Service's own Stripe webhook. This does not change.
 
@@ -344,7 +344,7 @@ Services that CF integrates with but does not own:
 | Service | Location | Notes |
 |---|---|---|
 | Ledger Service | AWS Lambda | Own Postgres (Ledger DB). CF calls it read-only via HTTP. Ledger calls CF HTTP API for donation notification emails. |
-| Reimbursement Service | AWS Lambda | Reads CF initiative data via `GET /v1/initiatives/{slug}/owner-info` (M2M, `access:manage`). Cannot reach shared RDS directly (separate AWS account/VPC). |
+| Reimbursement Service | AWS Lambda | Reads CF initiative data via `GET /crowdfunding/initiatives/{slug}/owner-info` (M2M, `access:manage`). Cannot reach shared RDS directly (separate AWS account/VPC). |
 | Mentorship (jobspring) | AWS Lambda | Publishes data to Snowflake. No direct calls to CF. |
 
 ---

@@ -6,7 +6,9 @@ import type { InvestingCompaniesResponse } from '#shared/types/static-pages.type
 
 export default defineEventHandler(async (): Promise<InvestingCompaniesResponse> => {
   const { apiBaseUrl } = useRuntimeConfig();
-  const res = await $fetch<BackendOrgDonation[]>(`${apiBaseUrl}/v1/statistics/investing-companies`);
+  const res = await $fetch<BackendOrgDonation[]>(
+    `${apiBaseUrl}/crowdfunding/statistics/investing-companies`,
+  );
   return {
     data: (res ?? []).map((d) => ({
       id: d.orgId,

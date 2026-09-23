@@ -26,7 +26,7 @@ func NewSubscriptionHandler(svc *service.SubscriptionService) *SubscriptionHandl
 	return &SubscriptionHandler{svc: svc}
 }
 
-// List handles GET /v1/initiatives/{id}/subscriptions
+// List handles GET /crowdfunding/initiatives/{id}/subscriptions
 func (h *SubscriptionHandler) List(w http.ResponseWriter, r *http.Request) {
 	initiativeID := chi.URLParam(r, "id")
 	limit, offset, ok := parsePaginationParams(w, r)
@@ -50,7 +50,7 @@ func (h *SubscriptionHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Create handles POST /v1/initiatives/{id}/subscriptions — requires JWT.
+// Create handles POST /crowdfunding/initiatives/{id}/subscriptions — requires JWT.
 // Clients MUST supply an Idempotency-Key header (a UUID they generate per
 // logical subscription attempt). The backend uses it for both Stripe Price
 // and Subscription creation so that retries are idempotent end-to-end.
@@ -83,7 +83,7 @@ func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, created)
 }
 
-// ListForUser handles GET /v1/me/subscriptions — requires JWT.
+// ListForUser handles GET /crowdfunding/me/subscriptions — requires JWT.
 // Returns the authenticated user's own subscriptions, paginated.
 func (h *SubscriptionHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
@@ -116,7 +116,7 @@ func (h *SubscriptionHandler) ListForUser(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// GetForUser handles GET /v1/me/subscriptions/{id} — requires JWT.
+// GetForUser handles GET /crowdfunding/me/subscriptions/{id} — requires JWT.
 // Returns the authenticated user's single subscription by ID.
 func (h *SubscriptionHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())

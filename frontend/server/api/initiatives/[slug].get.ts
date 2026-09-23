@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
 
   const initiative = await useBackendFetch<BackendInitiative>(
     event,
-    `/v1/initiatives/${slug}`,
+    `/crowdfunding/initiatives/${slug}`,
   ).catch((err) => {
     const status = err?.statusCode ?? err?.status;
     if (status === 404) throw createError({ statusCode: 404, message: 'Not found' });

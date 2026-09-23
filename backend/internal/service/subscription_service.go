@@ -171,14 +171,14 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUserNotFound) {
-			return nil, fmt.Errorf("%w: no profile found — call PATCH /v1/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
+			return nil, fmt.Errorf("%w: no profile found — call PATCH /crowdfunding/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 		}
 		return nil, fmt.Errorf("resolve user: %w", err)
 	}
 	// Guard against legacy/migrated rows that have no email yet.
 	// Stripe requires a non-empty email; direct the user to sync their profile.
 	if user.Email == "" {
-		return nil, fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
+		return nil, fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 	}
 
 	// Prevent duplicate active subscriptions for the same user + initiative.

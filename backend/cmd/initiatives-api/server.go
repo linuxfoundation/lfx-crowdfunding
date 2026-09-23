@@ -208,103 +208,118 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	r.Get("/healthz", handleLivez)
 	r.Get("/readyz", handleReadyz(pool))
 
-	// Stripe webhook (no JWT — uses its own HMAC signature validation)
-	r.Post("/v1/stripe/webhook", webhookH.Handle)
+	// API routes, registered relative to a namespace prefix so the same
+	// handlers can be mounted under both prefixes below.
+	apiRoutes := func(r chi.Router) {
+		// Stripe webhook (no JWT — uses its own HMAC signature validation)
+		r.Post("/stripe/webhook", webhookH.Handle)
 
-	// Public API (no auth)
-	r.Get("/v1/statistics", statisticsH.GetPlatform)
-	r.Get("/v1/statistics/platform", statisticsH.GetPlatformDetails)
-	r.Get("/v1/statistics/monthly", statisticsH.GetPlatformMonthly)
-	r.Get("/v1/statistics/recent-donations", statisticsH.GetRecentDonations)
-	r.Get("/v1/statistics/investing-companies", statisticsH.GetInvestingCompanies)
-	r.Get("/v1/initiatives", initiativeH.List)
-	r.Get("/v1/initiatives/{id}/transactions", initiativeH.GetTransactions)
-	r.Get("/v1/initiatives/{id}/announcements", announcementH.List)
+		// Public API (no auth)
+		r.Get("/statistics", statisticsH.GetPlatform)
+		r.Get("/statistics/platform", statisticsH.GetPlatformDetails)
+		r.Get("/statistics/monthly", statisticsH.GetPlatformMonthly)
+		r.Get("/statistics/recent-donations", statisticsH.GetRecentDonations)
+		r.Get("/statistics/investing-companies", statisticsH.GetInvestingCompanies)
+		r.Get("/initiatives", initiativeH.List)
+		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
+		r.Get("/initiatives/{id}/announcements", announcementH.List)
 
-	// Initiative detail — public for published initiatives; approvers may also
-	// view non-published initiatives if a valid token is supplied.
-	r.With(jwtAuth.OptionalMiddleware).Get("/v1/initiatives/{id}", initiativeH.GetByID)
+		// Initiative detail — public for published initiatives; approvers may also
+		// view non-published initiatives if a valid token is supplied.
+		r.With(jwtAuth.OptionalMiddleware).Get("/initiatives/{id}", initiativeH.GetByID)
 
-	// Slug-to-UID resolver — requires a valid bearer token (any scope); no
-	// specific scope is enforced because it's called via Heimdall's
-	// crowdfunding_slug_resolver_contextualizer forwarding the original
-	// caller's token, which may hold any scope. Internal-only: not meant for
-	// direct end-user use, mirroring lfx-v2-project-service's equivalent.
-	r.With(jwtAuth.Middleware).Get("/v1/initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
+		// Slug-to-UID resolver — requires a valid bearer token (any scope); no
+		// specific scope is enforced because it's called via Heimdall's
+		// crowdfunding_slug_resolver_contextualizer forwarding the original
+		// caller's token, which may hold any scope. Internal-only: not meant for
+		// direct end-user use, mirroring lfx-v2-project-service's equivalent.
+		r.With(jwtAuth.Middleware).Get("/initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
 
-	// Protected API — requires a valid bearer token with access:me scope.
-	// All routes are under /v1/me/* to make the identity-scoped contract explicit.
-	r.Route("/v1/me", func(r chi.Router) {
-		r.Use(jwtAuth.Middleware)
-		r.Use(jwtAuth.RequireScope(auth.ScopeMe))
+		// Protected API — requires a valid bearer token with access:me scope.
+		// All routes are under {prefix}/me/* to make the identity-scoped contract explicit.
+		r.Route("/me", func(r chi.Router) {
+			r.Use(jwtAuth.Middleware)
+			r.Use(jwtAuth.RequireScope(auth.ScopeMe))
 
-		// Profile sync — calls Auth0 UserInfo, writes to DB.
-		r.Patch("/", userH.SyncProfile)
+			// Profile sync — calls Auth0 UserInfo, writes to DB.
+			r.Patch("/", userH.SyncProfile)
 
-		// Caller's own initiatives, donations, subscriptions, and organizations.
-		r.Get("/initiatives", initiativeH.ListForUser)
-		r.Get("/donations/csv", donationH.ExportOrgCSV)
-		r.Get("/donations", donationH.ListForUser)
-		r.Get("/transactions", initiativeH.GetAllMyTransactions)
-		r.Get("/subscriptions", subscriptionH.ListForUser)
-		r.Get("/subscriptions/{id}", subscriptionH.GetForUser)
-		r.Get("/organizations", orgH.List)
-		r.Post("/organizations", orgH.Create)
-		r.Patch("/organizations/{id}", orgH.Update)
-		r.Delete("/organizations/{id}", orgH.Delete)
+			// Caller's own initiatives, donations, subscriptions, and organizations.
+			r.Get("/initiatives", initiativeH.ListForUser)
+			r.Get("/donations/csv", donationH.ExportOrgCSV)
+			r.Get("/donations", donationH.ListForUser)
+			r.Get("/transactions", initiativeH.GetAllMyTransactions)
+			r.Get("/subscriptions", subscriptionH.ListForUser)
+			r.Get("/subscriptions/{id}", subscriptionH.GetForUser)
+			r.Get("/organizations", orgH.List)
+			r.Post("/organizations", orgH.Create)
+			r.Patch("/organizations/{id}", orgH.Update)
+			r.Delete("/organizations/{id}", orgH.Delete)
 
-		// Payment account (saved card for 3DS flows).
-		r.Post("/setup-intent", paymentH.CreateSetupIntent)
-		r.Post("/payment-method", paymentH.AttachPaymentMethod)
-		r.Get("/payment-account", paymentH.GetPaymentAccount)
-		r.Delete("/payment-method", paymentH.DeletePaymentMethod)
+			// Payment account (saved card for 3DS flows).
+			r.Post("/setup-intent", paymentH.CreateSetupIntent)
+			r.Post("/payment-method", paymentH.AttachPaymentMethod)
+			r.Get("/payment-account", paymentH.GetPaymentAccount)
+			r.Delete("/payment-method", paymentH.DeletePaymentMethod)
 
-		// Logo uploads (used during initiative creation by the owning user).
-		r.Post("/presigned-url", uploadH.CreatePresignedURL)
+			// Logo uploads (used during initiative creation by the owning user).
+			r.Post("/presigned-url", uploadH.CreatePresignedURL)
 
-		// Owner-checked initiative read + mutations. The detail read returns the
-		// caller's own initiative in any status (the public detail endpoint hides
-		// non-published initiatives from non-approvers).
-		r.Get("/initiatives/{id}", initiativeH.GetForUser)
-		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactionsForUser)
-		r.Get("/initiatives/{id}/my-transactions", initiativeH.GetMyTransactions)
-		r.Post("/initiatives", initiativeH.Create)
-		r.Patch("/initiatives/{id}", initiativeH.Update)
-		r.Delete("/initiatives/{id}", initiativeH.Delete)
+			// Owner-checked initiative read + mutations. The detail read returns the
+			// caller's own initiative in any status (the public detail endpoint hides
+			// non-published initiatives from non-approvers).
+			r.Get("/initiatives/{id}", initiativeH.GetForUser)
+			r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactionsForUser)
+			r.Get("/initiatives/{id}/my-transactions", initiativeH.GetMyTransactions)
+			r.Post("/initiatives", initiativeH.Create)
+			r.Patch("/initiatives/{id}", initiativeH.Update)
+			r.Delete("/initiatives/{id}", initiativeH.Delete)
 
-		// Donations and subscriptions on a specific initiative (caller is the donor).
-		r.Get("/initiatives/{id}/donations", donationH.List)
-		r.Post("/initiatives/{id}/donations", donationH.Create)
-		r.Get("/initiatives/{id}/subscriptions", subscriptionH.List)
-		r.Post("/initiatives/{id}/subscriptions", subscriptionH.Create)
-		r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
+			// Donations and subscriptions on a specific initiative (caller is the donor).
+			r.Get("/initiatives/{id}/donations", donationH.List)
+			r.Post("/initiatives/{id}/donations", donationH.Create)
+			r.Get("/initiatives/{id}/subscriptions", subscriptionH.List)
+			r.Post("/initiatives/{id}/subscriptions", subscriptionH.Create)
+			r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
 
-		// Announcements on a specific initiative (caller must be the initiative owner).
-		r.Post("/initiatives/{id}/announcements", announcementH.Create)
-		r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
-		r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
-	})
+			// Announcements on a specific initiative (caller must be the initiative owner).
+			r.Post("/initiatives/{id}/announcements", announcementH.Create)
+			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
+			r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
+		})
 
-	// Approval route — caller is an approver (allowlist check), not the resource owner.
-	// Lives outside /v1/me because the URL is initiative-scoped rather than
-	// identity-scoped; the handler enforces its own approver allowlist check.
-	// TODO: when M2M approver tokens are issued, switch to RequireScope(auth.ScopeManage).
-	// For now all callers hold user tokens with access:me, so that scope is used.
-	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).
-		Post("/v1/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
+		// Approval route — caller is an approver (allowlist check), not the resource owner.
+		// Lives outside the /me group because the URL is initiative-scoped rather than
+		// identity-scoped; the handler enforces its own approver allowlist check.
+		// TODO: when M2M approver tokens are issued, switch to RequireScope(auth.ScopeManage).
+		// For now all callers hold user tokens with access:me, so that scope is used.
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).
+			Post("/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
 
-	// M2M routes — require a valid bearer token with access:manage scope.
-	// These endpoints are for service-to-service callers, not end users.
-	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
-		Get("/v1/initiatives/{slug}/owner-info", initiativeH.GetOwnerInfo)
-	r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
-		Get("/v1/initiatives/published-list", initiativeH.ListPublished)
+		// M2M routes — require a valid bearer token with access:manage scope.
+		// These endpoints are for service-to-service callers, not end users.
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
+			Get("/initiatives/{slug}/owner-info", initiativeH.GetOwnerInfo)
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeManage)).
+			Get("/initiatives/published-list", initiativeH.ListPublished)
 
-	// Expense action — proxies action to the Reimbursement Service.
-	// Requires a valid bearer token (any scope); no specific scope is enforced
-	// because the caller arrives via an email link and may hold a minimal token.
-	r.With(jwtAuth.Middleware).
-		Post("/v1/expense/{action}/{reportId}", expenseH.ProcessAction)
+		// Expense action — proxies action to the Reimbursement Service.
+		// Requires a valid bearer token (any scope); no specific scope is enforced
+		// because the caller arrives via an email link and may hold a minimal token.
+		r.With(jwtAuth.Middleware).
+			Post("/expense/{action}/{reportId}", expenseH.ProcessAction)
+	}
+
+	// Canonical namespace: /crowdfunding/*. Follows the LFX v2 gateway
+	// convention — each service owns a product/resource prefix at the root
+	// of the shared lfx-api host, with no version segment in the path.
+	// Versioning, when needed, is a `v` query parameter (see
+	// lfx-v2-helm/docs/entity-design.md and e.g. /query/resources?v=1).
+	r.Route("/crowdfunding", apiRoutes)
+	// TODO(v1-namespace): interim /v1 prefix kept while existing consumers migrate to /crowdfunding/*.
+	// Remove once the CF frontend, Self-Serve, and the registered Stripe
+	// webhook URL are all switched over (see docs/rewrite/02-decisions.md).
+	r.Route("/v1", apiRoutes)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{
