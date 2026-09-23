@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-// Wire shapes for POST /api/fundraise → POST /v1/initiatives
+// Wire shapes for POST /api/fundraise → POST /crowdfunding/initiatives
 
 export interface GoalItemInput {
   category: string;

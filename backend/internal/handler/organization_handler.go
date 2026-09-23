@@ -31,7 +31,7 @@ func NewOrganizationHandler(svc organizationService) *OrganizationHandler {
 	return &OrganizationHandler{svc: svc}
 }
 
-// List handles GET /v1/me/organizations.
+// List handles GET /crowdfunding/me/organizations.
 func (h *OrganizationHandler) List(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -50,7 +50,7 @@ func (h *OrganizationHandler) List(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"data": orgs})
 }
 
-// Create handles POST /v1/me/organizations.
+// Create handles POST /crowdfunding/me/organizations.
 func (h *OrganizationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -72,7 +72,7 @@ func (h *OrganizationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, org)
 }
 
-// Delete handles DELETE /v1/me/organizations/{id}.
+// Delete handles DELETE /crowdfunding/me/organizations/{id}.
 func (h *OrganizationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -93,7 +93,7 @@ func (h *OrganizationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Update handles PATCH /v1/me/organizations/{id}.
+// Update handles PATCH /crowdfunding/me/organizations/{id}.
 func (h *OrganizationHandler) Update(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {

@@ -49,7 +49,7 @@ describe('GET /api/me/organizations BFF handler', () => {
     const result = await (handler as (e: unknown) => Promise<unknown>)(mockEvent);
 
     expect(mockUseBackendFetch).toHaveBeenCalledOnce();
-    expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/v1/me/organizations');
+    expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/crowdfunding/me/organizations');
     expect(result).toEqual([
       {
         id: 'org-1',

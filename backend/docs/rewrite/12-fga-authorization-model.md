@@ -155,7 +155,7 @@ the caller changes:
 2. **At the gateway milestone:** move the check to a Heimdall `openfga_check` rule on CF's
    own chart, exactly like member-service's `object: "team:{{ approversTeamName }}"` rule,
    and delete `isApprover` and the resolver method entirely. The read path
-   (`GET /v1/initiatives/{id}`, approver-visible pre-publish) would use the
+   (`GET /crowdfunding/initiatives/{id}`, approver-visible pre-publish) would use the
    `openfga_or_check` authorizer (`lfx-v2-helm/charts/lfx-platform/values.yaml:363-419`):
    `viewer` on the initiative OR `member` on the approvers team, one `BatchCheck`. That
    authorizer is defined in the platform chart but has no shipped `RuleSet` reference found
@@ -271,7 +271,7 @@ Resolved during review — kept here for the record rather than left in the open
 - **Private-view population (was open question E).** No wider audience than creator, entity
   writer, and approver — the `auditor` relation and its project/org inheritance are dropped from
   the type; see "The type" above.
-- **`GET /v1/me/initiatives` list authorization (was open question G).** Resolved without an
+- **`GET /crowdfunding/me/initiatives` list authorization (was open question G).** Resolved without an
   external service, using only Postgres + a bounded batched FGA `Check` (no `ListObjects`, no new
   dependency):
   1. Postgres: `SELECT id FROM initiatives WHERE owner_id = $1` — owned initiatives need no check.
@@ -299,12 +299,12 @@ Resolved during review — kept here for the record rather than left in the open
 | # | Question | Proposed default | Directed to |
 |---|---|---|---|
 | D | **Ordering.** Model + `tests.yaml` in `lfx-v2-helm` first, CF-side tuple emission (with backfill) second, Heimdall RuleSets third — turning on enforcement before tuples exist fails every check closed, locking out every caller until backfill completes. | Model lands first, as its own PR; CF emission and backfill land next; RuleSet wiring (enforcement) lands last, once tuples are known to be present for every initiative. This ordering is corroborated independently by the fgadoc constraint above: a RuleSet can't reference a relation that doesn't exist, so RuleSets can never land before the model either. | Architecture team |
-| H | **Slug-vs-UUID route contract.** `GET/PUT /v1/initiatives/{id}` accepts either a slug or a UUID in `{id}`; a Heimdall `openfga_check` RuleSet at the gateway milestone evaluates `object: "crowdfunding_initiative:{id}"` templated straight off the path param, before CF's handler can resolve a slug to the canonical UUID. A slug-addressed request would then check a `crowdfunding_initiative` object that never got any tuples (they're all emitted under the UUID), and fail closed for every valid slug-based request. | Either canonicalize slug-to-UUID upstream of the RuleSet (a Heimdall-side lookup or route-level redirect), or split the route so only the UUID-addressed path carries the `openfga_check` RuleSet and the slug-addressed path resolves first, then re-checks. | Architecture team |
+| H | **Slug-vs-UUID route contract.** `GET/PUT /crowdfunding/initiatives/{id}` accepts either a slug or a UUID in `{id}`; a Heimdall `openfga_check` RuleSet at the gateway milestone evaluates `object: "crowdfunding_initiative:{id}"` templated straight off the path param, before CF's handler can resolve a slug to the canonical UUID. A slug-addressed request would then check a `crowdfunding_initiative` object that never got any tuples (they're all emitted under the UUID), and fail closed for every valid slug-based request. | Either canonicalize slug-to-UUID upstream of the RuleSet (a Heimdall-side lookup or route-level redirect), or split the route so only the UUID-addressed path carries the `openfga_check` RuleSet and the slug-addressed path resolves first, then re-checks. | Architecture team |
 
 (Open question F — `delete_access` orphaning a per-initiative `approver@team:…#member` tuple — no
 longer applies: approvers are not modeled in FGA today, and the reopened global-team proposal in
 "Approvers as a global team grant" above writes no per-initiative tuple either, so this objection
-does not resurface under it. Open question G — the `GET /v1/me/initiatives` list mechanism — is
+does not resurface under it. Open question G — the `GET /crowdfunding/me/initiatives` list mechanism — is
 resolved above via a bounded batched `Check`, no longer open.)
 
 ## Prerequisite (named, not solved here)

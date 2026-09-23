@@ -87,7 +87,7 @@ func TestGetPlatformDetails_DefaultTopLimit(t *testing.T) {
 	}
 	h := newTestStatisticsHandler(lc)
 
-	r := httptest.NewRequest(http.MethodGet, "/v1/statistics/platform", nil)
+	r := httptest.NewRequest(http.MethodGet, "/crowdfunding/statistics/platform", nil)
 	w := httptest.NewRecorder()
 	h.GetPlatformDetails(w, r)
 
@@ -109,7 +109,7 @@ func TestGetPlatformDetails_ValidTopLimit(t *testing.T) {
 	}
 	h := newTestStatisticsHandler(lc)
 
-	r := httptest.NewRequest(http.MethodGet, "/v1/statistics/platform?top_limit=20", nil)
+	r := httptest.NewRequest(http.MethodGet, "/crowdfunding/statistics/platform?top_limit=20", nil)
 	w := httptest.NewRecorder()
 	h.GetPlatformDetails(w, r)
 
@@ -131,7 +131,7 @@ func TestGetPlatformDetails_CapsAt100(t *testing.T) {
 	}
 	h := newTestStatisticsHandler(lc)
 
-	r := httptest.NewRequest(http.MethodGet, "/v1/statistics/platform?top_limit=150", nil)
+	r := httptest.NewRequest(http.MethodGet, "/crowdfunding/statistics/platform?top_limit=150", nil)
 	w := httptest.NewRecorder()
 	h.GetPlatformDetails(w, r)
 
@@ -156,7 +156,7 @@ func TestGetPlatformDetails_InvalidTopLimit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newTestStatisticsHandler(&statsLedgerClient{})
 
-			r := httptest.NewRequest(http.MethodGet, "/v1/statistics/platform"+tc.query, nil)
+			r := httptest.NewRequest(http.MethodGet, "/crowdfunding/statistics/platform"+tc.query, nil)
 			w := httptest.NewRecorder()
 			h.GetPlatformDetails(w, r)
 

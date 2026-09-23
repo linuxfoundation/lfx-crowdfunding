@@ -55,27 +55,35 @@ describe('POST /api/expense-email/:action/:reportId BFF handler', () => {
   });
 
   describe('valid actions', () => {
-    it('proxies approve action to POST /v1/expense/approve/:reportId', async () => {
+    it('proxies approve action to POST /crowdfunding/expense/approve/:reportId', async () => {
       setupParams('approve', 'R-001');
       mockUseBackendFetch.mockResolvedValue(undefined);
 
       await (handler as (e: unknown) => Promise<void>)(mockEvent);
 
       expect(mockUseBackendFetch).toHaveBeenCalledOnce();
-      expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/v1/expense/approve/R-001', {
-        method: 'POST',
-      });
+      expect(mockUseBackendFetch).toHaveBeenCalledWith(
+        mockEvent,
+        '/crowdfunding/expense/approve/R-001',
+        {
+          method: 'POST',
+        },
+      );
     });
 
-    it('proxies reject action to POST /v1/expense/reject/:reportId', async () => {
+    it('proxies reject action to POST /crowdfunding/expense/reject/:reportId', async () => {
       setupParams('reject', 'R-002');
       mockUseBackendFetch.mockResolvedValue(undefined);
 
       await (handler as (e: unknown) => Promise<void>)(mockEvent);
 
-      expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/v1/expense/reject/R-002', {
-        method: 'POST',
-      });
+      expect(mockUseBackendFetch).toHaveBeenCalledWith(
+        mockEvent,
+        '/crowdfunding/expense/reject/R-002',
+        {
+          method: 'POST',
+        },
+      );
     });
 
     it('URL-encodes special characters in action and reportId', async () => {
@@ -84,9 +92,13 @@ describe('POST /api/expense-email/:action/:reportId BFF handler', () => {
 
       await (handler as (e: unknown) => Promise<void>)(mockEvent);
 
-      expect(mockUseBackendFetch).toHaveBeenCalledWith(mockEvent, '/v1/expense/approve/R%20001', {
-        method: 'POST',
-      });
+      expect(mockUseBackendFetch).toHaveBeenCalledWith(
+        mockEvent,
+        '/crowdfunding/expense/approve/R%20001',
+        {
+          method: 'POST',
+        },
+      );
     });
   });
 

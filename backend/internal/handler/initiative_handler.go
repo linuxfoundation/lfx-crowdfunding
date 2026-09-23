@@ -31,7 +31,7 @@ const (
 
 var categoryTypeAllowedRune = regexp.MustCompile(`^[\p{L}\p{N} _\-./&()']+$`)
 
-// InitiativeHandler holds Chi handlers for the /v1/initiatives resource.
+// InitiativeHandler holds Chi handlers for the /crowdfunding/initiatives resource.
 type InitiativeHandler struct {
 	svc              *service.InitiativeService
 	allowedApprovers []string
@@ -45,7 +45,7 @@ func NewInitiativeHandler(svc *service.InitiativeService, allowedApprovers []str
 	return &InitiativeHandler{svc: svc, allowedApprovers: allowedApprovers, logger: logger}
 }
 
-// List handles GET /v1/initiatives
+// List handles GET /crowdfunding/initiatives
 func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, offset, ok := parsePaginationParams(w, r)
 	if !ok {
@@ -82,7 +82,7 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ListForUser handles GET /v1/me/initiatives — requires JWT with access:me scope.
+// ListForUser handles GET /crowdfunding/me/initiatives — requires JWT with access:me scope.
 // Returns initiatives owned by the authenticated caller, paginated.
 func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
@@ -119,7 +119,7 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// GetByID handles GET /v1/initiatives/{id} — accepts a slug or UUID.
+// GetByID handles GET /crowdfunding/initiatives/{id} — accepts a slug or UUID.
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
 // Only published initiatives are returned to anonymous callers; approvers may
 // retrieve initiatives in any status (e.g. "submitted") for review purposes.
@@ -164,7 +164,7 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// GetForUser handles GET /v1/me/initiatives/{id} — requires JWT with access:me scope.
+// GetForUser handles GET /crowdfunding/me/initiatives/{id} — requires JWT with access:me scope.
 // Accepts a slug or UUID. Returns the caller's own initiative in any status, so
 // owners can open their drafts/submitted initiatives that the public detail
 // endpoint hides. Initiatives the caller does not own return 404 (not 403) to
@@ -186,7 +186,7 @@ func (h *InitiativeHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, initiative)
 }
 
-// ResolveSlugToUID handles GET /v1/initiatives/slug-to-uid/{slug} — requires
+// ResolveSlugToUID handles GET /crowdfunding/initiatives/slug-to-uid/{slug} — requires
 // a valid JWT (any scope). Internal-only: called by lfx-v2-helm's
 // crowdfunding_slug_resolver_contextualizer from other services' Heimdall
 // pipelines (e.g. lfx-self-serve's slug-based reads), never directly by an
@@ -202,7 +202,7 @@ func (h *InitiativeHandler) ResolveSlugToUID(w http.ResponseWriter, r *http.Requ
 	JSON(w, http.StatusOK, map[string]string{"uid": id})
 }
 
-// Create handles POST /v1/initiatives — requires JWT.
+// Create handles POST /crowdfunding/initiatives — requires JWT.
 func (h *InitiativeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -224,7 +224,7 @@ func (h *InitiativeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, created)
 }
 
-// Update handles PATCH /v1/initiatives/{id} — requires JWT.
+// Update handles PATCH /crowdfunding/initiatives/{id} — requires JWT.
 func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -247,7 +247,7 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, updated)
 }
 
-// GetTransactions handles GET /v1/initiatives/{id}/transactions
+// GetTransactions handles GET /crowdfunding/initiatives/{id}/transactions
 // Accepts ?type=donations|expenses&limit=N&offset=N.
 // Resolves the initiative by slug or UUID, verifies it is published, then calls Ledger.
 func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
@@ -275,7 +275,7 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	h.writeTransactions(w, r, initiativeID, "public, max-age=60, stale-while-revalidate=300")
 }
 
-// GetMyTransactions handles GET /v1/me/initiatives/{id}/my-transactions — requires JWT.
+// GetMyTransactions handles GET /crowdfunding/me/initiatives/{id}/my-transactions — requires JWT.
 // Returns transactions on the given published initiative that belong to the authenticated
 // caller, identified by their Auth0 subject (principal.UserID = legacy_user_id in Ledger).
 func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Request) {
@@ -352,7 +352,7 @@ func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Req
 	_, _ = w.Write(body)
 }
 
-// GetAllMyTransactions handles GET /v1/me/transactions — requires JWT.
+// GetAllMyTransactions handles GET /crowdfunding/me/transactions — requires JWT.
 // Returns all Ledger transactions for the authenticated user across every initiative.
 func (h *InitiativeHandler) GetAllMyTransactions(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
@@ -409,7 +409,7 @@ func (h *InitiativeHandler) GetAllMyTransactions(w http.ResponseWriter, r *http.
 	_, _ = w.Write(body)
 }
 
-// GetTransactionsForUser handles GET /v1/me/initiatives/{id}/transactions — requires
+// GetTransactionsForUser handles GET /crowdfunding/me/initiatives/{id}/transactions — requires
 // JWT with access:me scope. Returns transactions for the caller's own initiative in
 // any status, so owners can view their non-published initiative's transactions (the
 // public endpoint resolves published-only).
@@ -494,7 +494,7 @@ func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Req
 	}
 }
 
-// ProcessApproval handles POST /v1/initiatives/{id}/process-approval/{action} — requires JWT.
+// ProcessApproval handles POST /crowdfunding/initiatives/{id}/process-approval/{action} — requires JWT.
 // The caller's Username must appear in the AllowedApprovers list configured via
 // ALLOWED_APPROVERS. {action} must be "approve" or "decline".
 func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Request) {
@@ -540,7 +540,7 @@ func (h *InitiativeHandler) ProcessApproval(w http.ResponseWriter, r *http.Reque
 	JSON(w, http.StatusOK, updated)
 }
 
-// Delete handles DELETE /v1/initiatives/{id} — requires JWT.
+// Delete handles DELETE /crowdfunding/initiatives/{id} — requires JWT.
 func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -556,7 +556,7 @@ func (h *InitiativeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetOwnerInfo handles GET /v1/initiatives/{slug}/owner-info.
+// GetOwnerInfo handles GET /crowdfunding/initiatives/{slug}/owner-info.
 // Requires a valid bearer token with the access:manage scope (M2M only).
 // Returns the email address and display name of the owner of the initiative with the given slug.
 func (h *InitiativeHandler) GetOwnerInfo(w http.ResponseWriter, r *http.Request) {
@@ -572,7 +572,7 @@ func (h *InitiativeHandler) GetOwnerInfo(w http.ResponseWriter, r *http.Request)
 	JSON(w, http.StatusOK, info)
 }
 
-// ListPublished handles GET /v1/initiatives/published-list.
+// ListPublished handles GET /crowdfunding/initiatives/published-list.
 // Requires a valid bearer token with the access:manage scope (M2M only).
 // Returns the ID and Name of every published initiative, for use by the
 // Reimbursement Service initiative picker.

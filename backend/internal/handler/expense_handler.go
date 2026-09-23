@@ -22,7 +22,7 @@ func NewExpenseHandler(rsClient clients.ReimbursementClient) *ExpenseHandler {
 	return &ExpenseHandler{rsClient: rsClient}
 }
 
-// ProcessAction handles POST /v1/expense/{action}/{reportId}.
+// ProcessAction handles POST /crowdfunding/expense/{action}/{reportId}.
 // It forwards the action and report ID to the Reimbursement Service and returns
 // 204 No Content on success. The Reimbursement Service is authenticated via
 // X-API-KEY; this endpoint only requires the caller to hold a valid bearer

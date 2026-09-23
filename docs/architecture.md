@@ -145,29 +145,29 @@ backend/
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/v1/statistics*` | None | Platform-wide funding statistics |
-| `GET` | `/v1/initiatives` | None | List initiatives (filterable, paginated) |
-| `GET` | `/v1/initiatives/{id}` | Optional | Initiative detail (optional auth lets approvers view unpublished) |
-| `GET` | `/v1/initiatives/{id}/transactions` | None | Public donation/expense history |
-| `PATCH` | `/v1/me` | `access:me` | Profile sync (login trigger) |
-| `GET` | `/v1/me/initiatives` | `access:me` | Caller's own initiatives |
-| `POST` | `/v1/me/initiatives` | `access:me` | Create initiative |
-| `GET` | `/v1/me/initiatives/{id}` | `access:me` + owner | Get own initiative |
-| `PATCH` | `/v1/me/initiatives/{id}` | `access:me` + owner | Update own initiative |
-| `DELETE` | `/v1/me/initiatives/{id}` | `access:me` + owner | Delete own initiative |
-| `GET` | `/v1/me/donations` | `access:me` | Caller's donation history |
-| `GET` | `/v1/me/subscriptions` | `access:me` | Caller's active subscriptions |
-| `DELETE` | `/v1/me/subscriptions/{id}` | `access:me` + owner | Cancel subscription |
-| `GET` | `/v1/me/payment-account` | `access:me` | Saved payment method |
-| `POST` | `/v1/me/setup-intent` | `access:me` | Create Stripe SetupIntent |
-| `POST` | `/v1/me/payment-method` | `access:me` | Attach payment method |
-| `DELETE` | `/v1/me/payment-method` | `access:me` | Remove payment method |
-| `POST` | `/v1/me/presigned-url` | `access:me` | S3 presigned URL for logo upload |
-| `POST` | `/v1/me/initiatives/{id}/donations` | `access:me` | Create one-time donation |
-| `POST` | `/v1/me/initiatives/{id}/subscriptions` | `access:me` | Create recurring subscription |
-| `POST` | `/v1/initiatives/{id}/process-approval/{action}` | `access:me` (approver list) | Approve or decline initiative |
-| `POST` | `/v1/stripe/webhook` | Stripe HMAC | Stripe event receiver |
-| `GET` | `/v1/initiatives/{slug}/owner-info` | `access:manage` | Reimbursement Service: initiative owner info |
+| `GET` | `/crowdfunding/statistics*` | None | Platform-wide funding statistics |
+| `GET` | `/crowdfunding/initiatives` | None | List initiatives (filterable, paginated) |
+| `GET` | `/crowdfunding/initiatives/{id}` | Optional | Initiative detail (optional auth lets approvers view unpublished) |
+| `GET` | `/crowdfunding/initiatives/{id}/transactions` | None | Public donation/expense history |
+| `PATCH` | `/crowdfunding/me` | `access:me` | Profile sync (login trigger) |
+| `GET` | `/crowdfunding/me/initiatives` | `access:me` | Caller's own initiatives |
+| `POST` | `/crowdfunding/me/initiatives` | `access:me` | Create initiative |
+| `GET` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Get own initiative |
+| `PATCH` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Update own initiative |
+| `DELETE` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Delete own initiative |
+| `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donation history |
+| `GET` | `/crowdfunding/me/subscriptions` | `access:me` | Caller's active subscriptions |
+| `DELETE` | `/crowdfunding/me/subscriptions/{id}` | `access:me` + owner | Cancel subscription |
+| `GET` | `/crowdfunding/me/payment-account` | `access:me` | Saved payment method |
+| `POST` | `/crowdfunding/me/setup-intent` | `access:me` | Create Stripe SetupIntent |
+| `POST` | `/crowdfunding/me/payment-method` | `access:me` | Attach payment method |
+| `DELETE` | `/crowdfunding/me/payment-method` | `access:me` | Remove payment method |
+| `POST` | `/crowdfunding/me/presigned-url` | `access:me` | S3 presigned URL for logo upload |
+| `POST` | `/crowdfunding/me/initiatives/{id}/donations` | `access:me` | Create one-time donation |
+| `POST` | `/crowdfunding/me/initiatives/{id}/subscriptions` | `access:me` | Create recurring subscription |
+| `POST` | `/crowdfunding/initiatives/{id}/process-approval/{action}` | `access:me` (approver list) | Approve or decline initiative |
+| `POST` | `/crowdfunding/stripe/webhook` | Stripe HMAC | Stripe event receiver |
+| `GET` | `/crowdfunding/initiatives/{slug}/owner-info` | `access:manage` | Reimbursement Service: initiative owner info |
 
 ---
 
@@ -226,7 +226,7 @@ initiative_ledger_stats
         │
         │  JOIN on every initiative read
         ▼
-GET /v1/initiatives/{id}  ←── also calls Ledger live
+GET /crowdfunding/initiatives/{id}  ←── also calls Ledger live
                                for per-goal donated/spent
 ```
 
@@ -270,7 +270,7 @@ sequenceDiagram
     participant Ledger as Ledger Service
 
     User->>FE: GET /projects/kubernetes
-    FE->>API: GET /v1/initiatives/kubernetes
+    FE->>API: GET /crowdfunding/initiatives/kubernetes
     API->>DB: SELECT initiatives JOIN initiative_ledger_stats WHERE slug = 'kubernetes'
     DB-->>API: initiative row + cached financials + sponsors JSONB
     API->>DB: SELECT initiative_goals WHERE initiative_id = ?
@@ -298,7 +298,7 @@ sequenceDiagram
     participant Stripe
 
     Donor->>FE: Fill donation form, click Pay
-    FE->>API: POST /v1/initiatives/{id}/donations
+    FE->>API: POST /crowdfunding/me/initiatives/{id}/donations
     API->>DB: INSERT INTO donations, status = pending
     DB-->>API: donation record
     API->>Stripe: Create PaymentIntent with amount and initiative metadata
@@ -307,7 +307,7 @@ sequenceDiagram
     FE->>Stripe: stripe.confirmPayment
     Stripe-->>FE: Payment result
     FE-->>Donor: Confirmation screen
-    Stripe->>API: POST /v1/stripe/webhook — payment_intent.succeeded
+    Stripe->>API: POST /crowdfunding/stripe/webhook — payment_intent.succeeded
     API->>API: Validate Stripe-Signature header
     API->>DB: UPDATE donations SET status = succeeded
 ```
@@ -327,7 +327,7 @@ sequenceDiagram
     participant Stripe
 
     Donor->>FE: Choose monthly/annual, click Subscribe
-    FE->>API: POST /v1/initiatives/{id}/subscriptions
+    FE->>API: POST /crowdfunding/me/initiatives/{id}/subscriptions
     API->>Stripe: Create Customer if new, then create Subscription
     Stripe-->>API: subscription_id + payment client_secret
     API->>DB: INSERT INTO subscriptions, status = active
@@ -336,7 +336,7 @@ sequenceDiagram
     Stripe-->>FE: Confirmed
 
     Note over Stripe,API: Later — donor cancels or card expires
-    Stripe->>API: POST /v1/stripe/webhook — customer.subscription.deleted
+    Stripe->>API: POST /crowdfunding/stripe/webhook — customer.subscription.deleted
     API->>API: Validate Stripe-Signature header
     API->>DB: UPDATE subscriptions SET status = cancelled
 ```
@@ -376,7 +376,7 @@ sequenceDiagram
     participant Ledger as Ledger Service
 
     User->>FE: Open "Donations" tab
-    FE->>API: GET /v1/initiatives/{id}/transactions?type=donations
+    FE->>API: GET /crowdfunding/initiatives/{id}/transactions?type=donations
     API->>DB: SELECT id FROM initiatives WHERE slug = ? AND status = 'published'
     DB-->>API: initiative UUID
     API->>Ledger: GET /api/transactions — projectID, type=donation, page, size
@@ -435,10 +435,10 @@ Self Serve calls only `access:me` user endpoints:
 
 | Endpoint | Purpose |
 |---|---|
-| `PATCH /v1/me` | Profile sync on first login |
-| `GET /v1/me/donations` | "My Donations" widget |
-| `GET /v1/me/initiatives` | "My Initiatives" widget |
-| `GET /v1/me/subscriptions` | Active subscriptions |
+| `PATCH /crowdfunding/me` | Profile sync on first login |
+| `GET /crowdfunding/me/donations` | "My Donations" widget |
+| `GET /crowdfunding/me/initiatives` | "My Initiatives" widget |
+| `GET /crowdfunding/me/subscriptions` | Active subscriptions |
 
 ---
 

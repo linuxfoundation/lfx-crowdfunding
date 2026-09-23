@@ -8,7 +8,7 @@ import type { UserResponse } from '../types/user.types';
 // Authentication is enforced by server/middleware/require-auth.ts which guards
 // PATCH /api/me and rejects requests missing auth_oidc_token.
 export default defineEventHandler((event): Promise<UserResponse> => {
-  return useBackendFetch<UserResponse>(event, '/v1/me', {
+  return useBackendFetch<UserResponse>(event, '/crowdfunding/me', {
     method: 'PATCH',
   });
 });

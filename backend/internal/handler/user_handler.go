@@ -13,7 +13,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
 )
 
-// UserHandler holds Chi handlers for the /v1/me resource.
+// UserHandler holds Chi handlers for the /crowdfunding/me resource.
 type UserHandler struct {
 	userRepo        domain.UserRepository
 	userInfoFetcher auth.UserInfoFetcher
@@ -24,7 +24,7 @@ func NewUserHandler(userRepo domain.UserRepository, fetcher auth.UserInfoFetcher
 	return &UserHandler{userRepo: userRepo, userInfoFetcher: fetcher}
 }
 
-// SyncProfile handles PATCH /v1/me.
+// SyncProfile handles PATCH /crowdfunding/me.
 //
 // Called immediately after a successful login to persist the user's full
 // profile in the users table. Profile data (name, email, picture) is fetched

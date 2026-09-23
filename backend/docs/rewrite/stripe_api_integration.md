@@ -30,14 +30,14 @@ The service uses **stripe-go v82** with the following high-level model:
 
 | Route group | Auth mechanism |
 |-------------|----------------|
-| `POST /v1/stripe/webhook` | **Stripe-Signature HMAC** (no JWT) |
+| `POST /crowdfunding/stripe/webhook` | **Stripe-Signature HMAC** (no JWT) |
 | All other Stripe endpoints | **JWT Bearer token** (Auth0 / JWKS) |
 
 ---
 
 ## Endpoints
 
-### 1. `POST /v1/me/setup-intent`
+### 1. `POST /crowdfunding/me/setup-intent`
 
 **Purpose:** Begin the card-saving flow. Returns a `client_secret` that the
 frontend passes to `stripe.confirmSetupIntent()` (Stripe.js) to securely
@@ -59,7 +59,7 @@ the account.
 1. Call this endpoint to get `client_secret`.
 2. Call `stripe.confirmSetupIntent(client_secret, { payment_method: { card: cardElement } })`.
 3. On success Stripe returns a `pm_xxx` payment method ID.
-4. POST that ID to `POST /v1/me/payment-method` (next endpoint).
+4. POST that ID to `POST /crowdfunding/me/payment-method` (next endpoint).
 
 **Backend behaviour:**
 - Looks up the user's Stripe Customer ID from the `users` table.
@@ -69,7 +69,7 @@ the account.
 
 ---
 
-### 2. `POST /v1/me/payment-method`
+### 2. `POST /crowdfunding/me/payment-method`
 
 **Purpose:** Attach a Stripe-confirmed payment method to the user's account and
 save it as their default card for future charges.
@@ -102,7 +102,7 @@ save it as their default card for future charges.
 
 ---
 
-### 3. `GET /v1/me/payment-account`
+### 3. `GET /crowdfunding/me/payment-account`
 
 **Purpose:** Retrieve the user's currently saved card details for display in
 account settings.
@@ -129,7 +129,7 @@ account settings.
 
 ---
 
-### 4. `DELETE /v1/me/payment-method`
+### 4. `DELETE /crowdfunding/me/payment-method`
 
 **Purpose:** Remove the user's saved card from both Stripe and the local DB.
 
@@ -146,7 +146,7 @@ account settings.
 
 ---
 
-### 5. `POST /v1/initiatives/{id}/donations`
+### 5. `POST /crowdfunding/me/initiatives/{id}/donations`
 
 **Purpose:** Make a one-time donation to a crowdfunding initiative.
 
@@ -210,7 +210,7 @@ response is sent.
 
 ---
 
-### 6. `POST /v1/initiatives/{id}/subscriptions`
+### 6. `POST /crowdfunding/me/initiatives/{id}/subscriptions`
 
 **Purpose:** Start a recurring donation to a crowdfunding initiative.
 
@@ -276,7 +276,7 @@ webhook. `client_secret` is **never stored**.
 
 ---
 
-### 7. `DELETE /v1/subscriptions/{id}`
+### 7. `DELETE /crowdfunding/me/subscriptions/{id}`
 
 **Purpose:** Cancel a recurring donation subscription.
 
@@ -293,7 +293,7 @@ webhook. `client_secret` is **never stored**.
 
 ---
 
-## Webhook — `POST /v1/stripe/webhook`
+## Webhook — `POST /crowdfunding/stripe/webhook`
 
 **Auth:** No JWT. Every delivery is validated via `Stripe-Signature` HMAC
 before any processing occurs (OWASP requirement). Requests missing the header
@@ -319,7 +319,7 @@ affect the DB.
 
 Register the webhook endpoint at:
 ```
-https://<your-domain>/v1/stripe/webhook
+https://<your-domain>/crowdfunding/stripe/webhook
 ```
 
 Enable these event types:
@@ -408,25 +408,25 @@ export const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_K
 
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| `POST` | `/v1/me/setup-intent` | JWT | Get a `client_secret` to save a card |
-| `POST` | `/v1/me/payment-method` | JWT | Record the card after Stripe confirms it |
-| `GET`  | `/v1/me/payment-account` | JWT | Fetch saved card details |
-| `DELETE` | `/v1/me/payment-method` | JWT | Remove saved card |
-| `POST` | `/v1/initiatives/{id}/donations` | JWT | Create a one-time donation |
-| `POST` | `/v1/initiatives/{id}/subscriptions` | JWT | Create a recurring subscription |
-| `DELETE` | `/v1/subscriptions/{id}` | JWT | Cancel a subscription |
+| `POST` | `/crowdfunding/me/setup-intent` | JWT | Get a `client_secret` to save a card |
+| `POST` | `/crowdfunding/me/payment-method` | JWT | Record the card after Stripe confirms it |
+| `GET`  | `/crowdfunding/me/payment-account` | JWT | Fetch saved card details |
+| `DELETE` | `/crowdfunding/me/payment-method` | JWT | Remove saved card |
+| `POST` | `/crowdfunding/me/initiatives/{id}/donations` | JWT | Create a one-time donation |
+| `POST` | `/crowdfunding/me/initiatives/{id}/subscriptions` | JWT | Create a recurring subscription |
+| `DELETE` | `/crowdfunding/me/subscriptions/{id}` | JWT | Cancel a subscription |
 
 ---
 
 ### Flow 1 — Save a Card (SetupIntent)
 
 Run this flow **before** any donation or subscription if the user has no card
-on file. `GET /v1/me/payment-account` returns `404` when no card is saved.
+on file. `GET /crowdfunding/me/payment-account` returns `404` when no card is saved.
 
 ```
 Frontend                         Backend (API)                    Stripe
    │                                   │                             │
-   │── POST /v1/me/setup-intent ───────▶                             │
+   │── POST /crowdfunding/me/setup-intent ───────▶                             │
    │                                   │── Customers.New ───────────▶│
    │                                   │◀──────────────── cus_xxx ───│
    │                                   │── SetupIntents.New ─────────▶│
@@ -447,7 +447,7 @@ Frontend                         Backend (API)                    Stripe
    │◀── setupIntent.payment_method│              │ Stripe opens       │
    │    (pm_xxx, in-page result)  │              │ 3DS modal/redirect │
    │                              │              │                    │
-   │── POST /v1/me/payment-method │       User completes challenge   │
+   │── POST /crowdfunding/me/payment-method │       User completes challenge   │
    │   { payment_method_id: pm_xxx}       │                          │
    │◀── { last_four, brand, ... } │    Stripe redirects to           │
    │                              │    /payment/complete             │
@@ -458,14 +458,14 @@ Frontend                         Backend (API)                    Stripe
    │                              │     stripe.retrieveSetupIntent() │
    │                              │     → setupIntent.payment_method │
    │                              │              │                    │
-   │                              │── POST /v1/me/payment-method ───▶│
+   │                              │── POST /crowdfunding/me/payment-method ───▶│
    │                              │◀── { last_four, brand, ... } ───│
 ```
 
 #### Step 1 — Request a SetupIntent
 
 ```ts
-const { client_secret } = await api.post('/v1/me/setup-intent')
+const { client_secret } = await api.post('/crowdfunding/me/setup-intent')
 // → { "client_secret": "seti_xxx_secret_yyy" }
 ```
 
@@ -493,7 +493,7 @@ if (error) {
   return
 }
 // No redirect — pm_xxx available immediately
-await api.post('/v1/me/payment-method', {
+await api.post('/crowdfunding/me/payment-method', {
   payment_method_id: setupIntent.payment_method,
 })
 ```
@@ -526,7 +526,7 @@ redirect: 'if_required' result
 ```ts
 let card
 try {
-  card = await api.get('/v1/me/payment-account')
+  card = await api.get('/crowdfunding/me/payment-account')
 } catch (e) {
   if (e.status === 404) {
     router.push('/account/payment/add') // → run Flow 1 first
@@ -541,7 +541,7 @@ try {
 ```
 Frontend                         Backend (API)                  Stripe / Webhook
    │                                   │                              │
-   │── POST /v1/initiatives/:id/donations ──────────────────────────▶│
+   │── POST /crowdfunding/me/initiatives/:id/donations ──────────────────────────▶│
    │   { amount_in_cents: 5000,        │   PaymentIntents.New         │
    │     stripe_payment_method_id:     │   (Confirm=true,             │
    │     pm_xxx }                      │    3DS=automatic)            │
@@ -572,7 +572,7 @@ Frontend                         Backend (API)                  Stripe / Webhook
    │                      │   Show success ✓         │                │
    │                      │   (webhook still         ▼                │
    │                      │    fires separately) Stripe POSTs to      │
-   │                      │                 /v1/stripe/webhook        │
+   │                      │                 /crowdfunding/stripe/webhook        │
    │                      │                 payment_intent.succeeded  │
    │                      │                      │                    │
    │                      │               backend updates DB          │
@@ -582,7 +582,7 @@ Frontend                         Backend (API)                  Stripe / Webhook
 #### Submit the donation
 
 ```ts
-const donation = await api.post(`/v1/initiatives/${initiativeID}/donations`, {
+const donation = await api.post(`/crowdfunding/me/initiatives/${initiativeID}/donations`, {
   amount_in_cents: 5000,
   stripe_payment_method_id: card.payment_method_id,
 })
@@ -639,7 +639,7 @@ payment_intent.succeeded   payment_intent.payment_failed
 ```
 Frontend                         Backend (API)                  Stripe / Webhook
    │                                   │                              │
-   │── POST /v1/initiatives/:id/subscriptions ──────────────────────▶│
+   │── POST /crowdfunding/me/initiatives/:id/subscriptions ──────────────────────▶│
    │   { amount_in_cents: 1000,        │   Prices.New (fresh price)   │
    │     frequency: "monthly",         │   Subscriptions.New          │
    │     stripe_payment_method_id:     │   (default_incomplete,       │
@@ -674,7 +674,7 @@ Frontend                         Backend (API)                  Stripe / Webhook
    │                      │   Show success ✓        (webhook handles  │
    │                      │                          status update)   │
    │                      │                              │            │
-   │                      │             Stripe POSTs to /v1/stripe/webhook
+   │                      │             Stripe POSTs to /crowdfunding/stripe/webhook
    │                      │             invoice.payment_succeeded     │
    │                      │                   │                       │
    │                      │             backend: subscription → active│
@@ -683,7 +683,7 @@ Frontend                         Backend (API)                  Stripe / Webhook
 #### Submit the subscription
 
 ```ts
-const subscription = await api.post(`/v1/initiatives/${initiativeID}/subscriptions`, {
+const subscription = await api.post(`/crowdfunding/me/initiatives/${initiativeID}/subscriptions`, {
   amount_in_cents: 1000,
   frequency: 'monthly', // 'monthly' | 'yearly' | 'weekly' | 'daily'
   stripe_payment_method_id: card.payment_method_id,
@@ -773,7 +773,7 @@ Read URL params
             │                   │
      YES ───▼              YES ─▼
             │               Show success
-  POST /v1/me/payment-method  (DB updated by webhook)
+  POST /crowdfunding/me/payment-method  (DB updated by webhook)
   { payment_method_id }
   → redirect to /account
             │
@@ -791,7 +791,7 @@ if (params.get('setup_intent')) {
     params.get('setup_intent_client_secret')!
   )
   if (setupIntent?.status === 'succeeded' && setupIntent.payment_method) {
-    await api.post('/v1/me/payment-method', {
+    await api.post('/crowdfunding/me/payment-method', {
       payment_method_id: setupIntent.payment_method,
     })
     router.replace('/account/payment?saved=true')
@@ -815,14 +815,14 @@ if (params.get('setup_intent')) {
 
 ```ts
 // View
-const card = await api.get('/v1/me/payment-account')
+const card = await api.get('/crowdfunding/me/payment-account')
 // { payment_method_id, last_four, brand, expiry_month, expiry_year }
 // 404 → no card saved, show "Add a card" CTA
 
 // Remove
-await api.delete('/v1/me/payment-method')
+await api.delete('/crowdfunding/me/payment-method')
 // 204 No Content
-// After deletion GET /v1/me/payment-account returns 404 again
+// After deletion GET /crowdfunding/me/payment-account returns 404 again
 ```
 
 ---
@@ -830,7 +830,7 @@ await api.delete('/v1/me/payment-method')
 ### Flow 6 — Cancel a Subscription
 
 ```ts
-await api.delete(`/v1/subscriptions/${subscriptionID}`)
+await api.delete(`/crowdfunding/me/subscriptions/${subscriptionID}`)
 // 204 No Content — cancelled immediately in Stripe and DB
 ```
 
@@ -915,5 +915,5 @@ Use any future expiry date (e.g. `12/34`), any 3-digit CVC, and any postal code.
    response. Show optimistic UI, but reconcile from a fresh `GET` if needed.
 4. **`stripe_payment_method_id` is required** in both donation and subscription
    requests — save the card via the setup-intent flow first.
-5. **`GET /v1/me/payment-account` returning 404 means no card** — always check
+5. **`GET /crowdfunding/me/payment-account` returning 404 means no card** — always check
    this before rendering a payment form and redirect to the card-saving flow.

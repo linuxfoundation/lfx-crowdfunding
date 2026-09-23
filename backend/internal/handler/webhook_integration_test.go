@@ -175,7 +175,7 @@ func postSignedWebhook(t *testing.T, h *handler.WebhookHandler, payload []byte, 
 	// The webhook will be processed based on the payload content.
 	sigHeader := "t=1000000000,v1=test_sig"
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/stripe/webhook", bytes.NewBuffer(payload))
+	req := httptest.NewRequest(http.MethodPost, "/crowdfunding/stripe/webhook", bytes.NewBuffer(payload))
 	req.Header.Set("Stripe-Signature", sigHeader)
 	rr := httptest.NewRecorder()
 	h.Handle(rr, req)

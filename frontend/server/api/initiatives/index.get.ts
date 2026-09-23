@@ -21,7 +21,7 @@ export default defineEventHandler(async (event): Promise<InitiativesResponse> =>
   params.set('limit', String(pageSizeNum));
   params.set('offset', String((pageNum - 1) * pageSizeNum));
 
-  const res = await $fetch<BackendResponse>(`${apiBaseUrl}/v1/initiatives?${params}`);
+  const res = await $fetch<BackendResponse>(`${apiBaseUrl}/crowdfunding/initiatives?${params}`);
 
   return {
     data: (res.data ?? []).map(mapToInitiativeBase),

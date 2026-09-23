@@ -15,7 +15,7 @@ var (
 	ErrUserNotFound          = errors.New("user not found")
 	ErrPaymentMethodNotFound = errors.New("payment method not found")
 	// ErrProfileNotSynced signals that the user row exists but is missing required
-	// profile data (e.g. email). The caller must PATCH /v1/me to sync their profile.
+	// profile data (e.g. email). The caller must PATCH /crowdfunding/me to sync their profile.
 	// Maps to 400 Bad Request so the hint message is surfaced to the API client.
 	ErrProfileNotSynced    = errors.New("profile not synced")
 	ErrInvalidInput        = errors.New("invalid input")

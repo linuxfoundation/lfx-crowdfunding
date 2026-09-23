@@ -34,8 +34,10 @@ run: build
 	./bin/$(BINARY)
 
 ## test: run all unit tests
+# -p 1 serializes packages: the handler and db packages share one
+# Postgres and clobber each other's fixtures when run concurrently.
 test:
-	go test -race -count=1 ./...
+	go test -race -count=1 -p 1 ./...
 
 ## fmt: format all Go source files
 fmt:

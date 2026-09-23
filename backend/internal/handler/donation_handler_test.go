@@ -221,27 +221,27 @@ func newDonationHandler(
 	return NewDonationHandler(svc)
 }
 
-// donationListReq builds a GET request to /v1/initiatives/{id}/donations with optional principal.
+// donationListReq builds a GET request to /crowdfunding/initiatives/{id}/donations with optional principal.
 func donationListReq(initiativeID string, principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/donations", nil)
+	r := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/donations", nil)
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
 	}
 	return r
 }
 
-// donationListForUserReq builds a GET request to /v1/me/donations with optional principal.
+// donationListForUserReq builds a GET request to /crowdfunding/me/donations with optional principal.
 func donationListForUserReq(principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/v1/me/donations", nil)
+	r := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/donations", nil)
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
 	}
 	return r
 }
 
-// donationCreateReq builds a POST request to /v1/initiatives/{id}/donations.
+// donationCreateReq builds a POST request to /crowdfunding/initiatives/{id}/donations.
 func donationCreateReq(initiativeID string, idempotencyKey string, body string, principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/donations", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives/"+initiativeID+"/donations", strings.NewReader(body))
 	r.Header.Set("Idempotency-Key", idempotencyKey)
 	r.Header.Set("Content-Type", "application/json")
 	if principal != nil {
@@ -379,7 +379,7 @@ func TestDonationCreate_MissingIdempotencyKey_Returns400(t *testing.T) {
 	donRepo := &donationRepo{}
 	h := newDonationHandler(donRepo, &donationInitiativeRepo{}, &donationUserRepo{}, &donationStripeClient{})
 
-	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/donations",
+	r := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives/"+initiativeID+"/donations",
 		strings.NewReader(`{"amount_cents":1000,"stripe_payment_method_id":"pm_xxx"}`))
 	r.Header.Set("Content-Type", "application/json")
 	// Deliberately omit Idempotency-Key header

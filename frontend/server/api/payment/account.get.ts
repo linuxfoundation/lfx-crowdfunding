@@ -7,7 +7,7 @@ import type { CardDetailsWire } from '../../types/payment.types';
 import type { CardDetails } from '#shared/types/payment.types';
 
 export default defineEventHandler(async (event): Promise<CardDetails> => {
-  const raw = await useBackendFetch<CardDetailsWire>(event, '/v1/me/payment-account', {
+  const raw = await useBackendFetch<CardDetailsWire>(event, '/crowdfunding/me/payment-account', {
     method: 'GET',
   });
   return {

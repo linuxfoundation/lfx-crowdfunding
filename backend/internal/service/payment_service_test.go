@@ -334,7 +334,7 @@ func TestPaymentService_DeletePaymentMethod_StripeError(t *testing.T) {
 func TestPaymentService_EnsureCustomer_UserNotFound_DescriptiveError(t *testing.T) {
 	// When the user has not yet synced their profile, GetByUsername returns
 	// ErrUserNotFound. The service converts this to ErrProfileNotSynced with
-	// a PATCH /v1/me hint so the API response is actionable (maps to 400).
+	// a PATCH /crowdfunding/me hint so the API response is actionable (maps to 400).
 	svc := NewPaymentService(
 		&testUserRepo{
 			onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
@@ -349,8 +349,8 @@ func TestPaymentService_EnsureCustomer_UserNotFound_DescriptiveError(t *testing.
 	if !errors.Is(err, domain.ErrProfileNotSynced) {
 		t.Fatalf("expected ErrProfileNotSynced, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "PATCH /v1/me") {
-		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
+	if !strings.Contains(err.Error(), "PATCH /crowdfunding/me") {
+		t.Errorf("error should mention PATCH /crowdfunding/me, got: %v", err)
 	}
 }
 
@@ -377,8 +377,8 @@ func TestPaymentService_EnsureCustomer_EmptyEmail_RequiresProfileSync(t *testing
 	if !errors.Is(err, domain.ErrProfileNotSynced) {
 		t.Fatalf("expected ErrProfileNotSynced for empty email, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "PATCH /v1/me") {
-		t.Errorf("error should mention PATCH /v1/me, got: %v", err)
+	if !strings.Contains(err.Error(), "PATCH /crowdfunding/me") {
+		t.Errorf("error should mention PATCH /crowdfunding/me, got: %v", err)
 	}
 	if customerCreated {
 		t.Error("CreateCustomer must not be called when user email is empty")

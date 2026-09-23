@@ -96,12 +96,12 @@ func (r *stubRepoForGetForUser) UpdateStripeProductID(_ context.Context, _, _ st
 // chi.URLParam("id") resolves the slug from the path.
 func getForUserRouter(h *InitiativeHandler) chi.Router {
 	r := chi.NewRouter()
-	r.Get("/v1/me/initiatives/{id}", h.GetForUser)
+	r.Get("/crowdfunding/me/initiatives/{id}", h.GetForUser)
 	return r
 }
 
 func getForUserReq(slug string, principal *models.Principal) *http.Request {
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+slug, nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+slug, nil)
 	if principal != nil {
 		req = req.WithContext(auth.ContextWithPrincipal(req.Context(), principal))
 	}
@@ -179,12 +179,12 @@ func TestGetForUser_NotFoundReturns404(t *testing.T) {
 // getForUserTxnRouter mounts the owner transactions route on a fresh Chi router.
 func getForUserTxnRouter(h *InitiativeHandler) chi.Router {
 	r := chi.NewRouter()
-	r.Get("/v1/me/initiatives/{id}/transactions", h.GetTransactionsForUser)
+	r.Get("/crowdfunding/me/initiatives/{id}/transactions", h.GetTransactionsForUser)
 	return r
 }
 
 func getForUserTxnReq(slug string, principal *models.Principal) *http.Request {
-	req := httptest.NewRequest(http.MethodGet, "/v1/me/initiatives/"+slug+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+slug+"/transactions", nil)
 	if principal != nil {
 		req = req.WithContext(auth.ContextWithPrincipal(req.Context(), principal))
 	}

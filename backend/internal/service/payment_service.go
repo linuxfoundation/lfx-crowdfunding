@@ -37,7 +37,7 @@ func (s *PaymentService) ensureCustomer(ctx context.Context, username string) (u
 	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
-			return "", "", fmt.Errorf("%w: no profile found — call PATCH /v1/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
+			return "", "", fmt.Errorf("%w: no profile found — call PATCH /crowdfunding/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
 		}
 		return "", "", err
 	}
@@ -47,7 +47,7 @@ func (s *PaymentService) ensureCustomer(ctx context.Context, username string) (u
 	// Guard against legacy/migrated rows that have no email yet.
 	// Stripe requires a non-empty email; direct the user to sync their profile.
 	if user.Email == "" {
-		return "", "", fmt.Errorf("%w: email not set — call PATCH /v1/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
+		return "", "", fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
 	}
 	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
 	if err != nil {

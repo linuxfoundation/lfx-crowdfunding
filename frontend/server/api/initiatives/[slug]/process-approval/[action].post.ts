@@ -21,7 +21,7 @@ export default defineEventHandler(async (event): Promise<ApprovalResult> => {
 
   const initiative = await useBackendFetch<BackendInitiative>(
     event,
-    `/v1/initiatives/${slug}`,
+    `/crowdfunding/initiatives/${slug}`,
   ).catch((err) => {
     const status = err?.statusCode ?? err?.status;
     if (status === 404)
@@ -32,7 +32,7 @@ export default defineEventHandler(async (event): Promise<ApprovalResult> => {
   // process-approval is not under /me — the caller is an approver, not the resource owner
   const updated = await useBackendFetch<BackendInitiative>(
     event,
-    `/v1/initiatives/${initiative.id}/process-approval/${action}`,
+    `/crowdfunding/initiatives/${initiative.id}/process-approval/${action}`,
     { method: 'POST' },
   );
   return {

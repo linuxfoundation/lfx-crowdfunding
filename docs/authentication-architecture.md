@@ -19,7 +19,7 @@ These rules, set at the architecture review, constrain every decision in this do
 1. **Two scopes, one resource server.** `access:me` for user-issued tokens; `access:manage` for
    M2M tokens. Both validate against the single `lfx_crowdfunding_api` resource server.
 2. **A route serves exactly one scope — never both.** If an operation is needed by both a user and
-   a machine, it is split into two distinct routes (one under `/v1/me/*`, one under `/v1/internal/*`).
+   a machine, it is split into two distinct routes (one under `/crowdfunding/me/*`, one under `/crowdfunding/internal/*`).
    No single endpoint accepts both `access:me` and `access:manage`.
 3. **User-facing routes carry identity in the token.** No identity header. The acting user is the
    **custom** `username` claim (`https://sso.linuxfoundation.org/claims/username`, added via an
@@ -71,7 +71,7 @@ graph TD
 
     Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF API audience\naccess:manage scope"| Auth0
     Auth0 -->|"M2M access token\n(access:manage scope, cached ~24h)"| Reimburse
-    Reimburse -->|"Bearer M2M token\nGET /v1/initiatives/{slug}/owner-info\n(access:manage scope)"| CFAPI
+    Reimburse -->|"Bearer M2M token\nGET /crowdfunding/initiatives/{slug}/owner-info\n(access:manage scope)"| CFAPI
 
     Auth0 -->|"JWKS (RS256)"| CFAPI
 ```
@@ -97,8 +97,8 @@ The exact value Auth0 issues and the API validates is the `JWT_AUDIENCE` env var
 
 | Scope | Issued to | Route class | Identity source |
 |---|---|---|---|
-| `access:me` | Users (via interactive login) | `/v1/me/*` — everything a user does on their own data (initiatives, donations, subscriptions, payment methods) | `https://sso.linuxfoundation.org/claims/username` JWT claim |
-| `access:manage` | M2M clients (client_credentials) | M2M endpoints (e.g. `GET /v1/initiatives/{slug}/owner-info`) — machine-to-machine, no user context (Reimbursement Service) | `sub` claim (Auth0 M2M client subject; no user identity) |
+| `access:me` | Users (via interactive login) | `/crowdfunding/me/*` — everything a user does on their own data (initiatives, donations, subscriptions, payment methods) | `https://sso.linuxfoundation.org/claims/username` JWT claim |
+| `access:manage` | M2M clients (client_credentials) | M2M endpoints (e.g. `GET /crowdfunding/initiatives/{slug}/owner-info`) — machine-to-machine, no user context (Reimbursement Service) | `sub` claim (Auth0 M2M client subject; no user identity) |
 
 The scope itself is the access control gate; no client ID allowlist is needed.
 
@@ -206,8 +206,8 @@ a `/crowdfunding/*` page; the resulting token is cached in the server session. T
 > platform team, lfx-self-serve PR #901). No auth0-terraform client grant is required — Auth0's
 > `allow_all` policy covers `authorization_code` flows without an explicit grant.
 
-All SS→CF calls are me-style endpoints: `/v1/me/donations`, `/v1/me/subscriptions`,
-`/v1/me/payment-account`, etc. Impersonation is handled entirely on the Self Serve side — CF
+All SS→CF calls are me-style endpoints: `/crowdfunding/me/donations`, `/crowdfunding/me/subscriptions`,
+`/crowdfunding/me/payment-account`, etc. Impersonation is handled entirely on the Self Serve side — CF
 always sees a normal `access:me` user token.
 
 ```mermaid
@@ -231,7 +231,7 @@ sequenceDiagram
 
     Note over User,SSBFF: Subsequent XHRs — CF token already in session
     User->>SSBFF: XHR /api/crowdfunding/... + OIDC session cookie
-    SSBFF->>API: GET /v1/me/…<br/>Authorization: Bearer {CF-audience access token}
+    SSBFF->>API: GET /crowdfunding/me/…<br/>Authorization: Bearer {CF-audience access token}
     API->>Auth0: fetch JWKS (cached)
     API->>API: validate JWT: RS256 · issuer · audience · expiry
     API->>API: check access:me scope present
@@ -261,7 +261,7 @@ with the `access:manage` scope, and calls a dedicated M2M endpoint on the CF API
 ### 3.1 Implemented Endpoint
 
 ```
-GET /v1/initiatives/{slug}/owner-info
+GET /crowdfunding/initiatives/{slug}/owner-info
   Authorization: Bearer {M2M token, access:manage}
 
   200 →
@@ -296,7 +296,7 @@ sequenceDiagram
     participant API as CF Go API
     participant Auth0
 
-    RS->>API: GET /v1/initiatives/{slug}/owner-info<br/>Authorization: Bearer {M2M token}
+    RS->>API: GET /crowdfunding/initiatives/{slug}/owner-info<br/>Authorization: Bearer {M2M token}
     API->>Auth0: fetch JWKS (cached)
     API->>API: validate JWT: RS256 · issuer · audience · expiry
     API->>API: check access:manage scope present → proceed
@@ -310,7 +310,7 @@ sequenceDiagram
 
 CF needs the user's email, given/family name, and avatar (e.g. for donation display, sponsor
 avatars, Stripe). These profile fields are **not** placed on the access token — only the username
-is. CF fetches them from **Auth0 `/userinfo`** on **login sync** (the `PATCH /v1/me` call at
+is. CF fetches them from **Auth0 `/userinfo`** on **login sync** (the `PATCH /crowdfunding/me` call at
 sign-in) and persists them to the `users` table. CF reads profile data from the `users` table
 thereafter, so behavior is deterministic: a user who never completed sync has no row, and
 user-scoped writes fail cleanly.
@@ -328,9 +328,9 @@ and scope determine what happens next:
 
 ```mermaid
 flowchart TD
-    A[Request arrives] --> B{"public route?<br/>GET /v1/statistics*<br/>GET /v1/initiatives<br/>webhook / healthz"}
+    A[Request arrives] --> B{"public route?<br/>GET /crowdfunding/statistics*<br/>GET /crowdfunding/initiatives<br/>webhook / healthz"}
     B -- yes --> PUB["handle — no auth"]
-    B -- no --> C{"optional auth?<br/>GET /v1/initiatives/{id}"}
+    B -- no --> C{"optional auth?<br/>GET /crowdfunding/initiatives/{id}"}
     C -- "yes, no token" --> OPT["handle — no principal"]
     C -- "yes, valid token" --> D
     C -- no --> D
@@ -341,14 +341,14 @@ flowchart TD
     F -- "invalid or missing" --> G[401]
     F -- valid --> H{"route class"}
 
-    H -- "/v1/me/*" --> I{"access:me scope present?"}
+    H -- "/crowdfunding/me/*" --> I{"access:me scope present?"}
     I -- no --> J[403]
     I -- "yes, caller-scoped<br/>(profile, collections, create,<br/>own donations/subscriptions)" --> K["handle — keyed to Principal.Username"]
-    I -- "yes, owns-resource op<br/>(GET/PATCH/DELETE<br/>/v1/me/initiatives/{id})" --> L{"owner check:<br/>initiative.owner_id ==<br/>users.id for Principal.Username?"}
+    I -- "yes, owns-resource op<br/>(GET/PATCH/DELETE<br/>/crowdfunding/me/initiatives/{id})" --> L{"owner check:<br/>initiative.owner_id ==<br/>users.id for Principal.Username?"}
     L -- no --> M[403]
     L -- yes --> N[handle]
 
-    H -- "M2M route\n(/v1/initiatives/{slug}/owner-info)" --> O{"access:manage scope present?"}
+    H -- "M2M route\n(/crowdfunding/initiatives/{slug}/owner-info)" --> O{"access:manage scope present?"}
     O -- no --> P[403]
     O -- yes --> Q["handle — no owner check<br/>(no user context)"]
 ```
@@ -357,7 +357,7 @@ flowchart TD
 
 ## Route Authentication Tiers
 
-User-scoped operations live under `/v1/me/*` and machine operations are M2M-scoped endpoints, so each
+User-scoped operations live under `/crowdfunding/me/*` and machine operations are M2M-scoped endpoints, so each
 route belongs to exactly one scope (Design Rule 2).
 
 The two `access:me` rows below are the **same scope** — they differ only in whether an additional
@@ -366,12 +366,12 @@ owner check runs after the scope is validated.
 | Tier | Routes | Auth mechanism |
 |---|---|---|
 | **No auth** | `GET /livez`, `/healthz`, `/readyz` | None |
-| **No auth** | `POST /v1/stripe/webhook` | Stripe HMAC signature (separate from JWT) |
-| **No auth** | `GET /v1/statistics*`, `GET /v1/initiatives`, `GET /v1/initiatives/{id}/transactions` | None — fully public data |
-| **Optional auth** | `GET /v1/initiatives/{id}` | `OptionalMiddleware` — attaches Principal if a valid Bearer is present; never rejects. Lets approvers view unpublished initiatives. |
-| **`access:me`** (caller-scoped) | `PATCH /v1/me` (profile sync), `GET /v1/me/initiatives` (caller's own), `GET /v1/me/donations`, `GET /v1/me/subscriptions`, `GET /v1/me/payment-account`, `POST /v1/me/setup-intent`, `POST /v1/me/payment-method`, `DELETE /v1/me/payment-method`, `POST /v1/me/initiatives` (create — owner is always the caller), `POST /v1/me/initiatives/{id}/donations`, `POST /v1/me/initiatives/{id}/subscriptions`, `GET /v1/me/initiatives/{id}/donations`, `GET /v1/me/initiatives/{id}/subscriptions`, `POST /v1/me/presigned-url` | `Middleware` — 401 on missing/invalid token; 403 if `access:me` absent. The operation is keyed to the caller's `username` (collections filtered to the caller; donations/subscriptions recorded under the caller). No initiative-ownership check. |
-| **`access:me` + owner check** | `GET /v1/me/initiatives/{id}`, `PATCH /v1/me/initiatives/{id}`, `DELETE /v1/me/initiatives/{id}`, `DELETE /v1/me/subscriptions/{id}` | As above, plus a DB lookup that the caller owns the resource (`initiative.owner_id == users.id` for the token's `username`). 403 if not owned. |
-| **`access:manage`** | `GET /v1/initiatives/{slug}/owner-info` (Reimbursement Service: initiative owner email + name) | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
+| **No auth** | `POST /crowdfunding/stripe/webhook` | Stripe HMAC signature (separate from JWT) |
+| **No auth** | `GET /crowdfunding/statistics*`, `GET /crowdfunding/initiatives`, `GET /crowdfunding/initiatives/{id}/transactions` | None — fully public data |
+| **Optional auth** | `GET /crowdfunding/initiatives/{id}` | `OptionalMiddleware` — attaches Principal if a valid Bearer is present; never rejects. Lets approvers view unpublished initiatives. |
+| **`access:me`** (caller-scoped) | `PATCH /crowdfunding/me` (profile sync), `GET /crowdfunding/me/initiatives` (caller's own), `GET /crowdfunding/me/donations`, `GET /crowdfunding/me/subscriptions`, `GET /crowdfunding/me/payment-account`, `POST /crowdfunding/me/setup-intent`, `POST /crowdfunding/me/payment-method`, `DELETE /crowdfunding/me/payment-method`, `POST /crowdfunding/me/initiatives` (create — owner is always the caller), `POST /crowdfunding/me/initiatives/{id}/donations`, `POST /crowdfunding/me/initiatives/{id}/subscriptions`, `GET /crowdfunding/me/initiatives/{id}/donations`, `GET /crowdfunding/me/initiatives/{id}/subscriptions`, `POST /crowdfunding/me/presigned-url` | `Middleware` — 401 on missing/invalid token; 403 if `access:me` absent. The operation is keyed to the caller's `username` (collections filtered to the caller; donations/subscriptions recorded under the caller). No initiative-ownership check. |
+| **`access:me` + owner check** | `GET /crowdfunding/me/initiatives/{id}`, `PATCH /crowdfunding/me/initiatives/{id}`, `DELETE /crowdfunding/me/initiatives/{id}`, `DELETE /crowdfunding/me/subscriptions/{id}` | As above, plus a DB lookup that the caller owns the resource (`initiative.owner_id == users.id` for the token's `username`). 403 if not owned. |
+| **`access:manage`** | `GET /crowdfunding/initiatives/{slug}/owner-info` (Reimbursement Service: initiative owner email + name) | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
 
 > **Approval routes.** Initiative approval (`process-approval`) is gated by the `ALLOWED_APPROVERS`
 > username list at the handler level. Approvers are real users, so this stays under `access:me`;

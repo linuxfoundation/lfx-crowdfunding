@@ -251,27 +251,27 @@ func newSubscriptionHandler(
 	return NewSubscriptionHandler(svc)
 }
 
-// subscriptionListReq builds a GET request to /v1/initiatives/{id}/subscriptions.
+// subscriptionListReq builds a GET request to /crowdfunding/initiatives/{id}/subscriptions.
 func subscriptionListReq(initiativeID string, principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/v1/initiatives/"+initiativeID+"/subscriptions", nil)
+	r := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/subscriptions", nil)
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
 	}
 	return r
 }
 
-// subscriptionListForUserReq builds a GET request to /v1/me/subscriptions.
+// subscriptionListForUserReq builds a GET request to /crowdfunding/me/subscriptions.
 func subscriptionListForUserReq(principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/v1/me/subscriptions", nil)
+	r := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/subscriptions", nil)
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
 	}
 	return r
 }
 
-// subscriptionCreateReq builds a POST request to /v1/initiatives/{id}/subscriptions.
+// subscriptionCreateReq builds a POST request to /crowdfunding/initiatives/{id}/subscriptions.
 func subscriptionCreateReq(initiativeID string, idempotencyKey string, body string, principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/subscriptions",
+	r := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives/"+initiativeID+"/subscriptions",
 		strings.NewReader(body))
 	r.Header.Set("Idempotency-Key", idempotencyKey)
 	r.Header.Set("Content-Type", "application/json")
@@ -281,9 +281,9 @@ func subscriptionCreateReq(initiativeID string, idempotencyKey string, body stri
 	return r
 }
 
-// subscriptionCancelReq builds a DELETE request to /v1/subscriptions/{id}.
+// subscriptionCancelReq builds a DELETE request to /crowdfunding/subscriptions/{id}.
 func subscriptionCancelReq(subscriptionID string, principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodDelete, "/v1/subscriptions/"+subscriptionID, nil)
+	r := httptest.NewRequest(http.MethodDelete, "/crowdfunding/subscriptions/"+subscriptionID, nil)
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
 	}
@@ -369,7 +369,7 @@ func TestSubscriptionCreate_MissingIdempotencyKey_Returns400(t *testing.T) {
 	subRepo := &subscriptionRepo{}
 	h := newSubscriptionHandler(subRepo, &subscriptionInitiativeRepo{}, &subscriptionUserRepo{}, &subscriptionStripeClient{})
 
-	r := httptest.NewRequest(http.MethodPost, "/v1/initiatives/"+initiativeID+"/subscriptions",
+	r := httptest.NewRequest(http.MethodPost, "/crowdfunding/initiatives/"+initiativeID+"/subscriptions",
 		strings.NewReader(`{"amount_cents":1000,"frequency":"month","stripe_payment_method_id":"pm_xxx"}`))
 	r.Header.Set("Content-Type", "application/json")
 	// Deliberately omit Idempotency-Key header
@@ -642,9 +642,9 @@ func TestSubscriptionCancel_Success_Returns204(t *testing.T) {
 
 // ── GetForUser tests ──────────────────────────────────────────────────────────
 
-// subscriptionGetForUserReq builds a GET request to /v1/me/subscriptions/{id}.
+// subscriptionGetForUserReq builds a GET request to /crowdfunding/me/subscriptions/{id}.
 func subscriptionGetForUserReq(subscriptionID string, principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/v1/me/subscriptions/"+subscriptionID, nil)
+	r := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/subscriptions/"+subscriptionID, nil)
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
 	}

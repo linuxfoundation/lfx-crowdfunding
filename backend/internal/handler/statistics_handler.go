@@ -14,7 +14,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
 
-// StatisticsHandler holds Chi handlers for the /v1/statistics resource.
+// StatisticsHandler holds Chi handlers for the /crowdfunding/statistics resource.
 type StatisticsHandler struct {
 	svc *service.StatisticsService
 }
@@ -24,7 +24,7 @@ func NewStatisticsHandler(svc *service.StatisticsService) *StatisticsHandler {
 	return &StatisticsHandler{svc: svc}
 }
 
-// GetPlatform handles GET /v1/statistics
+// GetPlatform handles GET /crowdfunding/statistics
 func (h *StatisticsHandler) GetPlatform(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.svc.GetPlatformStatistics(r.Context())
 	if err != nil {
@@ -34,7 +34,7 @@ func (h *StatisticsHandler) GetPlatform(w http.ResponseWriter, r *http.Request) 
 	cachedJSON(w, r, stats)
 }
 
-// GetPlatformDetails handles GET /v1/statistics/platform
+// GetPlatformDetails handles GET /crowdfunding/statistics/platform
 func (h *StatisticsHandler) GetPlatformDetails(w http.ResponseWriter, r *http.Request) {
 	topLimit := 10
 	if v := r.URL.Query().Get("top_limit"); v != "" {
@@ -56,7 +56,7 @@ func (h *StatisticsHandler) GetPlatformDetails(w http.ResponseWriter, r *http.Re
 	cachedJSON(w, r, details)
 }
 
-// GetPlatformMonthly handles GET /v1/statistics/monthly
+// GetPlatformMonthly handles GET /crowdfunding/statistics/monthly
 func (h *StatisticsHandler) GetPlatformMonthly(w http.ResponseWriter, r *http.Request) {
 	monthly, err := h.svc.GetPlatformMonthly(r.Context())
 	if err != nil {
@@ -66,7 +66,7 @@ func (h *StatisticsHandler) GetPlatformMonthly(w http.ResponseWriter, r *http.Re
 	cachedJSON(w, r, monthly)
 }
 
-// GetInvestingCompanies handles GET /v1/statistics/investing-companies
+// GetInvestingCompanies handles GET /crowdfunding/statistics/investing-companies
 func (h *StatisticsHandler) GetInvestingCompanies(w http.ResponseWriter, r *http.Request) {
 	companies, err := h.svc.GetInvestingCompanies(r.Context())
 	if err != nil {
@@ -76,7 +76,7 @@ func (h *StatisticsHandler) GetInvestingCompanies(w http.ResponseWriter, r *http
 	cachedJSON(w, r, companies)
 }
 
-// GetRecentDonations handles GET /v1/statistics/recent-donations
+// GetRecentDonations handles GET /crowdfunding/statistics/recent-donations
 func (h *StatisticsHandler) GetRecentDonations(w http.ResponseWriter, r *http.Request) {
 	donations, err := h.svc.GetRecentDonations(r.Context())
 	if err != nil {

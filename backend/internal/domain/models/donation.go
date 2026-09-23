@@ -65,7 +65,7 @@ type DonationCreateInput struct {
 }
 
 // DonationSummary is the public-facing projection returned by the initiative
-// donation list (GET /v1/initiatives/{id}/donations). It omits internal
+// donation list (GET /crowdfunding/initiatives/{id}/donations). It omits internal
 // identifiers (user_id, organization_id) and Stripe IDs; donor_name and
 // donor_avatar_url are display-only fields intentionally included.
 type DonationSummary struct {
@@ -82,7 +82,7 @@ type DonationSummary struct {
 
 // OrgDonationRow is a flat projection joining donations, organizations,
 // initiatives, and users. Used exclusively for the org-donors CSV export
-// (GET /v1/me/donations/csv).
+// (GET /crowdfunding/me/donations/csv).
 type OrgDonationRow struct {
 	OrganizationID   string
 	OrganizationName string

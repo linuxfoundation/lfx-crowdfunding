@@ -9,7 +9,7 @@ import type { Organization } from '#shared/types/organization.types';
 export default defineEventHandler(async (event): Promise<Organization[]> => {
   const { data } = await useBackendFetch<{ data: OrganizationResponse[] }>(
     event,
-    '/v1/me/organizations',
+    '/crowdfunding/me/organizations',
   );
   return data.map((o) => ({
     id: o.id,

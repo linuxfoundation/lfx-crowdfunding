@@ -13,7 +13,7 @@ interface CreateOrganizationBody {
 
 export default defineEventHandler(async (event): Promise<Organization> => {
   const body = await readBody<CreateOrganizationBody>(event);
-  const raw = await useBackendFetch<OrganizationResponse>(event, '/v1/me/organizations', {
+  const raw = await useBackendFetch<OrganizationResponse>(event, '/crowdfunding/me/organizations', {
     method: 'POST',
     body,
   });

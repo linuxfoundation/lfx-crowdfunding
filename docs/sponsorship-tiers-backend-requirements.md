@@ -65,7 +65,7 @@ already send this shape:
 - This repo's Nuxt BFF (`frontend/server/api/fundraise/index.post.ts`) was updated
   to match — see §6 for what changed.
 
-### Create / Update request (`POST /v1/me/initiatives`, initiative update)
+### Create / Update request (`POST /crowdfunding/me/initiatives`, initiative update)
 
 ```jsonc
 {
@@ -174,7 +174,7 @@ converted to cents client-side in `useFundraiseSubmit.ts`
 (`buildDonationOptionsPayload()`) and sent as `goalCents`, which the server route
 maps to `goal_amount_cents`. This payload is currently dropped by the backend since
 `sponsorship_tiers`/`donation_mode` aren't yet accepted on `POST
-/v1/me/initiatives` — it will start taking effect once §3–§5 land.
+/crowdfunding/me/initiatives` — it will start taking effect once §3–§5 land.
 
 **Frontend read side — still pending, blocked on this backend work:**
 `frontend/server/services/initiatives.services.ts` still serves

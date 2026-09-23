@@ -24,7 +24,7 @@ export default defineEventHandler(async (event): Promise<void> => {
 
   await useBackendFetch(
     event,
-    `/v1/expense/${encodeURIComponent(action)}/${encodeURIComponent(reportId)}`,
+    `/crowdfunding/expense/${encodeURIComponent(action)}/${encodeURIComponent(reportId)}`,
     {
       method: 'POST',
     },

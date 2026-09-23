@@ -59,7 +59,7 @@ func NewWebhookHandler(
 	}
 }
 
-// Handle handles POST /v1/stripe/webhook
+// Handle handles POST /crowdfunding/stripe/webhook
 // The Stripe-Signature header MUST be validated before any event processing (OWASP).
 func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	const maxBodyBytes = 65536 // 64 KiB

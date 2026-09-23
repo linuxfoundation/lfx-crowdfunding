@@ -226,7 +226,7 @@ func newTestWebhookHandlerFull(sc *wbStripeClient, dr *wbDonationRepo, sr *wbSub
 // postWebhook sends a simulated Stripe webhook POST to the handler.
 func postWebhook(t *testing.T, h *WebhookHandler, sigHeader, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/v1/stripe/webhook", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/crowdfunding/stripe/webhook", bytes.NewBufferString(body))
 	if sigHeader != "" {
 		req.Header.Set("Stripe-Signature", sigHeader)
 	}

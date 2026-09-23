@@ -63,10 +63,10 @@ func (f *testUserInfoFetcher) FetchUserInfo(_ context.Context, _ string) (*auth.
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-// newSyncProfileRequest builds a PATCH /v1/me request with the principal in
+// newSyncProfileRequest builds a PATCH /crowdfunding/me request with the principal in
 // context and a fake Bearer token in the Authorization header.
 func newSyncProfileRequest(principal *models.Principal) *http.Request {
-	r := httptest.NewRequest(http.MethodPatch, "/v1/me", nil)
+	r := httptest.NewRequest(http.MethodPatch, "/crowdfunding/me", nil)
 	r.Header.Set("Authorization", "Bearer fake-test-token")
 	if principal != nil {
 		r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
@@ -291,7 +291,7 @@ func TestSyncProfile_MissingAuthHeader_Returns401(t *testing.T) {
 
 	// Principal is present but the Authorization header was stripped (e.g. by
 	// a proxy that only forwards the principal context, not the raw token).
-	r := httptest.NewRequest(http.MethodPatch, "/v1/me", nil)
+	r := httptest.NewRequest(http.MethodPatch, "/crowdfunding/me", nil)
 	// deliberately omit Authorization header
 	principal := &models.Principal{UserID: "auth0|abc", Username: "jdoe", Scope: auth.ScopeMe}
 	r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
