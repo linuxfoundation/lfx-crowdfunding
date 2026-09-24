@@ -7,6 +7,8 @@ kind: HTTPRoute
 metadata:
   name: {{ include "lfx-v2-initiatives-service.fullname" . }}
   namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
 spec:
   parentRefs:
     - group: gateway.networking.k8s.io
