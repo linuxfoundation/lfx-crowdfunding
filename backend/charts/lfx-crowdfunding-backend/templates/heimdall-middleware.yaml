@@ -7,6 +7,8 @@ kind: Middleware
 metadata:
   name: heimdall
   namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
 spec:
   forwardAuth:
     address: "{{ .Values.heimdall.url }}"

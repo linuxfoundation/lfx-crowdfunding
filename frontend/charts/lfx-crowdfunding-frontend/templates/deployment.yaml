@@ -26,6 +26,7 @@ spec:
       {{- end }}
       labels:
         {{- include "lfx-crowdfunding-frontend.selectorLabels" . | nindent 8 }}
+        app: {{ include "lfx-crowdfunding-frontend.name" . }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
