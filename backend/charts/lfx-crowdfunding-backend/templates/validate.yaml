@@ -17,8 +17,12 @@ No Kubernetes resource is rendered; this file only produces errors.
 {{- fail (printf "\n\nvalues.yaml: app.approversTeamName is required when openfga.enabled is true.\nSet it to the OpenFGA team object process-approval is checked against, e.g.:\n  app:\n    approversTeamName: \"crowdfunding_approvers\"\nLeaving it empty renders an openfga_check rule with an empty object, which fails closed but denies every approval action.") }}
 {{- end }}
 
+{{- if and .Values.heimdall.enabled (not .Values.app.servicesTeamName) }}
+{{- fail (printf "\n\nvalues.yaml: app.servicesTeamName is required when heimdall.enabled is true.\nSet it to the OpenFGA team object the owner-info/published-list M2M routes are checked against, e.g.:\n  app:\n    servicesTeamName: \"crowdfunding-services\"\nLeaving it empty renders an openfga_check rule with an empty object, which fails closed and denies the Reimbursement Service.") }}
+{{- end }}
+
 {{- if and .Values.heimdall.enabled .Values.ingress.enabled }}
-{{- fail (printf "\n\nvalues.yaml: heimdall.enabled and ingress.enabled cannot both be true.\nThe legacy Ingress reaches this backend's Service directly, bypassing every Heimdall RuleSet-only control (published-list/owner-info denies, and process-approval's openfga_check once openfga.enabled).\nDisable the Ingress at the same time you enable Heimdall:\n  ingress:\n    enabled: false\nTracked in #282.") }}
+{{- fail (printf "\n\nvalues.yaml: heimdall.enabled and ingress.enabled cannot both be true.\nThe legacy Ingress reaches this backend's Service directly, bypassing every Heimdall RuleSet-only control (published-list/owner-info's openfga_check, and process-approval's openfga_check once openfga.enabled).\nDisable the Ingress at the same time you enable Heimdall:\n  ingress:\n    enabled: false\nTracked in #282.") }}
 {{- end }}
 
 {{- if and .Values.heimdall.enabled (not .Values.heimdall.add_middleware) }}
