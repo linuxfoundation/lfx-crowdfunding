@@ -18,6 +18,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/db"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -105,16 +106,15 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		logger.Warn("REIMBURSEMENTS_API_URL is not set — Reimbursement Service sync is disabled")
 	}
 
-	// fga-sync NATS connection (LFXV2-2956 M1) — optional; nil when
-	// FGA_NATS_URL is unset. Not yet wired into any request path (M2); it
-	// exists here, alongside fga.NewNATSResolver, so the client can be
-	// dev-verified against fga-sync per the AC.
+	// fga-sync NATS connection — optional; nil when FGA_NATS_URL is unset.
+	// Shared by fga.NewNATSResolver (access-check request/reply, unused on
+	// any request path yet — M2) and fga.NewPublisher (crowdfunding_initiative
+	// tuple emission, lfx-crowdfunding#277) below.
 	//
-	// RetryOnFailedConnect: this integration isn't on any request path yet,
-	// so a transient fga-sync/NATS outage must not fail API startup — Connect
-	// enters background reconnect instead of erroring. Once M2 wires the
-	// resolver in, callers still see failures via CanManage's own timeout and
-	// ErrUpstreamUnavailable wrapping, not through this connection setup.
+	// RetryOnFailedConnect: a transient fga-sync/NATS outage must not fail API
+	// startup — Connect enters background reconnect instead of erroring.
+	// Publisher/resolver callers see failures through their own calls, not
+	// through this connection setup.
 	var fgaConn *nats.Conn
 	if cfg.FGA.NATSURL != "" {
 		fgaConn, err = nats.Connect(cfg.FGA.NATSURL, nats.Timeout(cfg.FGA.Timeout), nats.RetryOnFailedConnect(true))
@@ -127,6 +127,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
+	if fgaConn != nil {
+		initiativeSvc.SetFGAPublisher(fga.NewPublisher(fgaConn))
+	}
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)

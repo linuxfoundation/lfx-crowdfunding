@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -44,7 +46,16 @@ type InitiativeService struct {
 	stripe        clients.StripeClient
 	emailService  domain.EmailService
 	reimbursement clients.ReimbursementClient // nil when RS integration is disabled
+	fgaPublisher  *fga.Publisher              // nil when FGA_NATS_URL is unset
 	logger        *slog.Logger
+}
+
+// SetFGAPublisher wires the fga-sync tuple publisher in after construction
+// (lfx-crowdfunding#277). A setter rather than a constructor param — the
+// constructor is called from many existing tests that don't exercise FGA
+// emission; a nil publisher is valid and every emission call becomes a no-op.
+func (s *InitiativeService) SetFGAPublisher(p *fga.Publisher) {
+	s.fgaPublisher = p
 }
 
 // NewInitiativeService returns an InitiativeService.
@@ -565,6 +576,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		s.logger.WarnContext(ctx, "initiative create: failed to send for-review notification",
 			"initiative_id", created.ID, "error", emailErr)
 	}
+	s.syncFGAAccess(ctx, created, owner.Username)
 	return created, nil
 }
 
@@ -739,6 +751,10 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	// Sync beneficiaries and policy with the Reimbursement Service.
 	// Non-fatal; only takes effect when the initiative is published.
 	s.syncReimbursementPolicy(ctx, updated)
+	// Covers both the published/hidden toggle and an attribution re-parent —
+	// caller.Username is the owner's username since existing.OwnerID == caller.ID
+	// was already enforced above.
+	s.syncFGAAccess(ctx, updated, caller.Username)
 	return updated, nil
 }
 
@@ -786,7 +802,15 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	if ownerErr != nil {
 		s.logger.WarnContext(ctx, "initiative approval: could not fetch owner for email notification",
 			"initiative_id", initiativeID, "owner_id", processed.OwnerID, "error", ownerErr)
-	} else if owner != nil {
+	}
+	// FGA sync needs the owner username, so it rides on the same best-effort
+	// lookup as the email notification. A lookup failure here (rare — the
+	// owner row disappearing between Update and this GetByID) skips both;
+	// the reconcile CronJob (fga-backfill, run on a schedule) requeries
+	// owners directly and republishes on its next pass, so this doesn't
+	// leave the tuple permanently missing.
+	if owner != nil {
+		s.syncFGAAccess(ctx, processed, owner.Username)
 		displayName := owner.Name
 		if displayName == "" {
 			displayName = owner.Email
@@ -1141,6 +1165,60 @@ func (s *InitiativeService) syncReimbursementPolicy(ctx context.Context, initiat
 	}()
 }
 
+// syncFGAAccess publishes the initiative's current owner/attribution/published
+// state to fga-sync as a full update_access sync (lfx-crowdfunding#277).
+// Best-effort: a missed or out-of-order publish self-heals on the fga-reconcile
+// CronJob's next pass (fga-backfill's Syncer), which republishes every
+// initiative's current DB state through this same fga.InitiativeAccess shape,
+// overwriting whatever a stale message left behind.
+//
+// Called synchronously (not in a goroutine) so that same-request updates to
+// the same initiative publish in commit order — e.g. approve-then-hide can no
+// longer race and land as hide-then-approve on the wire. nats.Conn.Publish
+// only appends to the client's local buffer, it doesn't wait on the network,
+// so this doesn't add real latency to the caller.
+// Cross-pod ordering (two API pods handling near-simultaneous updates to the
+// same initiative) is still possible; the reconcile CronJob is the upgrade
+// path if that's ever observed in practice.
+func (s *InitiativeService) syncFGAAccess(ctx context.Context, initiative *models.Initiative, ownerUsername string) {
+	if s.fgaPublisher == nil {
+		return
+	}
+	access := fga.InitiativeAccess{
+		UID:           initiative.ID,
+		OwnerUsername: ownerUsername,
+		Attribution:   initiative.Attribution,
+		Published:     initiative.Status.EqualFold(models.StatusPublished),
+	}
+	if err := s.fgaPublisher.UpdateAccess(ctx, access); err != nil {
+		s.logger.WarnContext(ctx, "fga sync: failed to publish update_access",
+			"initiative_id", access.UID, "error", err)
+	}
+}
+
+// syncFGADeleteTimeout bounds the flush syncFGADelete waits on. A missed
+// delete can't be reconstructed by the reconcile job (it has no record of
+// what no longer exists), so this blocks the caller briefly instead of
+// detaching into a goroutine — a pod termination right after Delete returns
+// would otherwise permanently strand the tuple withdrawal.
+const syncFGADeleteTimeout = 5 * time.Second
+
+// syncFGADelete publishes withdrawal of every publisher-managed tuple for a
+// deleted initiative (lfx-crowdfunding#277). Blocks (bounded by
+// syncFGADeleteTimeout) so Delete only returns after the flush completes or a
+// broker-level failure is logged — see the timeout comment above for why.
+func (s *InitiativeService) syncFGADelete(ctx context.Context, id string) {
+	if s.fgaPublisher == nil {
+		return
+	}
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), syncFGADeleteTimeout)
+	defer cancel()
+	if err := s.fgaPublisher.DeleteAccess(detached, id); err != nil {
+		s.logger.WarnContext(detached, "fga sync: failed to publish delete_access",
+			"initiative_id", id, "error", err)
+	}
+}
+
 // enrichTransactionsFromDB batch-looks up users and organizations from the CF DB
 // and merges name + avatar_url onto each transaction.
 // Falls back to a deterministic generated avatar when no DB record is found.
@@ -1248,5 +1326,6 @@ func (s *InitiativeService) Delete(ctx context.Context, id, callerUsername strin
 		span.RecordError(err)
 		return fmt.Errorf("delete initiative: %w", err)
 	}
+	s.syncFGADelete(ctx, id)
 	return nil
 }
