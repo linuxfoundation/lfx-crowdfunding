@@ -155,6 +155,19 @@ spec:
     - id: "rule:lfx:lfx-crowdfunding-backend:me-self"
       allow_encoded_slashes: "off"
       match:
+        # Every verb used across this rule's routes: PATCH (profile sync, org
+        # update), GET (lists/reads), POST (org/setup-intent/payment-method/
+        # presigned-url create), DELETE (subscription cancel, org delete,
+        # payment-method delete). Omitting this defaults to GET+POST only
+        # (Heimdall's match.methods default), which silently falls PATCH/DELETE
+        # through to default_rule — allow_all with no aud override in dev, so
+        # SyncProfile's JWT lacks the audience the backend's JWT middleware
+        # requires and every login's PATCH /crowdfunding/me 401s.
+        methods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
         routes:
           - path: /crowdfunding/me
           # chi registers r.Patch("/") inside the /me route group as the literal
