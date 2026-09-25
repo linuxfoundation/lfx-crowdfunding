@@ -14,11 +14,13 @@ const isProduction = process.env.NUXT_PUBLIC_APP_ENV === 'production';
 export const getAffiliations = async (_event: H3Event): Promise<AffiliationCandidates> => {
   if (isProduction) return { organizations: [], projects: [] };
 
-  // IDs are UUIDs — the backend (LFXV2-2956) validates attribution.entity_uid as one.
+  // Organization IDs are 18-char Salesforce Account SFIDs, not UUIDs; project
+  // IDs are UUIDs. The backend (lfx-crowdfunding#263) validates
+  // attribution.entity_uid shape per attribution type accordingly.
   return {
     organizations: [
-      { id: '8b1e2c3d-4f56-4a78-9b0c-1d2e3f4a5b6c', name: 'Sample Org — Acme Corp' },
-      { id: '3f4a5b6c-7d8e-4f90-a1b2-c3d4e5f60718', name: 'Sample Org — Globex' },
+      { id: '0012M00002qnukOQAQ', name: 'Sample Org — Acme Corp' },
+      { id: '0012M00002qnukPQAQ', name: 'Sample Org — Globex' },
     ],
     projects: [
       { id: '0c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f', name: 'Sample Project — Kubernetes' },

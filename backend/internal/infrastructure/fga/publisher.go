@@ -101,11 +101,6 @@ type InitiativeAccess struct {
 // UpdateAccess publishes the given initiative's current access state as a
 // full sync: any relation not present is removed by fga-sync. A nil
 // receiver or nil connection is a no-op.
-//
-// b2b_org attribution is deliberately not emitted as a reference yet —
-// blocked on lfx-crowdfunding#263 (attributed_to_uid is typed UUID, but a
-// real b2b_org uid may be an 18-character Salesforce SFID); project
-// attribution and owner are unaffected and ship now.
 func (p *Publisher) UpdateAccess(ctx context.Context, access InitiativeAccess) error {
 	if p == nil || p.conn == nil {
 		return nil
@@ -122,8 +117,13 @@ func (p *Publisher) UpdateAccess(ctx context.Context, access InitiativeAccess) e
 		Public:    access.Published,
 		Relations: map[string][]string{"owner": {access.OwnerUsername}},
 	}
-	if access.Attribution.Type == models.AttributionProject && access.Attribution.EntityUID != "" {
-		data.References = map[string][]string{"project": {access.Attribution.EntityUID}}
+	if access.Attribution.EntityUID != "" {
+		switch access.Attribution.Type {
+		case models.AttributionProject:
+			data.References = map[string][]string{"project": {access.Attribution.EntityUID}}
+		case models.AttributionOrganization:
+			data.References = map[string][]string{"b2b_org": {access.Attribution.EntityUID}}
+		}
 	}
 
 	return p.publish(UpdateAccessSubject, GenericFGAMessage{

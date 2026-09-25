@@ -6,7 +6,11 @@ package models
 import "testing"
 
 func TestAttribution_Validate(t *testing.T) {
-	const validUUID = "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+	const (
+		validUUID   = "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+		validSFID18 = "0012M00002qnukOQAQ"
+		validSFID15 = "0012M00002qnukO"
+	)
 
 	tests := []struct {
 		name    string
@@ -15,12 +19,15 @@ func TestAttribution_Validate(t *testing.T) {
 	}{
 		{"personal, no uid — valid", Attribution{Type: AttributionPersonal}, false},
 		{"personal, with uid — invalid", Attribution{Type: AttributionPersonal, EntityUID: validUUID}, true},
-		{"organization, valid uid", Attribution{Type: AttributionOrganization, EntityUID: validUUID}, false},
+		{"organization, valid 18-char sfid", Attribution{Type: AttributionOrganization, EntityUID: validSFID18}, false},
+		{"organization, valid 15-char sfid", Attribution{Type: AttributionOrganization, EntityUID: validSFID15}, false},
 		{"organization, missing uid", Attribution{Type: AttributionOrganization}, true},
-		{"organization, malformed uid", Attribution{Type: AttributionOrganization, EntityUID: "not-a-uuid"}, true},
+		{"organization, uuid instead of sfid", Attribution{Type: AttributionOrganization, EntityUID: validUUID}, true},
+		{"organization, malformed uid", Attribution{Type: AttributionOrganization, EntityUID: "not-an-sfid!"}, true},
 		{"project, valid uid", Attribution{Type: AttributionProject, EntityUID: validUUID}, false},
 		{"project, missing uid", Attribution{Type: AttributionProject}, true},
 		{"project, malformed uid", Attribution{Type: AttributionProject, EntityUID: "not-a-uuid"}, true},
+		{"project, sfid instead of uuid", Attribution{Type: AttributionProject, EntityUID: validSFID18}, true},
 		{"unknown type", Attribution{Type: "bogus"}, true},
 	}
 

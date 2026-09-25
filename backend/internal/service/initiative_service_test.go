@@ -1988,7 +1988,7 @@ func TestCreate_Attribution_DefaultsToPersonal(t *testing.T) {
 func TestCreate_Attribution_Organization_Propagated(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	svc := newCreateSvc(repo)
-	uid := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+	uid := "0012M00002qnukOQAQ"
 	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
 		Name:           "My Project",
 		InitiativeType: "project",

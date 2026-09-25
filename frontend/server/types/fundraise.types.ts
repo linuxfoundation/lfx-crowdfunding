@@ -40,7 +40,8 @@ export interface DonationOptionsInput {
 
 // Matches backend §5.0 of docs/rewrite/07-frontend-initiatives-api-guide.md
 // (LFXV2-2956): wire shape is `attribution: { type, entity_uid }`, mapped in
-// buildBackendPayload. entity_uid must be a UUID.
+// buildBackendPayload. entity_uid is a Salesforce SFID for organization, a
+// UUID for project (lfx-crowdfunding#263).
 export interface AttributionInput {
   kind: 'organization' | 'project';
   entityId: string;
