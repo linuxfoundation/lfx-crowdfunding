@@ -76,7 +76,8 @@ function buildDonationOptionsPayload(
 
 // Omitted for 'personal' (and when the attribution step never ran) so the wire
 // payload for the default flow is byte-identical to before this feature existed.
-// entityId must be a UUID — the backend (LFXV2-2956) validates entity_uid as one.
+// entityId is a Salesforce SFID for organization, a UUID for project — the
+// backend (lfx-crowdfunding#263) validates entity_uid shape per attribution type.
 function buildAttributionPayload(
   attribution: AttributionData | undefined,
 ): Record<string, unknown> | undefined {
