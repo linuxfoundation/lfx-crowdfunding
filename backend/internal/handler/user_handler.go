@@ -27,13 +27,31 @@ func NewUserHandler(userRepo domain.UserRepository, fetcher auth.UserInfoFetcher
 // SyncProfile handles PATCH /crowdfunding/me.
 //
 // Called immediately after a successful login to persist the user's full
-// profile in the users table. Profile data (name, email, picture) is fetched
-// from the Auth0 UserInfo endpoint using the incoming access token, so that
-// access tokens themselves need only carry username and email claims (REQ-P1).
+// profile in the users table. Profile data (name, email, picture) is normally
+// fetched from the Auth0 UserInfo endpoint using the incoming access token, so
+// that access tokens themselves need only carry username and email claims
+// (REQ-P1).
+//
+// Heimdall-issued tokens (LFXV2-3351) are minted by Heimdall's create_jwt
+// finalizer and replace the original Auth0 access token before it reaches this
+// service, so Auth0 rejects them if forwarded to UserInfo. For those, skip the
+// UserInfo call and upsert only the identity fields we already trust from the
+// validated token; Upsert preserves any previously-synced profile fields
+// (email/name/avatar) instead of blanking them out.
 func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	if principal.IsHeimdallIssued {
+		result, err := h.userRepo.Upsert(r.Context(), &models.User{Username: principal.Username})
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		JSON(w, http.StatusOK, result)
 		return
 	}
 

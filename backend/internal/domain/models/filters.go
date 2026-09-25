@@ -51,4 +51,10 @@ type Principal struct {
 	GivenName     string
 	FamilyName    string
 	Picture       string
+	// IsHeimdallIssued is true when the bearer token was minted by Heimdall's
+	// create_jwt finalizer rather than issued by Auth0 directly (LFXV2-3351).
+	// Such tokens carry only principal/scope claims — no email/name/picture —
+	// and Auth0's UserInfo endpoint rejects them, so callers must not forward
+	// them to Auth0.
+	IsHeimdallIssued bool
 }
