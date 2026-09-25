@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -206,6 +207,50 @@ func (r *InitiativeRepository) ListPublished(ctx context.Context) ([]models.Init
 	if err := rows.Err(); err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("iterate published initiatives: %w", err)
+	}
+	return results, nil
+}
+
+// ListForFGABackfill returns the current owner/attribution/published state of
+// every initiative, for the one-time FGA tuple backfill (lfx-crowdfunding#277).
+// Unpaginated and skips Ledger enrichment — the backfill only needs what
+// fga.Publisher.UpdateAccess consumes. owner_id is a NOT NULL FK to users, so
+// the join never drops a row.
+func (r *InitiativeRepository) ListForFGABackfill(ctx context.Context) ([]fga.InitiativeAccess, error) {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.ListForFGABackfill")
+	defer span.End()
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT i.id, u.username, i.attributed_to_type, i.attributed_to_uid, i.status
+		FROM initiatives i
+		JOIN users u ON u.id = i.owner_id`)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list initiatives for fga backfill: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	var results []fga.InitiativeAccess
+	for rows.Next() {
+		var access fga.InitiativeAccess
+		var attrType, attrUID *string
+		var status models.InitiativeStatus
+		if err := rows.Scan(&access.UID, &access.OwnerUsername, &attrType, &attrUID, &status); err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("scan fga backfill row: %w", err)
+		}
+		if attrType != nil {
+			access.Attribution.Type = models.AttributionType(*attrType)
+		}
+		if attrUID != nil {
+			access.Attribution.EntityUID = *attrUID
+		}
+		access.Published = strings.EqualFold(string(status), string(models.StatusPublished))
+		results = append(results, access)
+	}
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("iterate fga backfill rows: %w", err)
 	}
 	return results, nil
 }
