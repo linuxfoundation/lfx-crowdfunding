@@ -219,6 +219,29 @@ mentorshipSyncCronJob:
   failedJobsHistoryLimit: 1
   concurrencyPolicy: Forbid
 
+# ── CronJob: fga-reconcile ─────────────────────────────────────────────────────
+# Republishes every initiative's current owner/attribution/published state to
+# fga-sync (lfx-crowdfunding#277). Idempotent full-sync per row, so this is
+# both the initial backfill (first run after deploying tuple emission) and
+# ongoing reconciliation for any publish missed by the live write path.
+fgaReconcileCronJob:
+  enabled: false
+  schedule: "*/15 * * * *"    # every 15 minutes
+  image:
+    # Defaults to same repository and tag as the main API image.
+    repository: ""
+    tag: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+
 # ── CronJob: ledger-stats-sync ────────────────────────────────────────────────
 # Runs hourly to sync financial data from the ledger service into initiative_ledger_stats.
 # ── DB migration Job (pre-install/pre-upgrade Helm hook) ─────────────────────

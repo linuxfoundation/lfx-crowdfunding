@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -800,7 +801,14 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	if ownerErr != nil {
 		s.logger.WarnContext(ctx, "initiative approval: could not fetch owner for email notification",
 			"initiative_id", initiativeID, "owner_id", processed.OwnerID, "error", ownerErr)
-	} else if owner != nil {
+	}
+	// FGA sync needs the owner username, so it rides on the same best-effort
+	// lookup as the email notification. A lookup failure here (rare — the
+	// owner row disappearing between Update and this GetByID) skips both;
+	// the reconcile CronJob (fga-backfill, run on a schedule) requeries
+	// owners directly and republishes on its next pass, so this doesn't
+	// leave the tuple permanently missing.
+	if owner != nil {
 		s.syncFGAAccess(ctx, processed, owner.Username)
 		displayName := owner.Name
 		if displayName == "" {
@@ -1158,10 +1166,19 @@ func (s *InitiativeService) syncReimbursementPolicy(ctx context.Context, initiat
 
 // syncFGAAccess publishes the initiative's current owner/attribution/published
 // state to fga-sync as a full update_access sync (lfx-crowdfunding#277).
-// Best-effort and asynchronous, matching syncReimbursementPolicy above: a
-// missed publish self-heals via the backfill job, which republishes current
-// state through the same fga.InitiativeAccess shape, so there is no retry
-// here.
+// Best-effort: a missed or out-of-order publish self-heals on the fga-reconcile
+// CronJob's next pass (fga-backfill's Syncer), which republishes every
+// initiative's current DB state through this same fga.InitiativeAccess shape,
+// overwriting whatever a stale message left behind.
+//
+// Called synchronously (not in a goroutine) so that same-request updates to
+// the same initiative publish in commit order — e.g. approve-then-hide can no
+// longer race and land as hide-then-approve on the wire. nats.Conn.Publish
+// only appends to the client's local buffer, it doesn't wait on the network,
+// so this doesn't add real latency to the caller.
+// ponytail: cross-pod ordering (two API pods handling near-simultaneous
+// updates to the same initiative) is still possible; the reconcile CronJob is
+// the upgrade path if that's ever observed in practice.
 func (s *InitiativeService) syncFGAAccess(ctx context.Context, initiative *models.Initiative, ownerUsername string) {
 	if s.fgaPublisher == nil {
 		return
@@ -1172,31 +1189,33 @@ func (s *InitiativeService) syncFGAAccess(ctx context.Context, initiative *model
 		Attribution:   initiative.Attribution,
 		Published:     initiative.Status.EqualFold(models.StatusPublished),
 	}
-	detached := context.WithoutCancel(ctx)
-	go func() {
-		if err := s.fgaPublisher.UpdateAccess(detached, access); err != nil {
-			s.logger.WarnContext(detached, "fga sync: failed to publish update_access",
-				"initiative_id", access.UID, "error", err)
-		}
-	}()
+	if err := s.fgaPublisher.UpdateAccess(ctx, access); err != nil {
+		s.logger.WarnContext(ctx, "fga sync: failed to publish update_access",
+			"initiative_id", access.UID, "error", err)
+	}
 }
 
+// syncFGADeleteTimeout bounds the flush syncFGADelete waits on. A missed
+// delete can't be reconstructed by the reconcile job (it has no record of
+// what no longer exists), so this blocks the caller briefly instead of
+// detaching into a goroutine — a pod termination right after Delete returns
+// would otherwise permanently strand the tuple withdrawal.
+const syncFGADeleteTimeout = 5 * time.Second
+
 // syncFGADelete publishes withdrawal of every publisher-managed tuple for a
-// deleted initiative (lfx-crowdfunding#277). Unlike syncFGAAccess, this
-// blocks on Publisher.DeleteAccess's flush (not the whole request, just this
-// goroutine) so a broker-level publish failure is logged promptly — a missed
-// delete can't be reconstructed by the backfill job.
+// deleted initiative (lfx-crowdfunding#277). Blocks (bounded by
+// syncFGADeleteTimeout) so Delete only returns after the flush completes or a
+// broker-level failure is logged — see the timeout comment above for why.
 func (s *InitiativeService) syncFGADelete(ctx context.Context, id string) {
 	if s.fgaPublisher == nil {
 		return
 	}
-	detached := context.WithoutCancel(ctx)
-	go func() {
-		if err := s.fgaPublisher.DeleteAccess(detached, id); err != nil {
-			s.logger.WarnContext(detached, "fga sync: failed to publish delete_access",
-				"initiative_id", id, "error", err)
-		}
-	}()
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), syncFGADeleteTimeout)
+	defer cancel()
+	if err := s.fgaPublisher.DeleteAccess(detached, id); err != nil {
+		s.logger.WarnContext(detached, "fga sync: failed to publish delete_access",
+			"initiative_id", id, "error", err)
+	}
 }
 
 // enrichTransactionsFromDB batch-looks up users and organizations from the CF DB

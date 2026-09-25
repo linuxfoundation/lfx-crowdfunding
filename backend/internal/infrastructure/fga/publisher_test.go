@@ -15,9 +15,10 @@ import (
 // fakePublisherConn is a natsPublisher test double that records every
 // published message and can be told to fail Publish or Flush independently.
 type fakePublisherConn struct {
-	published  []publishedMsg
-	publishErr error
-	flushErr   error
+	published       []publishedMsg
+	publishErr      error
+	flushErr        error
+	requireDeadline bool // simulate nats.go's real FlushWithContext deadline requirement
 }
 
 type publishedMsg struct {
@@ -37,7 +38,12 @@ func (f *fakePublisherConn) Publish(subj string, data []byte) error {
 	return nil
 }
 
-func (f *fakePublisherConn) FlushWithContext(_ context.Context) error {
+func (f *fakePublisherConn) FlushWithContext(ctx context.Context) error {
+	if f.requireDeadline {
+		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+			return errors.New("nats: context requires a deadline")
+		}
+	}
 	return f.flushErr
 }
 
@@ -207,6 +213,17 @@ func TestPublisher_DeleteAccess(t *testing.T) {
 		var p *Publisher
 		if err := p.DeleteAccess(context.Background(), "init-1"); err != nil {
 			t.Fatalf("unexpected error from nil publisher: %v", err)
+		}
+	})
+
+	t.Run("deadline-less context gets a flush timeout applied", func(t *testing.T) {
+		conn := &fakePublisherConn{requireDeadline: true}
+		p := NewPublisher(nil)
+		p.conn = conn
+		// context.Background() has no deadline; the fake flush errors unless
+		// DeleteAccess applies its own timeout before calling it.
+		if err := p.DeleteAccess(context.Background(), "init-1"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }

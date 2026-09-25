@@ -1,17 +1,21 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-// fga-backfill is the one-time job for lfx-crowdfunding#277: it republishes
+// fga-backfill is the reconcile job for lfx-crowdfunding#277: it republishes
 // every existing initiative's current owner/attribution/published state to
-// fga-sync so crowdfunding_initiative tuples exist for initiatives created
-// before CF started emitting them on write.
+// fga-sync so crowdfunding_initiative tuples exist and stay converged with
+// Postgres.
 //
 // It is idempotent — it replays current Postgres state through the same
 // fga.Publisher.UpdateAccess call the live write path uses (full sync, so
-// reruns are safe) — so it can be run as a one-off K8s Job, not a CronJob.
+// reruns are safe) — so it's deployed as the fga-reconcile CronJob
+// (charts/lfx-crowdfunding-backend/templates/cronjob-fga-reconcile.yaml),
+// not a one-off Job. The first scheduled run after deploying the emission
+// hooks doubles as the initial backfill for initiatives created before CF
+// started emitting tuples on write; every run after that catches any publish
+// missed or reordered by the live write path.
 //
-// Usage: run once per environment after deploying the emission hooks. Exits
-// 0 on success (including partial per-row publish failures, which are
+// Exits 0 on success (including partial per-row publish failures, which are
 // logged), non-zero if it cannot start at all.
 package main
 
@@ -77,8 +81,12 @@ func run(logger *slog.Logger) error {
 	}
 
 	// Publisher.UpdateAccess is fire-and-forget; flush once at the end so the
-	// process doesn't exit before the broker acks the batch.
-	if err := conn.FlushWithContext(ctx); err != nil {
+	// process doesn't exit before the broker acks the batch. FlushWithContext
+	// requires a context with a deadline (nats.go v1.52.0, context.go:181-184)
+	// — ctx is context.Background(), so it gets one here.
+	flushCtx, cancel := context.WithTimeout(ctx, cfg.FGATimeout)
+	defer cancel()
+	if err := conn.FlushWithContext(flushCtx); err != nil {
 		return fmt.Errorf("flush fga-sync nats connection: %w", err)
 	}
 

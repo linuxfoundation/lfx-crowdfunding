@@ -7,11 +7,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/nats-io/nats.go"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
+
+// deleteFlushTimeout bounds FlushWithContext when the caller's ctx has no
+// deadline of its own. nats.go's FlushWithContext requires a deadline
+// (returns ErrNoDeadlineContext otherwise, context.go:181-184 as of v1.52.0),
+// and syncFGADelete's detached context has none.
+const deleteFlushTimeout = 5 * time.Second
 
 // Subjects fga-sync's generic sync handler listens on
 // (lfx-v2-fga-sync/docs/fga-sync-contract.md). Fire-and-forget: these
@@ -146,7 +153,13 @@ func (p *Publisher) DeleteAccess(ctx context.Context, uid string) error {
 	}); err != nil {
 		return err
 	}
-	return p.conn.FlushWithContext(ctx)
+	flushCtx := ctx
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		flushCtx, cancel = context.WithTimeout(ctx, deleteFlushTimeout)
+		defer cancel()
+	}
+	return p.conn.FlushWithContext(flushCtx)
 }
 
 func (p *Publisher) publish(subject string, msg GenericFGAMessage) error {
