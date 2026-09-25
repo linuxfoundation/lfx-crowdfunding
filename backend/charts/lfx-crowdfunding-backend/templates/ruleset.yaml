@@ -10,7 +10,10 @@
 # openfga.enabled gates the openfga_check authorizers below. It defaults to
 # false: the crowdfunding_initiative FGA type has merged (lfx-v2-helm#172),
 # but this backend does not yet emit any FGA tuples for it, so there is
-# nothing to check against yet. See values.yaml for details.
+# nothing to check against yet. See values.yaml for details. The one
+# exception is the services rule (owner-info/published-list), which always
+# checks FGA — its team tuples are platform-managed and already exist in
+# every env, so it doesn't wait on this flag.
 {{- if .Values.heimdall.enabled }}
 ---
 apiVersion: heimdall.dadrus.github.com/v1alpha4
@@ -90,10 +93,14 @@ spec:
     # Without this rule, published-list (a single path segment) would fall
     # into the initiative-detail wildcard below (/crowdfunding/initiatives/:*) and
     # become public; owner-info falls through to default_rule (deny_all in
-    # staging/prod) instead. While openfga.enabled is false there is no
-    # in-app fallback check on these two routes (unlike process-approval's
-    # ALLOWED_APPROVERS), so the fallback here is deny_all, not allow_all —
-    # allow_all would recreate the access:manage exposure #281 exists to fix.
+    # staging/prod) instead.
+    #
+    # Always openfga_check, not gated on openfga.enabled: that flag waits on
+    # #277's per-initiative writer tuples, but this rule's tuples
+    # (user:<client_id>@clients member of the services team) are written by
+    # platform and already exist in dev/staging/prod. Still fails closed —
+    # there's no in-app fallback on these two routes (unlike process-approval's
+    # ALLOWED_APPROVERS), so any caller without the tuple 403s.
     # No anonymous_authenticator pairing: anonymous callers 401 here (fail
     # auth) rather than 403 (denied authz) like an authenticated caller does.
     - id: "rule:lfx:lfx-crowdfunding-backend:services"
@@ -109,15 +116,11 @@ spec:
         {{- if .Values.app.use_oidc_contextualizer }}
         - contextualizer: oidc_contextualizer
         {{- end }}
-        {{- if .Values.openfga.enabled }}
         - authorizer: openfga_check
           config:
             values:
               relation: member
               object: "team:{{ .Values.app.servicesTeamName }}"
-        {{- else }}
-        - authorizer: deny_all
-        {{- end }}
         - finalizer: create_jwt
           config:
             values:

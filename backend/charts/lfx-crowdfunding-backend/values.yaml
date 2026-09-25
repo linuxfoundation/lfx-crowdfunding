@@ -120,11 +120,14 @@ heimdall:
   add_middleware: false
   url: http://lfx-platform-heimdall.lfx.svc.cluster.local:4456
 
-# openfga.enabled gates the openfga_check authorizers in ruleset.yaml. Stays
-# false until this backend emits FGA tuples for its initiatives — the
+# openfga.enabled gates the per-initiative openfga_check authorizers in
+# ruleset.yaml (me-initiative-write, the announcement rules, process-approval).
+# Stays false until this backend emits FGA tuples for its initiatives — the
 # crowdfunding_initiative FGA type (lfx-v2-helm#172) has merged, but until
 # tuples exist there's nothing to check against, so a real check would deny
-# everyone.
+# everyone. Does NOT gate the services rule (owner-info/published-list) —
+# that rule's tuples are platform-managed, already exist in every env, and
+# it always checks FGA regardless of this flag.
 openfga:
   enabled: false
 
@@ -145,11 +148,13 @@ app:
   # the accepted ADR (backend/docs/rewrite/12-fga-authorization-model.md).
   approversTeamName: crowdfunding_approvers
   # servicesTeamName is the OpenFGA team object the owner-info/published-list
-  # M2M routes are checked against (relation: member) once openfga.enabled is
-  # true. Members are client-credentials callers as user:<client_id>@clients
-  # (e.g. the Reimbursement Service), added the same way a user would be.
-  # Name decided by Architecture (#281, 2026-09-17): role-named like the
-  # platform's other teams, not "m2m"-named.
+  # M2M routes are checked against (relation: member) whenever heimdall.enabled
+  # is true — this check is not gated on openfga.enabled, since its tuples
+  # are platform-managed and already exist in every env. Members are
+  # client-credentials callers as user:<client_id>@clients (e.g. the
+  # Reimbursement Service), added the same way a user would be. Name decided
+  # by Architecture (#281, 2026-09-17): role-named like the platform's other
+  # teams, not "m2m"-named.
   servicesTeamName: crowdfunding-services
 
 traefik:
