@@ -1,0 +1,58 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+{{- if .Values.fgaReconcileCronJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "lfx-v2-initiatives-service.fullname" . }}-fga-reconcile
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: fga-reconcile
+    tags.datadoghq.com/service: {{ include "lfx-v2-initiatives-service.name" . }}
+spec:
+  schedule: {{ .Values.fgaReconcileCronJob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.fgaReconcileCronJob.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.fgaReconcileCronJob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.fgaReconcileCronJob.failedJobsHistoryLimit }}
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "lfx-v2-initiatives-service.name" . }}
+        tags.datadoghq.com/service: {{ include "lfx-v2-initiatives-service.name" . }}
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ include "lfx-v2-initiatives-service.name" . }}
+            app.kubernetes.io/component: fga-reconcile
+            tags.datadoghq.com/service: {{ include "lfx-v2-initiatives-service.name" . }}
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "lfx-v2-initiatives-service.serviceAccountName" . }}
+          automountServiceAccountToken: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: fga-reconcile
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.fgaReconcileCronJob.image.repository | default .Values.image.repository }}:{{ .Values.fgaReconcileCronJob.image.tag | default (required "image.tag is required" .Values.image.tag) }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/app/fga-backfill"]
+              {{- with .Values.env }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              envFrom:
+                - configMapRef:
+                    name: {{ include "lfx-v2-initiatives-service.fullname" . }}-config
+                - secretRef:
+                    name: {{ .Values.secretName }}
+              resources:
+                {{- toYaml .Values.fgaReconcileCronJob.resources | nindent 16 }}
+{{- end }}
