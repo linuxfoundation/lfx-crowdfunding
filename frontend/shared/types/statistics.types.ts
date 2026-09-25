@@ -41,7 +41,7 @@ export interface MonthlyDonations {
 
 export interface TopDonor {
   rank: number;
-  id: string;
+  id?: string; // organisations only
   name: string;
   logoUrl?: string;
   amountCents: number;
