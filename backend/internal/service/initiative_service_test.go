@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -268,8 +269,8 @@ func TestFlattenSponsors(t *testing.T) {
 	if len(result) != 3 {
 		t.Fatalf("expected 3 sponsors, got %d", len(result))
 	}
-	if result[0].ID != "user-1" {
-		t.Errorf("expected user-1 first (highest total), got %s", result[0].ID)
+	if result[0].Name != "Top Donor" {
+		t.Errorf("expected Top Donor first (highest total), got %s", result[0].Name)
 	}
 	if result[1].ID != "org-1" {
 		t.Errorf("expected org-1 second, got %s", result[1].ID)
@@ -301,7 +302,7 @@ func TestFlattenSponsors_ExcludesNegativeAndZeroTotals(t *testing.T) {
 	}
 	for _, s := range result {
 		if s.TotalCents <= 0 {
-			t.Errorf("sponsor %q with non-positive total %d slipped through", s.ID, s.TotalCents)
+			t.Errorf("sponsor %q with non-positive total %d slipped through", s.Name, s.TotalCents)
 		}
 	}
 }
@@ -313,6 +314,40 @@ func TestFlattenSponsors_Empty(t *testing.T) {
 	}
 	if len(result) != 0 {
 		t.Errorf("expected empty slice, got %d entries", len(result))
+	}
+}
+
+func TestFlattenSponsors_DoesNotExposeIndividualID(t *testing.T) {
+	// Ledger keys individual sponsors by the donor's Auth0 subject, which must
+	// not reach public responses. Org IDs are CF UUIDs and are kept.
+	list := models.LedgerSponsorList{
+		Orgs:        []models.LedgerSponsorOrg{{ID: "org-1", Name: "Acme", Total: 100}},
+		Individuals: []models.LedgerSponsorUser{{ID: "auth0|jdoe", Name: "Jane Doe", Total: 200}},
+	}
+
+	result := flattenSponsors(list)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 sponsors, got %d", len(result))
+	}
+	if result[0].ID != "" {
+		t.Errorf("individual sponsor ID must be empty, got %q", result[0].ID)
+	}
+	// The generated avatar colour is still derived from the subject, so it is
+	// unchanged for the donor.
+	if want := generatedAvatarURL("auth0|jdoe", "Jane Doe"); result[0].AvatarURL != want {
+		t.Errorf("individual avatar: want %s, got %s", want, result[0].AvatarURL)
+	}
+	if result[1].ID != "org-1" {
+		t.Errorf("org sponsor ID: want org-1, got %q", result[1].ID)
+	}
+
+	b, err := json.Marshal(result[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), `"id"`) || strings.Contains(string(b), "auth0|") {
+		t.Errorf("individual sponsor JSON must not contain an id, got %s", b)
 	}
 }
 
@@ -603,8 +638,8 @@ func TestGetByID_FlattensSponsorsList(t *testing.T) {
 	if len(result.Sponsors) != 2 {
 		t.Fatalf("expected 2 sponsors, got %d", len(result.Sponsors))
 	}
-	if result.Sponsors[0].ID != "user-1" {
-		t.Errorf("expected user-1 first (highest total), got %s", result.Sponsors[0].ID)
+	if result.Sponsors[0].Name != "Top Donor" {
+		t.Errorf("expected Top Donor first (highest total), got %s", result.Sponsors[0].Name)
 	}
 }
 
