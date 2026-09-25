@@ -19,6 +19,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -830,6 +831,7 @@ func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
 		if p != nil {
 			w.Header().Set("X-User-ID", p.UserID)
 			w.Header().Set("X-Username", p.Username)
+			w.Header().Set("X-Is-Heimdall", strconv.FormatBool(p.IsHeimdallIssued))
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -839,6 +841,11 @@ func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
 		handler.ServeHTTP(w, makeRequest(userToken()))
 		if w.Code != http.StatusOK {
 			t.Fatalf("expected 200 for Auth0 token, got %d", w.Code)
+		}
+		// Auth0 never sets a "principal" claim — SyncProfile (LFXV2-3351) relies
+		// on this to decide whether it's safe to call Auth0 UserInfo.
+		if got := w.Header().Get("X-Is-Heimdall"); got != "false" {
+			t.Errorf("IsHeimdallIssued = %q, want %q for an Auth0 token", got, "false")
 		}
 	})
 
@@ -868,6 +875,12 @@ func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
 		// user resolution (service.GetByUsername) doesn't silently break.
 		if got := w.Header().Get("X-Username"); got != "heimdall|testuser" {
 			t.Errorf("Username = %q, want %q (fallback to sub)", got, "heimdall|testuser")
+		}
+		// Regression check (LFXV2-3351): SyncProfile skips Auth0 UserInfo only
+		// when this is true. Middleware — not just OptionalMiddleware — must set it,
+		// since it's the one guarding PATCH /crowdfunding/me.
+		if got := w.Header().Get("X-Is-Heimdall"); got != "true" {
+			t.Errorf("IsHeimdallIssued = %q, want %q for a Heimdall-minted token", got, "true")
 		}
 	})
 
