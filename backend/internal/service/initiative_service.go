@@ -1176,9 +1176,9 @@ func (s *InitiativeService) syncReimbursementPolicy(ctx context.Context, initiat
 // longer race and land as hide-then-approve on the wire. nats.Conn.Publish
 // only appends to the client's local buffer, it doesn't wait on the network,
 // so this doesn't add real latency to the caller.
-// ponytail: cross-pod ordering (two API pods handling near-simultaneous
-// updates to the same initiative) is still possible; the reconcile CronJob is
-// the upgrade path if that's ever observed in practice.
+// Cross-pod ordering (two API pods handling near-simultaneous updates to the
+// same initiative) is still possible; the reconcile CronJob is the upgrade
+// path if that's ever observed in practice.
 func (s *InitiativeService) syncFGAAccess(ctx context.Context, initiative *models.Initiative, ownerUsername string) {
 	if s.fgaPublisher == nil {
 		return

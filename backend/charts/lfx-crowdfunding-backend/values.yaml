@@ -231,7 +231,7 @@ mentorshipSyncCronJob:
 # ongoing reconciliation for any publish missed by the live write path.
 fgaReconcileCronJob:
   enabled: false
-  schedule: "*/15 * * * *"    # every 15 minutes
+  schedule: "0 7 * * *"    # daily at 07:00 UTC
   image:
     # Defaults to same repository and tag as the main API image.
     repository: ""
