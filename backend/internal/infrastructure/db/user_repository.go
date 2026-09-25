@@ -73,7 +73,11 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 
 // Upsert inserts or updates a user row identified by username (LF SSO username).
 // Used by payment/donation/subscription services to ensure a minimal users row
-// exists before persisting Stripe customer info via UpdateStripeInfo.
+// exists before persisting Stripe customer info via UpdateStripeInfo, and by
+// SyncProfile for Heimdall-issued tokens (LFXV2-3351) that carry no profile
+// claims. A blank/NULL field in u preserves whatever is already stored instead
+// of overwriting it, so partial updates never erase previously-synced profile
+// data.
 func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.User, error) {
 	ctx, span := userTracer.Start(ctx, "db.users.Upsert")
 	defer span.End()
@@ -84,11 +88,11 @@ func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.Us
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (username) DO UPDATE SET
 			legacy_user_id = COALESCE(EXCLUDED.legacy_user_id, users.legacy_user_id),
-			email          = EXCLUDED.email,
-			given_name     = EXCLUDED.given_name,
-			family_name    = EXCLUDED.family_name,
-			name           = EXCLUDED.name,
-			avatar_url     = EXCLUDED.avatar_url,
+			email          = COALESCE(EXCLUDED.email, users.email),
+			given_name     = COALESCE(EXCLUDED.given_name, users.given_name),
+			family_name    = COALESCE(EXCLUDED.family_name, users.family_name),
+			name           = COALESCE(EXCLUDED.name, users.name),
+			avatar_url     = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
 			updated_on     = NOW()
 		RETURNING ` + userColumns
 

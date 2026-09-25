@@ -145,6 +145,36 @@ func TestSyncProfile_Success(t *testing.T) {
 	}
 }
 
+func TestSyncProfile_HeimdallIssued_SkipsUserInfoAndUpsertsUsernameOnly(t *testing.T) {
+	want := &models.User{ID: "uuid-1", Username: "jdoe"}
+	repo := &testUserRepo{upsertResult: want}
+	fetcher := &testUserInfoFetcher{err: errors.New("must not be called")}
+	h := NewUserHandler(repo, fetcher)
+
+	principal := &models.Principal{
+		Username:         "jdoe",
+		Scope:            auth.ScopeMe,
+		IsHeimdallIssued: true,
+	}
+
+	w := httptest.NewRecorder()
+	h.SyncProfile(w, newSyncProfileRequest(principal))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	got := repo.lastUpserted
+	if got == nil {
+		t.Fatal("Upsert was not called")
+	}
+	if got.Username != "jdoe" {
+		t.Errorf("Username = %q, want %q", got.Username, "jdoe")
+	}
+	if got.Email != "" || got.Name != "" || got.GivenName != "" || got.FamilyName != "" || got.AvatarURL != "" || got.LegacyUserID != "" {
+		t.Errorf("expected only Username to be set, got %+v", got)
+	}
+}
+
 func TestSyncProfile_NoPrincipal_Returns401(t *testing.T) {
 	repo := &testUserRepo{}
 	h := NewUserHandler(repo, &testUserInfoFetcher{})

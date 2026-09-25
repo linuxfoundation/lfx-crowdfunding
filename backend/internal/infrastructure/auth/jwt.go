@@ -391,6 +391,9 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 					GivenName:     claims.GivenName,
 					FamilyName:    claims.FamilyName,
 					Picture:       claims.Picture,
+					// A non-empty "principal" claim only appears on Heimdall-minted
+					// tokens (see JWTClaims.Principal) — Auth0 never sets it.
+					IsHeimdallIssued: claims.Principal != "",
 				}
 				r = r.WithContext(ContextWithPrincipal(r.Context(), principal))
 			}
