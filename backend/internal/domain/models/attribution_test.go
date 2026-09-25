@@ -40,3 +40,14 @@ func TestAttribution_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestAttribution_Validate_CanonicalizesProjectUID(t *testing.T) {
+	attr := Attribution{Type: AttributionProject, EntityUID: "7CAD5A8D-19D0-41A4-81A6-043453DAF9EE"}
+	if err := attr.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	want := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+	if attr.EntityUID != want {
+		t.Fatalf("EntityUID = %q, want canonical %q", attr.EntityUID, want)
+	}
+}

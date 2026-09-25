@@ -147,7 +147,14 @@ var sfidPattern = regexp.MustCompile(`^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$`)
 // organization, a UUID for project — and empty for personal. The returned
 // error is a plain error (not domain.ErrInvalidInput — this package cannot
 // import domain without a cycle); callers wrap it as needed.
-func (a Attribution) Validate() error {
+//
+// For project attribution, EntityUID is rewritten to uuid.Parse's canonical
+// form: attributed_to_uid is TEXT (migration 008), so unlike the old UUID
+// column, PostgreSQL no longer canonicalizes a non-canonical spelling (e.g.
+// uppercase) on write — without this, that spelling would be persisted and
+// later emitted verbatim as an FGA project:<id> reference, which can target a
+// different OpenFGA object than the canonical UID.
+func (a *Attribution) Validate() error {
 	if !ValidAttributionTypes[a.Type] {
 		return fmt.Errorf("attribution.type must be one of personal, organization, project")
 	}
@@ -166,9 +173,11 @@ func (a Attribution) Validate() error {
 			return fmt.Errorf("attribution.entity_uid must be a 15 or 18-character Salesforce ID")
 		}
 	case AttributionProject:
-		if _, err := uuid.Parse(a.EntityUID); err != nil {
+		parsed, err := uuid.Parse(a.EntityUID)
+		if err != nil {
 			return fmt.Errorf("attribution.entity_uid must be a UUID")
 		}
+		a.EntityUID = parsed.String()
 	}
 	return nil
 }
