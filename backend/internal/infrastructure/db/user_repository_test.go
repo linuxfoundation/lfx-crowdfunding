@@ -67,6 +67,22 @@ func TestUserRepository_Upsert_and_GetByUsername(t *testing.T) {
 	if updated.Email != "updated@example.com" {
 		t.Errorf("Upsert (update) Email = %q, want %q", updated.Email, "updated@example.com")
 	}
+
+	// Upsert with blank profile fields (Heimdall-issued sync, LFXV2-3351) must
+	// preserve the previously-synced values rather than blanking them out.
+	preserved, err := repo.Upsert(ctx, &models.User{Username: in.Username})
+	if err != nil {
+		t.Fatalf("Upsert (blank fields) error = %v", err)
+	}
+	if preserved.Email != "updated@example.com" {
+		t.Errorf("Upsert (blank fields) erased Email: got %q, want preserved %q", preserved.Email, "updated@example.com")
+	}
+	if preserved.GivenName != in.GivenName {
+		t.Errorf("Upsert (blank fields) erased GivenName: got %q, want preserved %q", preserved.GivenName, in.GivenName)
+	}
+	if preserved.Name != in.Name {
+		t.Errorf("Upsert (blank fields) erased Name: got %q, want preserved %q", preserved.Name, in.Name)
+	}
 }
 
 func TestUserRepository_GetByID_NotFound(t *testing.T) {
