@@ -14,7 +14,7 @@ export interface BackendCategoryTotal {
 }
 
 export interface BackendSponsorEntry {
-  id: string;
+  id?: string; // organisations only
   name: string;
   avatar_url?: string;
   total_cents: number;

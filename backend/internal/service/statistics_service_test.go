@@ -5,7 +5,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -189,6 +191,57 @@ func TestGetPlatformDetails_MissingEnrichmentUsesFallbackName(t *testing.T) {
 	}
 	if details.TopIndividuals[0].Name != anonymousName {
 		t.Errorf("individual name: want %q, got %q", anonymousName, details.TopIndividuals[0].Name)
+	}
+}
+
+func TestGetPlatformDetails_DoesNotExposeIndividualID(t *testing.T) {
+	// Ledger keys individuals by the donor's Auth0 subject, which must not reach
+	// the public response — whether or not the user is found in CF DB.
+	repo := &testStatisticsRepo{
+		orgs: map[string]models.Organization{
+			"org-1": {ID: "org-1", Name: "Acme Corp"},
+		},
+		users: map[string]models.User{
+			"auth0|jdoe": {ID: "user-1", Name: "Jane Doe"},
+		},
+	}
+	ledger := &testLedgerClient{
+		platformBalance: &clients.LedgerPlatformBalance{
+			TopOrganizations: []clients.LedgerSponsorRaw{{ID: "org-1", Total: 500_000}},
+			TopIndividuals: []clients.LedgerSponsorRaw{
+				{ID: "auth0|jdoe", Total: 200_000},
+				{ID: "auth0|unknown", Total: 100_000},
+			},
+		},
+	}
+
+	svc := newStatsSvc(repo, ledger)
+	details, err := svc.GetPlatformDetails(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(details.TopIndividuals) != 2 {
+		t.Fatalf("expected 2 individuals, got %d", len(details.TopIndividuals))
+	}
+	if details.TopIndividuals[0].Name != "Jane Doe" {
+		t.Errorf("user name: want Jane Doe, got %s", details.TopIndividuals[0].Name)
+	}
+	for _, u := range details.TopIndividuals {
+		if u.ID != "" {
+			t.Errorf("individual ID must be empty, got %q", u.ID)
+		}
+	}
+	if details.TopOrganizations[0].ID != "org-1" {
+		t.Errorf("org ID: want org-1, got %q", details.TopOrganizations[0].ID)
+	}
+
+	b, err := json.Marshal(details.TopIndividuals)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), `"id"`) || strings.Contains(string(b), "auth0|") {
+		t.Errorf("top_individuals JSON must not contain an id, got %s", b)
 	}
 }
 

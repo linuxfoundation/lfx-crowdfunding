@@ -22,7 +22,7 @@ export interface BackendSponsorshipTier {
 }
 
 export interface BackendSponsor {
-  id: string;
+  id?: string; // organisations only
   name: string;
   avatar_url?: string;
   total_cents: number;

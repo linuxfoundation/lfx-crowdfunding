@@ -121,7 +121,8 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		out.TopOrganizations = append(out.TopOrganizations, entry)
 	}
 	for _, u := range raw.TopIndividuals {
-		entry := models.SponsorEntry{ID: u.ID, TotalCents: u.Total}
+		// ID is omitted: for individuals it is the donor's Auth0 subject.
+		entry := models.SponsorEntry{TotalCents: u.Total}
 		if user, ok := users[u.ID]; ok {
 			entry.Name = user.Name
 			entry.AvatarURL = user.AvatarURL

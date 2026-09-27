@@ -5,7 +5,7 @@ import type { InitiativeBase } from './initiative.types';
 import type { SponsorshipTier } from './donate.types';
 
 export interface SponsorEntry {
-  id: string;
+  id?: string; // organisations only
   name: string;
   avatarUrl?: string;
   totalCents: number;

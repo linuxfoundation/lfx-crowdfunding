@@ -47,7 +47,7 @@ SPDX-License-Identifier: MIT
     >
       <div
         v-for="entry in entries"
-        :key="entry.id"
+        :key="entry.rank"
         class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
       >
         <span class="w-7 text-sm text-neutral-400 text-center shrink-0">#{{ entry.rank }}</span>

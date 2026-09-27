@@ -121,7 +121,8 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(u.ID, u.Name)
 		}
-		sponsors = append(sponsors, models.Sponsor{ID: u.ID, Name: u.Name, AvatarURL: avatarURL, TotalCents: u.Total})
+		// ID is omitted: for individuals it is the donor's Auth0 subject.
+		sponsors = append(sponsors, models.Sponsor{Name: u.Name, AvatarURL: avatarURL, TotalCents: u.Total})
 	}
 	slices.SortFunc(sponsors, func(a, b models.Sponsor) int {
 		return cmp.Compare(b.TotalCents, a.TotalCents) // descending

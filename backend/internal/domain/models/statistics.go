@@ -32,8 +32,10 @@ type CategoryTotal struct {
 }
 
 // SponsorEntry represents a single top donor (org or individual).
+// ID is set for organisations only; individual donors are keyed by their
+// Auth0 subject, which must not be exposed publicly.
 type SponsorEntry struct {
-	ID         string `json:"id"`
+	ID         string `json:"id,omitempty"`
 	Name       string `json:"name"`
 	AvatarURL  string `json:"avatar_url,omitempty"`
 	TotalCents int64  `json:"total_cents"`
