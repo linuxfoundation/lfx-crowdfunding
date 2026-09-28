@@ -138,6 +138,7 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	cacheControl := "public, max-age=60, stale-while-revalidate=300"
 	if !initiative.Status.EqualFold(models.StatusPublished) {
 		// Non-published initiatives are visible to approvers only.
 		principal := auth.PrincipalFromContext(r.Context())
@@ -145,6 +146,9 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			Error(w, domain.ErrInitiativeNotFound)
 			return
 		}
+		// Approver-only response: shared caches must not store it.
+		cacheControl = "private, no-store"
+		w.Header().Set("Vary", "Authorization")
 	}
 
 	initiative.Beneficiaries = nil
@@ -158,12 +162,12 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	etag := etagOf(body)
+	w.Header().Set("Cache-Control", cacheControl)
+	w.Header().Set("ETag", etag)
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
-	w.Header().Set("ETag", etag)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)

@@ -326,6 +326,12 @@ func TestGetByID_NotPublished_Approver_Returns200(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 for approver, got %d: %s", w.Code, w.Body.String())
 	}
+	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Errorf("expected approver-only response to be private, no-store; got %q", got)
+	}
+	if got := w.Header().Get("Vary"); got != "Authorization" {
+		t.Errorf("expected Vary: Authorization, got %q", got)
+	}
 }
 
 func TestGetByID_NotFound_Returns404(t *testing.T) {
