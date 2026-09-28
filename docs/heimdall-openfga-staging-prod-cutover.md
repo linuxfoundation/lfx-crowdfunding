@@ -38,13 +38,14 @@ open question left in #277's rollout comment.
       override needed unless an environment intentionally uses different team
       names (neither does today).
 
-## Step-by-step (per environment, in `lfx-v2-argocd`)
+## Step-by-step (per environment, in `lfx-v2-argocd` unless noted)
 
 Do these as **separate PRs in this order**, verifying each before the next.
-Do not combine steps 1–2 with step 3 in one PR — enabling the CronJob without
+Do not combine steps 1–2 with step 4 in one PR — enabling the CronJob without
 having run+verified a backfill, or flipping `openfga.enabled` before the
 backfill has run, fails every check closed and locks out every caller
-(this is the whole point of #277's ordering).
+(this is the whole point of #277's ordering). Step 3 is a separate, easy-to-miss
+blocker on the `process-approval` route specifically — see below.
 
 ### 1. Enable `fgaReconcileCronJob`
 
@@ -97,9 +98,56 @@ workflow repeats as-is. If not, either wait for the CronJob's own schedule to
 fire (no manual trigger, just a longer wait before verifying) or get someone
 with prod access to trigger/verify it.
 
-### 3. Flip `openfga.enabled`
+### 3. Seed `team:crowdfunding_approvers` — blocker, not optional
 
-Only after step 2 is verified. Add to the same `values/<env>/lfx-crowdfunding-backend.yaml`:
+**This step is not covered by #295/#277 and has never been done in any
+environment.** Without it, flipping `openfga.enabled` denies every approve/
+decline call, in every env, with no fallback — this is a real regression, not
+a theoretical one.
+
+Why: the `process-approval` rule in `ruleset.yaml` does not check anything
+CF's backend emits. It checks `relation: member` on a separate, global
+`team:crowdfunding_approvers` object (per `backend/docs/rewrite/12-fga-authorization-model.md`,
+"Approvers as a global team grant"). Doc 12's Phase 1 called for `isApprover`
+(`backend/internal/handler/initiative_handler.go:598`) to check that team via
+FGA, falling back to the `ALLOWED_APPROVERS` env var — but that Phase 1 was
+never implemented. `isApprover` today still only checks `ALLOWED_APPROVERS`
+directly, and no setup script for `team:crowdfunding_approvers` was ever
+written (the only team-seeding PR that shipped, #285, was for the unrelated
+`team:crowdfunding-services` M2M grant). So `team:crowdfunding_approvers`
+almost certainly has **zero member tuples** in every environment today.
+
+Once `openfga.enabled` is true, `process-approval` stops being `allow_all`
+and starts requiring FGA team membership — checked at the gateway, before the
+request ever reaches `isApprover`'s in-app fallback. An empty team means
+every approver is denied, `ALLOWED_APPROVERS` included.
+
+**Before step 4 in any environment:**
+
+1. Write (or adapt) a setup script analogous to
+   `lfx-v2-member-service/scripts/setup-global-org-admin-team.sh` — read
+   existing `team:crowdfunding_approvers` members, diff against that env's
+   current `ALLOWED_APPROVERS` list, write what's missing. Use the plain
+   LFID username (no `auth0|` prefix) as the tuple subject — getting this
+   wrong silently 403s every approver.
+2. Run it against that environment's OpenFGA store (same pattern as verifying
+   the backfill in step 2 — a direct `/write` this time, not a `/read`).
+3. **Bust the `fga-sync-cache` KV's `inv` key after the write.** fga-sync's
+   cache invalidation only triggers on writes fga-sync itself makes — a
+   direct OpenFGA write does not bump it, so a cached `false` for a
+   newly-added approver can survive the grant otherwise.
+4. Verify with an OpenFGA `/read` for `team:crowdfunding_approvers` — confirm
+   every username currently in that env's `ALLOWED_APPROVERS` (fix
+   [lfx-v2-argocd#1637](https://github.com/linuxfoundation/lfx-v2-argocd/pull/1637)
+   first for staging, so you're seeding against the corrected list, not the
+   typo'd one) shows up as a `member` tuple.
+5. Smoke-test one real approve/decline call against that env, as a known
+   approver, before moving to step 4.
+
+### 4. Flip `openfga.enabled`
+
+Only after steps 2 and 3 are both verified. Add to the same
+`values/<env>/lfx-crowdfunding-backend.yaml`:
 
 ```yaml
 openfga:
@@ -109,11 +157,11 @@ openfga:
 This turns on the real `openfga_check` authorizers (`me-initiative-write`,
 the announcement rules, `process-approval`) — but has **no effect until
 `heimdall.enabled` is also true** (these RuleSet rules only run for traffic
-through the Heimdall gateway). It's safe to merge this ahead of step 4 if you
+through the Heimdall gateway). It's safe to merge this ahead of step 5 if you
 want to decouple the two changes; the flip is inert until the gateway cutover
 below.
 
-### 4. Heimdall gateway cutover (backend + frontend together)
+### 5. Heimdall gateway cutover (backend, frontend, RS, Self Serve, Stripe — all synchronized)
 
 This is the actual cutover — unlike steps 1–3, this is not gradual. Per
 `heimdall.enabled`'s authenticator design (`oauth2_introspection` → `openfga_check`
@@ -155,7 +203,43 @@ re-requests a token), and CF's session volume doesn't need staggering. Expect
 one clean cutover and one burst of re-logins right after deploy, in staging
 and in prod alike.
 
-### 5. Post-cutover verification
+**Three more callers must repoint in the same window** (#271 rows 7b/7f,
+tracked in [#286](https://github.com/linuxfoundation/lfx-crowdfunding/issues/286)
+and [#292](https://github.com/linuxfoundation/lfx-crowdfunding/issues/292)).
+None of these have a safe window on either side of the flip — the old host
+stops routing the instant `ingress.enabled` goes false for that env, so each
+must be pre-staged (PR written + approved ahead of time) and merged/applied
+in the same deploy window as the backend/frontend values above, not before
+and not after:
+
+- **Reimbursement Service** (`reimbursement-service` repo) — one PR per
+  environment (not one combined PR: RS's CI deploys dev on every push to
+  `master`, and staging+prod together on the same tag, so a shared PR would
+  force environments to cut over together and block unrelated RS releases).
+  Repoints `serverless.yml`'s `m2mAudience`/`cfAPIURL` from the legacy
+  `crowdfunding-api.<env>.lfx.dev` host to that env's `lfx_v2_api` audience
+  and Heimdall gateway host — same pattern as the merged dev PR,
+  `reimbursement-service#268`. Validate past RS's token cache TTL (~5 min
+  default) before calling the env's cutover clean — warm Lambda containers
+  can keep presenting the old audience for up to one token lifetime after
+  deploy.
+- **Self Serve** (`lfx-v2-argocd` `values/<env>/lfx-self-serve.yaml`) —
+  repoint `CROWDFUNDING_API_BASE_URL` and `CROWDFUNDING_API_AUDIENCE` from
+  the legacy host (still `https://crowdfunding-api.<env>...` in both staging
+  and prod today) to that env's gateway host, same as dev's values. The code
+  side of this (calling `/crowdfunding/...` instead of `/v1/...`) already
+  shipped org-wide in `lfx-self-serve#2846` and needs no further change —
+  only this values-file repoint is synchronized with the flip.
+- **Stripe webhook endpoint** — no Terraform/IaC manages this; it's a manual
+  edit in the Stripe dashboard (or `POST /v1/webhook_endpoints/{id}` via the
+  Stripe API) per environment. **Edit the existing endpoint's URL in place —
+  do not delete and recreate it** — changing it to
+  `https://lfx-api.<env>.../crowdfunding/stripe/webhook` in place preserves
+  `STRIPE_WEBHOOK_SECRET`; recreating the endpoint rotates it and breaks
+  webhook verification until the new secret is also updated in that env's
+  `STRIPE_WEBHOOK_SECRET` config.
+
+### 6. Post-cutover verification
 
 From outside the cluster (same checks used for dev's argocd#1642):
 
@@ -173,6 +257,16 @@ From outside the cluster (same checks used for dev's argocd#1642):
   `openfga.enabled: false` branch of that rule is `deny_all`, not `allow_all`,
   so this is the one path that was still broken even with tuples and grants
   in place until `openfga.enabled` is actually true.
+- A known approver successfully approves/declines a test initiative through
+  the gateway — confirms step 3's `team:crowdfunding_approvers` seeding
+  actually took, not just that the tuple write succeeded.
+- Self Serve's CF module still loads and its silent second Auth0 login still
+  mints a usable token (see the note on `CrowdfundingAuthService` in #292 —
+  it keeps working post-cutover because `lfx_v2_api` silently drops the
+  unknown `access:me` scope it requests and the gateway's `create_jwt`
+  finalizer adds the real scope back).
+- Stripe dashboard shows a 2xx on the next webhook delivery after the
+  endpoint edit, and a real (or test) event still passes HMAC validation.
 
 ## Rollback
 
@@ -186,9 +280,14 @@ without the gateway.
 ## Open items not blocking this playbook
 
 - [lfx-v2-argocd#1637](https://github.com/linuxfoundation/lfx-v2-argocd/pull/1637)
-  (open, unmerged): staging `ALLOWED_APPROVERS` username fix — unrelated to
-  this cutover but worth merging first so approval-flow testing in step 5
-  uses correct approver accounts.
+  (open, unmerged): staging `ALLOWED_APPROVERS` username fix — merge this
+  **before** step 3's approvers-team seeding for staging, so you seed the
+  corrected username list, not the typo'd one.
+- [#286](https://github.com/linuxfoundation/lfx-crowdfunding/issues/286) and
+  [#292](https://github.com/linuxfoundation/lfx-crowdfunding/issues/292) are
+  the tracking issues for the RS/Self-Serve/Stripe repoints in step 5 — no
+  staging or prod PRs exist yet for either; both need pre-staged PRs before
+  that environment's cutover window.
 - #271 remains open on this repo as the tracking issue; comment there (or
   update this doc) after staging and after prod, following the pattern of the
   existing dev-completion comments.
