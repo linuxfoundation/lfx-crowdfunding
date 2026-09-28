@@ -420,7 +420,7 @@ func TestDonationService_ListOrgDonations_RepoError(t *testing.T) {
 }
 
 func acceptingInitiative() *mockInitiativeRepo {
-	return &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: true, StripeProductID: "prod-test"}}
+	return &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", Status: models.StatusPublished, AcceptFunding: true, StripeProductID: "prod-test"}}
 }
 
 // --- input validation ---
@@ -478,13 +478,35 @@ func TestDonationService_Create_InitiativeNotFound(t *testing.T) {
 }
 
 func TestDonationService_Create_InitiativeNotAccepting(t *testing.T) {
-	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: false}}
+	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", Status: models.StatusPublished, AcceptFunding: false}}
 	svc := newDonationSvc(&testDonationRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1",
 		models.DonationCreateInput{AmountCents: 500, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1"})
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+// Non-published initiatives must not take money even when accept_funding is
+// set. configStripeClient panics on any Stripe call, so reaching Stripe fails
+// the test.
+func TestDonationService_Create_InitiativeNotPublished(t *testing.T) {
+	for _, status := range []models.InitiativeStatus{
+		models.StatusSubmitted, models.StatusPending, models.StatusDeclined, models.StatusHidden,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			initRepo := &mockInitiativeRepo{initiative: &models.Initiative{
+				ID: "init-1", Status: status, AcceptFunding: true, StripeProductID: "prod-test",
+			}}
+			svc := newDonationSvc(&testDonationRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
+
+			_, err := svc.Create(context.Background(), "init-1", "u1",
+				models.DonationCreateInput{AmountCents: 500, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1"})
+			if !errors.Is(err, domain.ErrInitiativeNotFound) {
+				t.Errorf("expected ErrInitiativeNotFound, got %v", err)
+			}
+		})
 	}
 }
 
@@ -748,6 +770,7 @@ func tieredInitiative() *mockInitiativeRepo {
 	return &mockInitiativeRepo{
 		initiative: &models.Initiative{
 			ID:            "init-1",
+			Status:        models.StatusPublished,
 			AcceptFunding: true,
 			DonationMode:  models.DonationModeTiers,
 			SponsorshipTiers: []models.SponsorshipTier{
@@ -776,6 +799,7 @@ func TestDonationService_Create_DonationTierOnOpenModeInitiative(t *testing.T) {
 	openInit := &mockInitiativeRepo{
 		initiative: &models.Initiative{
 			ID:            "init-1",
+			Status:        models.StatusPublished,
 			AcceptFunding: true,
 			DonationMode:  models.DonationModeOpen,
 		},
@@ -903,6 +927,7 @@ func TestDonationService_Create_TierNotConfiguredOnInitiative(t *testing.T) {
 	initRepo := &mockInitiativeRepo{
 		initiative: &models.Initiative{
 			ID:            "init-1",
+			Status:        models.StatusPublished,
 			AcceptFunding: true,
 			DonationMode:  models.DonationModeTiers,
 			SponsorshipTiers: []models.SponsorshipTier{
