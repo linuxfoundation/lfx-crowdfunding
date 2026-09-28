@@ -78,18 +78,29 @@ kubectl create job --from=cronjob/lfx-crowdfunding-backend-fga-reconcile \
 Check the job log for `total_initiatives`, `published`, `failed: 0`.
 
 **Then verify tuples actually landed in OpenFGA** (don't trust the job log
-alone) — port-forward to `lfx-platform-openfga` in the `lfx` namespace
-(`OPENFGA_STORE_ID` env var is on the `lfx-v2-fga-sync` Deployment) and hit
-`/stores/{id}/read` with a real initiative UID from that env's public
-`/crowdfunding/initiatives` endpoint. Expect `owner: user:<username>` and, for
-published initiatives, `viewer: user:*`. Note: this OpenFGA version rejects a
-type-only filter with an empty object id — you need a real object id.
+alone — `published`/`failed` only track whether the fire-and-forget NATS
+publish succeeded, not whether fga-sync actually consumed and wrote the
+tuple; a per-row consumer failure downstream can still leave an initiative
+without tuples). Compare the complete Postgres-derived expected tuple set —
+every initiative's `owner`, `viewer: user:*` for published ones, and for
+attributed initiatives its `project` or `b2b_org` reference tuple — against
+what's actually in OpenFGA before moving to step 4. Spot-checking a single
+initiative's owner/viewer tuples is not sufficient: it would miss both a
+stalled consumer on another initiative and an omitted attribution reference.
+Port-forward to `lfx-platform-openfga` in the `lfx` namespace
+(`OPENFGA_STORE_ID` env var is on the `lfx-v2-fga-sync` Deployment) to query
+`/stores/{id}/read`; note this OpenFGA version rejects a type-only filter
+with an empty object id — you need real object ids.
 
-Re-check the CronJob schedule's message-volume math (`~194k msgs/day` at the
-dev-derived 15-minute interval, now defaulted to daily) against staging/prod's
-actual initiative counts before assuming the same daily schedule is fine —
-only re-tune if either env has a meaningfully different initiative count than
-dev's ~74.
+Re-check the CronJob's message volume before assuming the same schedule is
+fine: one reconcile run emits one NATS update per initiative, so daily
+messages = `initiative_count × runs_per_day` (1 run/day on the default daily
+schedule, 96 on the dev-era 15-minute interval). Dev's ~74 initiatives is
+~74 msgs/day on today's daily schedule, or ~7.1k/day at a 15-minute interval
+— the `~194k msgs/day` figure some earlier notes cite is that same 15-minute
+interval applied to prod's ~2,023 initiatives, not a default threshold.
+Compute this for staging/prod's actual initiative counts before assuming no
+re-tuning is needed.
 
 **Prod auth caveat:** both the manual job trigger and the direct OpenFGA
 `/read` query need cluster access to the prod namespace. Confirm you (or
@@ -253,10 +264,12 @@ From outside the cluster (same checks used for dev's argocd#1642):
   allows the owner/approver, through the gateway (not just via `openfga.enabled`
   being set — confirm the RuleSet is actually being hit).
 - Reimbursement Service (M2M) call against `owner-info`/`published-list`
-  succeeds — this is the caller #281/#286 specifically unblocked; the
-  `openfga.enabled: false` branch of that rule is `deny_all`, not `allow_all`,
-  so this is the one path that was still broken even with tuples and grants
-  in place until `openfga.enabled` is actually true.
+  succeeds — this is the caller #281/#286 specifically unblocked. This rule's
+  `openfga_check` runs unconditionally once traffic reaches Heimdall (it is
+  not gated on `openfga.enabled` — `ruleset.yaml:98-123`); it was blocked
+  purely by this step's gateway cutover being the first time these routes
+  reach Heimdall at all, with the M2M subject tuples from the precondition
+  check already satisfying it.
 - A known approver successfully approves/declines a test initiative through
   the gateway — confirms step 3's `team:crowdfunding_approvers` seeding
   actually took, not just that the tuple write succeeded.
