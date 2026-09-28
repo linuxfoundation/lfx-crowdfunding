@@ -112,7 +112,7 @@ func TestPublisher_UpdateAccess(t *testing.T) {
 		}
 	})
 
-	t.Run("organization attribution emits no reference (blocked on #263)", func(t *testing.T) {
+	t.Run("organization attribution sets b2b_org reference", func(t *testing.T) {
 		conn := &fakePublisherConn{}
 		p := NewPublisher(nil)
 		p.conn = conn
@@ -120,14 +120,19 @@ func TestPublisher_UpdateAccess(t *testing.T) {
 		err := p.UpdateAccess(context.Background(), InitiativeAccess{
 			UID:           "init-3",
 			OwnerUsername: "carol",
-			Attribution:   models.Attribution{Type: models.AttributionOrganization, EntityUID: "org-uuid"},
+			Attribution:   models.Attribution{Type: models.AttributionOrganization, EntityUID: "0012M00002qnukOQAQ"},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		data := conn.published[0].msg.Data.(map[string]any)
-		if _, hasRefs := data["references"]; hasRefs {
-			t.Errorf("expected no references for organization attribution yet, got %v", data["references"])
+		refs, ok := data["references"].(map[string]any)
+		if !ok {
+			t.Fatalf("references missing or wrong type: %+v", data["references"])
+		}
+		orgRefs, ok := refs["b2b_org"].([]any)
+		if !ok || len(orgRefs) != 1 || orgRefs[0] != "0012M00002qnukOQAQ" {
+			t.Errorf("references.b2b_org = %+v, want [0012M00002qnukOQAQ]", refs["b2b_org"])
 		}
 	})
 

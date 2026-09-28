@@ -94,11 +94,7 @@ fga-sync.
 | Reference | Value | Condition |
 |---|---|---|
 | `project` | `Initiative.Attribution.EntityUID` | Only when `Attribution.Type == project` and `EntityUID` is non-empty |
-
-> `b2b_org` attribution is deliberately not emitted as a reference yet —
-> blocked on lfx-crowdfunding#263 (`attributed_to_uid` is typed UUID, but a
-> real b2b_org UID may be an 18-character Salesforce SFID). Project
-> attribution and owner are unaffected and ship now.
+| `b2b_org` | `Initiative.Attribution.EntityUID` | Only when `Attribution.Type == organization` and `EntityUID` is non-empty |
 
 ### delete_access
 
@@ -113,6 +109,6 @@ only `uid`. Removes every FGA tuple for `crowdfunding_initiative:{uid}`.
 |---|---|---|
 | Create initiative | `lfx.fga-sync.update_access` | Owner relation set; `public` false until approved+published |
 | Approve / publish / hide initiative | `lfx.fga-sync.update_access` | `public` toggles the `viewer:[user:*]` wildcard |
-| Update attribution | `lfx.fga-sync.update_access` | `project` reference set/cleared |
+| Update attribution | `lfx.fga-sync.update_access` | `project`/`b2b_org` reference set/cleared |
 | Delete initiative | `lfx.fga-sync.delete_access` | Blocks on a 5s-bounded flush before `Delete` returns |
 | `fga-reconcile` CronJob (daily) | `lfx.fga-sync.update_access` | Republishes every initiative's current DB state; self-heals stale/missed live-path publishes |

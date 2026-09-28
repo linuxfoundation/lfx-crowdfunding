@@ -307,13 +307,11 @@ longer applies: approvers are not modeled in FGA today, and the reopened global-
 does not resurface under it. Open question G — the `GET /crowdfunding/me/initiatives` list mechanism — is
 resolved above via a bounded batched `Check`, no longer open.)
 
-## Prerequisite (named, not solved here)
+## Prerequisite (resolved)
 
 [lfx-crowdfunding#263](https://github.com/linuxfoundation/lfx-crowdfunding/issues/263):
-`attributed_to_uid` is typed `UUID` (migration `007_initiative_attribution.up.sql`), but a real
-`b2b_org` uid may be an 18-character Salesforce Account SFID. Emitting a `b2b_org` reference
-tuple is blocked on resolving that mismatch first.
-
-This does **not** block the global approver-team proposal above: that proposal writes only
-`user:<lfid>` → `member` → `team:crowdfunding_approvers` tuples, never a `b2b_org` reference,
-so it can proceed independently of #263.
+`attributed_to_uid` was typed `UUID` (migration `007_initiative_attribution.up.sql`), but a real
+`b2b_org` uid may be an 18-character Salesforce Account SFID. Migration
+`008_attributed_to_uid_text.up.sql` widens the column to `TEXT` and `Attribution.Validate()`
+now validates the SFID shape for organization attribution (UUID for project). CF now emits the
+`b2b_org` reference tuple accordingly — see `docs/fga-contract.md`.

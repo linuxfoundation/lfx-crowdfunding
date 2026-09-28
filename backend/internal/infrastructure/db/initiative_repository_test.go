@@ -382,7 +382,7 @@ func TestInitiativeRepository_Attribution_RoundTrip(t *testing.T) {
 		t.Fatalf("Attribution.EntityUID = %q, want empty", created.Attribution.EntityUID)
 	}
 
-	orgUID := uuid.New().String()
+	orgUID := "0012M00002qnukOQAQ" // 18-char Salesforce SFID, not a UUID (lfx-crowdfunding#263)
 	created.Attribution = models.Attribution{Type: models.AttributionOrganization, EntityUID: orgUID}
 	updated, err := repo.Update(ctx, created, models.InitiativeUpdateInput{})
 	if err != nil {

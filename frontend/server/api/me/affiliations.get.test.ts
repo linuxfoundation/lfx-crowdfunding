@@ -32,8 +32,8 @@ describe('GET /api/me/affiliations BFF handler', () => {
 
     expect(result).toEqual({
       organizations: [
-        { id: '8b1e2c3d-4f56-4a78-9b0c-1d2e3f4a5b6c', name: 'Sample Org — Acme Corp' },
-        { id: '3f4a5b6c-7d8e-4f90-a1b2-c3d4e5f60718', name: 'Sample Org — Globex' },
+        { id: '0012M00002qnukOQAQ', name: 'Sample Org — Acme Corp' },
+        { id: '0012M00002qnukPQAQ', name: 'Sample Org — Globex' },
       ],
       projects: [
         { id: '0c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f', name: 'Sample Project — Kubernetes' },

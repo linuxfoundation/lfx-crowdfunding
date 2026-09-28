@@ -76,12 +76,12 @@ describe('buildBackendPayload — attribution', () => {
   it('maps kind + entityId to attribution.type + .entity_uid', () => {
     const backendPayload = buildBackendPayload({
       ...basePayload(),
-      attribution: { kind: 'organization', entityId: '8b1e2c3d-4f56-4a78-9b0c-1d2e3f4a5b6c' },
+      attribution: { kind: 'organization', entityId: '0012M00002qnukOQAQ' },
     });
 
     expect(backendPayload.attribution).toEqual({
       type: 'organization',
-      entity_uid: '8b1e2c3d-4f56-4a78-9b0c-1d2e3f4a5b6c',
+      entity_uid: '0012M00002qnukOQAQ',
     });
   });
 });

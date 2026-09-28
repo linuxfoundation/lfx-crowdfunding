@@ -84,14 +84,13 @@ Each initiative carries exactly one attribution, chosen at creation in a new fun
 One field, three consumers: **access control**, the **details-page source label**, and the **SS
 lens listing pages**. Existing initiatives default to `personal` and behave exactly as today.
 
-> **`b2b_org` UID format is documented two conflicting ways — verify before the M1 migration.** Per
+> **`b2b_org` UID format resolved: 18-char Salesforce Account SFID, not a UUID.** Per
 > `lfx-v2-member-service/docs/indexer-contract.md`, a `b2b_org` uid is an 18-char Salesforce Account
-> SFID (e.g. `0012M00002qnukOQAQ`); but `lfx-v2-helm/charts/lfx-platform/files/model.fga` describes
-> it as "an invertible UUID v8 encoded from the Salesforce Account SFID." Only the `project` UID is
-> unambiguously a v2 UUID. The M1 schema and `models.Attribution.Validate()` currently assume UUID
-> for both attribution kinds; whether that's a bug depends on which of the two descriptions the live
-> index actually uses — check a real `b2b_org` document before relying on either — tracked as a
-> pre-migration verification, not settled fact.
+> SFID (e.g. `0012M00002qnukOQAQ`); the `project` UID is a v2 UUID.
+> [lfx-crowdfunding#263](https://github.com/linuxfoundation/lfx-crowdfunding/issues/263) fixed the
+> mismatch: `attributed_to_uid` is now `TEXT` (migration `008_attributed_to_uid_text.up.sql`) and
+> `models.Attribution.Validate()` validates the SFID shape for `organization` attribution and the
+> UUID shape for `project` attribution — see `docs/rewrite/12-fga-authorization-model.md`.
 
 **The picker lists affiliated entities only — no free text.** The org/project pickers show only
 entities the user is already affiliated with (per LFXV2-2537's functional requirements: no free
@@ -696,9 +695,8 @@ the existing SQL as a second `WHERE` branch.**
    applied *in* the query, not after it.
 3. **Bound the set.** If a caller writes an unusually large number of entities, keep the filter
    database-side: pass the set as an array parameter (`= ANY($n::uuid[])` for `project` UIDs;
-   `b2b_org` UIDs need the actual column type once the SFID-vs-UUID question above is settled —
-   see the prerequisite note in doc 12, #263) or a joined temporary relation instead of an inline
-   `IN` list, so sort, count, and pagination
+   `= ANY($n::text[])` for `b2b_org` UIDs, since `attributed_to_uid` is `TEXT` — see doc 12) or a
+   joined temporary relation instead of an inline `IN` list, so sort, count, and pagination
    stay in the query at any set size. If a hard cap is ever imposed, log when it is hit (no
    silent truncation).
 

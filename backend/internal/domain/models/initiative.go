@@ -6,6 +6,7 @@ package models
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -125,9 +126,11 @@ var ValidAttributionTypes = map[AttributionType]bool{
 
 // Attribution is the entity — none, a b2b_org, or an LF project — an
 // initiative is run on behalf of. EntityUID must be empty when Type is
-// personal, and a UUID otherwise.
+// personal; otherwise it is a Salesforce SFID for organization attribution
+// or a UUID for project attribution (b2b_org uids are 18-char Salesforce
+// Account SFIDs, not UUIDs — see lfx-crowdfunding#263).
 //
-// Validate checks shape only: type membership and the UUID/emptiness
+// Validate checks shape only: type membership and the SFID/UUID/emptiness
 // invariant. It deliberately does NOT check that the caller is affiliated
 // with EntityUID — that check is blocked on the platform enumeration
 // decision (design doc open question 4) and is out of scope for M1.
@@ -136,11 +139,22 @@ type Attribution struct {
 	EntityUID string          `json:"entity_uid,omitempty"`
 }
 
+// sfidPattern matches a Salesforce ID: 15 or 18 alphanumeric characters.
+var sfidPattern = regexp.MustCompile(`^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$`)
+
 // Validate reports whether a is a well-formed attribution: a known type, with
-// EntityUID present and a parseable UUID iff Type is not personal. The
-// returned error is a plain error (not domain.ErrInvalidInput — this package
-// cannot import domain without a cycle); callers wrap it as needed.
-func (a Attribution) Validate() error {
+// EntityUID present and shaped correctly for Type — a Salesforce SFID for
+// organization, a UUID for project — and empty for personal. The returned
+// error is a plain error (not domain.ErrInvalidInput — this package cannot
+// import domain without a cycle); callers wrap it as needed.
+//
+// For project attribution, EntityUID is rewritten to uuid.Parse's canonical
+// form: attributed_to_uid is TEXT (migration 008), so unlike the old UUID
+// column, PostgreSQL no longer canonicalizes a non-canonical spelling (e.g.
+// uppercase) on write — without this, that spelling would be persisted and
+// later emitted verbatim as an FGA project:<id> reference, which can target a
+// different OpenFGA object than the canonical UID.
+func (a *Attribution) Validate() error {
 	if !ValidAttributionTypes[a.Type] {
 		return fmt.Errorf("attribution.type must be one of personal, organization, project")
 	}
@@ -153,8 +167,17 @@ func (a Attribution) Validate() error {
 	if a.EntityUID == "" {
 		return fmt.Errorf("attribution.entity_uid is required for %s attribution", a.Type)
 	}
-	if _, err := uuid.Parse(a.EntityUID); err != nil {
-		return fmt.Errorf("attribution.entity_uid must be a UUID")
+	switch a.Type {
+	case AttributionOrganization:
+		if !sfidPattern.MatchString(a.EntityUID) {
+			return fmt.Errorf("attribution.entity_uid must be a 15 or 18-character Salesforce ID")
+		}
+	case AttributionProject:
+		parsed, err := uuid.Parse(a.EntityUID)
+		if err != nil {
+			return fmt.Errorf("attribution.entity_uid must be a UUID")
+		}
+		a.EntityUID = parsed.String()
 	}
 	return nil
 }
