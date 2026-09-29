@@ -55,6 +55,25 @@ open question left in #277's rollout comment.
       `backend/charts/lfx-crowdfunding-backend/values.yaml` — no per-env
       override needed unless an environment intentionally uses different team
       names (neither does today).
+- [ ] **Read access to verify syncs.** The `sso-power-user` kubectl role cannot
+      list ArgoCD `applications` (ns `argocd`) or Heimdall
+      `rulesets.heimdall.dadrus.github.com` (ns `crowdfunding-backend`) — both
+      return `Forbidden`. Steps 4 and 5 are rendered into a `RuleSet`, so
+      without one of these you can't confirm a merge actually synced (e.g.
+      `kubectl -n crowdfunding-backend get ruleset -o yaml | grep openfga_check`).
+      Before starting an environment, confirm with
+      `kubectl auth can-i get rulesets.heimdall.dadrus.github.com -n crowdfunding-backend`
+      (want `yes`), or have ArgoCD dashboard/CLI access. If neither, request
+      read access from the cluster-role owners first.
+- [ ] **Heimdall `oidc` authenticator has `validate_jwk: false`.** Check
+      `values/<env>/lfx-platform.yaml` in `lfx-v2-argocd` before step 5. Without
+      it, Heimdall rejects the Auth0 signing key (`x509: certificate signed by
+      unknown authority`) and every Auth0-token request 401s at the
+      authenticator — including `PATCH /api/me` on login — before any ruleset or
+      backend code runs, so the backend/ruleset fixes (#298, #301) can't help.
+      Dev and prod have it set; staging was missing it until
+      `lfx-v2-argocd#1690`. Diagnose with
+      `kubectl -n lfx logs deploy/lfx-platform-heimdall | grep <trace-id>`.
 
 ## Step-by-step (per environment, in `lfx-v2-argocd` unless noted)
 
