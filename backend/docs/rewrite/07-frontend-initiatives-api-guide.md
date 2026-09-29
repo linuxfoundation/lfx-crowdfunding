@@ -149,7 +149,7 @@ Every initiative type requires at a minimum:
 }
 ```
 
-`slug` is optional — if omitted the UI can let the owner set it later via PATCH.
+`slug` is optional — if omitted it is generated from `name`, and the owner can change it later via PATCH. A supplied slug may only contain lowercase letters, digits, `-` and `_`, and must not start or end with `-` or `_`; anything else returns `400`.
 
 ---
 

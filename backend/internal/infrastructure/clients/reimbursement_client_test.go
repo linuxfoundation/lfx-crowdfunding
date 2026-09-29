@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 )
 
@@ -242,5 +244,37 @@ func TestProcessExpenseAction_M2M_ShortTTL_doesNotCacheExpired(t *testing.T) {
 	}
 	if fetchCount != 1 {
 		t.Errorf("expected 1 token fetch for short TTL, got %d (expiry was immediately in the past)", fetchCount)
+	}
+}
+
+func TestSyncPolicy_EscapesSlugInProjectURL(t *testing.T) {
+	var body struct {
+		ProjectURL string `json:"ProjectURL"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := clients.NewReimbursementClient(clients.ReimbursementConfig{
+		APIURL:       srv.URL,
+		APIKey:       "test-key",
+		FrontendBase: "https://example.com",
+	})
+	initiative := &models.Initiative{
+		ID:     "init-1",
+		Slug:   "x/process-approval/decline#",
+		Status: models.StatusPublished,
+	}
+
+	if err := c.SyncPolicy(context.Background(), initiative, &models.User{}); err != nil {
+		t.Fatalf("SyncPolicy: %v", err)
+	}
+	want := "https://example.com/initiatives/x%2Fprocess-approval%2Fdecline%23"
+	if body.ProjectURL != want {
+		t.Errorf("ProjectURL = %q, want %q", body.ProjectURL, want)
 	}
 }
