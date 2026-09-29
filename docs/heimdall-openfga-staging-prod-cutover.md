@@ -4,15 +4,16 @@
 # Heimdall + OpenFGA Cutover Playbook — Staging then Prod
 
 Staging and prod are still on the legacy Ingress with `openfga.enabled: false`.
-Dev has been cut over since 2026-09-25, but **dev's own step 3 was never run**
-(`openfga.enabled` shipped in argocd#1660 with `team:crowdfunding_approvers`
-still unseeded) — dev's approve/decline calls are almost certainly 403ing
-today. Do not treat dev as a working reference; re-run step 3 in dev first,
-and use "dev has approvals, RS, Self Serve, and Ledger all passing
-post-cutover verification (step 6)" as the actual gate before starting
-staging, not just "dev is cut over." This is the replication playbook for
-staging, then prod — same steps, do staging first, verify, then repeat for
-prod.
+Dev has been cut over since 2026-09-25. Dev's step 3 (seeding
+`team:crowdfunding_approvers`) was originally missed when `openfga.enabled`
+shipped in argocd#1660, but was seeded separately on 2026-09-28 — confirmed via
+a direct OpenFGA `/read` against dev's `lfx-core` store showing three `member`
+tuples (`user:elim`, `user:lojile`, `user:michal`). Still use "dev has
+approvals, RS, Self Serve, and Ledger all passing post-cutover verification
+(step 6)" as the actual gate before starting staging, not just "dev is cut
+over" or "step 3 is seeded" — the team tuples alone don't confirm the rest of
+the cutover. This is the replication playbook for staging, then prod — same
+steps, do staging first, verify, then repeat for prod.
 
 ## Per-environment hosts and audiences
 
@@ -142,10 +143,11 @@ with prod access to trigger/verify it.
 
 ### 3. Seed `team:crowdfunding_approvers` — blocker, not optional
 
-**This step is not covered by #295/#277 and has never been done in any
-environment.** Without it, flipping `openfga.enabled` denies every approve/
-decline call, in every env, with no fallback — this is a real regression, not
-a theoretical one.
+**This step is not covered by #295/#277 and, as of this writing, has only been
+done in dev** (seeded 2026-09-28, verified via OpenFGA `/read`; see the note at
+the top of this doc). Staging and prod still need it. Without it, flipping
+`openfga.enabled` denies every approve/decline call in that env, with no
+fallback — this is a real regression, not a theoretical one.
 
 Why: the `process-approval` rule in `ruleset.yaml` does not check anything
 CF's backend emits. It checks `relation: member` on a separate, global
@@ -156,8 +158,10 @@ FGA, falling back to the `ALLOWED_APPROVERS` env var — but that Phase 1 was
 never implemented. `isApprover` today still only checks `ALLOWED_APPROVERS`
 directly, and no setup script for `team:crowdfunding_approvers` was ever
 written (the only team-seeding PR that shipped, #285, was for the unrelated
-`team:crowdfunding-services` M2M grant). So `team:crowdfunding_approvers`
-almost certainly has **zero member tuples** in every environment today.
+`team:crowdfunding-services` M2M grant). `team:crowdfunding_approvers` had
+**zero member tuples** in every environment until dev was seeded manually on
+2026-09-28 (`user:elim`, `user:lojile`, `user:michal`); staging and prod still
+have none.
 
 Once `openfga.enabled` is true, `process-approval` stops being `allow_all`
 and starts requiring FGA team membership — checked at the gateway, before the
