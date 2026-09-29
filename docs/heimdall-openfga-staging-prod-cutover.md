@@ -64,6 +64,18 @@ backfill has run, fails every check closed and locks out every caller
 (this is the whole point of #277's ordering). Step 3 is a separate, easy-to-miss
 blocker on the `process-approval` route specifically — see below.
 
+**Steps 1–2 can run well ahead of steps 4–5, in prod especially.** The
+reconcile job only publishes to fga-sync — it has no dependency on
+`openfga.enabled` or `heimdall.enabled` and doesn't touch the gateway or auth
+path. If your prod cutover window is scheduled for daytime hours when most of
+devops is asleep, merge step 1 for prod early and let the daily
+`0 7 * * *` UTC schedule fire and get verified on its own timeline, so step 2
+is already done (or just needs re-verifying) by the time you start the rest
+of the playbook — instead of needing an on-demand trigger during the live
+window. (`kubectl create job --from=cronjob/...` also isn't guaranteed to
+work ad hoc — it needs `jobs.batch` create RBAC in that namespace, which
+`sso-power-user` doesn't have as of 2026-09-29.)
+
 ### 1. Enable `fgaReconcileCronJob`
 
 Edit `values/<env>/lfx-crowdfunding-backend.yaml`, add (pattern from dev,
