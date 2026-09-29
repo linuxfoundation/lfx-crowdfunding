@@ -55,6 +55,14 @@ open question left in #277's rollout comment.
       `backend/charts/lfx-crowdfunding-backend/values.yaml` — no per-env
       override needed unless an environment intentionally uses different team
       names (neither does today).
+- [ ] **Backend has all three `HEIMDALL_*` values set.** The backend only
+      accepts Heimdall-issued JWTs when `HEIMDALL_JWKS_URL`,
+      `HEIMDALL_JWT_AUDIENCE`, and `HEIMDALL_JWT_ISSUER` are all configured
+      (`backend/internal/infrastructure/auth/jwt.go:207-232`); with none set it
+      stays Auth0-only and rejects every gateway-forwarded token, and with only
+      some set it fails to start. Being on `>=0.1.31` is not enough. Confirm
+      them in `values/<env>/lfx-crowdfunding-backend.yaml` before disabling the
+      Ingress (dev, staging, and prod all have them as of 2026-09-29).
 - [ ] **Read access to verify syncs.** The `sso-power-user` kubectl role cannot
       list ArgoCD `applications` (ns `argocd`) or Heimdall
       `rulesets.heimdall.dadrus.github.com` (ns `crowdfunding-backend`) — both
@@ -200,14 +208,24 @@ every approver is denied, `ALLOWED_APPROVERS` included.
 3. No fga-sync cache to bust for this one: `process-approval`'s
    `openfga_check` (`lfx-v2-helm/charts/lfx-platform/values.yaml`) calls
    OpenFGA's `/check` endpoint directly from Heimdall, not through fga-sync,
-   so a direct OpenFGA write is visible immediately.
+   so there is no fga-sync cache in the path. OpenFGA has its own, though: its
+   default `/check` consistency (`MINIMIZE_LATENCY`) can serve a cached denial
+   for a short time after a write. When verifying, pass
+   `"consistency": "HIGHER_CONSISTENCY"` on the `/check` request (or retry after
+   the cache TTL) so a correct seed isn't misdiagnosed as missing, and a stale
+   result isn't trusted.
 4. Verify with an OpenFGA `/read` for `team:crowdfunding_approvers` — confirm
    every username currently in that env's `ALLOWED_APPROVERS` (fix
    [lfx-v2-argocd#1637](https://github.com/linuxfoundation/lfx-v2-argocd/pull/1637)
    first for staging, so you're seeding against the corrected list, not the
    typo'd one) shows up as a `member` tuple.
-5. Smoke-test one real approve/decline call against that env, as a known
-   approver, before moving to step 4.
+5. Run a direct OpenFGA `/check` (`user:<username>`, `relation: member`,
+   `object: team:crowdfunding_approvers`, `HIGHER_CONSISTENCY`) for at least one
+   known approver before moving to step 4. Don't use a real approve/decline
+   call here: `heimdall.enabled` is still false at this point, so that request
+   goes through the legacy Ingress and only exercises the backend's
+   `ALLOWED_APPROVERS` check, not the FGA membership. The end-to-end approval
+   smoke test belongs in step 6, after cutover.
 
 ### 4. Flip `openfga.enabled`
 
@@ -235,8 +253,9 @@ audience fails at the gateway's own JWT validation, not at FGA, the instant
 this flips. `validate.yaml` (#282) also hard-fails the chart render if
 `ingress.enabled` and `heimdall.enabled` are both true, so there is never a
 state with both routes live at once — this is a deliberate choice, not a
-gateway limitation: the backend itself (v0.1.31) already accepts both Auth0
-and Heimdall JWTs on both `/v1` and `/crowdfunding`, so a temporary dual-route
+gateway limitation: the backend itself (v0.1.31, with the three `HEIMDALL_*` values from the
+preconditions set) already accepts both Auth0 and Heimdall JWTs on both `/v1`
+and `/crowdfunding`, so a temporary dual-route
 window (Ingress + HTTPRoute both live, each caller repointing on its own
 schedule) is technically possible and would make rollback simpler. We're
 keeping the synchronized, all-at-once cutover here to preserve #282's
@@ -263,8 +282,8 @@ every route until `NUXT_API_BASE_URL` also repoints):
 
 ```yaml
 config:
-  NUXT_API_BASE_URL: "<gateway host, from the table above>"   # was the internal Service URL
-  NUXT_PUBLIC_AUTH0_AUDIENCE: "<gateway host, from the table above>/"   # was the crowdfunding-api.* audience
+  NUXT_API_BASE_URL: "https://<gateway host, from the table above>"   # absolute URL, no trailing slash; was the internal Service URL
+  NUXT_PUBLIC_AUTH0_AUDIENCE: "<Auth0 lfx_v2_api audience, from the table above>"   # copy the audience column exactly, trailing slash included; was the crowdfunding-api.* audience
 ```
 
 Both staging and prod already have their own `NUXT_API_BASE_URL` override
@@ -305,15 +324,17 @@ and not after:
   lifetime after deploy.
 - **Ledger Service** (`ledger-service` repo) — its Expensify sync runs every
   10 minutes (`cron(0/10 * * * ? *)`) and calls
-  `GET {CF_API_URL}/v1/initiatives/{slug}` on the legacy host
-  (`cfclient/cfclient.go:155`, `serverless.yml`'s `cfAPIURL`). This call is
-  unauthenticated/public (the initiative detail route), so it needs no new
-  Auth0 client grant — just repoint `CF_API_URL` to that env's gateway host
-  and change the hardcoded `/v1` prefix in `cfclient.go` to `/crowdfunding`
-  (or make it a per-stage config value, matching RS's `cfAPIPathPrefix`
-  pattern, if prod ever needs to keep `/v1`). Requires a tag deploy in the
-  same window — this call is almost certainly already failing in dev, since
-  dev cut over without a corresponding Ledger Service change.
+  the CF API on the legacy host (`serverless.yml`'s `cfAPIURL`). It sends an
+  M2M bearer token and, since `ledger-service#305`, uses CF's authenticated
+  `slug-to-uid` resolver, so cutover needs more than a host/path edit: repoint
+  `cfAPIURL` **and** `m2mAudience` to that env's gateway host and `lfx_v2_api`
+  audience, and the Ledger Auth0 client grant for `lfx_v2_api` must exist
+  (`auth0-terraform#393`, merged; covers dev and staging). Requires a tag
+  deploy in the same window. Status as of 2026-09-29: dev and staging config
+  are merged (`ledger-service#305`, staging deployment still to be verified);
+  prod is untouched and still needs its own PR and grant check. Its next
+  Expensify sync was failing in dev from dev's cutover until that change
+  deployed.
 - **Self Serve** (`lfx-v2-argocd` `values/<env>/lfx-self-serve.yaml`) —
   repoint `CROWDFUNDING_API_BASE_URL` and `CROWDFUNDING_API_AUDIENCE` from
   the legacy host (still `https://crowdfunding-api.<env>...` in both staging
@@ -325,8 +346,8 @@ and not after:
   edit in the Stripe dashboard (or `POST /v1/webhook_endpoints/{id}` via the
   Stripe API) per environment. **Edit the existing endpoint's URL in place —
   do not delete and recreate it** — changing it to
-  `https://lfx-api.<env>.../crowdfunding/stripe/webhook` in place preserves
-  `STRIPE_WEBHOOK_SECRET`; recreating the endpoint rotates it and breaks
+  `https://<gateway host, from the table above>/crowdfunding/stripe/webhook` in
+  place preserves `STRIPE_WEBHOOK_SECRET`; recreating the endpoint rotates it and breaks
   webhook verification until the new secret is also updated in that env's
   `STRIPE_WEBHOOK_SECRET` config.
 
@@ -367,8 +388,16 @@ From outside the cluster (same checks used for dev's argocd#1642):
 ## Rollback
 
 Rolling back steps 1–4 (`fgaReconcileCronJob.enabled`, `openfga.enabled`) is
-just reverting that values PR in `lfx-v2-argocd` — both are inert without the
-gateway, so nothing else needs to move in the same window. Note
+just reverting that values PR in `lfx-v2-argocd` **only before step 5 has
+gone live** — until then both are inert without the gateway, so nothing else
+needs to move in the same window. Two caveats: steps 2 and 3 write persistent
+OpenFGA tuples (backfilled initiative tuples, `team:crowdfunding_approvers`
+members) that a values revert does not remove — leave them in place, they're
+harmless and needed for the next attempt. And once step 5 is live,
+`openfga.enabled` is no longer inert: reverting it alone switches the gated
+authorizers (`me-initiative-write`, the announcement rules, `process-approval`)
+back to `allow_all` at the gateway, so after cutover roll back step 5 first, as
+below, rather than reverting step 4 on its own. Note
 `fgaReconcileCronJob` itself is not inert while it's enabled: it publishes a
 tuple update for every initiative on its own schedule (see the message-volume
 note in step 2) regardless of `openfga.enabled`, so rolling it back does stop
@@ -399,21 +428,21 @@ land — the legacy Ingress host works again immediately, but RS/Ledger keep
 failing against it until redeployed, since the reverted `ingress.enabled: true`
 alone doesn't undo their config/code changes.
 
-## Open items not blocking this playbook
+## Prerequisites and open items (as of 2026-09-29)
 
 - [lfx-v2-argocd#1637](https://github.com/linuxfoundation/lfx-v2-argocd/pull/1637)
-  (open, unmerged): staging `ALLOWED_APPROVERS` username fix — merge this
-  **before** step 3's approvers-team seeding for staging, so you seed the
-  corrected username list, not the typo'd one.
-- [#286](https://github.com/linuxfoundation/lfx-crowdfunding/issues/286) and
-  [#292](https://github.com/linuxfoundation/lfx-crowdfunding/issues/292) are
-  the tracking issues for the RS/Self-Serve/Stripe repoints in step 5.
-  Staging already has pre-staged PRs open: `lfx-v2-argocd#1668`–`#1671`
-  (backend steps 1/4/5) and `reimbursement-service#269` (RS). Prod has none
-  yet — pre-stage prod's backend, frontend, Self Serve, RS, and Ledger Service
-  PRs before prod's cutover window. No Ledger Service PR (staging or prod)
-  exists yet either; it isn't tracked by #286/#292 today and should be, since
-  it's a fourth synchronized consumer of step 5.
+  (staging `ALLOWED_APPROVERS` username fix): merged 2026-09-29. It had to land
+  **before** step 3's approvers-team seeding so the seeded list matched the
+  corrected usernames.
+- [#292](https://github.com/linuxfoundation/lfx-crowdfunding/issues/292) is the
+  tracking issue for the RS/Self Serve/Stripe **and Ledger Service** repoints in
+  step 5 (`#286` was closed and folded into it). Staging PRs:
+  `lfx-v2-argocd#1668`–`#1671` (backend steps 1/4/5), `reimbursement-service#269`
+  (RS), and `ledger-service#305` + `auth0-terraform#393` (Ledger, merged;
+  staging deployment still needs verifying). Prod has none of these yet —
+  pre-stage prod's backend, frontend, Self Serve, RS, and Ledger Service PRs
+  (and confirm Ledger's prod client grant) before prod's cutover window; none
+  of them is optional, since each is a synchronized consumer of step 5.
 - #271 remains open on this repo as the tracking issue; comment there (or
   update this doc) after staging and after prod, following the pattern of the
   existing dev-completion comments.
