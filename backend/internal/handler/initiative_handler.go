@@ -45,7 +45,10 @@ func NewInitiativeHandler(svc *service.InitiativeService, allowedApprovers []str
 	return &InitiativeHandler{svc: svc, allowedApprovers: allowedApprovers, logger: logger}
 }
 
-// List handles GET /crowdfunding/initiatives
+// List handles GET /crowdfunding/initiatives — public, unauthenticated.
+// Only published initiatives are listed; any status or owner_id query
+// parameter is ignored. Owners list their own initiatives in any status via
+// GET /crowdfunding/me/initiatives.
 func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, offset, ok := parsePaginationParams(w, r)
 	if !ok {
@@ -53,15 +56,9 @@ func (h *InitiativeHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 
-	status := models.InitiativeStatus(q.Get("status"))
-	if status == "" {
-		status = models.StatusPublished
-	}
-
 	filter := models.InitiativeFilter{
-		OwnerID:        q.Get("owner_id"),
 		InitiativeType: q.Get("type"),
-		Status:         status,
+		Status:         models.StatusPublished,
 		Search:         q.Get("search"),
 		SortBy:         strings.ToLower(q.Get("sort_by")),
 		SortDir:        strings.ToLower(q.Get("sort_dir")),
@@ -123,6 +120,9 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
 // Only published initiatives are returned to anonymous callers; approvers may
 // retrieve initiatives in any status (e.g. "submitted") for review purposes.
+// Beneficiaries, contributors, mentors and contacts are never included: they
+// hold third-party contact details (emails, phone numbers) and this response
+// is publicly cacheable. Owners read them via GET /crowdfunding/me/initiatives/{id}.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var (
@@ -138,6 +138,7 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	cacheControl := "public, max-age=60, stale-while-revalidate=300"
 	if !initiative.Status.EqualFold(models.StatusPublished) {
 		// Non-published initiatives are visible to approvers only.
 		principal := auth.PrincipalFromContext(r.Context())
@@ -145,7 +146,15 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			Error(w, domain.ErrInitiativeNotFound)
 			return
 		}
+		// Approver-only response: shared caches must not store it.
+		cacheControl = "private, no-store"
+		w.Header().Set("Vary", "Authorization")
 	}
+
+	initiative.Beneficiaries = nil
+	initiative.Contributors = nil
+	initiative.Mentors = nil
+	initiative.Contacts = nil
 
 	body, err := json.Marshal(initiative)
 	if err != nil {
@@ -153,12 +162,12 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	etag := etagOf(body)
+	w.Header().Set("Cache-Control", cacheControl)
+	w.Header().Set("ETag", etag)
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
-	w.Header().Set("ETag", etag)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
