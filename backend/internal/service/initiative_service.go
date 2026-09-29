@@ -38,7 +38,7 @@ var allowedContactTypes = map[string]struct{}{
 
 // errInvalidSlug rejects slugs that could inject path segments into the
 // initiative deep links built from them.
-var errInvalidSlug = fmt.Errorf("%w: slug may only contain lowercase letters, digits, hyphens and underscores", domain.ErrInvalidInput)
+var errInvalidSlug = fmt.Errorf("%w: slug may only contain lowercase letters, digits, hyphens and underscores, and must not start or end with a hyphen or underscore", domain.ErrInvalidInput)
 
 // InitiativeService orchestrates initiative reads and writes.
 // Cached financials come from initiative_ledger_stats (CronJob); per-goal
@@ -415,6 +415,9 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	}
 	if input.Slug == "" {
 		input.Slug = slug.Make(input.Name)
+		if input.Slug == "" {
+			return nil, fmt.Errorf("%w: name must contain at least one letter or digit", domain.ErrInvalidInput)
+		}
 	} else if !slug.IsSlug(input.Slug) {
 		return nil, errInvalidSlug
 	}

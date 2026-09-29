@@ -691,6 +691,20 @@ func TestCreate_MissingSlug_AutoGeneratesFromName(t *testing.T) {
 	}
 }
 
+func TestCreate_NameWithoutLettersOrDigits(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	_, err := newCreateSvc(repo).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "!!!", InitiativeType: "project"},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+	if repo.lastCreated != nil {
+		t.Error("expected repo.Create not to be called")
+	}
+}
+
 func TestCreate_InvalidSlug(t *testing.T) {
 	for _, s := range []string{"x/process-approval/decline#", "My-Project", "my project", "-my-project"} {
 		repo := &mockInitiativeRepo{}
