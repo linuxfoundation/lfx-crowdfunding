@@ -989,9 +989,12 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetCategoryTransactions")
 	defer span.End()
 
+	// Filter by category in the Ledger (case-insensitive there) so pages and
+	// total_count cover only this category rather than a page of all donations.
 	list, err := s.ledger.GetTransactions(ctx, clients.TransactionFilter{
 		ProjectID:        initiativeID,
 		TxnType:          txnType,
+		TxnCategory:      categoryType,
 		SubscriptionOnly: subscriptionOnly,
 		Limit:            limit,
 		Offset:           offset,
