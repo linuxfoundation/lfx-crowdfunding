@@ -114,7 +114,10 @@ func TestGetForUser_OwnerSeesOwnDraft(t *testing.T) {
 
 	userRepo := &stubUserRepoForListForUser{user: &models.User{ID: ownerID, Username: username}}
 	repo := &stubRepoForGetForUser{
-		initiative: &models.Initiative{ID: "init-1", Slug: "general-fund-4", OwnerID: ownerID, Status: models.StatusSubmitted},
+		initiative: &models.Initiative{
+			ID: "init-1", Slug: "general-fund-4", OwnerID: ownerID, Status: models.StatusSubmitted,
+			Beneficiaries: []models.Beneficiary{{ID: "b1", Name: "Ben", Email: "ben@example.com"}},
+		},
 	}
 	svc := service.NewInitiativeService(repo, userRepo, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
@@ -131,6 +134,10 @@ func TestGetForUser_OwnerSeesOwnDraft(t *testing.T) {
 	}
 	if body.ID != "init-1" {
 		t.Errorf("expected init-1, got %s", body.ID)
+	}
+	// The owner view keeps the contact lists the public detail omits.
+	if len(body.Beneficiaries) != 1 || body.Beneficiaries[0].Email != "ben@example.com" {
+		t.Errorf("expected owner to see beneficiary email, got %+v", body.Beneficiaries)
 	}
 }
 

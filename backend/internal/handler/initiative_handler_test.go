@@ -38,6 +38,7 @@ type initiativeRepo struct {
 	ownerEmailErr       error
 	listPublishedResult []models.InitiativeSummary
 	listPublishedErr    error
+	lastFilter          models.InitiativeFilter
 }
 
 func (r *initiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -64,7 +65,8 @@ func (r *initiativeRepo) ResolveSlug(_ context.Context, _ string) (string, error
 	}
 	return "", domain.ErrInitiativeNotFound
 }
-func (r *initiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+func (r *initiativeRepo) List(_ context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+	r.lastFilter = filter
 	if r.listErr != nil {
 		return nil, nil, r.listErr
 	}
@@ -229,6 +231,28 @@ func TestList_InvalidPagination_Returns400(t *testing.T) {
 	}
 }
 
+func TestList_OnlyPublished_IgnoresStatusAndOwnerID(t *testing.T) {
+	repo := &initiativeRepo{}
+	h := newInitiativeHandler(repo, &initiativeUserRepo{})
+
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives?status=submitted&owner_id=auth0%7Cabc&type=project", nil)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if repo.lastFilter.Status != models.StatusPublished {
+		t.Errorf("expected status %q, got %q", models.StatusPublished, repo.lastFilter.Status)
+	}
+	if repo.lastFilter.OwnerID != "" {
+		t.Errorf("expected owner_id to be ignored, got %q", repo.lastFilter.OwnerID)
+	}
+	if repo.lastFilter.InitiativeType != "project" {
+		t.Errorf("expected type filter %q, got %q", "project", repo.lastFilter.InitiativeType)
+	}
+}
+
 // ── GetByID ───────────────────────────────────────────────────────────────────
 
 func TestGetByID_Published_Returns200(t *testing.T) {
@@ -302,6 +326,12 @@ func TestGetByID_NotPublished_Approver_Returns200(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 for approver, got %d: %s", w.Code, w.Body.String())
 	}
+	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Errorf("expected approver-only response to be private, no-store; got %q", got)
+	}
+	if got := w.Header().Get("Vary"); got != "Authorization" {
+		t.Errorf("expected Vary: Authorization, got %q", got)
+	}
 }
 
 func TestGetByID_NotFound_Returns404(t *testing.T) {
@@ -350,6 +380,44 @@ func TestGetByID_ETagNotModified_Returns304(t *testing.T) {
 
 	if w2.Code != http.StatusNotModified {
 		t.Errorf("expected 304, got %d", w2.Code)
+	}
+}
+
+func TestGetByID_OmitsThirdPartyContactLists(t *testing.T) {
+	initiativeID := "55555555-5555-5555-5555-555555555555"
+	repo := &initiativeRepo{
+		initiative: &models.Initiative{
+			ID:             initiativeID,
+			Name:           "Project With Contacts",
+			Status:         models.StatusPublished,
+			Beneficiaries:  []models.Beneficiary{{ID: "b1", Name: "Ben", Email: "ben@example.com"}},
+			Contributors:   []models.Contributor{{ID: "c1", Name: "Cat", Email: "cat@example.com"}},
+			Mentors:        []models.Mentor{{ID: "m1", Name: "Max", Email: "max@example.com"}},
+			Contacts:       []models.Contact{{ID: "k1", ContactType: "primary", Email: "kim@example.com", PhoneNumber: "+1-555-0100"}},
+			CustomWebsites: []models.CustomWebsite{{ID: "w1", URL: "https://example.com"}},
+		},
+	}
+	h := newInitiativeHandler(repo, &initiativeUserRepo{})
+
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID, nil)
+	req = withURLParam(req, "id", initiativeID)
+	w := httptest.NewRecorder()
+	h.GetByID(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body map[string]json.RawMessage
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, key := range []string{"beneficiaries", "contributors", "mentors", "contacts"} {
+		if _, ok := body[key]; ok {
+			t.Errorf("public detail must not include %q", key)
+		}
+	}
+	if _, ok := body["custom_websites"]; !ok {
+		t.Error("expected custom_websites to be kept")
 	}
 }
 
