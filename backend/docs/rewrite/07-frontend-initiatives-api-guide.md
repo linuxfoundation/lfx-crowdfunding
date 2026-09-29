@@ -42,6 +42,8 @@
 Base URL (production): `https://api-gw.platform.linuxfoundation.org`  
 Public reads are under `/crowdfunding/initiatives`; authenticated writes are under `/crowdfunding/me/initiatives`.
 
+The public list returns only `published` initiatives (`status` and `owner_id` query parameters are ignored). The public detail omits `beneficiaries`, `contributors`, `mentors` and `contacts`, which hold third-party contact details; owners read them from `GET /crowdfunding/me/initiatives/{slug-or-uuid}`.
+
 ---
 
 ## 2. Authentication
