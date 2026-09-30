@@ -59,7 +59,7 @@ func TestSubscriptionService_Create_MissingPaymentMethod(t *testing.T) {
 }
 
 func TestSubscriptionService_Create_NoStripeProduct(t *testing.T) {
-	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: true, StripeProductID: ""}}
+	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", Status: models.StatusPublished, AcceptFunding: true, StripeProductID: ""}}
 	svc := newSubscriptionSvc(&testSubscriptionRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1",
@@ -70,13 +70,36 @@ func TestSubscriptionService_Create_NoStripeProduct(t *testing.T) {
 }
 
 func TestSubscriptionService_Create_InitiativeNotAccepting(t *testing.T) {
-	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", AcceptFunding: false}}
+	initRepo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", Status: models.StatusPublished, AcceptFunding: false}}
 	svc := newSubscriptionSvc(&testSubscriptionRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
 
 	_, err := svc.Create(context.Background(), "init-1", "u1",
 		models.SubscriptionCreateInput{AmountCents: 500, Frequency: "monthly"})
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+// Non-published initiatives must not take money even when accept_funding is
+// set. configStripeClient panics on any Stripe call, so reaching Stripe fails
+// the test.
+func TestSubscriptionService_Create_InitiativeNotPublished(t *testing.T) {
+	for _, status := range []models.InitiativeStatus{
+		models.StatusSubmitted, models.StatusPending, models.StatusDeclined, models.StatusHidden,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			initRepo := &mockInitiativeRepo{initiative: &models.Initiative{
+				ID: "init-1", Status: status, AcceptFunding: true, StripeProductID: "prod-test",
+			}}
+			svc := newSubscriptionSvc(&testSubscriptionRepo{}, initRepo, &testUserRepo{}, &configStripeClient{})
+
+			_, err := svc.Create(context.Background(), "init-1", "u1", models.SubscriptionCreateInput{
+				AmountCents: 500, Frequency: "monthly", StripePaymentMethodID: "pm_test", IdempotencyKey: "idem-key-1",
+			})
+			if !errors.Is(err, domain.ErrInitiativeNotFound) {
+				t.Errorf("expected ErrInitiativeNotFound, got %v", err)
+			}
+		})
 	}
 }
 
@@ -476,7 +499,7 @@ func TestSubscriptionService_Create_StaleProductAutoHeals(t *testing.T) {
 	initRepo := &mockInitiativeRepo{
 		initiative: &models.Initiative{
 			ID: "init-1", Name: "My Initiative",
-			AcceptFunding: true, StripeProductID: staleProductID,
+			Status: models.StatusPublished, AcceptFunding: true, StripeProductID: staleProductID,
 		},
 	}
 	// Capture the UpdateStripeProductID call.
@@ -552,7 +575,7 @@ func TestSubscriptionService_Create_StaleProductHealPersistFails(t *testing.T) {
 	initRepo := &mockInitiativeRepo{
 		initiative: &models.Initiative{
 			ID: "init-1", Name: "My Initiative",
-			AcceptFunding: true, StripeProductID: "prod_stale",
+			Status: models.StatusPublished, AcceptFunding: true, StripeProductID: "prod_stale",
 		},
 	}
 	initRepo.onUpdateStripeProductID = func(_ context.Context, _, _ string) error {

@@ -199,7 +199,7 @@ by the `payment_intent.succeeded` / `payment_intent.payment_failed` webhooks.
 response is sent.
 
 **Backend behaviour:**
-1. Validates the initiative exists and has `accept_funding = true`.
+1. Validates the initiative exists, is `published` (otherwise `404`) and has `accept_funding = true`.
 2. Looks up or creates a Stripe Customer for the user.
 3. Creates a `PaymentIntent` with:
    - `confirm=true`, `request_three_d_secure=automatic`
@@ -263,7 +263,7 @@ The subscription is activated asynchronously by the `invoice.payment_succeeded`
 webhook. `client_secret` is **never stored**.
 
 **Backend behaviour:**
-1. Validates the initiative accepts funding.
+1. Validates the initiative is `published` (otherwise `404`) and accepts funding.
 2. Looks up or creates a Stripe Customer for the user.
 3. Calls `GetOrCreatePrice` — always creates a new Stripe Price with
    `ProductData` inline for the initiative's `stripe_product_id`, at the
