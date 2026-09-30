@@ -32,6 +32,10 @@
     {
       "pattern": "^https://github\\.com/linuxfoundation/auth0-terraform",
       "comment": "Private repo — GitHub returns 404 to an unauthenticated link checker"
+    },
+    {
+      "pattern": "^https://github\\.com/linuxfoundation/lfx-v2-argocd",
+      "comment": "Private repo — GitHub returns 404 to an unauthenticated link checker"
     }
   ],
   "timeout": "20s",
