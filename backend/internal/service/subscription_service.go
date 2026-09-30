@@ -150,6 +150,11 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		span.RecordError(err)
 		return nil, err
 	}
+	// Non-published initiatives are treated as not found, as on the public
+	// detail endpoint.
+	if !initiative.Status.EqualFold(models.StatusPublished) {
+		return nil, domain.ErrInitiativeNotFound
+	}
 	if !initiative.AcceptFunding {
 		return nil, fmt.Errorf("%w: initiative does not accept funding", domain.ErrInvalidInput)
 	}

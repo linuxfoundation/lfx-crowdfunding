@@ -193,11 +193,16 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 			domain.ErrInvalidInput, input.PaymentMethod, models.PaymentMethodStripe, models.PaymentMethodInvoice)
 	}
 
-	// Verify the initiative exists and accepts funding.
+	// Verify the initiative exists, is published and accepts funding.
+	// Non-published initiatives are treated as not found, as on the public
+	// detail endpoint.
 	initiative, err := s.initiativeRepo.GetByID(ctx, initiativeID)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
+	}
+	if !initiative.Status.EqualFold(models.StatusPublished) {
+		return nil, domain.ErrInitiativeNotFound
 	}
 	if !initiative.AcceptFunding {
 		return nil, fmt.Errorf("%w: initiative does not accept funding", domain.ErrInvalidInput)
