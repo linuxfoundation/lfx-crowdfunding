@@ -292,8 +292,8 @@ func TestGetCategoryTransactions_SplitsByDonorTypeAndCategory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if ledger.lastFilter.TxnCategory != "" {
-		t.Errorf("TxnCategory in filter = %q, want empty (case-insensitive matching happens locally)", ledger.lastFilter.TxnCategory)
+	if ledger.lastFilter.TxnCategory != "mentorship" {
+		t.Errorf("TxnCategory in filter = %q, want mentorship (the Ledger filters by category before paging)", ledger.lastFilter.TxnCategory)
 	}
 	if ledger.lastFilter.TxnType != models.TransactionTypeDonation {
 		t.Errorf("TxnType in filter = %q, want %q", ledger.lastFilter.TxnType, models.TransactionTypeDonation)
@@ -321,6 +321,39 @@ func TestGetCategoryTransactions_SplitsByDonorTypeAndCategory(t *testing.T) {
 	}
 	if list.ResponseType != models.TransactionResponseTypeCategorized {
 		t.Errorf("ResponseType = %q, want categorized", list.ResponseType)
+	}
+}
+
+// TestGetCategoryTransactions_PaginatesWithinCategory verifies that a page of an
+// already category-filtered Ledger result keeps the Ledger's total, so small pages
+// are neither empty nor paired with a page-size-dependent total_count.
+func TestGetCategoryTransactions_PaginatesWithinCategory(t *testing.T) {
+	t.Parallel()
+
+	ledger := &capturingLedger{
+		resp: &models.TransactionList{
+			Data: []models.Transaction{
+				{ID: "m-11", Type: models.TransactionTypeDonation, AmountCents: 500, Category: "mentorship", DonorType: "individual"},
+				{ID: "m-12", Type: models.TransactionTypeDonation, AmountCents: 700, Category: "Mentorship", DonorType: "organization"},
+			},
+			TotalCount: 15,
+			Limit:      2,
+		},
+	}
+	svc := newMyTxnSvc(t, ledger)
+
+	list, err := svc.GetCategoryTransactions(context.Background(), testInitiativeID, models.TransactionTypeDonation, "mentorship", false, 2, 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ledger.lastFilter.TxnCategory != "mentorship" || ledger.lastFilter.Limit != 2 || ledger.lastFilter.Offset != 10 {
+		t.Errorf("ledger filter = %+v, want category mentorship, limit 2, offset 10", ledger.lastFilter)
+	}
+	if got := len(list.IndividualTransactions) + len(list.OrganizationTransactions); got != 2 {
+		t.Errorf("page size = %d, want 2", got)
+	}
+	if list.TotalCount != 15 {
+		t.Errorf("TotalCount = %d, want 15 (the Ledger's category total)", list.TotalCount)
 	}
 }
 

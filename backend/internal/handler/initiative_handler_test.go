@@ -693,8 +693,8 @@ func TestGetTransactions_CategoryType_ReturnsCategorizedResponse(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if capture.lastFilter.TxnCategory != "" {
-		t.Errorf("TxnCategory in filter = %q, want empty", capture.lastFilter.TxnCategory)
+	if capture.lastFilter.TxnCategory != "mentorship" {
+		t.Errorf("TxnCategory in filter = %q, want mentorship", capture.lastFilter.TxnCategory)
 	}
 	if capture.lastFilter.TxnType != models.TransactionTypeDonation {
 		t.Errorf("TxnType in filter = %q, want donation", capture.lastFilter.TxnType)
