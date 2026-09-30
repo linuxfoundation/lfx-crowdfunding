@@ -51,6 +51,20 @@ SPDX-License-Identifier: MIT
         </tr>
       </tbody>
     </table>
+
+    <div
+      v-if="hasMore && !isLoading"
+      class="flex justify-center"
+    >
+      <lfx-button
+        label="Load more"
+        type="outline"
+        size="small"
+        button-style="pill"
+        :loading="isLoadingMore"
+        @click="$emit('load-more')"
+      />
+    </div>
   </lfx-card>
 </template>
 
@@ -59,9 +73,14 @@ import InitiativeDetailTableSkeleton from './initiative-detail-table-skeleton.vu
 import type { ExpenseRecord } from '#shared/types/initiative-detail.types';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxTag from '~/components/uikit/tag/tag.vue';
+import LfxButton from '~/components/uikit/button/button.vue';
 import { formatAmountCents } from '~/utils/currency';
 
-defineProps<{ expenses: ExpenseRecord[]; isLoading?: boolean }>();
+defineProps<{ expenses: ExpenseRecord[]; isLoading?: boolean; hasMore?: boolean; isLoadingMore?: boolean }>();
+
+defineEmits<{
+  'load-more': [];
+}>();
 
 const formatAmount = formatAmountCents;
 </script>
