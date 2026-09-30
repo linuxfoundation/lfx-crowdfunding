@@ -691,6 +691,50 @@ func TestCreate_MissingSlug_AutoGeneratesFromName(t *testing.T) {
 	}
 }
 
+func TestCreate_NameWithoutLettersOrDigits(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	_, err := newCreateSvc(repo).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "!!!", InitiativeType: "project"},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+	if repo.lastCreated != nil {
+		t.Error("expected repo.Create not to be called")
+	}
+}
+
+func TestCreate_InvalidSlug(t *testing.T) {
+	for _, s := range []string{"x/process-approval/decline#", "My-Project", "my project", "-my-project"} {
+		repo := &mockInitiativeRepo{}
+		_, err := newCreateSvc(repo).Create(
+			context.Background(), "owner-1",
+			models.InitiativeCreateInput{Name: "My Project", Slug: s, InitiativeType: "project"},
+		)
+		if !errors.Is(err, domain.ErrInvalidInput) {
+			t.Errorf("slug %q: expected ErrInvalidInput, got %v", s, err)
+		}
+		if repo.lastCreated != nil {
+			t.Errorf("slug %q: expected repo.Create not to be called", s)
+		}
+	}
+}
+
+func TestCreate_ValidSlugKept(t *testing.T) {
+	repo := &mockInitiativeRepo{}
+	_, _ = newCreateSvc(repo).Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Project", Slug: "my_project-2", InitiativeType: "project"},
+	)
+	if repo.lastCreated == nil {
+		t.Fatal("expected repo.Create to be called")
+	}
+	if repo.lastCreated.Slug != "my_project-2" {
+		t.Errorf("expected slug %q, got %q", "my_project-2", repo.lastCreated.Slug)
+	}
+}
+
 func TestCreate_MissingInitiativeType(t *testing.T) {
 	_, err := newCreateSvc(&mockInitiativeRepo{}).Create(
 		context.Background(), "owner-1",
@@ -889,6 +933,32 @@ func TestUpdate_NilChildFieldsAreNoOp(t *testing.T) {
 	}
 	if repo.lastUpdateInput.Goals != nil {
 		t.Error("expected nil Goals (no-op), but got non-nil")
+	}
+}
+
+func TestUpdate_InvalidSlug(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Slug: "my-project"},
+	}
+	s := "x/process-approval/decline#"
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{Slug: &s},
+	)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestUpdate_UnchangedLegacySlugAllowed(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Slug: "Legacy Slug"},
+	}
+	s := "Legacy Slug"
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{Slug: &s},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
