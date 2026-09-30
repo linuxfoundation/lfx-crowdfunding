@@ -9,6 +9,10 @@ const ALLOWED_REDIRECT_DOMAINS = isLocal
 
 export const DEFAULT_REDIRECT = '/';
 
+// Browsers strip tabs and newlines before parsing a URL, so "/\t/evil.com"
+// becomes the protocol-relative "//evil.com".
+const TAB_OR_NEWLINE = /[\t\n\r]/;
+
 /**
  * Validates a redirect URL to prevent open redirect vulnerabilities.
  */
@@ -17,6 +21,8 @@ export function isValidRedirectUrl(url: string | undefined | null): boolean {
 
   const trimmed = url.trim();
   if (!trimmed) return false;
+
+  if (TAB_OR_NEWLINE.test(trimmed)) return false;
 
   // Reject protocol-relative URLs (//example.com)
   if (trimmed.startsWith('//')) return false;
@@ -32,7 +38,9 @@ export function isValidRedirectUrl(url: string | undefined | null): boolean {
     if (trimmed.includes('\\')) return false;
     try {
       const decoded = decodeURIComponent(trimmed);
-      if (decoded.startsWith('//') || decoded.includes('\\')) return false;
+      if (decoded.startsWith('//') || decoded.includes('\\') || TAB_OR_NEWLINE.test(decoded)) {
+        return false;
+      }
     } catch {
       return false;
     }
