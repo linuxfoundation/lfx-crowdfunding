@@ -286,7 +286,7 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 
 // GetMyTransactions handles GET /crowdfunding/me/initiatives/{id}/my-transactions — requires JWT.
 // Returns transactions on the given published initiative that belong to the authenticated
-// caller, identified by their Auth0 subject (principal.UserID = legacy_user_id in Ledger).
+// caller, identified by their Ledger user ID (users.legacy_user_id, falling back to the JWT subject).
 func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.UserID == "" {
@@ -335,7 +335,7 @@ func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Req
 
 	subscriptionOnly := r.URL.Query().Get("subscriptionOnly") == "true"
 
-	list, err := h.svc.GetMyTransactions(r.Context(), initiativeID, principal.UserID, ledgerTxnType, subscriptionOnly, limit, offset)
+	list, err := h.svc.GetMyTransactions(r.Context(), initiativeID, h.svc.LedgerUserID(r.Context(), principal.Username, principal.UserID), ledgerTxnType, subscriptionOnly, limit, offset)
 	if err != nil {
 		Error(w, err)
 		return
@@ -394,7 +394,7 @@ func (h *InitiativeHandler) GetAllMyTransactions(w http.ResponseWriter, r *http.
 
 	subscriptionOnly := r.URL.Query().Get("subscriptionOnly") == "true"
 
-	list, err := h.svc.GetAllMyTransactions(r.Context(), principal.UserID, ledgerTxnType, subscriptionOnly, limit, offset)
+	list, err := h.svc.GetAllMyTransactions(r.Context(), h.svc.LedgerUserID(r.Context(), principal.Username, principal.UserID), ledgerTxnType, subscriptionOnly, limit, offset)
 	if err != nil {
 		Error(w, err)
 		return

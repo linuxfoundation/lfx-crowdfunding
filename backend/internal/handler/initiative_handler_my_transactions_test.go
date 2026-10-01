@@ -367,3 +367,39 @@ func TestGetMyTransactions_Returns200WithData(t *testing.T) {
 		t.Errorf("expected 2 transactions, got %d", len(got.Data))
 	}
 }
+
+// Heimdall-minted tokens carry the plain username as subject; the Ledger must be
+// queried with legacy_user_id, and the foreign-rows guard must accept rows keyed by it.
+func TestGetMyTransactions_HeimdallToken_UsesLegacyUserID(t *testing.T) {
+	const legacyID = "auth0|michal"
+	initiativeID := "e4e4e4e4-e4e4-e4e4-e4e4-e4e4e4e4e4e4"
+
+	ledger := &filterCapturingLedger{
+		list: &models.TransactionList{
+			Data:       []models.Transaction{{ID: "t1", AmountCents: 500, LedgerUserID: legacyID}},
+			TotalCount: 1,
+			Limit:      10,
+		},
+	}
+	repo := &initiativeRepo{initiative: &models.Initiative{ID: initiativeID, Status: models.StatusPublished}}
+	svc := service.NewInitiativeService(repo, &initiativeUserRepo{user: &models.User{LegacyUserID: legacyID}},
+		ledger, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
+	h := NewInitiativeHandler(svc, nil, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/my-transactions", nil)
+	req = withURLParam(req, "id", initiativeID)
+	req = withPrincipal(req, &models.Principal{UserID: "michal", Username: "michal"})
+	w := httptest.NewRecorder()
+	h.GetMyTransactions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 (legacy-ID row must survive the foreign-rows guard), got %d: %s", w.Code, w.Body.String())
+	}
+	if ledger.lastFilter.UserID != legacyID {
+		t.Errorf("Ledger filter.UserID = %q, want %q", ledger.lastFilter.UserID, legacyID)
+	}
+	var body models.TransactionList
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || len(body.Data) != 1 {
+		t.Errorf("expected 1 transaction in response, got %d (err=%v)", len(body.Data), err)
+	}
+}

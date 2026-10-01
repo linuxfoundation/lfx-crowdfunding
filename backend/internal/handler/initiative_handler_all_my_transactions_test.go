@@ -5,12 +5,15 @@ package handler
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
 
 // ── GetAllMyTransactions ──────────────────────────────────────────────────────
@@ -233,5 +236,60 @@ func TestGetAllMyTransactions_Returns200WithData(t *testing.T) {
 	}
 	if len(got.Data) != 2 {
 		t.Errorf("expected 2 transactions, got %d", len(got.Data))
+	}
+}
+
+// Heimdall-minted tokens carry the plain username as subject, but Ledger rows
+// are keyed by users.legacy_user_id — the Ledger must be queried with the latter.
+func TestGetAllMyTransactions_HeimdallToken_UsesLegacyUserID(t *testing.T) {
+	const legacyID = "auth0|michal"
+
+	capture := &filterCapturingLedger{
+		list: &models.TransactionList{
+			Data:       []models.Transaction{{ID: "t1", AmountCents: 500, LedgerUserID: legacyID}},
+			TotalCount: 1,
+			Limit:      10,
+		},
+	}
+	svc := service.NewInitiativeService(&initiativeRepo{}, &initiativeUserRepo{user: &models.User{LegacyUserID: legacyID}},
+		capture, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
+	h := NewInitiativeHandler(svc, nil, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/transactions", nil)
+	req = withPrincipal(req, &models.Principal{UserID: "michal", Username: "michal"})
+	w := httptest.NewRecorder()
+	h.GetAllMyTransactions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if capture.lastFilter.UserID != legacyID {
+		t.Errorf("Ledger filter.UserID = %q, want %q", capture.lastFilter.UserID, legacyID)
+	}
+}
+
+// Users without a legacy_user_id (or without a CF user row) keep the JWT subject.
+func TestGetAllMyTransactions_NoLegacyUserID_FallsBackToSubject(t *testing.T) {
+	for name, userRepo := range map[string]*initiativeUserRepo{
+		"empty legacy id": {user: &models.User{}},
+		"no user row":     {err: domain.ErrUserNotFound},
+	} {
+		t.Run(name, func(t *testing.T) {
+			capture := &filterCapturingLedger{list: &models.TransactionList{Limit: 10}}
+			svc := service.NewInitiativeService(&initiativeRepo{}, userRepo, capture, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
+			h := NewInitiativeHandler(svc, nil, slog.Default())
+
+			req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/transactions", nil)
+			req = withPrincipal(req, &models.Principal{UserID: "newuser", Username: "newuser"})
+			w := httptest.NewRecorder()
+			h.GetAllMyTransactions(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			if capture.lastFilter.UserID != "newuser" {
+				t.Errorf("Ledger filter.UserID = %q, want %q", capture.lastFilter.UserID, "newuser")
+			}
+		})
 	}
 }
