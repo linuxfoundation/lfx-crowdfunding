@@ -155,7 +155,7 @@ backend/
 | `GET` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Get own initiative |
 | `PATCH` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Update own initiative |
 | `DELETE` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Delete own initiative |
-| `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donation history |
+| `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donations (one-time and recurring), read from the Ledger like `/me/transactions?type=donations` |
 | `GET` | `/crowdfunding/me/subscriptions` | `access:me` | Caller's active subscriptions |
 | `DELETE` | `/crowdfunding/me/subscriptions/{id}` | `access:me` + owner | Cancel subscription |
 | `GET` | `/crowdfunding/me/payment-account` | `access:me` | Saved payment method |
