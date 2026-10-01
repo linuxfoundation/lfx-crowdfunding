@@ -418,6 +418,41 @@ func (h *InitiativeHandler) GetAllMyTransactions(w http.ResponseWriter, r *http.
 	_, _ = w.Write(body)
 }
 
+// ListMyDonations handles GET /crowdfunding/me/donations — requires JWT.
+// Returns the caller's donations (one-time and recurring) from the Ledger, the same
+// source as GET /crowdfunding/me/transactions?type=donations, so aggregates built on it
+// (e.g. Self Serve's Total Donated) agree with the donation history.
+func (h *InitiativeHandler) ListMyDonations(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.UserID == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
+	if limit <= 0 {
+		limit = defaultTransactionPageSize
+	} else if limit > maxTransactionPageSize {
+		limit = maxTransactionPageSize
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	list, err := h.svc.GetAllMyTransactions(r.Context(), h.svc.LedgerUserID(r.Context(), principal.Username, principal.UserID), models.TransactionTypeDonation, false, limit, offset)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"data": list.Data,
+		"meta": models.PaginationMeta{Total: list.TotalCount, Limit: list.Limit, Offset: list.Offset},
+	})
+}
+
 // GetTransactionsForUser handles GET /crowdfunding/me/initiatives/{id}/transactions — requires
 // JWT with access:me scope. Returns transactions for the caller's own initiative in
 // any status, so owners can view their non-published initiative's transactions (the

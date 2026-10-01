@@ -26,6 +26,7 @@ type Transaction struct {
 	Category       string    `json:"category,omitempty"`
 	Recurring      bool      `json:"recurring"`
 	InitiativeName string    `json:"initiative_name,omitempty"`
+	InitiativeID   string    `json:"initiative_id,omitempty"` // set on the caller's own transactions (GetAllMyTransactions)
 
 	DonorName     string `json:"donor_name,omitempty"`
 	DonorType     string `json:"donor_type,omitempty"` // "organization" | "individual"
