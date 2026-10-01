@@ -868,6 +868,23 @@ func validateOwnerStatusTransition(from, to models.InitiativeStatus) error {
 		domain.ErrForbidden, from, to)
 }
 
+// LedgerUserID returns the userID the Ledger stores this caller's transactions under.
+// Ledger rows are keyed by users.legacy_user_id (the Auth0 subject, e.g. auth0|abc123),
+// but Heimdall-minted tokens carry the plain LF username as their subject, so the JWT
+// subject can no longer be used as the Ledger key directly. Falls back to the subject
+// when the caller has no legacy_user_id or no CF user row, which preserves the previous
+// behaviour for Auth0 tokens and for users created after the migration.
+func (s *InitiativeService) LedgerUserID(ctx context.Context, username, subject string) string {
+	if username == "" {
+		return subject
+	}
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil || user == nil || strings.TrimSpace(user.LegacyUserID) == "" {
+		return subject
+	}
+	return strings.TrimSpace(user.LegacyUserID)
+}
+
 // GetMyTransactions fetches transactions for the given initiative that belong to the
 // specified user (identified by their Auth0 subject / legacy_user_id). The userID
 // filter is forwarded to the Ledger API. If the Ledger returns rows that belong to
