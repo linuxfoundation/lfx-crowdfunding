@@ -879,6 +879,11 @@ func (s *InitiativeService) LedgerUserID(ctx context.Context, username, subject 
 		return subject
 	}
 	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
+		// A transient failure here makes a Heimdall caller's history come back empty
+		// (the plain-username subject matches no Ledger rows), so leave a trace.
+		s.logger.WarnContext(ctx, "ledger user id lookup failed; falling back to token subject", "error", err)
+	}
 	if err != nil || user == nil || strings.TrimSpace(user.LegacyUserID) == "" {
 		return subject
 	}
