@@ -261,8 +261,13 @@ func (s *InitiativeService) GetForUser(ctx context.Context, idOrSlug, callerUser
 		return nil, err
 	}
 
-	if initiative.OwnerID != caller.ID {
-		// Do not leak existence of initiatives the caller does not own.
+	ok, err := canManage(ctx, caller.ID, initiative)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if !ok {
+		// Do not leak existence of initiatives the caller cannot manage.
 		return nil, domain.ErrInitiativeNotFound
 	}
 
@@ -290,33 +295,30 @@ func (s *InitiativeService) ResolveOwnedInitiativeID(ctx context.Context, idOrSl
 		return "", err
 	}
 
-	var initiativeID, ownerID string
-	if _, parseErr := uuid.Parse(idOrSlug); parseErr == nil {
-		initiative, gErr := s.repo.GetByID(ctx, idOrSlug)
-		if gErr != nil {
-			span.RecordError(gErr)
-			return "", gErr
+	id := idOrSlug
+	if _, parseErr := uuid.Parse(idOrSlug); parseErr != nil {
+		// Resolve the slug to a UUID regardless of status.
+		id, err = s.repo.ResolveSlug(ctx, idOrSlug)
+		if err != nil {
+			span.RecordError(err)
+			return "", err
 		}
-		initiativeID, ownerID = initiative.ID, initiative.OwnerID
-	} else {
-		// Resolve the slug to a UUID regardless of status, then read the owner cheaply.
-		id, rErr := s.repo.ResolveSlug(ctx, idOrSlug)
-		if rErr != nil {
-			span.RecordError(rErr)
-			return "", rErr
-		}
-		initiative, gErr := s.repo.GetByID(ctx, id)
-		if gErr != nil {
-			span.RecordError(gErr)
-			return "", gErr
-		}
-		initiativeID, ownerID = initiative.ID, initiative.OwnerID
+	}
+	initiative, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
 	}
 
-	if ownerID != caller.ID {
+	ok, err := canManage(ctx, caller.ID, initiative)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+	if !ok {
 		return "", domain.ErrInitiativeNotFound
 	}
-	return initiativeID, nil
+	return initiative.ID, nil
 }
 
 // enrichGoalsFromLedger populates donated_cents/spent_cents on each goal by
@@ -601,7 +603,12 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		span.RecordError(err)
 		return nil, err
 	}
-	if existing.OwnerID != caller.ID {
+	ok, err := canManage(ctx, caller.ID, existing)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if !ok {
 		return nil, domain.ErrForbidden
 	}
 
@@ -1348,7 +1355,12 @@ func (s *InitiativeService) Delete(ctx context.Context, id, callerUsername strin
 		span.RecordError(err)
 		return err
 	}
-	if existing.OwnerID != caller.ID {
+	ok, err := canManage(ctx, caller.ID, existing)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	if !ok {
 		return domain.ErrForbidden
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
