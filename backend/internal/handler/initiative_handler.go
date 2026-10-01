@@ -341,7 +341,13 @@ func (h *InitiativeHandler) GetMyTransactions(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	body, err := json.Marshal(list)
+	writePrivateCachedJSON(w, r, list)
+}
+
+// writePrivateCachedJSON writes v as JSON with a per-user private cache policy and ETag,
+// answering 304 when the caller's If-None-Match matches.
+func writePrivateCachedJSON(w http.ResponseWriter, r *http.Request, v any) {
+	body, err := json.Marshal(v)
 	if err != nil {
 		Error(w, err)
 		return
@@ -400,22 +406,7 @@ func (h *InitiativeHandler) GetAllMyTransactions(w http.ResponseWriter, r *http.
 		return
 	}
 
-	body, err := json.Marshal(list)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	etag := etagOf(body)
-	w.Header().Set("Vary", "Authorization")
-	w.Header().Set("Cache-Control", "private, max-age=60")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Content-Type", "application/json")
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
+	writePrivateCachedJSON(w, r, list)
 }
 
 // ListMyDonations handles GET /crowdfunding/me/donations — requires JWT.
@@ -447,7 +438,7 @@ func (h *InitiativeHandler) ListMyDonations(w http.ResponseWriter, r *http.Reque
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{
+	writePrivateCachedJSON(w, r, map[string]any{
 		"data": list.Data,
 		"meta": models.PaginationMeta{Total: list.TotalCount, Limit: list.Limit, Offset: list.Offset},
 	})

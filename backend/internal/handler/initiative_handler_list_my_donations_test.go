@@ -71,6 +71,9 @@ func TestListMyDonations_ReadsLedgerDonations_IncludingRecurring(t *testing.T) {
 	if body.Meta.Total != 2 {
 		t.Errorf("meta.total = %d, want 2", body.Meta.Total)
 	}
+	if w.Header().Get("Vary") != "Authorization" || w.Header().Get("Cache-Control") != "private, max-age=60" {
+		t.Errorf("missing private cache headers: %v", w.Header())
+	}
 }
 
 // Self Serve pages with limit=500; the handler must clamp to the Ledger page cap.
