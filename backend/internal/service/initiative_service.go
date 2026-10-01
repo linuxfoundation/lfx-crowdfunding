@@ -1116,6 +1116,10 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 
 	enrichTransactionsFromDB(ctx, s.repo, list.Data)
 
+	for i := range list.Data {
+		list.Data[i].InitiativeID = list.Data[i].LedgerProjectID
+	}
+
 	// Collect unique project IDs from the page, then batch-fetch initiative names.
 	projectIDs := make([]string, 0, len(list.Data))
 	seen := map[string]bool{}
