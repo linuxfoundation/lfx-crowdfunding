@@ -160,7 +160,7 @@ func (s *AnnouncementService) Delete(ctx context.Context, initiativeID, announce
 
 // requireOwnership verifies that callerUsername may manage the given initiative.
 // Returns ErrInitiativeNotFound when the initiative does not exist,
-// ErrForbidden when the caller is not the owner.
+// ErrForbidden when the caller cannot manage the initiative.
 func (s *AnnouncementService) requireOwnership(ctx context.Context, initiativeID, callerUsername string) error {
 	caller, err := s.userRepo.GetByUsername(ctx, callerUsername)
 	if err != nil {
