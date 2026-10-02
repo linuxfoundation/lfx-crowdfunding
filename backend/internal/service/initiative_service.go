@@ -271,6 +271,7 @@ func (s *InitiativeService) GetForUser(ctx context.Context, idOrSlug, callerUser
 		return nil, domain.ErrInitiativeNotFound
 	}
 
+	initiative.CanManage = true // passed the canManage gate above
 	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
 	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
@@ -396,6 +397,7 @@ func (s *InitiativeService) ListForUser(ctx context.Context, ownerUsername strin
 	}
 	for _, i := range initiatives {
 		i.Sponsors = flattenSponsors(i.RawSponsors)
+		i.CanManage = true // filter.OwnerID scopes the list to the caller's own initiatives
 	}
 	return initiatives, meta, nil
 }
@@ -579,6 +581,7 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 			"initiative_id", created.ID, "error", emailErr)
 	}
 	s.syncFGAAccess(ctx, created, owner.Username)
+	created.CanManage = true // creator
 	return created, nil
 }
 
@@ -750,6 +753,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		}
 	}
 
+	existing.UpdatedBy = callerUsername
 	updated, err := s.repo.Update(ctx, existing, input)
 	if err != nil {
 		span.RecordError(err)
@@ -762,6 +766,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	// caller.Username is the owner's username since existing.OwnerID == caller.ID
 	// was already enforced above.
 	s.syncFGAAccess(ctx, updated, caller.Username)
+	updated.CanManage = true // passed the canManage gate above
 	return updated, nil
 }
 

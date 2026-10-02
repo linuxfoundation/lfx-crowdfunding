@@ -23,3 +23,10 @@ GO-2026-5932
 # it clean requires forcing pnpm to re-resolve the whole @nuxt/ui peer tree,
 # which rewrites most of pnpm-lock.yaml for a package that isn't used.
 GHSA-cp6q-959q-f8rh
+
+# CVE-2026-85393 / node-forge RSA PKCS#1 v1.5 signature forgery: node-forge is
+# only pulled in by listhen (via @nuxt/cli), the dev-server tooling. It is not
+# in the production Nitro bundle and the app does no RSA signature
+# verification with it. No fixed version exists yet — drop this entry once
+# node-forge ships a patch.
+CVE-2026-85393

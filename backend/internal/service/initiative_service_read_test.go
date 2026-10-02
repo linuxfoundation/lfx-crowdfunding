@@ -347,6 +347,9 @@ func TestGetForUser_BySlug_Owned(t *testing.T) {
 	if init.Name != "Draft" {
 		t.Errorf("name = %q, want Draft", init.Name)
 	}
+	if !init.CanManage {
+		t.Error("CanManage = false, want true for the owner")
+	}
 }
 
 func TestGetForUser_ByUUID_Owned(t *testing.T) {
