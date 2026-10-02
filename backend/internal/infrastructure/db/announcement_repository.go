@@ -108,7 +108,7 @@ func (r *AnnouncementRepository) Create(ctx context.Context, a *models.Announcem
 
 // Update patches the title and description of the identified announcement.
 // Returns ErrAnnouncementNotFound when no matching row exists.
-func (r *AnnouncementRepository) Update(ctx context.Context, id, initiativeID string, input models.AnnouncementUpdateInput) (*models.Announcement, error) {
+func (r *AnnouncementRepository) Update(ctx context.Context, id, initiativeID, updatedBy string, input models.AnnouncementUpdateInput) (*models.Announcement, error) {
 	ctx, span := announcementTracer.Start(ctx, "db.announcements.Update")
 	defer span.End()
 	span.SetAttributes(
@@ -118,11 +118,11 @@ func (r *AnnouncementRepository) Update(ctx context.Context, id, initiativeID st
 
 	const q = `
 		UPDATE initiative_announcements
-		SET title = $1, description = $2, updated_on = NOW()
+		SET title = $1, description = $2, updated_by = $5, updated_on = NOW()
 		WHERE id = $3 AND initiative_id = $4
 		RETURNING id, initiative_id, created_by, title, description, created_on, updated_on`
 
-	row := r.pool.QueryRow(ctx, q, input.Title, input.Description, id, initiativeID)
+	row := r.pool.QueryRow(ctx, q, input.Title, input.Description, id, initiativeID, updatedBy)
 	var result models.Announcement
 	if err := row.Scan(&result.ID, &result.InitiativeID, &result.CreatedBy, &result.Title, &result.Description, &result.CreatedOn, &result.UpdatedOn); err != nil {
 		span.RecordError(err)

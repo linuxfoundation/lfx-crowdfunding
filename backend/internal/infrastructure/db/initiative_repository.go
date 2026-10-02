@@ -514,7 +514,8 @@ const (
 		    donation_mode     = $20,
 		    attributed_to_type   = $21,
 		    attributed_to_uid    = $22,
-		    benefit_project_uid  = $23
+		    benefit_project_uid  = $23,
+		    updated_by           = $24
 		WHERE id = $1`
 )
 
@@ -728,6 +729,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 		string(i.DonationMode),
 		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
+		nullableString(i.UpdatedBy),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update initiative: %w", err)

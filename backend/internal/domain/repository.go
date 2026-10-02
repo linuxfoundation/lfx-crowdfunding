@@ -186,7 +186,7 @@ type AnnouncementRepository interface {
 
 	// Update patches the title and description of an announcement identified by
 	// id and initiativeID. Returns ErrAnnouncementNotFound when no matching row exists.
-	Update(ctx context.Context, id, initiativeID string, input models.AnnouncementUpdateInput) (*models.Announcement, error)
+	Update(ctx context.Context, id, initiativeID, updatedBy string, input models.AnnouncementUpdateInput) (*models.Announcement, error)
 
 	// Delete removes an announcement by id scoped to initiativeID.
 	// Returns ErrAnnouncementNotFound when no matching row exists.
