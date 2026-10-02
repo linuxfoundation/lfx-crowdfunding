@@ -39,7 +39,7 @@ func (m *mockAnnouncementRepo) Create(_ context.Context, a *models.Announcement)
 	m.created = a
 	return a, nil
 }
-func (m *mockAnnouncementRepo) Update(_ context.Context, id, _ string, input models.AnnouncementUpdateInput) (*models.Announcement, error) {
+func (m *mockAnnouncementRepo) Update(_ context.Context, id, _, _ string, input models.AnnouncementUpdateInput) (*models.Announcement, error) {
 	if m.updateErr != nil {
 		return nil, m.updateErr
 	}
