@@ -23,3 +23,13 @@ GO-2026-5932
 # it clean requires forcing pnpm to re-resolve the whole @nuxt/ui peer tree,
 # which rewrites most of pnpm-lock.yaml for a package that isn't used.
 GHSA-cp6q-959q-f8rh
+
+# CVE-2026-93687 / braces DoS via deeply nested patterns: no fixed version
+# exists. braces is only reached through build-time glob tooling (tailwindcss 3,
+# chokidar, fast-glob) on developer-controlled patterns, never request input.
+CVE-2026-93687
+
+# CVE-2026-85393 / node-forge signature forgery: no fixed version exists.
+# Only pulled in by listhen (via @nuxt/cli and nitropack) to mint the local dev
+# server's self-signed HTTPS cert; not used for signature verification at runtime.
+CVE-2026-85393
