@@ -403,3 +403,35 @@ func TestInitiativeRepository_Attribution_RoundTrip(t *testing.T) {
 		t.Errorf("GetByID() attribution = %+v, want {organization %s}", got.Attribution, orgUID)
 	}
 }
+
+func TestInitiativeRepository_Update_EmptyUpdatedByPreservesLastEditor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "editor-owner")
+	repo := NewInitiativeRepository(testPool)
+	created := seedInitiative(t, ctx, owner.ID, "Audit Fund", "audit-fund")
+
+	created.UpdatedBy = "editor-owner"
+	if _, err := repo.Update(ctx, created, models.InitiativeUpdateInput{}); err != nil {
+		t.Fatalf("Update() with editor error = %v", err)
+	}
+
+	// Simulates ProcessApproval: GetByID doesn't hydrate UpdatedBy, so it arrives empty.
+	created.UpdatedBy = ""
+	created.Status = models.StatusPublished
+	if _, err := repo.Update(ctx, created, models.InitiativeUpdateInput{}); err != nil {
+		t.Fatalf("Update() without editor error = %v", err)
+	}
+
+	var got *string
+	if err := testPool.QueryRow(ctx, `SELECT updated_by FROM crowdfunding.initiatives WHERE id = $1`, created.ID).Scan(&got); err != nil {
+		t.Fatalf("select updated_by: %v", err)
+	}
+	if got == nil || *got != "editor-owner" {
+		t.Errorf("updated_by = %v, want editor-owner", got)
+	}
+}

@@ -515,7 +515,7 @@ const (
 		    attributed_to_type   = $21,
 		    attributed_to_uid    = $22,
 		    benefit_project_uid  = $23,
-		    updated_by           = $24
+		    updated_by           = COALESCE($24, updated_by) -- keep last editor when caller supplies none (e.g. ProcessApproval)
 		WHERE id = $1`
 )
 
