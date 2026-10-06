@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/snowflakedb/gosnowflake"
+	"github.com/snowflakedb/gosnowflake/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 
