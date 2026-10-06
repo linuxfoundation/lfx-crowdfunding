@@ -126,7 +126,7 @@ func (s *AnnouncementService) Update(ctx context.Context, initiativeID, announce
 		return nil, err
 	}
 
-	result, err := s.repo.Update(ctx, announcementID, initiativeID, input)
+	result, err := s.repo.Update(ctx, announcementID, initiativeID, callerUsername, input)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("update announcement: %w", err)
