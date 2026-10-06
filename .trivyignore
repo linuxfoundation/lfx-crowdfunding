@@ -33,3 +33,13 @@ CVE-2026-93687
 # Only pulled in by listhen (via @nuxt/cli and nitropack) to mint the local dev
 # server's self-signed HTTPS cert; not used for signature verification at runtime.
 CVE-2026-85393
+
+# CVE-2026-102826 / CVE-2026-102827 / CVE-2026-102828 / CVE-2026-102829:
+# simple-git (and its argv-parser) command-guard bypasses. The only fix is the
+# 4.x major, which @nuxt/devtools 3.x cannot load (default import removed), so
+# nuxt prepare fails. simple-git is reached only via the devtools dev server,
+# which is not part of the production build.
+CVE-2026-102826
+CVE-2026-102827
+CVE-2026-102828
+CVE-2026-102829
