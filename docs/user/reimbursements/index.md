@@ -42,7 +42,7 @@ International wire transfers can take up to six weeks from approval to reach you
 
 1. Open the approval email sent when a beneficiary submits an expense report.
 2. Select **Approve** or **Reject**. Sign in with your [LF ID](https://openprofile.dev/) if prompted.
-3. Review the expense report on the confirmation page and select **Approve** or **Reject** to confirm. Nothing is processed until you confirm; select **Cancel** to leave without acting.
+3. Check the action and report number shown on the confirmation page against the email, then select **Approve** or **Reject** to confirm. Nothing is processed until you confirm; select **Cancel** to leave without acting.
 
 ## After completing
 

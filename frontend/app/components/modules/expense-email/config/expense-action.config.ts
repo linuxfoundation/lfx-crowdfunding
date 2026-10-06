@@ -20,3 +20,7 @@ export const EXPENSE_ACTIONS: Record<string, ExpenseActionConfig> = {
     past: 'rejected',
   },
 };
+
+// Own-key lookup so URL params like 'constructor' or '__proto__' don't resolve to inherited members.
+export const getExpenseAction = (action: string): ExpenseActionConfig | undefined =>
+  Object.hasOwn(EXPENSE_ACTIONS, action) ? EXPENSE_ACTIONS[action] : undefined;

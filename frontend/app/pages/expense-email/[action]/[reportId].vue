@@ -41,7 +41,7 @@ import LfxCard from '~/components/uikit/card/card.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useToastService from '~/components/uikit/toast/toast.service';
 import { ToastTypesEnum } from '~/components/uikit/toast/types/toast.types';
-import { EXPENSE_ACTIONS } from '~/components/modules/expense-email/config/expense-action.config';
+import { getExpenseAction } from '~/components/modules/expense-email/config/expense-action.config';
 
 // Require authentication — if the user is not logged in they will be redirected
 // to Auth0 and returned here after login.
@@ -55,7 +55,7 @@ const { showToast } = useToastService();
 
 const action = route.params.action as string;
 const reportId = route.params.reportId as string;
-const config = EXPENSE_ACTIONS[action];
+const config = getExpenseAction(action);
 const submitting = ref(false);
 
 // Loading this page must never change state; the POST only fires from an explicit click.
