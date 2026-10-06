@@ -317,7 +317,26 @@ func buildChargeMetadata(initiativeID, initiativeSlug, initiativeName, userID, d
 	if paymentMethod != "" {
 		m["payment_method"] = paymentMethod
 	}
+	for k, v := range m {
+		m[k] = truncateMetadataValue(v)
+	}
 	return m
+}
+
+// stripeMetadataValueMax is Stripe's per-value metadata limit in characters;
+// longer values make the whole API call fail.
+const stripeMetadataValueMax = 500
+
+// truncateMetadataValue cuts s to Stripe's metadata value limit without
+// splitting a multi-byte character.
+func truncateMetadataValue(s string) string {
+	if len(s) <= stripeMetadataValueMax { // byte length >= rune count, so this fast path is safe
+		return s
+	}
+	if r := []rune(s); len(r) > stripeMetadataValueMax {
+		return string(r[:stripeMetadataValueMax])
+	}
+	return s
 }
 
 // ── One-time payments ─────────────────────────────────────────────────────────
@@ -470,7 +489,7 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 		subItemMeta["org_id"] = req.OrganizationID
 	}
 	if req.Category != "" {
-		subItemMeta["category"] = req.Category
+		subItemMeta["category"] = truncateMetadataValue(req.Category)
 	}
 	subItem := &stripe.SubscriptionCreateItemParams{
 		Price:    stripe.String(req.StripePriceID),
