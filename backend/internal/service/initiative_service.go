@@ -36,6 +36,10 @@ var allowedContactTypes = map[string]struct{}{
 	"technical_lead": {},
 }
 
+// errInvalidSlug rejects slugs that could inject path segments into the
+// initiative deep links built from them.
+var errInvalidSlug = fmt.Errorf("%w: slug may only contain lowercase letters, digits, hyphens and underscores, and must not start or end with a hyphen or underscore", domain.ErrInvalidInput)
+
 // InitiativeService orchestrates initiative reads and writes.
 // Cached financials come from initiative_ledger_stats (CronJob); per-goal
 // donated/spent is enriched live from Ledger GetBalance on each detail request.
@@ -413,6 +417,11 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	}
 	if input.Slug == "" {
 		input.Slug = slug.Make(input.Name)
+		if input.Slug == "" {
+			return nil, fmt.Errorf("%w: name must contain at least one letter or digit", domain.ErrInvalidInput)
+		}
+	} else if !slug.IsSlug(input.Slug) {
+		return nil, errInvalidSlug
 	}
 	if input.InitiativeType == "" {
 		return nil, fmt.Errorf("%w: initiative_type is required", domain.ErrInvalidInput)
@@ -616,6 +625,11 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		existing.Name = *input.Name
 	}
 	if input.Slug != nil {
+		// Only a changed slug is validated, so an unchanged legacy slug does
+		// not block other edits.
+		if *input.Slug != existing.Slug && !slug.IsSlug(*input.Slug) {
+			return nil, errInvalidSlug
+		}
 		existing.Slug = *input.Slug
 	}
 	if input.Status != nil {

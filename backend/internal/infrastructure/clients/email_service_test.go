@@ -40,6 +40,16 @@ func newSvc(mandrill MandrillClient, emails []string) *emailService {
 
 // --- tests ---
 
+func TestInitiativeURL_EscapesSlug(t *testing.T) {
+	svc := newSvc(&mockMandrill{}, nil)
+
+	got := svc.InitiativeURL("x/process-approval/decline#")
+	want := "https://example.com/initiatives/x%2Fprocess-approval%2Fdecline%23"
+	if got != want {
+		t.Errorf("InitiativeURL = %q, want %q", got, want)
+	}
+}
+
 func TestSendProjectForReviewEmail_NoRecipients(t *testing.T) {
 	m := &mockMandrill{}
 	svc := newSvc(m, nil)
