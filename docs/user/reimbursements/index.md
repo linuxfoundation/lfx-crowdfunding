@@ -2,7 +2,7 @@
 title: Reimbursements
 description: How expense reimbursements work for initiative owners and beneficiaries on LFX Crowdfunding.
 tags: [reimbursements, expenses, beneficiaries, expensify]
-last_updated: 2026-08-27
+last_updated: 2026-10-06
 display_order: 7
 intercom_collection: LFX Crowdfunding
 ---
