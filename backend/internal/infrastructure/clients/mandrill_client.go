@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"time"
@@ -132,7 +133,8 @@ func (c *mandrillClient) SendTemplate(ctx context.Context, templateName Mandrill
 
 	globalMergeVars := make([]mandrillMergeVar, 0, len(mergeVars))
 	for k, v := range mergeVars {
-		globalMergeVars = append(globalMergeVars, mandrillMergeVar{Name: k, Content: v})
+		// Merge vars carry user-controlled strings and Mailchimp-style templates insert them unescaped.
+		globalMergeVars = append(globalMergeVars, mandrillMergeVar{Name: k, Content: html.EscapeString(v)})
 	}
 
 	payload := mandrillSendTemplateRequest{
