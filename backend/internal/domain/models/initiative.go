@@ -254,10 +254,6 @@ type Initiative struct {
 	CreatedOn time.Time `json:"created_on"`
 	UpdatedOn time.Time `json:"updated_on"`
 
-	// CanManage is the caller-relative result of the canManage seam. Set only on
-	// owner-scoped responses; always false on public reads.
-	CanManage bool `json:"can_manage"`
-
 	// Project-only fields
 	CiiProjectID string `json:"cii_project_id,omitempty"` // CII Best Practices badge project ID (project type only)
 

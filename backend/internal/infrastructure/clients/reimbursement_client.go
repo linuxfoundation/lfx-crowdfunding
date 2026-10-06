@@ -397,7 +397,7 @@ func (c *reimbursementHTTPClient) buildPolicyPayload(
 
 	// --- ProjectURL ------------------------------------------------------
 	base := strings.TrimRight(c.cfg.FrontendBase, "/")
-	projectURL := base + "/initiatives/" + initiative.Slug
+	projectURL := base + "/initiatives/" + url.PathEscape(initiative.Slug)
 
 	// --- Assemble --------------------------------------------------------
 	update = rsPolicyUpdate{

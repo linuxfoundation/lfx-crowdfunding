@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -43,7 +44,7 @@ func (s *emailService) sendEmail(ctx context.Context, req emailRequest) error {
 
 // InitiativeURL composes a full frontend deep-link for an initiative slug.
 func (s *emailService) InitiativeURL(slug string) string {
-	return fmt.Sprintf("%s/initiatives/%s", s.frontendBase, slug)
+	return fmt.Sprintf("%s/initiatives/%s", s.frontendBase, url.PathEscape(slug))
 }
 
 // SendProjectApprovedEmail notifies the initiative owner that their initiative was approved.

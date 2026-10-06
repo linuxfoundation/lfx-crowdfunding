@@ -303,9 +303,6 @@ func TestListForUser(t *testing.T) {
 	if seenOwnerID != "owner-uuid" {
 		t.Errorf("filter.OwnerID = %q, want owner-uuid", seenOwnerID)
 	}
-	if !out[0].CanManage {
-		t.Error("CanManage = false, want true on ListForUser results")
-	}
 }
 
 func TestListForUser_UnknownUserReturnsEmpty(t *testing.T) {
@@ -349,24 +346,6 @@ func TestGetForUser_BySlug_Owned(t *testing.T) {
 	}
 	if init.Name != "Draft" {
 		t.Errorf("name = %q, want Draft", init.Name)
-	}
-	if !init.CanManage {
-		t.Error("CanManage = false, want true for the owner")
-	}
-}
-
-func TestGetBySlug_PublicReadCanManageFalse(t *testing.T) {
-	repo := &listInitiativeRepo{
-		onGetBySlug: func(_ context.Context, _ string) (*models.Initiative, error) {
-			return &models.Initiative{ID: "init-1", Name: "Public", Status: models.StatusPublished}, nil
-		},
-	}
-	got, err := newReadSvc(repo, &mockUserRepository{}).GetBySlug(context.Background(), "public-slug")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.CanManage {
-		t.Error("CanManage = true on public read, want false")
 	}
 }
 
