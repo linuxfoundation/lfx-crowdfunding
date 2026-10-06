@@ -438,13 +438,12 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Expense actions — authenticated, no scope check today. reportId is an
-    # Expensify report id, not an FGA object. Pre-existing gap, not
-    # introduced by this PR: ExpenseHandler.ProcessAction never checks that
-    # the caller's principal is tied to the report/initiative being
-    # approved/rejected — any authenticated LF user can act on any report ID.
-    # Onboarding to Heimdall ratifies this as the gateway contract rather
-    # than leaving it an internal TODO. Tracked in #283.
+    # Expense actions — authenticated, no scope check. reportId is an
+    # Expensify report id, not an FGA object, so there is nothing for the
+    # gateway to check it against. Per-report authorization is enforced in
+    # ExpenseHandler.ProcessAction: the caller's email must be one the
+    # Reimbursement Service sent the approval email to (Heimdall tokens carry
+    # no email, so it is read from the caller's user row). Tracked in #283.
     - id: "rule:lfx:lfx-crowdfunding-backend:expense"
       allow_encoded_slashes: "off"
       match:

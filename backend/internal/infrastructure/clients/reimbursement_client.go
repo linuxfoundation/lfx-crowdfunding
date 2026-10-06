@@ -72,10 +72,18 @@ type ReimbursementClient interface {
 	SyncPolicy(ctx context.Context, initiative *models.Initiative, ownerUser *models.User) error
 
 	// ProcessExpenseAction submits an action (e.g. "approve", "reject") against
-	// the given expense report in the Reimbursement Service.
+	// the given expense report in the Reimbursement Service. actor is the
+	// authenticated user who triggered it; the RS records who asked in its
+	// audit trail.
 	// Maps upstream 404 → domain.ErrExpenseReportNotFound so callers can
 	// distinguish missing reports from other upstream errors.
-	ProcessExpenseAction(ctx context.Context, action, reportID string) error
+	ProcessExpenseAction(ctx context.Context, action, reportID string, actor *models.Principal) error
+
+	// GetExpenseApprovers returns the email addresses the RS sent the
+	// approve/reject notification for the report to — the people allowed to act
+	// on it (the initiative owner, or the Travel Fund admin for Travel Fund
+	// reports). Maps upstream 404 → domain.ErrExpenseReportNotFound.
+	GetExpenseApprovers(ctx context.Context, reportID string) ([]string, error)
 }
 
 // ReimbursementConfig holds all connection settings for the Reimbursement Service.
@@ -456,12 +464,25 @@ func categoryName(name string) string {
 	return strings.Join(words, "")
 }
 
+// rsExpenseActionBody is the POST /expense/{action}/{reportId} request body.
+// It names the authenticated user so the RS audit trail shows the real actor
+// rather than just this service's credentials.
+type rsExpenseActionBody struct {
+	ActorEmail    string `json:"actorEmail,omitempty"`
+	ActorUsername string `json:"actorUsername,omitempty"`
+}
+
+// rsExpenseApprovers is the GET /expense/{reportId}/approvers response body.
+type rsExpenseApprovers struct {
+	ApproverEmails []string `json:"approverEmails"`
+}
+
 // ProcessExpenseAction submits an action (e.g. "approve", "reject") for the
 // given expense report via POST /expense/{action}/{reportId} on the
 // Reimbursement Service. Authenticated with X-API-KEY and a cached Auth0
 // client_credentials Bearer token (required by the API gateway).
 // A 404 response is translated to domain.ErrExpenseReportNotFound.
-func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID string) error {
+func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID string, actor *models.Principal) error {
 	ctx, span := reimbursementTracer.Start(ctx, "reimbursement.ProcessExpenseAction")
 	defer span.End()
 	span.SetAttributes(
@@ -477,7 +498,12 @@ func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, acti
 		return fmt.Errorf("%w: fetch auth headers for %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
 	}
 
-	err = c.httpClient.PostJSON(ctx, endpoint, headers, struct{}{}, nil, func(r *http.Response) error {
+	var body rsExpenseActionBody
+	if actor != nil {
+		body = rsExpenseActionBody{ActorEmail: actor.Email, ActorUsername: actor.Username}
+	}
+
+	err = c.httpClient.PostJSON(ctx, endpoint, headers, body, nil, func(r *http.Response) error {
 		if r.StatusCode == http.StatusNotFound {
 			return fmt.Errorf("%w: %s", domain.ErrExpenseReportNotFound, reportID)
 		}
@@ -492,4 +518,40 @@ func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, acti
 		return fmt.Errorf("%w: expense action %q on %s: %w", domain.ErrUpstreamUnavailable, action, reportID, err)
 	}
 	return nil
+}
+
+// GetExpenseApprovers fetches the emails allowed to act on the report via
+// GET /expense/{reportId}/approvers on the Reimbursement Service.
+// A 404 response is translated to domain.ErrExpenseReportNotFound.
+func (c *reimbursementHTTPClient) GetExpenseApprovers(ctx context.Context, reportID string) ([]string, error) {
+	ctx, span := reimbursementTracer.Start(ctx, "reimbursement.GetExpenseApprovers")
+	defer span.End()
+	span.SetAttributes(attribute.String("expense.report_id", reportID))
+
+	endpoint := strings.TrimRight(c.cfg.APIURL, "/") +
+		"/expense/" + url.PathEscape(reportID) + "/approvers"
+
+	headers, err := c.gatewayHeaders(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: fetch auth headers for approvers of %s: %w", domain.ErrUpstreamUnavailable, reportID, err)
+	}
+
+	var resp rsExpenseApprovers
+	err = c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		if r.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("%w: %s", domain.ErrExpenseReportNotFound, reportID)
+		}
+		return &rsHTTPError{code: r.StatusCode}
+	})
+	if err != nil {
+		var httpErr *rsHTTPError
+		if errors.As(err, &httpErr) {
+			return nil, fmt.Errorf("%w: expense approvers for %s returned %d", domain.ErrUpstreamUnavailable, reportID, httpErr.code)
+		}
+		if errors.Is(err, domain.ErrExpenseReportNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: expense approvers for %s: %w", domain.ErrUpstreamUnavailable, reportID, err)
+	}
+	return resp.ApproverEmails, nil
 }

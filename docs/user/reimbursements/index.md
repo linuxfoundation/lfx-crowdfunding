@@ -2,7 +2,7 @@
 title: Reimbursements
 description: How expense reimbursements work for initiative owners and beneficiaries on LFX Crowdfunding.
 tags: [reimbursements, expenses, beneficiaries, expensify]
-last_updated: 2026-08-27
+last_updated: 2026-10-06
 display_order: 7
 intercom_collection: LFX Crowdfunding
 ---
@@ -41,7 +41,10 @@ International wire transfers can take up to six weeks from approval to reach you
 ### Approve or reject an expense (initiative owner)
 
 1. Open the approval email sent when a beneficiary submits an expense report.
-2. Select **Approve** or **Reject**. The action is processed immediately — no login is required.
+2. Select **Approve** or **Reject**, and sign in with your LF account if prompted. Use the account for the email address the approval email was sent to.
+3. The action is processed immediately.
+
+Only the person the approval email was sent to can approve or reject that expense. If you are signed in with a different account — including a beneficiary trying to approve their own expense — you will see a "not found" message instead.
 
 ## After completing
 
