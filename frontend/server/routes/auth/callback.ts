@@ -92,9 +92,10 @@ export default defineEventHandler(async (event) => {
     setAuthCookie(event, 'auth_oidc_token', tokenResponse.access_token, expiresIn);
 
     // Store display-only profile claims for the /api/auth/user endpoint.
-    // IMPORTANT: this cookie is base64-encoded JSON with no HMAC signature — treat as
-    // display-only. Never use it for identity decisions or authorization; use auth_oidc_token
-    // (forwarded as Authorization: Bearer to the Go backend) for that.
+    // IMPORTANT: the value is base64 JSON of unverified id-token claims, encrypted at rest by
+    // setAuthCookie — treat as display-only. Never use it for identity decisions or
+    // authorization; use auth_oidc_token (forwarded as Authorization: Bearer to the Go
+    // backend) for that.
     const userProfile = {
       sub: idTokenClaims.sub,
       name: idTokenClaims.name,
