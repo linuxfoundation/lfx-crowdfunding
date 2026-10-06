@@ -24,8 +24,8 @@ type ExpenseHandler struct {
 }
 
 // NewExpenseHandler creates an ExpenseHandler backed by the given client.
-// userRepo resolves the caller's email for Heimdall-issued tokens, which carry
-// no email claim.
+// userRepo resolves the caller's email from their user row; token email claims
+// are never used for authorization.
 func NewExpenseHandler(rsClient clients.ReimbursementClient, userRepo domain.UserRepository) *ExpenseHandler {
 	return &ExpenseHandler{rsClient: rsClient, userRepo: userRepo}
 }
@@ -52,29 +52,30 @@ func (h *ExpenseHandler) ProcessAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Approvers are identified by email. A token without one can never be
-	// authorized. Both outcomes below depend only on the caller's own identity,
-	// so they reveal nothing about any report.
+	// Approvers are identified by email. The email always comes from the caller's
+	// user row (looked up by LF username), never from a token claim: neither
+	// Auth0 nor Heimdall access tokens reliably carry one, and a claim isn't
+	// proof of mailbox ownership. The row is written only by login sync from
+	// Auth0 /userinfo, and is the same source the RS owner email comes from.
+	// A caller with no resolvable email can never be authorized. Both outcomes
+	// below depend only on the caller's own identity, so they reveal nothing
+	// about any report.
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
-	actor := *principal
-	if actor.Email == "" && actor.IsHeimdallIssued {
-		// Heimdall-minted tokens carry no email; use the one on the caller's
-		// user row, the same source the RS owner email comes from.
-		email, err := h.emailForUsername(r.Context(), actor.Username)
-		if err != nil {
-			Error(w, err)
-			return
-		}
-		actor.Email = email
+	email, err := h.emailForUsername(r.Context(), principal.Username)
+	if err != nil {
+		Error(w, err)
+		return
 	}
-	if actor.Email == "" {
+	if email == "" {
 		Error(w, domain.ErrForbidden)
 		return
 	}
+	actor := *principal
+	actor.Email = email // forwarded to RS and shown in the Slack message
 
 	approvers, err := h.rsClient.GetExpenseApprovers(r.Context(), reportID)
 	if err != nil {

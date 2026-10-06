@@ -86,9 +86,17 @@ func expenseReq(action, reportID string, p *models.Principal) *http.Request {
 	return req
 }
 
+// owner is an Auth0-style caller: no email claim, identified by username only.
 func owner() *models.Principal {
-	return &models.Principal{Username: "owner", Email: ownerEmail}
+	return &models.Principal{Username: "owner"}
 }
+
+// repoFor returns a user repo whose row for any username carries email.
+func repoFor(email string) *stubUserRepo {
+	return &stubUserRepo{user: &models.User{Username: "owner", Email: email}}
+}
+
+func ownerRepo() *stubUserRepo { return repoFor(ownerEmail) }
 
 func serve(stub *stubRSClient, repo domain.UserRepository, req *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
@@ -101,7 +109,7 @@ func serve(stub *stubRSClient, repo domain.UserRepository, req *http.Request) *h
 func TestExpenseHandler_ProcessAction_Success(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}}
 
-	w := serve(stub, nil, expenseReq("approve", "R-001", owner()))
+	w := serve(stub, ownerRepo(), expenseReq("approve", "R-001", owner()))
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("expected 204, got %d", w.Code)
@@ -120,7 +128,7 @@ func TestExpenseHandler_ProcessAction_Success(t *testing.T) {
 func TestExpenseHandler_ProcessAction_RejectAction(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}}
 
-	w := serve(stub, nil, expenseReq("reject", "R-002", owner()))
+	w := serve(stub, ownerRepo(), expenseReq("reject", "R-002", owner()))
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("expected 204, got %d", w.Code)
@@ -133,7 +141,7 @@ func TestExpenseHandler_ProcessAction_RejectAction(t *testing.T) {
 func TestExpenseHandler_ProcessAction_EmailMatchIsCaseInsensitive(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{"  Owner@Example.ORG "}}
 
-	w := serve(stub, nil, expenseReq("approve", "R-001", owner()))
+	w := serve(stub, ownerRepo(), expenseReq("approve", "R-001", owner()))
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("expected 204, got %d", w.Code)
@@ -144,9 +152,9 @@ func TestExpenseHandler_ProcessAction_TravelFundAdminAllowed(t *testing.T) {
 	// The RS returns every recipient it emailed for the report; a Travel Fund
 	// admin is one of them just like an initiative owner.
 	stub := &stubRSClient{approvers: []string{"tf-admin@example.org"}}
-	admin := &models.Principal{Username: "tfadmin", Email: "tf-admin@example.org"}
+	admin := &models.Principal{Username: "tfadmin"}
 
-	w := serve(stub, nil, expenseReq("approve", "TF-1", admin))
+	w := serve(stub, repoFor("tf-admin@example.org"), expenseReq("approve", "TF-1", admin))
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("expected 204, got %d", w.Code)
@@ -157,9 +165,9 @@ func TestExpenseHandler_ProcessAction_TravelFundAdminAllowed(t *testing.T) {
 
 func TestExpenseHandler_ProcessAction_NonApproverGetsNotFound(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}}
-	beneficiary := &models.Principal{Username: "bene", Email: "bene@example.org"}
+	beneficiary := &models.Principal{Username: "bene"}
 
-	w := serve(stub, nil, expenseReq("approve", "R-001", beneficiary))
+	w := serve(stub, repoFor("bene@example.org"), expenseReq("approve", "R-001", beneficiary))
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
@@ -170,13 +178,14 @@ func TestExpenseHandler_ProcessAction_NonApproverGetsNotFound(t *testing.T) {
 }
 
 func TestExpenseHandler_ProcessAction_UnknownAndUnauthorizedAreIndistinguishable(t *testing.T) {
-	caller := &models.Principal{Username: "bene", Email: "bene@example.org"}
+	caller := &models.Principal{Username: "bene"}
+	repo := repoFor("bene@example.org")
 
 	notOwner := &stubRSClient{approvers: []string{ownerEmail}}
-	unauthorized := serve(notOwner, nil, expenseReq("approve", "R-001", caller))
+	unauthorized := serve(notOwner, repo, expenseReq("approve", "R-001", caller))
 
 	missing := &stubRSClient{approversErr: domain.ErrExpenseReportNotFound}
-	unknown := serve(missing, nil, expenseReq("approve", "R-404", caller))
+	unknown := serve(missing, repo, expenseReq("approve", "R-404", caller))
 
 	if unauthorized.Code != unknown.Code || unauthorized.Body.String() != unknown.Body.String() {
 		t.Errorf("responses differ: %d %q vs %d %q",
@@ -187,24 +196,39 @@ func TestExpenseHandler_ProcessAction_UnknownAndUnauthorizedAreIndistinguishable
 	}
 }
 
-func TestExpenseHandler_ProcessAction_NoEmailIsForbidden(t *testing.T) {
+// A token email claim, verified or not, is never used: only the user row counts.
+func TestExpenseHandler_ProcessAction_TokenEmailClaimIgnored(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}}
-	noEmail := &models.Principal{Username: "owner"}
+	spoofed := &models.Principal{Username: "mallory", Email: ownerEmail, EmailVerified: false}
 
-	w := serve(stub, nil, expenseReq("approve", "R-001", noEmail))
+	w := serve(stub, repoFor("mallory@example.org"), expenseReq("approve", "R-001", spoofed))
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
 	}
-	if stub.approversCalled || stub.actionCalled {
-		t.Error("RS must not be contacted when the caller has no email")
+	if stub.actionCalled {
+		t.Error("RS action must not be called when only the token claim matches")
+	}
+}
+
+// Auth0 access tokens carry no email; the synced row email must authorize.
+func TestExpenseHandler_ProcessAction_Auth0TokenWithSyncedEmail(t *testing.T) {
+	stub := &stubRSClient{approvers: []string{ownerEmail}}
+
+	w := serve(stub, ownerRepo(), expenseReq("approve", "R-001", owner()))
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+	if stub.capturedActor == nil || stub.capturedActor.Email != ownerEmail {
+		t.Errorf("expected synced email on the actor, got %+v", stub.capturedActor)
 	}
 }
 
 func TestExpenseHandler_ProcessAction_NoPrincipal(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}}
 
-	w := serve(stub, nil, expenseReq("approve", "R-001", nil))
+	w := serve(stub, ownerRepo(), expenseReq("approve", "R-001", nil))
 
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", w.Code)
@@ -278,7 +302,7 @@ func TestExpenseHandler_ProcessAction_HeimdallUserLookupError(t *testing.T) {
 func TestExpenseHandler_ProcessAction_InvalidAction(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}}
 
-	w := serve(stub, nil, expenseReq("delete", "R-001", owner()))
+	w := serve(stub, ownerRepo(), expenseReq("delete", "R-001", owner()))
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
@@ -291,7 +315,7 @@ func TestExpenseHandler_ProcessAction_InvalidAction(t *testing.T) {
 func TestExpenseHandler_ProcessAction_ReportNotFound(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}, err: domain.ErrExpenseReportNotFound}
 
-	w := serve(stub, nil, expenseReq("approve", "missing-report", owner()))
+	w := serve(stub, ownerRepo(), expenseReq("approve", "missing-report", owner()))
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
@@ -301,7 +325,7 @@ func TestExpenseHandler_ProcessAction_ReportNotFound(t *testing.T) {
 func TestExpenseHandler_ProcessAction_UpstreamError(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}, err: errors.New("reimbursement service returned 500")}
 
-	w := serve(stub, nil, expenseReq("approve", "R-003", owner()))
+	w := serve(stub, ownerRepo(), expenseReq("approve", "R-003", owner()))
 
 	// Unmapped errors fall through to the default 500 case in respond.go.
 	if w.Code != http.StatusInternalServerError {
@@ -312,7 +336,7 @@ func TestExpenseHandler_ProcessAction_UpstreamError(t *testing.T) {
 func TestExpenseHandler_ProcessAction_UpstreamUnavailable(t *testing.T) {
 	stub := &stubRSClient{approvers: []string{ownerEmail}, err: domain.ErrUpstreamUnavailable}
 
-	w := serve(stub, nil, expenseReq("approve", "R-003", owner()))
+	w := serve(stub, ownerRepo(), expenseReq("approve", "R-003", owner()))
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("expected 503, got %d", w.Code)
@@ -322,7 +346,7 @@ func TestExpenseHandler_ProcessAction_UpstreamUnavailable(t *testing.T) {
 func TestExpenseHandler_ProcessAction_ApproversLookupUnavailable(t *testing.T) {
 	stub := &stubRSClient{approversErr: domain.ErrUpstreamUnavailable}
 
-	w := serve(stub, nil, expenseReq("approve", "R-003", owner()))
+	w := serve(stub, ownerRepo(), expenseReq("approve", "R-003", owner()))
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("expected 503, got %d", w.Code)
