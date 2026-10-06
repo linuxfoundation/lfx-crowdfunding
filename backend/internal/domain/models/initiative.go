@@ -258,6 +258,7 @@ type Initiative struct {
 	CiiProjectID string `json:"cii_project_id,omitempty"` // CII Best Practices badge project ID (project type only)
 
 	// Internal fields — never serialised
+	UpdatedBy          string            `json:"-"` // LF SSO username of the last editor; write-only
 	SourceDynamoTable  string            `json:"-"`
 	StripePlanID       string            `json:"-"`
 	StripeProductID    string            `json:"-"`

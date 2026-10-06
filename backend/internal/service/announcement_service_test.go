@@ -18,6 +18,7 @@ type mockAnnouncementRepo struct {
 	announcements []models.Announcement
 	created       *models.Announcement
 	updated       *models.Announcement
+	updatedBy     string
 	listErr       error
 	createErr     error
 	updateErr     error
@@ -39,12 +40,13 @@ func (m *mockAnnouncementRepo) Create(_ context.Context, a *models.Announcement)
 	m.created = a
 	return a, nil
 }
-func (m *mockAnnouncementRepo) Update(_ context.Context, id, _ string, input models.AnnouncementUpdateInput) (*models.Announcement, error) {
+func (m *mockAnnouncementRepo) Update(_ context.Context, id, _, updatedBy string, input models.AnnouncementUpdateInput) (*models.Announcement, error) {
 	if m.updateErr != nil {
 		return nil, m.updateErr
 	}
 	result := &models.Announcement{ID: id, Title: input.Title, Description: input.Description}
 	m.updated = result
+	m.updatedBy = updatedBy
 	return result, nil
 }
 func (m *mockAnnouncementRepo) Delete(_ context.Context, _, _ string) error {
@@ -296,8 +298,9 @@ func TestAnnouncementService_Create_UnknownCaller(t *testing.T) {
 
 func TestAnnouncementService_Update_Success(t *testing.T) {
 	ownerID := "user-1"
+	annRepo := &mockAnnouncementRepo{}
 	svc := newAnnouncementSvc(
-		&mockAnnouncementRepo{},
+		annRepo,
 		&mockInitiativeRepoForAnn{initiative: publishedInitiative(ownerID)},
 		&mockUserRepoForAnn{user: &models.User{ID: ownerID, Username: "alice"}},
 	)
@@ -310,6 +313,9 @@ func TestAnnouncementService_Update_Success(t *testing.T) {
 	}
 	if got.Title != "Updated" {
 		t.Errorf("unexpected title: %s", got.Title)
+	}
+	if annRepo.updatedBy != "alice" {
+		t.Errorf("repo updatedBy = %q, want alice", annRepo.updatedBy)
 	}
 }
 

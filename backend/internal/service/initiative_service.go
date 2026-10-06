@@ -764,6 +764,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		}
 	}
 
+	existing.UpdatedBy = callerUsername
 	updated, err := s.repo.Update(ctx, existing, input)
 	if err != nil {
 		span.RecordError(err)
