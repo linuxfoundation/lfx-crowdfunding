@@ -1,7 +1,8 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { defineEventHandler, getCookie, createError, getRequestURL } from 'h3';
+import { defineEventHandler, createError, getRequestURL } from 'h3';
+import { getAuthCookie } from '../utils/auth-cookies';
 import type { ProtectedRoute } from '../types/auth.types';
 
 // Compiled once at module load — not inside the match functions — to avoid
@@ -33,7 +34,7 @@ export default defineEventHandler((event) => {
 
   if (!isProtected) return;
 
-  const token = getCookie(event, 'auth_oidc_token');
+  const token = getAuthCookie(event, 'auth_oidc_token');
   if (!token) {
     throw createError({ statusCode: 401, statusMessage: 'Authentication required' });
   }

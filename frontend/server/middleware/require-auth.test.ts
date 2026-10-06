@@ -23,17 +23,21 @@ vi.mock('h3', async (importOriginal) => {
   };
 });
 
+// Decryption is covered in auth-cookies.test.ts; here the cookie value is already plaintext.
+vi.mock('../utils/auth-cookies', () => ({ getAuthCookie: vi.fn() }));
+
 import * as h3 from 'h3';
+import { getAuthCookie } from '../utils/auth-cookies';
 import requireAuth from './require-auth';
 
 const mockGetRequestURL = vi.mocked(h3.getRequestURL);
-const mockGetCookie = vi.mocked(h3.getCookie);
+const mockGetCookie = vi.mocked(getAuthCookie);
 const mockCreateError = vi.mocked(h3.createError);
 
 // Helper: set up the URL + method for a mock event.
 const makeEvent = (method: string, path: string, token?: string) => {
   mockGetRequestURL.mockReturnValue(new URL(`http://localhost${path}`));
-  mockGetCookie.mockReturnValue(token as ReturnType<typeof h3.getCookie>);
+  mockGetCookie.mockReturnValue(token);
   return { method } as unknown as h3.H3Event;
 };
 

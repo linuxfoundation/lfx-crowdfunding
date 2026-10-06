@@ -10,7 +10,6 @@ if (isProduction) {
     'NUXT_PUBLIC_AUTH0_DOMAIN',
     'NUXT_PUBLIC_AUTH0_CLIENT_ID',
     'NUXT_AUTH0_CLIENT_SECRET',
-    'NUXT_AUTH0_COOKIE_DOMAIN',
     'NUXT_PUBLIC_AUTH0_AUDIENCE',
     'NUXT_API_BASE_URL',
   ];
@@ -28,6 +27,7 @@ const selfServeUrl =
   (isProduction ? 'https://app.lfx.dev' : 'https://app.dev.lfx.dev');
 const auth0Domain =
   process.env.NUXT_PUBLIC_AUTH0_DOMAIN || 'https://linuxfoundation-staging.auth0.com';
+// Legacy: auth cookies are host-only now. Only used to expire old parent-domain cookies.
 const auth0CookieDomain = process.env.NUXT_AUTH0_COOKIE_DOMAIN;
 
 export default {

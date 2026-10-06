@@ -7,24 +7,11 @@ import type { DecodedIdToken } from '~~/types/auth/auth-jwt.types';
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
-  const isLocal = !process.env.NUXT_PUBLIC_APP_ENV;
 
-  const baseCookieOptions = {
-    httpOnly: true,
-    secure: !isLocal,
-    sameSite: 'lax' as const,
-    path: '/',
-    ...(isLocal ? { domain: 'localhost' } : { domain: config.auth0CookieDomain }),
-  };
-
-  const clearCookieOptions = { ...baseCookieOptions, maxAge: 0 };
-
-  const refreshToken = getCookie(event, 'auth_refresh_token');
+  const refreshToken = getAuthCookie(event, 'auth_refresh_token');
   if (!refreshToken) {
     // No refresh token stored — client must do a full login
-    setCookie(event, 'auth_oidc_token', '', clearCookieOptions);
-    setCookie(event, 'auth_user_profile', '', clearCookieOptions);
-    setCookie(event, 'auth_refresh_token', '', clearCookieOptions);
+    clearAuthCookies(event);
     throw createError({ statusCode: 401, statusMessage: 'No refresh token available' });
   }
 
@@ -45,10 +32,8 @@ export default defineEventHandler(async (event) => {
     }
 
     const expiresIn = tokenResponse.expires_in || 86400;
-    const tokenCookieOptions = { ...baseCookieOptions, maxAge: expiresIn };
-
     // Replace the access token — this is what the BFF forwards as Authorization: Bearer.
-    setCookie(event, 'auth_oidc_token', tokenResponse.access_token, tokenCookieOptions);
+    setAuthCookie(event, 'auth_oidc_token', tokenResponse.access_token, expiresIn);
 
     // Require the ID token and rebuild the profile cookie on every refresh.
     // auth_user_profile shares the access token's maxAge, so it expires alongside it;
@@ -70,19 +55,21 @@ export default defineEventHandler(async (event) => {
         | undefined,
       intercomJwt: idTokenClaims['http://lfx.dev/claims/intercom'] as string | undefined,
     };
-    setCookie(
+    setAuthCookie(
       event,
       'auth_user_profile',
       Buffer.from(JSON.stringify(userProfile)).toString('base64'),
-      tokenCookieOptions,
+      expiresIn,
     );
 
     // Persist a rotated refresh token when Auth0 issues one (refresh token rotation).
     if (tokenResponse.refresh_token) {
-      setCookie(event, 'auth_refresh_token', tokenResponse.refresh_token, {
-        ...baseCookieOptions,
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-      });
+      setAuthCookie(
+        event,
+        'auth_refresh_token',
+        tokenResponse.refresh_token,
+        60 * 60 * 24 * 30, // 30 days
+      );
     }
 
     return { success: true };
@@ -91,9 +78,7 @@ export default defineEventHandler(async (event) => {
 
     // The refresh token is invalid or revoked — clear all auth cookies so the client
     // falls back to a full Auth0 login.
-    setCookie(event, 'auth_oidc_token', '', clearCookieOptions);
-    setCookie(event, 'auth_user_profile', '', clearCookieOptions);
-    setCookie(event, 'auth_refresh_token', '', clearCookieOptions);
+    clearAuthCookies(event);
 
     throw createError({ statusCode: 401, statusMessage: 'Token refresh failed' });
   }

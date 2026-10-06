@@ -10,18 +10,8 @@ import type { DecodedIdToken } from '~~/types/auth/auth-jwt.types';
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
-  const isLocal = !process.env.NUXT_PUBLIC_APP_ENV;
 
   const redirectTo = getSafeRedirectUrl(getCookie(event, 'auth_redirect_to'));
-
-  const clearCookieOptions = {
-    httpOnly: true,
-    secure: !isLocal,
-    sameSite: 'lax' as const,
-    path: '/',
-    ...(isLocal ? { domain: 'localhost' } : { domain: config.auth0CookieDomain }),
-    maxAge: 0,
-  };
 
   try {
     // Handle Auth0 errors (e.g. silent auth failure)
@@ -84,8 +74,8 @@ export default defineEventHandler(async (event) => {
       pkceCodeVerifier: codeVerifier,
     });
 
-    setCookie(event, 'auth_pkce', '', clearCookieOptions);
-    setCookie(event, 'auth_redirect_to', '', clearCookieOptions);
+    setCookie(event, 'auth_pkce', '', authCookieOptions(0));
+    setCookie(event, 'auth_redirect_to', '', authCookieOptions(0));
 
     if (!tokenResponse.id_token) {
       throw createError({ statusCode: 500, statusMessage: 'No ID token received from Auth0' });
@@ -98,17 +88,8 @@ export default defineEventHandler(async (event) => {
     const idTokenClaims = decodeJwt(tokenResponse.id_token) as DecodedIdToken;
     const expiresIn = tokenResponse.expires_in || 86400;
 
-    const tokenCookieOptions = {
-      httpOnly: true,
-      secure: !isLocal,
-      sameSite: 'lax' as const,
-      path: '/',
-      ...(isLocal ? { domain: 'localhost' } : { domain: config.auth0CookieDomain }),
-      maxAge: expiresIn,
-    };
-
     // Store the Auth0 access token — forwarded by the BFF as Authorization: Bearer to the Go backend.
-    setCookie(event, 'auth_oidc_token', tokenResponse.access_token, tokenCookieOptions);
+    setAuthCookie(event, 'auth_oidc_token', tokenResponse.access_token, expiresIn);
 
     // Store display-only profile claims for the /api/auth/user endpoint.
     // IMPORTANT: this cookie is base64-encoded JSON with no HMAC signature — treat as
@@ -126,29 +107,27 @@ export default defineEventHandler(async (event) => {
         | undefined,
       intercomJwt: idTokenClaims['http://lfx.dev/claims/intercom'] as string | undefined,
     };
-    setCookie(
+    setAuthCookie(
       event,
       'auth_user_profile',
       Buffer.from(JSON.stringify(userProfile)).toString('base64'),
-      tokenCookieOptions,
+      expiresIn,
     );
 
     if (tokenResponse.refresh_token) {
-      setCookie(event, 'auth_refresh_token', tokenResponse.refresh_token, {
-        ...tokenCookieOptions,
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-      });
+      setAuthCookie(
+        event,
+        'auth_refresh_token',
+        tokenResponse.refresh_token,
+        60 * 60 * 24 * 30, // 30 days
+      );
     }
 
     await sendRedirect(event, buildSuccessRedirect(redirectTo));
   } catch (error) {
     console.error('Auth callback error:', error);
 
-    setCookie(event, 'auth_pkce', '', clearCookieOptions);
-    setCookie(event, 'auth_redirect_to', '', clearCookieOptions);
-    setCookie(event, 'auth_oidc_token', '', clearCookieOptions);
-    setCookie(event, 'auth_user_profile', '', clearCookieOptions);
-    setCookie(event, 'auth_refresh_token', '', clearCookieOptions);
+    clearAuthCookies(event);
 
     let statusCode = 500;
     let statusMessage = 'Authentication callback error';

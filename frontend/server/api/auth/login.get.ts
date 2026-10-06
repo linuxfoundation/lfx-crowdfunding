@@ -13,7 +13,6 @@ import { isValidRedirectUrl, getSafeRedirectUrl } from '../../utils/redirect';
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
-  const isLocal = !process.env.NUXT_PUBLIC_APP_ENV;
 
   try {
     const authConfig = await discovery(
@@ -25,14 +24,7 @@ export default defineEventHandler(async (event) => {
     const codeVerifier = randomPKCECodeVerifier();
     const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
 
-    const cookieOptions = {
-      httpOnly: true,
-      secure: !isLocal,
-      sameSite: 'lax' as const,
-      path: '/',
-      maxAge: 60 * 15, // 15 minutes
-      ...(isLocal ? { domain: 'localhost' } : { domain: config.auth0CookieDomain }),
-    };
+    const cookieOptions = authCookieOptions(60 * 15); // 15 minutes
 
     // Store state + code verifier together to prevent concurrent login flow races
     setCookie(event, 'auth_pkce', JSON.stringify({ state, codeVerifier }), cookieOptions);

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import type { H3Event } from 'h3';
-import { getCookie, createError } from 'h3';
+import { createError } from 'h3';
+import { getAuthCookie } from './auth-cookies';
 
 export const useBackendFetch = async <T = unknown>(
   event: H3Event,
@@ -15,7 +16,7 @@ export const useBackendFetch = async <T = unknown>(
 ): Promise<T> => {
   const config = useRuntimeConfig();
   const baseURL = config.apiBaseUrl as string;
-  const token = getCookie(event, 'auth_oidc_token') ?? '';
+  const token = getAuthCookie(event, 'auth_oidc_token') ?? '';
 
   try {
     return await $fetch<T>(path, {
