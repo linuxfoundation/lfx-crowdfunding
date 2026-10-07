@@ -173,7 +173,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, ledgerClient, donationRepo, subscriptionRepo, emailSvc, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 	uploadH := handler.NewUploadHandler(s3Client)
-	expenseH := handler.NewExpenseHandler(reimbursementClient)
+	expenseH := handler.NewExpenseHandler(reimbursementClient, userRepo)
 	orgH := handler.NewOrganizationHandler(orgSvc)
 	announcementH := handler.NewAnnouncementHandler(announcementSvc)
 
@@ -313,8 +313,10 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			Get("/initiatives/published-list", initiativeH.ListPublished)
 
 		// Expense action — proxies action to the Reimbursement Service.
-		// Requires a valid bearer token (any scope); no specific scope is enforced
-		// because the caller arrives via an email link and may hold a minimal token.
+		// Requires a valid bearer token (any scope) because the caller arrives via
+		// an email link and may hold a minimal token. Authorization is per report,
+		// in the handler: the caller's email must be one the RS sent the approval
+		// email to (initiative owner, or Travel Fund admin).
 		r.With(jwtAuth.Middleware).
 			Post("/expense/{action}/{reportId}", expenseH.ProcessAction)
 	}
