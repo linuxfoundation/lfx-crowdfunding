@@ -107,8 +107,7 @@ they are *affiliated* with — they need not be a `writer` on it (PM decision, 2
 weaker of the two gates: someone affiliated with, but not a writer on, an org can publish a page
 carrying that org's name and logo without a writer signing off first. The org's writers cannot
 correct or remove it themselves — detaching to `personal` is authorized by the owner/creator only
-(doc 12, "Decided," attribution-change authorization: owner, or the target entity's writer; there
-is no target entity for `personal`). Only the creator can undo a false attribution once the
+(doc 12, "Decided," attribution-change authorization: creator-only, for any change). Only the creator can undo a false attribution once the
 gateway milestone ships the access rule that grants entity writers management in the first place
 (§3.4, §3.5, §5 — deferred from M2, which no longer exists as a separate milestone). Two
 consequences follow directly (see §5): the public attribution label cannot ship in a standalone
@@ -148,12 +147,19 @@ it's accepted anyway.
 > policing, not by an affiliation lookup. Confirmation of this framing with the architect is
 > tracked in open question 4.
 
-**Eligibility is enforced server-side, not by the picker.** Constraining the dropdown is UX only —
-a caller can POST a create/update request with any entity UID directly. The API must therefore
-re-validate the submitted attribution *before persisting it*: the entity UID must exist and match
-the claimed type (project-service / member-service lookup). Per the ruling above, this validation
-is an existence/shape check, not an authorization check — affiliation data cannot authoritatively
-prove or disprove the claim. (Picker suggestion sources: open question 4.)
+**Eligibility is enforced server-side, not by the picker (decided, lfx-crowdfunding#259).**
+Constraining the dropdown is UX only — a caller can POST a create/update request with any entity
+UID directly. On create, and on update when the attribution actually changes, the service
+therefore requires the caller to hold a **direct** `owner`, `writer` or `auditor` grant on the
+target `b2b_org` or `project` (fga-sync `lfx.access_check.read_tuples`, filtered client-side to
+that object). Direct only: a grant that reaches the entity through the b2b_org parent/child
+hierarchy, a team (`global_org_admin`), or a membership `key_contact` does not count, so a writer on
+a subsidiary is not affiliated with its parent org. A miss is a 403, an fga-sync outage a 503, and
+`personal` or an unchanged attribution makes no call. With no resolver wired (`FGA_NATS_URL`
+unset) the check fails closed (403) for organization and project targets. This is an FGA grant, not the self-attested involvement
+data ruled out above, so it does not conflict with that ruling. It is still a backend-brokered decision, which the
+architecture team prefers at the gateway (§3.5); it moves to a Heimdall rule once attribution
+targets can be named in the URL.
 
 ### 2.2 Access decision
 
@@ -203,15 +209,17 @@ Design rules:
   retry.
 - **CF stores no roles.** No membership tables, no role columns — CF stores one entity reference
   and asks the platform the membership question at request time.
-- **Changing attribution is not the flat manage capability.** Editing an initiative's *content*
-  is one flat capability; changing its *attribution* is a separate, more restricted action.
-  Validating only the target entity (§2.1) is insufficient: under the flat rule, any current
-  writer could reattribute the initiative to another entity they write — or to `personal` —
-  silently revoking the original entity's writers and moving (or erasing) the public claim of
-  representation. An attribution change must therefore be authorized on **both** the current and
-  the target entity; transferring a non-personal initiative to `personal` is **creator-only**.
-  Tracking *which* writer made a given change is a separate concern, out of scope here (open
-  question 6).
+- **Changing attribution is not the flat manage capability — it is creator-only
+  (decided, lfx-crowdfunding#259).** Editing an initiative's *content* is one flat capability;
+  changing its *attribution* (to another entity, or to `personal`) is reserved for the creator.
+  Under the flat rule any current writer could reattribute the initiative to another entity they
+  write — or to `personal` — silently revoking the original entity's writers and moving (or
+  erasing) the public claim of representation. Creator-only also means that if the creator leaves
+  the entity, the initiative stays with them: nobody else can move it away. A writer resubmitting
+  the unchanged attribution is not a change; any other change by a non-creator gets a 403. This
+  supersedes the earlier "authorize on both the current and target entity" proposal, so no
+  target-entity check is needed. Tracking *which* writer made a given change is a separate
+  concern, out of scope here (open question 6).
 
 ---
 

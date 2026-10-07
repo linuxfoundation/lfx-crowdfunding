@@ -149,3 +149,37 @@ func TestParseAccessCheckReply(t *testing.T) {
 		}
 	})
 }
+
+func TestNATSResolver_IsAffiliated(t *testing.T) {
+	const (
+		org      = "0014100000Te0yvAAB"
+		username = "alice"
+	)
+	reply := func(body string) *NATSResolver {
+		return &NATSResolver{conn: &fakeRequester{reply: []byte(body)}}
+	}
+	check := func(r *NATSResolver) (bool, error) {
+		return r.IsAffiliated(context.Background(), models.AttributionOrganization, org, username)
+	}
+
+	for rel, want := range map[string]bool{"writer": true, "auditor": true, "owner": true, "key_contact": false} {
+		got, err := check(reply(`{"results":["b2b_org:` + org + `#` + rel + `@user:alice"]}`))
+		if err != nil || got != want {
+			t.Errorf("relation %s: got (%v, %v), want %v", rel, got, err, want)
+		}
+	}
+	// A grant on a different org (e.g. the parent) does not count.
+	if got, err := check(reply(`{"results":["b2b_org:0014100000Other0AAA#writer@user:alice"]}`)); err != nil || got {
+		t.Errorf("other entity: got (%v, %v), want false", got, err)
+	}
+	if got, err := check(reply(`{"results":[]}`)); err != nil || got {
+		t.Errorf("empty: got (%v, %v), want false", got, err)
+	}
+	if _, err := check(reply(`{"error":"failed to read tuples"}`)); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("error reply: got %v, want ErrUpstreamUnavailable", err)
+	}
+	r := &NATSResolver{conn: &fakeRequester{err: errors.New("boom")}}
+	if _, err := check(r); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("transport error: got %v, want ErrUpstreamUnavailable", err)
+	}
+}

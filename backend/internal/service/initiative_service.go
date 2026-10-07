@@ -51,7 +51,8 @@ type InitiativeService struct {
 	emailService  domain.EmailService
 	reimbursement clients.ReimbursementClient // nil when RS integration is disabled
 	fgaPublisher  *fga.Publisher              // nil when FGA_NATS_URL is unset
-	roleResolver  fga.EntityRoleResolver      // nil when FGA_NATS_URL is unset
+	affiliation   fga.EntityAffiliationChecker
+	roleResolver  fga.EntityRoleResolver // nil when FGA_NATS_URL is unset
 	logger        *slog.Logger
 }
 
@@ -63,6 +64,31 @@ type InitiativeService struct {
 // construction. Left nil, canManage is creator-only.
 func (s *InitiativeService) SetEntityRoleResolver(r fga.EntityRoleResolver) {
 	s.roleResolver = r
+	// The NATS resolver also answers affiliation; resolvers that can't leave
+	// the attribution check off, like a nil resolver.
+	s.affiliation, _ = r.(fga.EntityAffiliationChecker)
+}
+
+// checkAffiliated enforces that the caller holds a direct grant on a
+// non-personal attribution target (403 otherwise, 503 on outage). With no
+// checker wired (FGA_NATS_URL unset) it is a no-op, like canManage's
+// creator-only degrade.
+func (s *InitiativeService) checkAffiliated(ctx context.Context, username string, a models.Attribution) error {
+	if a.Type != models.AttributionOrganization && a.Type != models.AttributionProject {
+		return nil
+	}
+	if s.affiliation == nil {
+		// Fail closed: without a resolver we cannot verify affiliation.
+		return fmt.Errorf("%w: cannot verify affiliation with that %s", domain.ErrForbidden, a.Type)
+	}
+	ok, err := s.affiliation.IsAffiliated(ctx, a.Type, a.EntityUID, username)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: you are not affiliated with that %s", domain.ErrForbidden, a.Type)
+	}
+	return nil
 }
 
 func (s *InitiativeService) SetFGAPublisher(p *fga.Publisher) {
@@ -497,16 +523,17 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	}
 
 	// Validate and default attribution (LFXV2-2956 M1). Omitting attribution
-	// defaults to personal — today's behavior. Shape-only validation; the
-	// affiliation check against the caller's real orgs/projects is blocked
-	// on the platform enumeration decision (design doc open question 4) and
-	// is out of scope here.
+	// defaults to personal — today's behavior. The caller must hold a direct
+	// grant on a non-personal target (checkAffiliated below).
 	attribution := models.Attribution{Type: models.AttributionPersonal}
 	if input.Attribution != nil {
 		attribution = *input.Attribution
 	}
 	if err := attribution.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+	}
+	if err := s.checkAffiliated(ctx, ownerUsername, attribution); err != nil {
+		return nil, err
 	}
 	if input.BenefitProjectUID != "" {
 		if _, err := uuid.Parse(input.BenefitProjectUID); err != nil {
@@ -673,12 +700,21 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	if input.CiiProjectID != nil {
 		existing.CiiProjectID = *input.CiiProjectID
 	}
-	// Attribution is validated but not yet gated by an entity-writer check
-	// (M2). Update is already creator-gated above, which is sufficient while
-	// an initiative has exactly one manager (design §2.2).
+	// Changing attribution is creator-only (lfx-crowdfunding#259, design §2.2):
+	// writers can edit content but not move the initiative, so an initiative
+	// stays with its creator if they leave the entity. Resubmitting the current
+	// attribution is not a change.
 	if input.Attribution != nil {
 		if err := input.Attribution.Validate(); err != nil {
 			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+		}
+		if *input.Attribution != existing.Attribution && existing.OwnerID != caller.ID {
+			return nil, fmt.Errorf("%w: only the creator can change attribution", domain.ErrForbidden)
+		}
+		if *input.Attribution != existing.Attribution {
+			if err := s.checkAffiliated(ctx, caller.Username, *input.Attribution); err != nil {
+				return nil, err
+			}
 		}
 		existing.Attribution = *input.Attribution
 	}
