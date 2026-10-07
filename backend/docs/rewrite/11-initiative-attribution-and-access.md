@@ -150,14 +150,18 @@ it's accepted anyway.
 **Eligibility is enforced server-side, not by the picker (decided, lfx-crowdfunding#259).**
 Constraining the dropdown is UX only — a caller can POST a create/update request with any entity
 UID directly. On create, and on update when the attribution actually changes, the service
-therefore requires the caller to hold a **direct** `owner`, `writer` or `auditor` grant on the
-target `b2b_org` or `project` (fga-sync `lfx.access_check.read_tuples`, filtered client-side to
-that object). Direct only: a grant that reaches the entity through the b2b_org parent/child
-hierarchy, a team (`global_org_admin`), or a membership `key_contact` does not count, so a writer on
-a subsidiary is not affiliated with its parent org. A miss is a 403, an fga-sync outage a 503, and
+therefore requires the caller to be able to **view** the
+target `b2b_org` or `project`: a full FGA `auditor` check (one batched `lfx.access_check.request`),
+the same gate Self Serve's org/project lens uses to show an entity. Because it is a full check,
+team grants, the parent/child cascade and a membership `key_contact` all count, consistent with the
+inherited-access reasoning in §3.3. Members of `team:lf-staff` are always eligible, mirroring Self
+Serve's `isStaff` (`LF_TEAM_IDS`); that is attribution only and grants no manage rights. Viewing is
+enough to *attribute*; *managing* the initiative afterwards still needs `writer` (§2.2), the same
+split Self Serve makes between its lens view and edit gates. Whether `auditor` should suffice for
+attributing is not yet confirmed with the architecture team (open question 4). A miss is a 403, an fga-sync outage a 503, and
 `personal` or an unchanged attribution makes no call. With no resolver wired (`FGA_NATS_URL`
-unset) the check fails closed (403) for organization and project targets. This is an FGA grant, not the self-attested involvement
-data ruled out above, so it does not conflict with that ruling. It is still a backend-brokered decision, which the
+unset) the check fails closed (403) for organization and project targets. This is an FGA grant, not
+the self-attested involvement data ruled out above, so it does not conflict with that ruling. It is still a backend-brokered decision, which the
 architecture team prefers at the gateway (§3.5); it moves to a Heimdall rule once attribution
 targets can be named in the URL.
 

@@ -19,7 +19,6 @@ package fga
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -105,28 +104,38 @@ func (r *NATSResolver) CanManage(ctx context.Context, attrType models.Attributio
 		return false, err
 	}
 	request := fmt.Sprintf("%s:%s#writer@user:%s", prefix, entityUID, username)
+	results, err := r.checks(ctx, request)
+	if err != nil {
+		return false, err
+	}
+	return results[request], nil
+}
 
+// checks sends one batched lfx.access_check.request and returns the result for
+// every token. Transport, parse and missing-result failures wrap
+// domain.ErrUpstreamUnavailable.
+func (r *NATSResolver) checks(ctx context.Context, requests ...string) (map[string]bool, error) {
 	if r.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, r.timeout)
 		defer cancel()
 	}
 
-	msg, err := r.conn.RequestWithContext(ctx, AccessCheckSubject, []byte(request))
+	msg, err := r.conn.RequestWithContext(ctx, AccessCheckSubject, []byte(strings.Join(requests, "\n")))
 	if err != nil {
-		return false, fmt.Errorf("%w: access check request: %w", domain.ErrUpstreamUnavailable, err)
+		return nil, fmt.Errorf("%w: access check request: %w", domain.ErrUpstreamUnavailable, err)
 	}
 
 	results, err := parseAccessCheckReply(msg.Data)
 	if err != nil {
-		return false, fmt.Errorf("%w: %w", domain.ErrUpstreamUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrUpstreamUnavailable, err)
 	}
-
-	allowed, ok := results[request]
-	if !ok {
-		return false, fmt.Errorf("%w: access check returned no result for %q", domain.ErrUpstreamUnavailable, request)
+	for _, req := range requests {
+		if _, ok := results[req]; !ok {
+			return nil, fmt.Errorf("%w: access check returned no result for %q", domain.ErrUpstreamUnavailable, req)
+		}
 	}
-	return allowed, nil
+	return results, nil
 }
 
 // parseAccessCheckReply parses a lfx.access_check.request reply: one line per
@@ -156,61 +165,34 @@ func parseAccessCheckReply(data []byte) (map[string]bool, error) {
 	return results, nil
 }
 
-// ReadTuplesSubject is the fga-sync NATS subject returning a user's direct
-// tuples for one object type.
-const ReadTuplesSubject = "lfx.access_check.read_tuples"
+// staffTeam members may attribute to any org or project, mirroring Self Serve's
+// isStaff (LF_TEAM_IDS in persona.constants.ts). Attribution only: it grants no
+// manage rights, which stay with CanManage.
+// ponytail: hardcoded single team, make it config if more staff teams appear.
+const staffTeam = "lf-staff"
 
-// EntityAffiliationChecker answers "does this user hold a direct grant on this
-// entity?" — the eligibility gate for attributing an initiative to it
-// (lfx-crowdfunding#259). Direct only: unlike CanManage it does not follow the
-// b2b_org parent/child cascade, so a writer on a subsidiary is not affiliated
-// with its parent org.
+// EntityAffiliationChecker answers "may this user attribute an initiative to
+// this entity?" (lfx-crowdfunding#259). It mirrors Self Serve's lens view gate:
+// a full FGA auditor check, so team grants and the b2b_org/project
+// parent/child cascade count, plus lf-staff membership. Managing the
+// initiative afterwards still needs writer (EntityRoleResolver).
 type EntityAffiliationChecker interface {
 	IsAffiliated(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error)
 }
 
-// affiliationRelations are the direct relations that count as affiliation.
-var affiliationRelations = map[string]bool{"owner": true, "writer": true, "auditor": true}
-
-// IsAffiliated implements EntityAffiliationChecker over read_tuples. Like
-// CanManage, a transport failure wraps domain.ErrUpstreamUnavailable and is
-// never turned into false.
+// IsAffiliated implements EntityAffiliationChecker with one batched access
+// check. Like CanManage, a transport failure wraps domain.ErrUpstreamUnavailable
+// and is never turned into false.
 func (r *NATSResolver) IsAffiliated(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error) {
 	prefix, err := entityTypePrefix(attrType)
 	if err != nil {
 		return false, err
 	}
-	body, err := json.Marshal(map[string]string{"user": "user:" + username, "object_type": prefix})
+	auditor := fmt.Sprintf("%s:%s#auditor@user:%s", prefix, entityUID, username)
+	staff := fmt.Sprintf("team:%s#member@user:%s", staffTeam, username)
+	results, err := r.checks(ctx, auditor, staff)
 	if err != nil {
 		return false, err
 	}
-	if r.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.timeout)
-		defer cancel()
-	}
-	msg, err := r.conn.RequestWithContext(ctx, ReadTuplesSubject, body)
-	if err != nil {
-		return false, fmt.Errorf("%w: read tuples request: %w", domain.ErrUpstreamUnavailable, err)
-	}
-	var reply struct {
-		Results []string `json:"results"`
-		Error   string   `json:"error"`
-	}
-	if err := json.Unmarshal(msg.Data, &reply); err != nil {
-		return false, fmt.Errorf("%w: malformed read_tuples reply: %w", domain.ErrUpstreamUnavailable, err)
-	}
-	if reply.Error != "" {
-		return false, fmt.Errorf("%w: read_tuples: %s", domain.ErrUpstreamUnavailable, reply.Error)
-	}
-	// Tuples look like "b2b_org:<uid>#writer@user:<username>".
-	want := prefix + ":" + entityUID + "#"
-	for _, t := range reply.Results {
-		if rest, ok := strings.CutPrefix(t, want); ok {
-			if rel, _, _ := strings.Cut(rest, "@"); affiliationRelations[rel] {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
+	return results[auditor] || results[staff], nil
 }

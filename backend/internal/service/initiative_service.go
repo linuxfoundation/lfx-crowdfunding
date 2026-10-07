@@ -69,10 +69,10 @@ func (s *InitiativeService) SetEntityRoleResolver(r fga.EntityRoleResolver) {
 	s.affiliation, _ = r.(fga.EntityAffiliationChecker)
 }
 
-// checkAffiliated enforces that the caller holds a direct grant on a
-// non-personal attribution target (403 otherwise, 503 on outage). With no
-// checker wired (FGA_NATS_URL unset) it is a no-op, like canManage's
-// creator-only degrade.
+// checkAffiliated enforces that the caller may attribute to a non-personal
+// target: FGA auditor on it (teams and parent/child count) or lf-staff
+// membership (403 otherwise, 503 on outage). With no checker wired
+// (FGA_NATS_URL unset) it fails closed with 403.
 func (s *InitiativeService) checkAffiliated(ctx context.Context, username string, a models.Attribution) error {
 	if a.Type != models.AttributionOrganization && a.Type != models.AttributionProject {
 		return nil
@@ -523,8 +523,8 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	}
 
 	// Validate and default attribution (LFXV2-2956 M1). Omitting attribution
-	// defaults to personal — today's behavior. The caller must hold a direct
-	// grant on a non-personal target (checkAffiliated below).
+	// defaults to personal — today's behavior. The caller must be
+	// affiliated with a non-personal target (checkAffiliated below).
 	attribution := models.Attribution{Type: models.AttributionPersonal}
 	if input.Attribution != nil {
 		attribution = *input.Attribution

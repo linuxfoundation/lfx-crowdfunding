@@ -155,31 +155,56 @@ func TestNATSResolver_IsAffiliated(t *testing.T) {
 		org      = "0014100000Te0yvAAB"
 		username = "alice"
 	)
-	reply := func(body string) *NATSResolver {
-		return &NATSResolver{conn: &fakeRequester{reply: []byte(body)}}
+	auditor := "b2b_org:" + org + "#auditor@user:alice"
+	staff := "team:lf-staff#member@user:alice"
+	reply := func(a, s string) *NATSResolver {
+		return &NATSResolver{conn: &fakeRequester{reply: []byte(auditor + "\t" + a + "\n" + staff + "\t" + s + "\n")}}
 	}
 	check := func(r *NATSResolver) (bool, error) {
 		return r.IsAffiliated(context.Background(), models.AttributionOrganization, org, username)
 	}
 
-	for rel, want := range map[string]bool{"writer": true, "auditor": true, "owner": true, "key_contact": false} {
-		got, err := check(reply(`{"results":["b2b_org:` + org + `#` + rel + `@user:alice"]}`))
-		if err != nil || got != want {
-			t.Errorf("relation %s: got (%v, %v), want %v", rel, got, err, want)
+	for _, c := range []struct {
+		name, auditor, staff string
+		want                 bool
+	}{
+		{"auditor only (direct, team or inherited)", "true", "false", true},
+		{"lf-staff only", "false", "true", true},
+		{"both", "true", "true", true},
+		{"neither", "false", "false", false},
+	} {
+		if got, err := check(reply(c.auditor, c.staff)); err != nil || got != c.want {
+			t.Errorf("%s: got (%v, %v), want %v", c.name, got, err, c.want)
 		}
 	}
-	// A grant on a different org (e.g. the parent) does not count.
-	if got, err := check(reply(`{"results":["b2b_org:0014100000Other0AAA#writer@user:alice"]}`)); err != nil || got {
-		t.Errorf("other entity: got (%v, %v), want false", got, err)
+
+	// Both tokens go out in a single batched request.
+	rec := &recordingRequester{reply: []byte(auditor + "\ttrue\n" + staff + "\tfalse\n")}
+	if _, err := check(&NATSResolver{conn: rec}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if got, err := check(reply(`{"results":[]}`)); err != nil || got {
-		t.Errorf("empty: got (%v, %v), want false", got, err)
+	if got, want := string(rec.sent), auditor+"\n"+staff; got != want {
+		t.Errorf("request body = %q, want %q", got, want)
 	}
-	if _, err := check(reply(`{"error":"failed to read tuples"}`)); !errors.Is(err, domain.ErrUpstreamUnavailable) {
-		t.Errorf("error reply: got %v, want ErrUpstreamUnavailable", err)
+
+	// A reply missing one of the tokens is an upstream failure, never false.
+	partial := &NATSResolver{conn: &fakeRequester{reply: []byte(auditor + "\tfalse\n")}}
+	if _, err := check(partial); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("missing staff result: got %v, want ErrUpstreamUnavailable", err)
 	}
 	r := &NATSResolver{conn: &fakeRequester{err: errors.New("boom")}}
 	if _, err := check(r); !errors.Is(err, domain.ErrUpstreamUnavailable) {
 		t.Errorf("transport error: got %v, want ErrUpstreamUnavailable", err)
 	}
+}
+
+// recordingRequester captures the request body it was sent.
+type recordingRequester struct {
+	reply []byte
+	sent  []byte
+}
+
+func (f *recordingRequester) RequestWithContext(_ context.Context, _ string, data []byte) (*nats.Msg, error) {
+	f.sent = data
+	return &nats.Msg{Data: f.reply}, nil
 }
