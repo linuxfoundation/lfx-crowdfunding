@@ -109,5 +109,13 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Upsert keeps an already-bound legacy_user_id; a different one means this
+	// username's row belongs to another Auth0 identity (e.g. a migrated legacy
+	// account), so never hand it to the caller.
+	if result.LegacyUserID != principal.UserID {
+		Error(w, domain.ErrForbidden)
+		return
+	}
+
 	JSON(w, http.StatusOK, result)
 }

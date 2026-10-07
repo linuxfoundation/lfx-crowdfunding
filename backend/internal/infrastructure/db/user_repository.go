@@ -83,11 +83,13 @@ func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.Us
 	defer span.End()
 	span.SetAttributes(attribute.String("db.username", u.Username))
 
+	// An already-bound legacy_user_id is never replaced: SyncProfile rejects a
+	// mismatched sub instead of silently rebinding the row to the caller.
 	const q = `
 		INSERT INTO users (username, legacy_user_id, email, given_name, family_name, name, avatar_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (username) DO UPDATE SET
-			legacy_user_id = COALESCE(EXCLUDED.legacy_user_id, users.legacy_user_id),
+			legacy_user_id = COALESCE(users.legacy_user_id, EXCLUDED.legacy_user_id),
 			email          = COALESCE(EXCLUDED.email, users.email),
 			given_name     = COALESCE(EXCLUDED.given_name, users.given_name),
 			family_name    = COALESCE(EXCLUDED.family_name, users.family_name),

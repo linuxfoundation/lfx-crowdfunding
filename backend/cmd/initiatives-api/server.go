@@ -243,6 +243,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Route("/me", func(r chi.Router) {
 			r.Use(jwtAuth.Middleware)
 			r.Use(jwtAuth.RequireScope(auth.ScopeMe))
+			r.Use(auth.RequireSubjectBinding(userRepo.GetByUsername, logger))
 
 			// Profile sync — calls Auth0 UserInfo, writes to DB.
 			r.Patch("/", userH.SyncProfile)

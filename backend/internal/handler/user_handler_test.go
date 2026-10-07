@@ -78,10 +78,11 @@ func newSyncProfileRequest(principal *models.Principal) *http.Request {
 
 func TestSyncProfile_Success(t *testing.T) {
 	want := &models.User{
-		ID:       "uuid-1",
-		Username: "jdoe",
-		Email:    "jdoe@example.com",
-		Name:     "John Doe",
+		ID:           "uuid-1",
+		Username:     "jdoe",
+		LegacyUserID: "auth0|abc123",
+		Email:        "jdoe@example.com",
+		Name:         "John Doe",
 	}
 	repo := &testUserRepo{upsertResult: want}
 	fetcher := &testUserInfoFetcher{info: &auth.UserInfo{
@@ -353,5 +354,20 @@ func TestSyncProfile_RepoError_Returns500(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", w.Code)
+	}
+}
+
+// Upsert keeps an already-bound legacy_user_id, so a row bound to another Auth0
+// identity comes back with a different one — SyncProfile must not hand it over.
+func TestSyncProfile_RowBoundToOtherIdentity_Returns403(t *testing.T) {
+	repo := &testUserRepo{upsertResult: &models.User{ID: "uuid-1", Username: "456789", LegacyUserID: "github|456789"}}
+	fetcher := &testUserInfoFetcher{info: &auth.UserInfo{Sub: "auth0|attacker", Username: "456789"}}
+	h := NewUserHandler(repo, fetcher)
+
+	w := httptest.NewRecorder()
+	h.SyncProfile(w, newSyncProfileRequest(&models.Principal{UserID: "auth0|attacker", Username: "456789", Scope: auth.ScopeMe}))
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
 	}
 }
