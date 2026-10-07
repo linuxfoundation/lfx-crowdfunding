@@ -47,7 +47,7 @@ func RequireSubjectBinding(lookup UserLookup, logger *slog.Logger) func(http.Han
 				return
 			case u.LegacyUserID != "" && u.LegacyUserID != p.UserID:
 				logger.WarnContext(r.Context(), "auth: token sub does not match the legacy_user_id bound to this username",
-					"username", p.Username, "path", r.URL.Path)
+					"path", r.URL.Path)
 				jsonError(w, http.StatusForbidden, "identity mismatch")
 				return
 			}

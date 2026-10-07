@@ -186,12 +186,20 @@ func TestUserRepository_Upsert_KeepsBoundLegacyUserID(t *testing.T) {
 	if _, err := repo.Upsert(ctx, &models.User{Username: "456789", LegacyUserID: "github|456789"}); err != nil {
 		t.Fatalf("seed Upsert() error = %v", err)
 	}
-	got, err := repo.Upsert(ctx, &models.User{Username: "456789", LegacyUserID: "auth0|attacker"})
-	if err != nil {
-		t.Fatalf("Upsert() error = %v", err)
+	_, err := repo.Upsert(ctx, &models.User{Username: "456789", LegacyUserID: "auth0|attacker", Email: "evil@example.com"})
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("Upsert() error = %v, want ErrForbidden", err)
 	}
-	if got.LegacyUserID != "github|456789" {
-		t.Errorf("LegacyUserID = %q, want it unchanged (github|456789)", got.LegacyUserID)
+	got, err := repo.GetByUsername(ctx, "456789")
+	if err != nil {
+		t.Fatalf("GetByUsername() error = %v", err)
+	}
+	if got.LegacyUserID != "github|456789" || got.Email != "" {
+		t.Errorf("row mutated by rejected upsert: legacy=%q email=%q", got.LegacyUserID, got.Email)
+	}
+	// A caller with no sub (e.g. payment flows) still upserts a bound row.
+	if _, err := repo.Upsert(ctx, &models.User{Username: "456789", Email: "ok@example.com"}); err != nil {
+		t.Fatalf("Upsert() without legacy id error = %v", err)
 	}
 
 	if _, err := repo.Upsert(ctx, &models.User{Username: "bob"}); err != nil {

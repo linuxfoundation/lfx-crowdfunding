@@ -297,7 +297,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// identity-scoped; the handler enforces its own approver allowlist check.
 		// TODO: when M2M approver tokens are issued, switch to RequireScope(auth.ScopeManage).
 		// For now all callers hold user tokens with access:me, so that scope is used.
-		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), auth.RequireSubjectBinding(userRepo.GetByUsername, logger)).
 			Post("/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
 
 		// M2M routes — require a valid bearer token with access:manage scope.
@@ -310,7 +310,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// Expense action — proxies action to the Reimbursement Service.
 		// Requires a valid bearer token (any scope); no specific scope is enforced
 		// because the caller arrives via an email link and may hold a minimal token.
-		r.With(jwtAuth.Middleware).
+		r.With(jwtAuth.Middleware, auth.RequireSubjectBinding(userRepo.GetByUsername, logger)).
 			Post("/expense/{action}/{reportId}", expenseH.ProcessAction)
 	}
 
