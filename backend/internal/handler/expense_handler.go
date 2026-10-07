@@ -93,7 +93,9 @@ func (h *ExpenseHandler) ProcessAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.rsClient.ProcessExpenseAction(r.Context(), action, reportID, &actor); err != nil {
+	// The signed token from the emailed link is verified by the RS, not here.
+	token := r.URL.Query().Get("token")
+	if err := h.rsClient.ProcessExpenseAction(r.Context(), action, reportID, token, &actor); err != nil {
 		Error(w, err)
 		return
 	}

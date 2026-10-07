@@ -74,10 +74,12 @@ type ReimbursementClient interface {
 	// ProcessExpenseAction submits an action (e.g. "approve", "reject") against
 	// the given expense report in the Reimbursement Service. actor is the
 	// authenticated user who triggered it; the RS records who asked in its
-	// audit trail.
+	// audit trail. token is the signed token from the emailed link; the RS
+	// verifies it, so it is forwarded untouched (and never logged). Empty when
+	// the link carried none.
 	// Maps upstream 404 → domain.ErrExpenseReportNotFound so callers can
 	// distinguish missing reports from other upstream errors.
-	ProcessExpenseAction(ctx context.Context, action, reportID string, actor *models.Principal) error
+	ProcessExpenseAction(ctx context.Context, action, reportID, token string, actor *models.Principal) error
 
 	// GetExpenseApprovers returns the email addresses the RS sent the
 	// approve/reject notification for the report to — the people allowed to act
@@ -482,7 +484,7 @@ type rsExpenseApprovers struct {
 // Reimbursement Service. Authenticated with X-API-KEY and a cached Auth0
 // client_credentials Bearer token (required by the API gateway).
 // A 404 response is translated to domain.ErrExpenseReportNotFound.
-func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID string, actor *models.Principal) error {
+func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, action, reportID, token string, actor *models.Principal) error {
 	ctx, span := reimbursementTracer.Start(ctx, "reimbursement.ProcessExpenseAction")
 	defer span.End()
 	span.SetAttributes(
@@ -492,6 +494,9 @@ func (c *reimbursementHTTPClient) ProcessExpenseAction(ctx context.Context, acti
 
 	endpoint := strings.TrimRight(c.cfg.APIURL, "/") +
 		"/expense/" + url.PathEscape(action) + "/" + url.PathEscape(reportID)
+	if token != "" {
+		endpoint += "?" + url.Values{"token": {token}}.Encode()
+	}
 
 	headers, err := c.gatewayHeaders(ctx)
 	if err != nil {
