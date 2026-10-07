@@ -2,7 +2,7 @@
 title: Initiatives FAQ
 description: Answers to frequently asked questions about creating, managing, and browsing fundraising initiatives on LFX Crowdfunding.
 tags: [initiatives, faq, fundraising, project, event, security audit]
-last_updated: 2026-06-29
+last_updated: 2026-10-07
 display_order: 6
 intercom_collection: LFX Crowdfunding
 ---
@@ -32,7 +32,7 @@ Yes. Visit [My Initiatives on LFX](https://app.lfx.dev/crowdfunding/initiatives)
 
 ## Why is my initiative not visible to the public?
 
-Only **Published** initiatives are visible. If your initiative is in **Submitted** or **Pending** status it is still under review. If it is **Hidden**, it has been temporarily removed from public view — contact the Linux Foundation team for assistance. Hiding an initiative also cancels all of its active monthly donations; donors must subscribe again if the initiative is reactivated.
+Only **Published** initiatives are visible. If your initiative is in **Submitted** or **Pending** status it is still under review. If it is **Hidden**, it has been temporarily removed from public view — contact the Linux Foundation team for assistance. Hiding an initiative also cancels all of its recurring donations (any frequency, including ones with a payment still pending or past due); donors must subscribe again if the initiative is reactivated.
 
 ## Can I add other people to receive funds?
 
@@ -40,7 +40,7 @@ Yes. You can add beneficiaries during initiative creation or by editing your ini
 
 ## What happens if my initiative is declined?
 
-You will be notified by email, and any active monthly donations to the initiative are canceled so donors are not charged again. Contact your Linux Foundation programme manager to understand why and whether reapplication is possible.
+You will be notified by email, and any recurring donations to the initiative (any frequency, including ones with a payment still pending or past due) are canceled so donors are not charged again. Contact your Linux Foundation programme manager to understand why and whether reapplication is possible.
 
 ## Related sections
 

@@ -25,6 +25,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/errgroup"
 )
 
 var initiativeSvcTracer = otel.Tracer("initiatives-service")
@@ -913,9 +914,13 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	return processed, nil
 }
 
+// cancelSubscriptionConcurrency bounds in-flight Stripe cancellations per page.
+const cancelSubscriptionConcurrency = 8
+
 // cancelInitiativeSubscriptions cancels every non-canceled subscription on the
 // initiative in Stripe and marks it canceled locally. Idempotent: a subscription
-// already gone from Stripe is just marked canceled.
+// already gone from Stripe (missing, or terminal such as incomplete_expired) is
+// just marked canceled.
 func (s *InitiativeService) cancelInitiativeSubscriptions(ctx context.Context, initiativeID string) error {
 	if s.subRepo == nil {
 		return nil
@@ -927,22 +932,32 @@ func (s *InitiativeService) cancelInitiativeSubscriptions(ctx context.Context, i
 		if err != nil {
 			return fmt.Errorf("list subscriptions: %w", err)
 		}
+		// Bounded parallelism: sequential Stripe + DB round trips for a full page
+		// can outlast the request deadline.
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(cancelSubscriptionConcurrency)
 		for i := range subs {
 			sub := subs[i]
 			if sub.Status == models.SubscriptionStatusCanceled {
 				continue
 			}
-			// No Stripe ID (legacy/incomplete row): nothing to cancel remotely,
-			// and Stripe rejects an empty ID, which would block the status change.
-			if sub.StripeSubscriptionID != "" {
-				if err := s.stripe.CancelSubscription(ctx, sub.StripeSubscriptionID); err != nil && !isStripeSubscriptionMissing(err) {
-					return fmt.Errorf("cancel stripe subscription %s: %w", sub.StripeSubscriptionID, err)
+			g.Go(func() error {
+				// No Stripe ID (legacy/incomplete row): nothing to cancel remotely,
+				// and Stripe rejects an empty ID, which would block the status change.
+				if sub.StripeSubscriptionID != "" {
+					if err := s.stripe.CancelSubscription(gctx, sub.StripeSubscriptionID); err != nil && !isStripeSubscriptionGone(err) {
+						return fmt.Errorf("cancel stripe subscription %s: %w", sub.StripeSubscriptionID, err)
+					}
 				}
-			}
-			sub.Status = models.SubscriptionStatusCanceled
-			if _, err := s.subRepo.Update(ctx, &sub); err != nil {
-				return fmt.Errorf("mark subscription %s canceled: %w", sub.ID, err)
-			}
+				sub.Status = models.SubscriptionStatusCanceled
+				if _, err := s.subRepo.Update(gctx, &sub); err != nil {
+					return fmt.Errorf("mark subscription %s canceled: %w", sub.ID, err)
+				}
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return err
 		}
 		if len(subs) < 100 {
 			return nil

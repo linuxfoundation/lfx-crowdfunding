@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"testing"
 
 	stripe "github.com/stripe/stripe-go/v85"
@@ -19,6 +20,7 @@ import (
 // initiative (active, past_due, already canceled) and records Stripe cancels
 // and DB status writes.
 type cancelSubsFixture struct {
+	mu        sync.Mutex // cancels run concurrently
 	svc       *InitiativeService
 	repo      *mockInitiativeRepo
 	cancelled []string
@@ -44,12 +46,16 @@ func newCancelSubsFixture(status models.InitiativeStatus, stripeErr error) *canc
 			return f.subs[filter.Offset:min(filter.Offset+filter.Limit, len(f.subs))], nil, nil
 		},
 		onUpdate: func(_ context.Context, s *models.Subscription) (*models.Subscription, error) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
 			f.marked[s.ID] = s.Status
 			return s, nil
 		},
 	}
 	stripeClient := &configStripeClient{onCancelSubscription: func(_ context.Context, id string) error {
+		f.mu.Lock()
 		f.cancelled = append(f.cancelled, id)
+		f.mu.Unlock()
 		return stripeErr
 	}}
 	f.svc = NewInitiativeService(f.repo, &mockUserRepository{}, &mockLedgerClient{}, stripeClient, &mockEmailService{}, nil, slog.Default())
@@ -130,6 +136,15 @@ func TestProcessApproval_DeclineAbortsWhenStripeFails(t *testing.T) {
 func TestProcessApproval_DeclineToleratesMissingStripeSubscription(t *testing.T) {
 	missing := &stripe.Error{HTTPStatusCode: 404, Code: stripe.ErrorCodeResourceMissing}
 	f := newCancelSubsFixture(models.StatusSubmitted, missing)
+	if _, err := f.svc.ProcessApproval(context.Background(), "init-1", models.ApprovalActionDecline); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f.wantCancelled(t, 2, []string{"a", "b"})
+}
+
+func TestProcessApproval_DeclineToleratesIncompleteExpiredStripeSubscription(t *testing.T) {
+	expired := &stripe.Error{HTTPStatusCode: 400, Msg: "A subscription with status incomplete_expired cannot be canceled."}
+	f := newCancelSubsFixture(models.StatusSubmitted, expired)
 	if _, err := f.svc.ProcessApproval(context.Background(), "init-1", models.ApprovalActionDecline); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
