@@ -230,12 +230,26 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Get("/statistics/recent-donations", statisticsH.GetRecentDonations)
 		r.Get("/statistics/investing-companies", statisticsH.GetInvestingCompanies)
 		r.Get("/initiatives", initiativeH.List)
-		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
 		r.Get("/initiatives/{id}/announcements", announcementH.List)
 
 		// Initiative detail — public for published initiatives; approvers may also
 		// view non-published initiatives if a valid token is supplied.
+		// ?view=manage returns the full payload in any status to callers who can manage it.
 		r.With(jwtAuth.OptionalMiddleware).Get("/initiatives/{id}", initiativeH.GetByID)
+		r.With(jwtAuth.OptionalMiddleware).Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
+
+		// Writer mutations on a specific initiative: creator or a writer on its
+		// attributed entity (service-side canManage; Heimdall guards on writer).
+		// Initiative-scoped rather than identity-scoped, so they live outside /me.
+		// The /me aliases below stay until Self Serve migrates.
+		initiativeWriterRoutes := func(r chi.Router) {
+			r.Patch("/initiatives/{id}", initiativeH.Update)
+			r.Delete("/initiatives/{id}", initiativeH.Delete)
+			r.Post("/initiatives/{id}/announcements", announcementH.Create)
+			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
+			r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
+		}
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(initiativeWriterRoutes)
 
 		// Slug-to-UID resolver — requires a valid bearer token (any scope); no
 		// specific scope is enforced because it's called via Heimdall's

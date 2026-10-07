@@ -260,9 +260,12 @@ spec:
             values:
               aud: {{ .Values.app.audience }}
 
-    # Mutations on a specific owned initiative — UUID-only in practice (no
+    # Mutations on a specific initiative — UUID-only in practice (no
     # frontend or self-serve caller sends a slug here), so this is the route
     # that gets a real per-object openfga_check once openfga.enabled.
+    # /crowdfunding/initiatives/:id is the canonical path (initiative-scoped, writer-
+    # guarded); /crowdfunding/me/initiatives/:id is a deprecated alias until Self
+    # Serve migrates. A denial is a 403 here; the service-side check still 404s.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-write"
       allow_encoded_slashes: "off"
       match:
@@ -271,6 +274,7 @@ spec:
           - DELETE
         routes:
           - path: /crowdfunding/me/initiatives/:id
+          - path: /crowdfunding/initiatives/:id
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -299,6 +303,7 @@ spec:
           - POST
         routes:
           - path: /crowdfunding/me/initiatives/:id/announcements
+          - path: /crowdfunding/initiatives/:id/announcements
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -329,6 +334,7 @@ spec:
           - DELETE
         routes:
           - path: /crowdfunding/me/initiatives/:id/announcements/:announcementId
+          - path: /crowdfunding/initiatives/:id/announcements/:announcementId
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}

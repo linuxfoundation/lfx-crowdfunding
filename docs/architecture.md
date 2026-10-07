@@ -152,9 +152,9 @@ backend/
 | `PATCH` | `/crowdfunding/me` | `access:me` | Profile sync (login trigger) |
 | `GET` | `/crowdfunding/me/initiatives` | `access:me` | Caller's own initiatives |
 | `POST` | `/crowdfunding/me/initiatives` | `access:me` | Create initiative |
-| `GET` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Get own initiative |
-| `PATCH` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Update own initiative |
-| `DELETE` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Delete own initiative |
+| `GET` | `/crowdfunding/me/initiatives/{id}` | `access:me` + manage | Get a managed initiative (deprecated alias; use `GET /crowdfunding/initiatives/{id}?view=manage`) |
+| `PATCH` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Update initiative (creator or writer on the attributed entity); `/me/initiatives/{id}` is a deprecated alias |
+| `DELETE` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Delete initiative; `/me/initiatives/{id}` is a deprecated alias |
 | `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donations (one-time and recurring), read from the Ledger like `/me/transactions?type=donations` |
 | `GET` | `/crowdfunding/me/subscriptions` | `access:me` | Caller's active subscriptions |
 | `DELETE` | `/crowdfunding/me/subscriptions/{id}` | `access:me` + owner | Cancel subscription |

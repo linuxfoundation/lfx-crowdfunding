@@ -8,6 +8,7 @@ import (
 	"crypto/md5" //nolint:gosec // MD5 used for non-cryptographic ETag generation only
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -122,9 +123,17 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 // retrieve initiatives in any status (e.g. "submitted") for review purposes.
 // Beneficiaries, contributors, mentors and contacts are never included: they
 // hold third-party contact details (emails, phone numbers) and this response
-// is publicly cacheable. Owners read them via GET /crowdfunding/me/initiatives/{id}.
+// is publicly cacheable. With ?view=manage, callers who can manage the initiative
+// (creator or a writer on its attributed entity) instead get the full payload in
+// any status, privately cached; everyone else gets 404. Only that opt-in makes
+// the writer (FGA) check, so plain reads never pay for it.
+// GET /crowdfunding/me/initiatives/{id} remains as an alias.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	if r.URL.Query().Get("view") == "manage" {
+		h.getForManage(w, r, id)
+		return
+	}
 	var (
 		initiative *models.Initiative
 		err        error
@@ -171,6 +180,25 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// getForManage serves GetByID's ?view=manage: the full payload for a caller who
+// passes canManage. A non-writer gets 404 (existence concealed), a resolver
+// outage 503.
+func (h *InitiativeHandler) getForManage(w http.ResponseWriter, r *http.Request, id string) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	initiative, err := h.svc.GetForUser(r.Context(), id, principal.Username)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Vary", "Authorization")
+	JSON(w, http.StatusOK, initiative)
 }
 
 // GetForUser handles GET /crowdfunding/me/initiatives/{id} — requires JWT with access:me scope.
@@ -262,26 +290,42 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	value := chi.URLParam(r, "id")
 
-	// Resolve identifier to a UUID, verifying the initiative exists and is published.
-	// Use lightweight lookups (no Ledger enrichment) since transactions come from Ledger directly.
-	var initiativeID string
-	if uuidPattern.MatchString(value) {
-		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
-			Error(w, err)
-			return
+	initiativeID, err := h.resolvePublishedInitiativeID(r, value)
+	if err != nil {
+		// Not published: a caller who can manage the initiative still reads it.
+		if errors.Is(err, domain.ErrInitiativeNotFound) {
+			if principal := auth.PrincipalFromContext(r.Context()); principal != nil && principal.Username != "" {
+				id, werr := h.svc.ResolveOwnedInitiativeID(r.Context(), value, principal.Username)
+				if werr == nil {
+					w.Header().Set("Vary", "Authorization")
+					h.writeTransactions(w, r, id, "private, max-age=60")
+					return
+				}
+				// A resolver outage must not become a false 404.
+				if !errors.Is(werr, domain.ErrInitiativeNotFound) {
+					err = werr
+				}
+			}
 		}
-		initiativeID = value
-	} else {
-		id, err := h.svc.GetIDBySlug(r.Context(), value)
-		if err != nil {
-			Error(w, err)
-			return
-		}
-		initiativeID = id
+		Error(w, err)
+		return
 	}
 
 	// Public, published-only data — safe for shared caches.
 	h.writeTransactions(w, r, initiativeID, "public, max-age=60, stale-while-revalidate=300")
+}
+
+// resolvePublishedInitiativeID resolves a slug or UUID to the initiative's UUID,
+// verifying it exists and is published. Uses lightweight lookups (no Ledger
+// enrichment) since transactions come from Ledger directly.
+func (h *InitiativeHandler) resolvePublishedInitiativeID(r *http.Request, value string) (string, error) {
+	if uuidPattern.MatchString(value) {
+		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
+			return "", err
+		}
+		return value, nil
+	}
+	return h.svc.GetIDBySlug(r.Context(), value)
 }
 
 // GetMyTransactions handles GET /crowdfunding/me/initiatives/{id}/my-transactions — requires JWT.
