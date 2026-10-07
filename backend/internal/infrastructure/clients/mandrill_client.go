@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"time"
@@ -101,6 +100,7 @@ type mandrillMessage struct {
 	FromName        string              `json:"from_name"`
 	To              []mandrillRecipient `json:"to"`
 	GlobalMergeVars []mandrillMergeVar  `json:"global_merge_vars"`
+	MergeLanguage   string              `json:"merge_language"`
 }
 
 // mandrillSendTemplateRequest is the full Mandrill send-template request body.
@@ -133,8 +133,7 @@ func (c *mandrillClient) SendTemplate(ctx context.Context, templateName Mandrill
 
 	globalMergeVars := make([]mandrillMergeVar, 0, len(mergeVars))
 	for k, v := range mergeVars {
-		// Merge vars carry user-controlled strings and Mailchimp-style templates insert them unescaped.
-		globalMergeVars = append(globalMergeVars, mandrillMergeVar{Name: k, Content: html.EscapeString(v)})
+		globalMergeVars = append(globalMergeVars, mandrillMergeVar{Name: k, Content: v})
 	}
 
 	payload := mandrillSendTemplateRequest{
@@ -146,6 +145,10 @@ func (c *mandrillClient) SendTemplate(ctx context.Context, templateName Mandrill
 			FromName:        c.cfg.FromName,
 			To:              []mandrillRecipient{{Email: toEmail, Name: toName, Type: "to"}},
 			GlobalMergeVars: globalMergeVars,
+			// The published templates are Handlebars and escape user text themselves via
+			// {{safehtml ...}}; escaping here would double-escape. Pin the language so an
+			// account-default change cannot silently switch parsers.
+			MergeLanguage: "handlebars",
 		},
 	}
 
