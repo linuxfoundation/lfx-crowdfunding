@@ -27,6 +27,8 @@ const { showToast } = useToastService();
 
 const action = route.params.action as string;
 const reportId = route.params.reportId as string;
+// Signed token from the emailed link; forwarded as-is for the Reimbursement Service to verify.
+const token = typeof route.query.token === 'string' ? route.query.token : undefined;
 
 const ACTION_LABELS: Record<string, { verb: string; past: string }> = {
   approve: { verb: 'approve', past: 'approved' },
@@ -48,6 +50,7 @@ onMounted(async () => {
     await whenProfileSynced();
     await $fetch(`/api/expense-email/${encodeURIComponent(action)}/${encodeURIComponent(reportId)}`, {
       method: 'POST',
+      query: token ? { token } : undefined,
     });
     showToast(`The expense report has been ${label.past}.`, ToastTypesEnum.positive);
   } catch {

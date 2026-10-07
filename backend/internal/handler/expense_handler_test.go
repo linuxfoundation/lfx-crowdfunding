@@ -31,6 +31,7 @@ type stubRSClient struct {
 	actionCalled     bool
 	capturedAction   string
 	capturedReportID string
+	capturedToken    string
 	capturedActor    *models.Principal
 }
 
@@ -46,10 +47,11 @@ func (s *stubRSClient) GetExpenseApprovers(_ context.Context, _ string) ([]strin
 	return s.approvers, s.approversErr
 }
 
-func (s *stubRSClient) ProcessExpenseAction(_ context.Context, action, reportID string, actor *models.Principal) error {
+func (s *stubRSClient) ProcessExpenseAction(_ context.Context, action, reportID, token string, actor *models.Principal) error {
 	s.actionCalled = true
 	s.capturedAction = action
 	s.capturedReportID = reportID
+	s.capturedToken = token
 	s.capturedActor = actor
 	return s.err
 }
@@ -122,6 +124,21 @@ func TestExpenseHandler_ProcessAction_Success(t *testing.T) {
 	}
 	if stub.capturedActor == nil || stub.capturedActor.Email != ownerEmail || stub.capturedActor.Username != "owner" {
 		t.Errorf("expected the caller to be forwarded as actor, got %+v", stub.capturedActor)
+	}
+}
+
+func TestExpenseHandler_ProcessAction_ForwardsEmailToken(t *testing.T) {
+	stub := &stubRSClient{approvers: []string{ownerEmail}}
+	req := httptest.NewRequest(http.MethodPost, "/crowdfunding/expense/approve/R-001?token=signed.tok", nil)
+	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), owner()))
+
+	w := serve(stub, ownerRepo(), req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if stub.capturedToken != "signed.tok" {
+		t.Errorf("expected token forwarded, got %q", stub.capturedToken)
 	}
 }
 
