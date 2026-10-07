@@ -86,7 +86,7 @@ topologySpreadConstraints: []
 config:
   NUXT_PUBLIC_APP_ENV: "production"
   NUXT_PUBLIC_APP_URL: "" # set per environment, e.g. https://funding.platform.linuxfoundation.org
-  NUXT_AUTH0_COOKIE_DOMAIN: "" # set per environment, e.g. platform.linuxfoundation.org
+  NUXT_AUTH0_COOKIE_DOMAIN: "" # legacy, leave empty. Only set temporarily to expire old parent-domain auth cookies
   NUXT_PUBLIC_AUTH0_CLIENT_ID: ""
   NUXT_PUBLIC_AUTH0_DOMAIN: "" # set per environment, e.g. https://linuxfoundation.auth0.com
   NODE_ENV: "production"
