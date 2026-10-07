@@ -377,6 +377,31 @@ func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFi
 	return initiatives, meta, nil
 }
 
+// ListByAttribution lists every initiative (any status) attributed to an
+// organization or project, for the lens pages. The caller must be a writer on
+// that entity, checked here as defense in depth behind the gateway. A nil
+// resolver (FGA_NATS_URL unset) fails closed with ErrForbidden; a resolver
+// outage surfaces as ErrUpstreamUnavailable.
+func (s *InitiativeService) ListByAttribution(ctx context.Context, username string, attr models.Attribution, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ListByAttribution")
+	defer span.End()
+
+	if s.roleResolver == nil || username == "" {
+		return nil, nil, domain.ErrForbidden
+	}
+	ok, err := s.roleResolver.CanManage(ctx, attr.Type, attr.EntityUID, username)
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, err
+	}
+	if !ok {
+		return nil, nil, domain.ErrForbidden
+	}
+	filter.AttributedToType = attr.Type
+	filter.AttributedToUID = attr.EntityUID
+	return s.List(ctx, filter)
+}
+
 // ListForUser retrieves initiatives owned by the authenticated caller.
 func (s *InitiativeService) ListForUser(ctx context.Context, ownerUsername string, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ListForUser")

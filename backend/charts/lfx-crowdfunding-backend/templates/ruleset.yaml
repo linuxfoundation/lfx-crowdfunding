@@ -309,15 +309,13 @@ spec:
         {{- if .Values.app.use_oidc_contextualizer }}
         - contextualizer: oidc_contextualizer
         {{- end }}
-        {{- if .Values.openfga.enabled }}
+        # Always enforced, even when openfga.enabled is false: this list exposes
+        # unpublished initiatives, so it must never fall back to allow_all.
         - authorizer: openfga_check
           config:
             values:
               relation: writer
               object: "b2b_org:{{ "{{- .Request.URL.Captures.uid -}}" }}"
-        {{- else }}
-        - authorizer: allow_all
-        {{- end }}
         - finalizer: create_jwt
           config:
             values:
@@ -336,15 +334,13 @@ spec:
         {{- if .Values.app.use_oidc_contextualizer }}
         - contextualizer: oidc_contextualizer
         {{- end }}
-        {{- if .Values.openfga.enabled }}
+        # Always enforced, even when openfga.enabled is false: this list exposes
+        # unpublished initiatives, so it must never fall back to allow_all.
         - authorizer: openfga_check
           config:
             values:
               relation: writer_guard
-              object: "project:{{ "{{- .Request.URL.Captures.uid -}}" }}"
-        {{- else }}
-        - authorizer: allow_all
-        {{- end }}
+              object: "project:{{ "{{- .Request.URL.Captures.uid | lower -}}" }}"
         - finalizer: create_jwt
           config:
             values:

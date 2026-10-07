@@ -253,7 +253,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(initiativeWriterRoutes)
 
 		// Per-entity lists for the Org/Project lens pages: all initiatives
-		// attributed to one parent, guarded at Heimdall on writer for that parent.
+		// attributed to one parent, guarded at Heimdall and service-side on writer for that parent.
 		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(func(r chi.Router) {
 			r.Get("/organizations/{uid}/initiatives", initiativeH.ListByAttribution(models.AttributionOrganization))
 			r.Get("/projects/{uid}/initiatives", initiativeH.ListByAttribution(models.AttributionProject))
