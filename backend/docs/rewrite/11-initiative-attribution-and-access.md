@@ -107,8 +107,8 @@ they are *affiliated* with — they need not be a `writer` on it (PM decision, 2
 weaker of the two gates: someone affiliated with, but not a writer on, an org can publish a page
 carrying that org's name and logo without a writer signing off first. The org's writers cannot
 correct or remove it themselves — detaching to `personal` is authorized by the owner/creator only
-(doc 12, "Decided," attribution-change authorization: creator-only, for any change). Only the creator can undo a false attribution once the
-gateway milestone ships the access rule that grants entity writers management in the first place
+(doc 12, "Decided," attribution-change authorization: creator-only, for any change). Only the
+creator can undo a false attribution once the gateway milestone ships the access rule that grants entity writers management in the first place
 (§3.4, §3.5, §5 — deferred from M2, which no longer exists as a separate milestone). Two
 consequences follow directly (see §5): the public attribution label cannot ship in a standalone
 M1, and server-side validation checks an *affiliation* source, not an FGA `writer` relation.
@@ -154,16 +154,17 @@ therefore requires the caller to be able to **view** the
 target `b2b_org` or `project`: a full FGA `auditor` check (one batched `lfx.access_check.request`),
 the same gate Self Serve's org/project lens uses to show an entity. Because it is a full check,
 team grants, the parent/child cascade and a membership `key_contact` all count, consistent with the
-inherited-access reasoning in §3.3. Members of `team:lf-staff` are always eligible, mirroring Self
-Serve's `isStaff` (`LF_TEAM_IDS`); that is attribution only and grants no manage rights. Viewing is
+inherited-access reasoning in §3.3. Members of `team:lf-staff` are always eligible (Self Serve's
+`LF_TEAM_IDS`); that is attribution only and grants no manage rights. Viewing is
 enough to *attribute*; *managing* the initiative afterwards still needs `writer` (§2.2), the same
 split Self Serve makes between its lens view and edit gates. Whether `auditor` should suffice for
-attributing is not yet confirmed with the architecture team (open question 4). A miss is a 403, an fga-sync outage a 503, and
-`personal` or an unchanged attribution makes no call. With no resolver wired (`FGA_NATS_URL`
-unset) the check fails closed (403) for organization and project targets. This is an FGA grant, not
-the self-attested involvement data ruled out above, so it does not conflict with that ruling. It is still a backend-brokered decision, which the
-architecture team prefers at the gateway (§3.5); it moves to a Heimdall rule once attribution
-targets can be named in the URL.
+attributing is not yet confirmed with the architecture team (open question 4). A miss is a 403, an
+fga-sync outage a 503, and `personal` or an unchanged attribution makes no call. With no resolver
+wired (`FGA_NATS_URL` unset) the check fails closed (403) for organization and project targets.
+This is an FGA grant, not the self-attested involvement data ruled out above, so it does not
+conflict with that ruling. It is still a backend-brokered decision, which the architecture team
+prefers at the gateway (§3.5); it moves to a Heimdall rule once attribution targets can be named in
+the URL.
 
 ### 2.2 Access decision
 
