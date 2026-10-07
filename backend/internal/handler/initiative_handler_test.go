@@ -532,7 +532,7 @@ func TestUpdate_NoPrincipal_Returns401(t *testing.T) {
 	}
 }
 
-func TestUpdate_NotOwner_Returns403(t *testing.T) {
+func TestUpdate_NotOwner_Returns404(t *testing.T) {
 	initiativeID := "55555555-5555-5555-5555-555555555555"
 	repo := &initiativeRepo{
 		initiative: &models.Initiative{
@@ -555,8 +555,8 @@ func TestUpdate_NotOwner_Returns403(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.Update(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
 	}
 }
 
@@ -855,7 +855,7 @@ func TestDelete_NoPrincipal_Returns401(t *testing.T) {
 	}
 }
 
-func TestDelete_NotOwner_Returns403(t *testing.T) {
+func TestDelete_NotOwner_Returns404(t *testing.T) {
 	initiativeID := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 	repo := &initiativeRepo{
 		initiative: &models.Initiative{
@@ -874,8 +874,8 @@ func TestDelete_NotOwner_Returns403(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.Delete(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
 	}
 }
 
