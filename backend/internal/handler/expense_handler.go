@@ -57,6 +57,10 @@ func (h *ExpenseHandler) ProcessAction(w http.ResponseWriter, r *http.Request) {
 	// Auth0 nor Heimdall access tokens reliably carry one, and a claim isn't
 	// proof of mailbox ownership. The row is written only by login sync from
 	// Auth0 /userinfo, and is the same source the RS owner email comes from.
+	// Only the initiative owner is ever emailed an approve/reject link (RS sends
+	// it to the owner email from that same row, and cannot send without one), so
+	// a legitimate approver always has a synced email; no Heimdall email-sync
+	// path is needed here.
 	// A caller with no resolvable email can never be authorized. Both outcomes
 	// below depend only on the caller's own identity, so they reveal nothing
 	// about any report.
