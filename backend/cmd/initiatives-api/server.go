@@ -238,12 +238,20 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// direct end-user use, mirroring lfx-v2-project-service's equivalent.
 		r.With(jwtAuth.Middleware).Get("/initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
 
+		// The mock-auth principal's subject is its bare username, which never matches
+		// a seeded row's auth0|... legacy_user_id, so the binding check is skipped
+		// when the local bypass is active.
+		subjectBinding := auth.RequireSubjectBinding(userRepo.GetByUsername, logger)
+		if jwtAuth.IsBypassActive() {
+			subjectBinding = func(next http.Handler) http.Handler { return next }
+		}
+
 		// Protected API — requires a valid bearer token with access:me scope.
 		// All routes are under {prefix}/me/* to make the identity-scoped contract explicit.
 		r.Route("/me", func(r chi.Router) {
 			r.Use(jwtAuth.Middleware)
 			r.Use(jwtAuth.RequireScope(auth.ScopeMe))
-			r.Use(auth.RequireSubjectBinding(userRepo.GetByUsername, logger))
+			r.Use(subjectBinding)
 
 			// Profile sync — calls Auth0 UserInfo, writes to DB.
 			r.Patch("/", userH.SyncProfile)
@@ -297,7 +305,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// identity-scoped; the handler enforces its own approver allowlist check.
 		// TODO: when M2M approver tokens are issued, switch to RequireScope(auth.ScopeManage).
 		// For now all callers hold user tokens with access:me, so that scope is used.
-		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), auth.RequireSubjectBinding(userRepo.GetByUsername, logger)).
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), subjectBinding).
 			Post("/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
 
 		// M2M routes — require a valid bearer token with access:manage scope.
@@ -310,7 +318,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// Expense action — proxies action to the Reimbursement Service.
 		// Requires a valid bearer token (any scope); no specific scope is enforced
 		// because the caller arrives via an email link and may hold a minimal token.
-		r.With(jwtAuth.Middleware, auth.RequireSubjectBinding(userRepo.GetByUsername, logger)).
+		r.With(jwtAuth.Middleware, subjectBinding).
 			Post("/expense/{action}/{reportId}", expenseH.ProcessAction)
 	}
 
