@@ -11,18 +11,9 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Not found' });
   }
 
-  const cookieOptions = {
-    httpOnly: true,
-    secure: false,
-    sameSite: 'lax' as const,
-    path: '/',
-    domain: 'localhost',
-    maxAge: 3600,
-  };
-
   // The backend runs with DISABLED_MOCK_LOCAL_PRINCIPAL=<username> in e2e mode,
   // so any non-empty token value will be forwarded and accepted.
-  setCookie(event, 'auth_oidc_token', 'e2e-test-token', cookieOptions);
+  setAuthCookie(event, 'auth_oidc_token', 'e2e-test-token', 3600);
 
   const profile = {
     sub: 'e2e-test-user',
@@ -32,11 +23,11 @@ export default defineEventHandler((event) => {
     email_verified: true,
     username: process.env.NUXT_E2E_TEST_USERNAME ?? 'e2e-test-user',
   };
-  setCookie(
+  setAuthCookie(
     event,
     'auth_user_profile',
     Buffer.from(JSON.stringify(profile)).toString('base64'),
-    cookieOptions,
+    3600,
   );
 
   return { ok: true };
