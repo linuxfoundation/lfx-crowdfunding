@@ -977,15 +977,15 @@ func TestUpdate_UnchangedLegacySlugAllowed(t *testing.T) {
 	}
 }
 
-func TestUpdate_ForbiddenForNonOwner(t *testing.T) {
+func TestUpdate_NotFoundForNonOwner(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
 	}
 	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "other-user",
 		models.InitiativeUpdateInput{},
 	)
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("expected ErrForbidden, got %v", err)
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Fatalf("expected ErrInitiativeNotFound, got %v", err)
 	}
 }
 

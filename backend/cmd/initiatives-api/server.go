@@ -107,8 +107,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	}
 
 	// fga-sync NATS connection — optional; nil when FGA_NATS_URL is unset.
-	// Shared by fga.NewNATSResolver (access-check request/reply, unused on
-	// any request path yet — M2) and fga.NewPublisher (crowdfunding_initiative
+	// Shared by fga.NewNATSResolver (access-check request/reply for entity-writer
+	// point checks, lfx-v2-crowdfunding#259) and fga.NewPublisher (crowdfunding_initiative
 	// tuple emission, lfx-crowdfunding#277) below.
 	//
 	// RetryOnFailedConnect: a transient fga-sync/NATS outage must not fail API
@@ -127,8 +127,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
+	var roleResolver fga.EntityRoleResolver
 	if fgaConn != nil {
 		initiativeSvc.SetFGAPublisher(fga.NewPublisher(fgaConn))
+		roleResolver = fga.NewNATSResolver(fgaConn, cfg.FGA.Timeout)
+		initiativeSvc.SetEntityRoleResolver(roleResolver)
 	}
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
@@ -136,6 +139,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 	orgSvc := service.NewOrganizationService(orgRepo, userRepo)
 	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)
+	if roleResolver != nil {
+		announcementSvc.SetEntityRoleResolver(roleResolver)
+	}
 
 	// JWT authenticator
 	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
