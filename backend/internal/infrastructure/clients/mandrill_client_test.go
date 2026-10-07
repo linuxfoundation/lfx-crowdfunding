@@ -16,7 +16,7 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func TestSendTemplate_HandlebarsPassthrough(t *testing.T) {
+func TestSendTemplate_EscapesMergeVars(t *testing.T) {
 	var got mandrillSendTemplateRequest
 	c := &mandrillClient{
 		cfg: MandrillConfig{APIKey: "k"},
@@ -34,11 +34,10 @@ func TestSendTemplate_HandlebarsPassthrough(t *testing.T) {
 		t.Fatalf("SendTemplate: %v", err)
 	}
 
-	// Templates escape via {{safehtml}}; we must send the raw value and pin handlebars.
-	raw := `Foo</a><a href="https://evil.example">Approve</a>`
+	want := `Foo&lt;/a&gt;&lt;a href=&#34;https://evil.example&#34;&gt;Approve&lt;/a&gt;`
 	vars := got.Message.GlobalMergeVars
-	if len(vars) != 1 || vars[0].Content != raw {
-		t.Errorf("merge vars = %+v, want raw content %q", vars, raw)
+	if len(vars) != 1 || vars[0].Content != want {
+		t.Errorf("merge vars = %+v, want content %q", vars, want)
 	}
 	if got.Message.MergeLanguage != "handlebars" {
 		t.Errorf("merge_language = %q, want handlebars", got.Message.MergeLanguage)

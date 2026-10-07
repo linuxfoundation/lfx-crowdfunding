@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"time"
@@ -133,7 +134,8 @@ func (c *mandrillClient) SendTemplate(ctx context.Context, templateName Mandrill
 
 	globalMergeVars := make([]mandrillMergeVar, 0, len(mergeVars))
 	for k, v := range mergeVars {
-		globalMergeVars = append(globalMergeVars, mandrillMergeVar{Name: k, Content: v})
+		// Merge vars carry user-controlled strings; {{safehtml}} leaves links and images intact.
+		globalMergeVars = append(globalMergeVars, mandrillMergeVar{Name: k, Content: html.EscapeString(v)})
 	}
 
 	payload := mandrillSendTemplateRequest{
@@ -145,9 +147,9 @@ func (c *mandrillClient) SendTemplate(ctx context.Context, templateName Mandrill
 			FromName:        c.cfg.FromName,
 			To:              []mandrillRecipient{{Email: toEmail, Name: toName, Type: "to"}},
 			GlobalMergeVars: globalMergeVars,
-			// The published templates are Handlebars and escape user text themselves via
-			// {{safehtml ...}}; escaping here would double-escape. Pin the language so an
-			// account-default change cannot silently switch parsers.
+			// The published templates are Handlebars. {{safehtml}} is an allowlist sanitizer, not an
+			// escaper: it passes <a href> and <img>, so we escape merge vars above. Pin the language
+			// so an account-default change cannot silently switch parsers.
 			MergeLanguage: "handlebars",
 		},
 	}
