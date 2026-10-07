@@ -214,6 +214,7 @@ type testSubscriptionRepo struct {
 	onGetByID                      func(context.Context, string) (*models.Subscription, error)
 	onGetByIDForUser               func(context.Context, string, string) (*models.Subscription, error)
 	onGetActiveByUserAndInitiative func(context.Context, string, string) (*models.Subscription, error)
+	onListByInitiative             func(context.Context, string, models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error)
 	onListByUser                   func(context.Context, string, models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error)
 	onCreate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
 	onUpdate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
@@ -238,7 +239,10 @@ func (r *testSubscriptionRepo) GetActiveByUserAndInitiative(ctx context.Context,
 	}
 	return nil, domain.ErrSubscriptionNotFound
 }
-func (r *testSubscriptionRepo) ListByInitiative(_ context.Context, _ string, _ models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+func (r *testSubscriptionRepo) ListByInitiative(ctx context.Context, initiativeID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {
+	if r.onListByInitiative != nil {
+		return r.onListByInitiative(ctx, initiativeID, filter)
+	}
 	return nil, nil, nil
 }
 func (r *testSubscriptionRepo) ListByUser(ctx context.Context, userID string, filter models.SubscriptionFilter) ([]models.Subscription, *models.PaginationMeta, error) {

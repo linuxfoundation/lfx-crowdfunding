@@ -32,7 +32,7 @@ Yes. Visit [My Initiatives on LFX](https://app.lfx.dev/crowdfunding/initiatives)
 
 ## Why is my initiative not visible to the public?
 
-Only **Published** initiatives are visible. If your initiative is in **Submitted** or **Pending** status it is still under review. If it is **Hidden**, it has been temporarily removed from public view — contact the Linux Foundation team for assistance.
+Only **Published** initiatives are visible. If your initiative is in **Submitted** or **Pending** status it is still under review. If it is **Hidden**, it has been temporarily removed from public view — contact the Linux Foundation team for assistance. Hiding an initiative also cancels all of its active monthly donations; donors must subscribe again if the initiative is reactivated.
 
 ## Can I add other people to receive funds?
 
@@ -40,7 +40,7 @@ Yes. You can add beneficiaries during initiative creation or by editing your ini
 
 ## What happens if my initiative is declined?
 
-You will be notified by email. Contact your Linux Foundation programme manager to understand why and whether reapplication is possible.
+You will be notified by email, and any active monthly donations to the initiative are canceled so donors are not charged again. Contact your Linux Foundation programme manager to understand why and whether reapplication is possible.
 
 ## Related sections
 

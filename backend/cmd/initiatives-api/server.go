@@ -133,6 +133,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		roleResolver = fga.NewNATSResolver(fgaConn, cfg.FGA.Timeout)
 		initiativeSvc.SetEntityRoleResolver(roleResolver)
 	}
+	initiativeSvc.SetSubscriptionRepo(subscriptionRepo)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
