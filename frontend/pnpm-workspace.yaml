@@ -15,7 +15,7 @@ overrides:
   ws: ">=8.21.0 <9"
   devalue: "^5.9.3"
   esbuild: ">=0.28.1"
-  shell-quote: ">=1.9.0"
+  shell-quote: ">=1.11.0"
   "@babel/core": ">=7.29.6"
   js-yaml: ">=4.3.2 <5"
   launch-editor: ">=2.14.1"
