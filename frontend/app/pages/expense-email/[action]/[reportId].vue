@@ -13,6 +13,7 @@
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useToastService from '~/components/uikit/toast/toast.service';
 import { ToastTypesEnum } from '~/components/uikit/toast/types/toast.types';
+import { whenProfileSynced } from '~/composables/useAuth';
 
 // Require authentication — if the user is not logged in they will be redirected
 // to Auth0 and returned here after login.
@@ -42,6 +43,9 @@ onMounted(async () => {
   }
 
   try {
+    // First-time approvers: the backend authorizes against the users row written by the
+    // post-login profile sync, so wait for it before submitting.
+    await whenProfileSynced();
     await $fetch(`/api/expense-email/${encodeURIComponent(action)}/${encodeURIComponent(reportId)}`, {
       method: 'POST',
     });
