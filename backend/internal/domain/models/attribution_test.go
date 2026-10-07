@@ -51,3 +51,15 @@ func TestAttribution_Validate_CanonicalizesProjectUID(t *testing.T) {
 		t.Fatalf("EntityUID = %q, want canonical %q", attr.EntityUID, want)
 	}
 }
+
+func TestAttribution_Validate_CanonicalizesSFID(t *testing.T) {
+	for in, want := range map[string]string{
+		"0012M00002qnukO":    "0012M00002qnukOQAQ",
+		"0012M00002qnukOQAQ": "0012M00002qnukOQAQ",
+	} {
+		a := Attribution{Type: AttributionOrganization, EntityUID: in}
+		if err := a.Validate(); err != nil || a.EntityUID != want {
+			t.Errorf("%s: got %q, err %v, want %q", in, a.EntityUID, err, want)
+		}
+	}
+}

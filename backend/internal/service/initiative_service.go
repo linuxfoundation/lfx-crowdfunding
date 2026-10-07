@@ -532,9 +532,6 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	if err := attribution.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
 	}
-	if err := s.checkAffiliated(ctx, ownerUsername, attribution); err != nil {
-		return nil, err
-	}
 	if input.BenefitProjectUID != "" {
 		if _, err := uuid.Parse(input.BenefitProjectUID); err != nil {
 			return nil, fmt.Errorf("%w: benefit_project_uid must be a UUID", domain.ErrInvalidInput)
@@ -555,6 +552,12 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		}
 		span.RecordError(err)
 		return nil, fmt.Errorf("get owner: %w", err)
+	}
+
+	// After the owner lookup so an unknown caller gets 403 without an FGA call
+	// (and a resolver outage can't turn that into a 503).
+	if err := s.checkAffiliated(ctx, owner.Username, attribution); err != nil {
+		return nil, err
 	}
 
 	// Create the Stripe Product first. If Stripe is unavailable, the whole
@@ -708,10 +711,14 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		if err := input.Attribution.Validate(); err != nil {
 			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
 		}
-		if *input.Attribution != existing.Attribution && existing.OwnerID != caller.ID {
+		// Compare canonical forms: a legacy row may hold a 15-character SFID.
+		current := existing.Attribution
+		_ = current.Validate()
+		changed := *input.Attribution != current
+		if changed && existing.OwnerID != caller.ID {
 			return nil, fmt.Errorf("%w: only the creator can change attribution", domain.ErrForbidden)
 		}
-		if *input.Attribution != existing.Attribution {
+		if changed {
 			if err := s.checkAffiliated(ctx, caller.Username, *input.Attribution); err != nil {
 				return nil, err
 			}

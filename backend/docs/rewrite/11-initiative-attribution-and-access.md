@@ -161,8 +161,8 @@ split Self Serve makes between its lens view and edit gates. Whether `auditor` s
 attributing is not yet confirmed with the architecture team (open question 4). A miss is a 403, an
 fga-sync outage a 503, and `personal` or an unchanged attribution makes no call. With no resolver
 wired (`FGA_NATS_URL` unset) the check fails closed (403) for organization and project targets.
-This is an FGA grant, not the self-attested involvement data ruled out above, so it does not
-conflict with that ruling. It is still a backend-brokered decision, which the architecture team
+This is an FGA grant, so it supersedes the earlier self-attested/existence-only framing above:
+attribution is now authorized from FGA, not from involvement data the caller supplies. It is still a backend-brokered decision, which the architecture team
 prefers at the gateway (§3.5); it moves to a Heimdall rule once attribution targets can be named in
 the URL.
 
@@ -222,8 +222,9 @@ Design rules:
   erasing) the public claim of representation. Creator-only also means that if the creator leaves
   the entity, the initiative stays with them: nobody else can move it away. A writer resubmitting
   the unchanged attribution is not a change; any other change by a non-creator gets a 403. This
-  supersedes the earlier "authorize on both the current and target entity" proposal, so no
-  target-entity check is needed. Tracking *which* writer made a given change is a separate
+  supersedes the earlier "authorize on both the current and target entity" proposal: no `writer`
+  check on the current or target entity is needed. A changed organization/project target still
+  runs the affiliation check (§2.1: FGA `auditor` or `lf-staff`). Tracking *which* writer made a given change is a separate
   concern, out of scope here (open question 6).
 
 ---
