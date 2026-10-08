@@ -278,6 +278,11 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		args = append(args, filter.OwnerID)
 		argN++
 	}
+	if filter.AttributedToUID != "" {
+		where += fmt.Sprintf(" AND i.attributed_to_type = $%d AND i.attributed_to_uid = $%d", argN, argN+1)
+		args = append(args, string(filter.AttributedToType), filter.AttributedToUID)
+		argN += 2
+	}
 	if filter.InitiativeType != "" {
 		where += fmt.Sprintf(" AND i.initiative_type = $%d", argN)
 		args = append(args, filter.InitiativeType)

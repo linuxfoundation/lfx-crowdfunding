@@ -465,3 +465,39 @@ func TestInitiativeRepository_Update_UpdatedByOnlyBumpsUpdatedOn(t *testing.T) {
 		t.Error("updated_on not bumped when only updated_by changed")
 	}
 }
+
+func TestInitiativeRepository_List_ByAttribution(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "attr-owner")
+	repo := NewInitiativeRepository(testPool)
+	const sfid = "0014100000Te0yvAAB"
+
+	mk := func(slug string, attr models.Attribution, status models.InitiativeStatus) *models.Initiative {
+		i, err := repo.Create(ctx, &models.Initiative{
+			ID: uuid.New().String(), InitiativeType: "project", OwnerID: owner.ID, Name: slug, Slug: slug,
+			Status: status, DonationMode: models.DonationModeOpen, Attribution: attr,
+		}, models.InitiativeCreateInput{InitiativeType: "project", Name: slug, Slug: slug})
+		if err != nil {
+			t.Fatalf("create %s: %v", slug, err)
+		}
+		return i
+	}
+	org := models.Attribution{Type: models.AttributionOrganization, EntityUID: sfid}
+	mk("org-published", org, models.StatusPublished)
+	mk("org-draft", org, models.StatusSubmitted)
+	mk("org-other", models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Other0AAA"}, models.StatusPublished)
+	mk("personal", models.Attribution{}, models.StatusPublished)
+
+	got, meta, err := repo.List(ctx, models.InitiativeFilter{AttributedToType: models.AttributionOrganization, AttributedToUID: sfid, Limit: 10})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if meta.Total != 2 || len(got) != 2 {
+		t.Fatalf("got %d items (total %d), want 2 (published + submitted for that org only)", len(got), meta.Total)
+	}
+}

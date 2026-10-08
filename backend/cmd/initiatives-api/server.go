@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/handler"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -249,6 +250,13 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
 		}
 		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(initiativeWriterRoutes)
+
+		// Per-entity lists for the Org/Project lens pages: all initiatives
+		// attributed to one parent, guarded at Heimdall on writer for that parent.
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(func(r chi.Router) {
+			r.Get("/organizations/{uid}/initiatives", initiativeH.ListByAttribution(models.AttributionOrganization))
+			r.Get("/projects/{uid}/initiatives", initiativeH.ListByAttribution(models.AttributionProject))
+		})
 
 		// Slug-to-UID resolver — requires a valid bearer token (any scope); no
 		// specific scope is enforced because it's called via Heimdall's

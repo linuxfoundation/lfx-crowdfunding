@@ -158,6 +158,8 @@ backend/
 | `POST` | `/crowdfunding/initiatives/{id}/announcements` | `access:me` + writer | Create announcement; `/me/initiatives/{id}/announcements` is a deprecated alias |
 | `PUT` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Update announcement; `/me/...` is a deprecated alias |
 | `DELETE` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Delete announcement; `/me/...` is a deprecated alias |
+| `GET` | `/crowdfunding/organizations/{uid}/initiatives` | `access:me` + writer on `b2b_org` | All initiatives (any status) attributed to that organization (Org lens) |
+| `GET` | `/crowdfunding/projects/{uid}/initiatives` | `access:me` + `writer_guard` on `project` | All initiatives (any status) attributed to that project (Project lens) |
 | `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donations (one-time and recurring), read from the Ledger like `/me/transactions?type=donations` |
 | `GET` | `/crowdfunding/me/subscriptions` | `access:me` | Caller's active subscriptions |
 | `DELETE` | `/crowdfunding/me/subscriptions/{id}` | `access:me` + owner | Cancel subscription |
