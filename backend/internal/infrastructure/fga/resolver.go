@@ -85,25 +85,27 @@ func NewNATSResolver(conn *nats.Conn, timeout time.Duration) *NATSResolver {
 // entityTypePrefix maps CF's attribution type to the OpenFGA object-type
 // prefix used in tuple strings. b2b_org is member-service's object type for
 // canonical platform organizations (fga-sync-contract.md); project is
-// project-service's.
-func entityTypePrefix(attrType models.AttributionType) (string, error) {
+// project-service's. The relation matches what the gateway checks: projects
+// use writer_guard (writer or global_writer), so a global project writer
+// passes here exactly as they do at Heimdall; b2b_org has no guard relation.
+func entityTypePrefix(attrType models.AttributionType) (prefix, relation string, err error) {
 	switch attrType {
 	case models.AttributionOrganization:
-		return "b2b_org", nil
+		return "b2b_org", "writer", nil
 	case models.AttributionProject:
-		return "project", nil
+		return "project", "writer_guard", nil
 	default:
-		return "", fmt.Errorf("access check requires organization or project attribution, got %q", attrType)
+		return "", "", fmt.Errorf("access check requires organization or project attribution, got %q", attrType)
 	}
 }
 
 // CanManage implements EntityRoleResolver.
 func (r *NATSResolver) CanManage(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error) {
-	prefix, err := entityTypePrefix(attrType)
+	prefix, relation, err := entityTypePrefix(attrType)
 	if err != nil {
 		return false, err
 	}
-	request := fmt.Sprintf("%s:%s#writer@user:%s", prefix, entityUID, username)
+	request := fmt.Sprintf("%s:%s#%s@user:%s", prefix, entityUID, relation, username)
 
 	if r.timeout > 0 {
 		var cancel context.CancelFunc
