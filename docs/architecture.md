@@ -152,9 +152,14 @@ backend/
 | `PATCH` | `/crowdfunding/me` | `access:me` | Profile sync (login trigger) |
 | `GET` | `/crowdfunding/me/initiatives` | `access:me` | Caller's own initiatives |
 | `POST` | `/crowdfunding/me/initiatives` | `access:me` | Create initiative |
-| `GET` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Get own initiative |
-| `PATCH` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Update own initiative |
-| `DELETE` | `/crowdfunding/me/initiatives/{id}` | `access:me` + owner | Delete own initiative |
+| `GET` | `/crowdfunding/me/initiatives/{id}` | `access:me` + manage | Get a managed initiative (creator or writer on the attributed entity), any status |
+| `PATCH` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Update initiative (creator or writer on the attributed entity); `/me/initiatives/{id}` is a deprecated alias |
+| `DELETE` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Delete initiative; `/me/initiatives/{id}` is a deprecated alias |
+| `POST` | `/crowdfunding/initiatives/{id}/announcements` | `access:me` + writer | Create announcement; `/me/initiatives/{id}/announcements` is a deprecated alias |
+| `PUT` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Update announcement; `/me/...` is a deprecated alias |
+| `DELETE` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Delete announcement; `/me/...` is a deprecated alias |
+| `GET` | `/crowdfunding/organizations/{uid}/initiatives` | `access:me` + writer on `b2b_org` | All initiatives (any status) attributed to that organization (Org lens) |
+| `GET` | `/crowdfunding/projects/{uid}/initiatives` | `access:me` + `writer_guard` on `project` | All initiatives (any status) attributed to that project (Project lens) |
 | `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donations (one-time and recurring), read from the Ledger like `/me/transactions?type=donations` |
 | `GET` | `/crowdfunding/me/subscriptions` | `access:me` | Caller's active subscriptions |
 | `DELETE` | `/crowdfunding/me/subscriptions/{id}` | `access:me` + owner | Cancel subscription |

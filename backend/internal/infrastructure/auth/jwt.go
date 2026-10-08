@@ -30,8 +30,8 @@ const DefaultClockSkew = 5 * time.Second
 const ScopeMe = "access:me"
 
 // ScopeManage is the OAuth2 scope reserved for privileged admin/M2M routes.
-// Currently unused in routing — no RequireScope(ScopeManage) route group exists yet.
-// Bypass mode grants this scope so local dev is not broken when it is wired up.
+// Guards the M2M owner-info and published-list routes. Bypass mode grants this
+// scope so local dev keeps working.
 const ScopeManage = "access:manage"
 
 // contextKey is an unexported type for context keys to avoid collisions.

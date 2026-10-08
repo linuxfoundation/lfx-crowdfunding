@@ -116,6 +116,47 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// ListByAttribution returns a handler for GET /crowdfunding/{organizations|projects}/{uid}/initiatives:
+// every initiative (any status) attributed to that entity, for the Org/Project
+// lens pages, including unpublished ones. Access is enforced only at the
+// gateway: Heimdall always runs openfga_check on the parent (writer on b2b_org,
+// writer_guard on project), with no allow_all fallback. Per the platform rule
+// the gateway JWT is the authorization, so there is no service-side re-check.
+func (h *InitiativeHandler) ListByAttribution(t models.AttributionType) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		attr := models.Attribution{Type: t, EntityUID: chi.URLParam(r, "uid")}
+		if err := attr.Validate(); err != nil {
+			Error(w, fmt.Errorf("%w: %v", domain.ErrInvalidInput, err))
+			return
+		}
+		limit, offset, ok := parsePaginationParams(w, r)
+		if !ok {
+			return
+		}
+		statuses, ok := parseStatusFilter(w, r)
+		if !ok {
+			return
+		}
+		initiatives, meta, err := h.svc.List(r.Context(), models.InitiativeFilter{
+			AttributedToType: attr.Type,
+			AttributedToUID:  attr.EntityUID,
+			Statuses:         statuses,
+			Limit:            limit,
+			Offset:           offset,
+		})
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		if initiatives == nil {
+			initiatives = []*models.Initiative{}
+		}
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("Vary", "Authorization")
+		JSON(w, http.StatusOK, map[string]any{"data": initiatives, "meta": meta})
+	}
+}
+
 // GetByID handles GET /crowdfunding/initiatives/{id} — accepts a slug or UUID.
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
 // Only published initiatives are returned to anonymous callers; approvers may
@@ -262,26 +303,27 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	value := chi.URLParam(r, "id")
 
-	// Resolve identifier to a UUID, verifying the initiative exists and is published.
-	// Use lightweight lookups (no Ledger enrichment) since transactions come from Ledger directly.
-	var initiativeID string
-	if uuidPattern.MatchString(value) {
-		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
-			Error(w, err)
-			return
-		}
-		initiativeID = value
-	} else {
-		id, err := h.svc.GetIDBySlug(r.Context(), value)
-		if err != nil {
-			Error(w, err)
-			return
-		}
-		initiativeID = id
+	initiativeID, err := h.resolvePublishedInitiativeID(r, value)
+	if err != nil {
+		Error(w, err)
+		return
 	}
 
 	// Public, published-only data — safe for shared caches.
 	h.writeTransactions(w, r, initiativeID, "public, max-age=60, stale-while-revalidate=300")
+}
+
+// resolvePublishedInitiativeID resolves a slug or UUID to the initiative's UUID,
+// verifying it exists and is published. Uses lightweight lookups (no Ledger
+// enrichment) since transactions come from Ledger directly.
+func (h *InitiativeHandler) resolvePublishedInitiativeID(r *http.Request, value string) (string, error) {
+	if uuidPattern.MatchString(value) {
+		if err := h.svc.CheckPublishedByID(r.Context(), value); err != nil {
+			return "", err
+		}
+		return value, nil
+	}
+	return h.svc.GetIDBySlug(r.Context(), value)
 }
 
 // GetMyTransactions handles GET /crowdfunding/me/initiatives/{id}/my-transactions — requires JWT.
