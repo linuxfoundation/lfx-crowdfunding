@@ -266,13 +266,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// direct end-user use, mirroring lfx-v2-project-service's equivalent.
 		r.With(jwtAuth.Middleware).Get("/initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
 
-		// The mock-auth principal's subject is its bare username, which never matches
-		// a seeded row's auth0|... legacy_user_id, so the binding check is skipped
-		// when the local bypass is active.
 		subjectBinding := auth.RequireSubjectBinding(userRepo.GetByUsername, logger)
-		if jwtAuth.IsBypassActive() {
-			subjectBinding = func(next http.Handler) http.Handler { return next }
-		}
 
 		// Protected API — requires a valid bearer token with access:me scope.
 		// All routes are under {prefix}/me/* to make the identity-scoped contract explicit.

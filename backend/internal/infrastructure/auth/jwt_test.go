@@ -340,9 +340,11 @@ func TestMiddleware_BypassMode(t *testing.T) {
 	a := &JWTAuthenticator{cfg: cfg}
 
 	var gotUserID string
+	var gotMock bool
 	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p := PrincipalFromContext(r.Context()); p != nil {
 			gotUserID = p.UserID
+			gotMock = p.IsMockBypass
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -354,6 +356,9 @@ func TestMiddleware_BypassMode(t *testing.T) {
 	}
 	if gotUserID != "local-dev-user" {
 		t.Errorf("UserID = %q, want %q", gotUserID, "local-dev-user")
+	}
+	if !gotMock {
+		t.Error("bypass principal should be marked IsMockBypass")
 	}
 }
 

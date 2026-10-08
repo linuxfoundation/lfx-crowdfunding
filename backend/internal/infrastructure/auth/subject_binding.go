@@ -22,8 +22,8 @@ type UserLookup func(ctx context.Context, username string) (*models.User, error)
 // subject (e.g. the bare GitHub id of a legacy github|N user) would resolve to
 // that legacy account. Must run after Middleware.
 //
-// Heimdall-issued tokens are exempt: their subject is the plain username, so
-// there is no Auth0 sub to compare. Rows without a legacy_user_id (and callers
+// Heimdall-issued tokens and the local mock-bypass principal are exempt: their
+// subject is the plain username, so there is no Auth0 sub to compare. Rows without a legacy_user_id (and callers
 // with no row yet) pass through.
 func RequireSubjectBinding(lookup UserLookup, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -33,7 +33,7 @@ func RequireSubjectBinding(lookup UserLookup, logger *slog.Logger) func(http.Han
 				jsonError(w, http.StatusUnauthorized, "authentication required")
 				return
 			}
-			if p.IsHeimdallIssued {
+			if p.IsHeimdallIssued || p.IsMockBypass {
 				next.ServeHTTP(w, r)
 				return
 			}

@@ -176,6 +176,32 @@ func TestSyncProfile_HeimdallIssued_SkipsUserInfoAndUpsertsUsernameOnly(t *testi
 	}
 }
 
+// Seeded dev rows are bound to auth0|<username>, but the bypass principal's
+// UserID is the bare username; PATCH /me must not reject it as a mismatch.
+func TestSyncProfile_MockBypass_SkipsBindingForSeededRow(t *testing.T) {
+	seeded := &models.User{ID: "uuid-1", Username: "dev-user-001", LegacyUserID: "auth0|dev-user-001"}
+	repo := &testUserRepo{upsertResult: seeded}
+	fetcher := &testUserInfoFetcher{err: errors.New("must not be called")}
+	h := NewUserHandler(repo, fetcher)
+
+	principal := &models.Principal{
+		UserID:       "dev-user-001",
+		Username:     "dev-user-001",
+		Scope:        auth.ScopeMe,
+		IsMockBypass: true,
+	}
+
+	w := httptest.NewRecorder()
+	h.SyncProfile(w, newSyncProfileRequest(principal))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if got := repo.lastUpserted; got == nil || got.LegacyUserID != "" {
+		t.Errorf("expected a username-only upsert with no legacy_user_id, got %+v", got)
+	}
+}
+
 func TestSyncProfile_NoPrincipal_Returns401(t *testing.T) {
 	repo := &testUserRepo{}
 	h := NewUserHandler(repo, &testUserInfoFetcher{})

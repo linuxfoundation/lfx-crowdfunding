@@ -29,6 +29,7 @@ func TestRequireSubjectBinding(t *testing.T) {
 		{"row without legacy id", &models.Principal{Username: "bob", UserID: "auth0|bob"}, &models.User{Username: "bob"}, nil, http.StatusOK},
 		{"first login, no row", &models.Principal{Username: "new", UserID: "auth0|new"}, nil, domain.ErrUserNotFound, http.StatusOK},
 		{"heimdall token exempt", &models.Principal{Username: "456789", UserID: "456789", IsHeimdallIssued: true}, legacy, nil, http.StatusOK},
+		{"mock bypass exempt", &models.Principal{Username: "dev-user-001", UserID: "dev-user-001", IsMockBypass: true}, &models.User{Username: "dev-user-001", LegacyUserID: "auth0|dev-user-001"}, nil, http.StatusOK},
 		{"lookup outage is 503, not a pass", &models.Principal{Username: "bob", UserID: "auth0|bob"}, nil, errors.New("db down"), http.StatusServiceUnavailable},
 		{"no principal", nil, nil, nil, http.StatusUnauthorized},
 	}

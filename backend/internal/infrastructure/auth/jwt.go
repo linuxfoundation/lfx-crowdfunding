@@ -325,7 +325,8 @@ func (a *JWTAuthenticator) Middleware(next http.Handler) http.Handler {
 				Email:         a.cfg.DisabledMockLocalPrincipal + "@local.dev",
 				EmailVerified: true,
 				// Grant both scopes in bypass mode so all route groups work locally.
-				Scope: ScopeMe + " " + ScopeManage,
+				Scope:        ScopeMe + " " + ScopeManage,
+				IsMockBypass: true,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
@@ -376,6 +377,7 @@ func (a *JWTAuthenticator) OptionalMiddleware(next http.Handler) http.Handler {
 				Email:         a.cfg.DisabledMockLocalPrincipal + "@local.dev",
 				EmailVerified: true,
 				Scope:         ScopeMe + " " + ScopeManage,
+				IsMockBypass:  true,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return

@@ -37,7 +37,9 @@ func NewUserHandler(userRepo domain.UserRepository, fetcher auth.UserInfoFetcher
 // service, so Auth0 rejects them if forwarded to UserInfo. For those, skip the
 // UserInfo call and upsert only the identity fields we already trust from the
 // validated token; Upsert preserves any previously-synced profile fields
-// (email/name/avatar) instead of blanking them out.
+// (email/name/avatar) instead of blanking them out. The local mock-bypass
+// principal takes the same path: its UserID is the bare username, not an Auth0
+// sub, so it must not be bound as a legacy_user_id.
 func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
@@ -45,7 +47,7 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if principal.IsHeimdallIssued {
+	if principal.IsHeimdallIssued || principal.IsMockBypass {
 		result, err := h.userRepo.Upsert(r.Context(), &models.User{Username: principal.Username})
 		if err != nil {
 			Error(w, err)
