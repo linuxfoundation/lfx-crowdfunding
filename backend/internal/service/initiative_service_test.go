@@ -2120,6 +2120,7 @@ func TestCreate_Attribution_DefaultsToPersonal(t *testing.T) {
 func TestCreate_Attribution_Organization_Propagated(t *testing.T) {
 	repo := &mockInitiativeRepo{}
 	svc := newCreateSvc(repo)
+	svc.SetEntityRoleResolver(&affiliationFake{ok: true})
 	uid := "0012M00002qnukOQAQ"
 	_, err := svc.Create(context.Background(), "owner-1", models.InitiativeCreateInput{
 		Name:           "My Project",
@@ -2184,7 +2185,9 @@ func TestUpdate_Attribution_ChangedAndValidated(t *testing.T) {
 		},
 	}
 	uid := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
-	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{
+	svc := newUpdateSvc(repo)
+	svc.SetEntityRoleResolver(&affiliationFake{ok: true})
+	_, err := svc.Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{
 		Attribution: &models.Attribution{Type: models.AttributionProject, EntityUID: uid},
 	})
 	if err != nil {
@@ -2301,5 +2304,92 @@ func TestUpdate_DonationMode_TiersMode_BlankBenefitsCleaned(t *testing.T) {
 	benefits := repo.lastUpdateInput.SponsorshipTiers[0].Benefits
 	if len(benefits) != 1 || benefits[0] != "Newsletter mention" {
 		t.Errorf("expected only non-blank benefit, got: %v", benefits)
+	}
+}
+
+func TestUpdate_Attribution_ChangeIsCreatorOnly(t *testing.T) {
+	org := models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB"}
+	newInit := func() *mockInitiativeRepo {
+		return &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Attribution: org}}
+	}
+	writerSvc := func(repo *mockInitiativeRepo) *InitiativeService {
+		s := newUpdateSvc(repo)
+		s.SetEntityRoleResolver(&fakeResolver{ok: true})
+		return s
+	}
+
+	// A writer (not the creator) cannot move the initiative, even to personal.
+	_, err := writerSvc(newInit()).Update(context.Background(), "init-1", "writer-1", models.InitiativeUpdateInput{
+		Attribution: &models.Attribution{Type: models.AttributionPersonal},
+	})
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("writer reattribution: expected ErrForbidden, got %v", err)
+	}
+
+	// A writer resubmitting the unchanged attribution is fine.
+	if _, err := writerSvc(newInit()).Update(context.Background(), "init-1", "writer-1", models.InitiativeUpdateInput{Attribution: &org}); err != nil {
+		t.Fatalf("writer resubmitting same attribution: unexpected error %v", err)
+	}
+
+	// The creator can change it.
+	repo := newInit()
+	if _, err := writerSvc(repo).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{
+		Attribution: &models.Attribution{Type: models.AttributionPersonal},
+	}); err != nil {
+		t.Fatalf("creator reattribution: unexpected error %v", err)
+	}
+	if repo.lastUpdated.Attribution.Type != models.AttributionPersonal {
+		t.Errorf("Attribution.Type = %q, want personal", repo.lastUpdated.Attribution.Type)
+	}
+}
+
+type affiliationFake struct {
+	fakeResolver
+	ok  bool
+	err error
+}
+
+func (a *affiliationFake) IsAffiliated(context.Context, models.AttributionType, string, string) (bool, error) {
+	return a.ok, a.err
+}
+
+func TestAttribution_RequiresAffiliation(t *testing.T) {
+	uid := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+	proj := &models.Attribution{Type: models.AttributionProject, EntityUID: uid}
+	svc := func(f *affiliationFake) *InitiativeService {
+		s := newUpdateSvc(&mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"}})
+		s.SetEntityRoleResolver(f)
+		return s
+	}
+
+	// Update: creator moving to an entity they aren't affiliated with.
+	_, err := svc(&affiliationFake{ok: false}).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: proj})
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("unaffiliated update: expected ErrForbidden, got %v", err)
+	}
+	// Outage surfaces as upstream-unavailable, never a false deny.
+	_, err = svc(&affiliationFake{err: domain.ErrUpstreamUnavailable}).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: proj})
+	if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Fatalf("outage: expected ErrUpstreamUnavailable, got %v", err)
+	}
+	// Affiliated passes.
+	if _, err := svc(&affiliationFake{ok: true}).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: proj}); err != nil {
+		t.Fatalf("affiliated update: unexpected error %v", err)
+	}
+	// Personal never consults the checker.
+	if _, err := svc(&affiliationFake{ok: false}).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: &models.Attribution{Type: models.AttributionPersonal}}); err != nil {
+		t.Fatalf("personal: unexpected error %v", err)
+	}
+	// No resolver wired: fail closed for org/project targets.
+	noResolver := newUpdateSvc(&mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"}})
+	if _, err := noResolver.Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: proj}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("no resolver: expected ErrForbidden, got %v", err)
+	}
+	// Create enforces it too.
+	c := newCreateSvc(&mockInitiativeRepo{})
+	c.SetEntityRoleResolver(&affiliationFake{ok: false})
+	_, err = c.Create(context.Background(), "owner-1", models.InitiativeCreateInput{Name: "N", InitiativeType: "project", Attribution: proj})
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("unaffiliated create: expected ErrForbidden, got %v", err)
 	}
 }

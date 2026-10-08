@@ -2,7 +2,7 @@
 title: Manage Your Initiative
 description: How to update and manage a published initiative on LFX Crowdfunding.
 tags: [initiatives, manage, edit, financials, reporting]
-last_updated: 2026-06-17
+last_updated: 2026-10-07
 display_order: 3
 intercom_collection: LFX Crowdfunding
 ---
@@ -11,7 +11,9 @@ Managing your initiative lets you update its details and track financial activit
 
 ## Before you begin
 
-Your initiative must be approved and published. You must be signed in as the initiative owner with your [LF ID](https://openprofile.dev/).
+Your initiative must be approved and published. You must be signed in with your [LF ID](https://openprofile.dev/) as the initiative owner, or as someone with write access to the organization or project it is attributed to.
+
+If your initiative is attributed to an organization or project, people with write access to that organization or project can also edit its content. Only the initiative owner (the person who created it) can change which organization or project it is attributed to, and they must be affiliated with the new one.
 
 ## Steps
 

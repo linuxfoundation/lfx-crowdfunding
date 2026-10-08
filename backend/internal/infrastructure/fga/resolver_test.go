@@ -180,3 +180,68 @@ func TestParseAccessCheckReply(t *testing.T) {
 		}
 	})
 }
+
+func TestNATSResolver_IsAffiliated(t *testing.T) {
+	const (
+		org      = "0014100000Te0yvAAB"
+		username = "alice"
+	)
+	auditor := "b2b_org:" + org + "#auditor@user:alice"
+	check := func(r *NATSResolver) (bool, error) {
+		return r.IsAffiliated(context.Background(), models.AttributionOrganization, org, username)
+	}
+
+	for _, c := range []struct {
+		name, auditor string
+		want          bool
+	}{
+		{"auditor (direct, team or inherited)", "true", true},
+		{"not an auditor", "false", false},
+	} {
+		r := &NATSResolver{conn: &fakeRequester{reply: []byte(auditor + "\t" + c.auditor + "\n")}}
+		if got, err := check(r); err != nil || got != c.want {
+			t.Errorf("%s: got (%v, %v), want %v", c.name, got, err, c.want)
+		}
+	}
+
+	// Projects use auditor_guard so global_auditor/global_writer holders pass.
+	const project = "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+	pAuditor := "project:" + project + "#auditor_guard@user:alice"
+	prec := &recordingRequester{reply: []byte(pAuditor + "\ttrue\n")}
+	if ok, err := (&NATSResolver{conn: prec}).IsAffiliated(context.Background(), models.AttributionProject, project, username); err != nil || !ok {
+		t.Fatalf("project: got (%v, %v), want true", ok, err)
+	}
+	if got := string(prec.sent); got != pAuditor {
+		t.Errorf("project request = %q, want %q", got, pAuditor)
+	}
+
+	// Exactly one auditor token goes out; no persona checks.
+	rec := &recordingRequester{reply: []byte(auditor + "\ttrue\n")}
+	if _, err := check(&NATSResolver{conn: rec}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := string(rec.sent); got != auditor {
+		t.Errorf("request body = %q, want %q", got, auditor)
+	}
+
+	// A reply missing the token is an upstream failure, never false.
+	empty := &NATSResolver{conn: &fakeRequester{reply: []byte("")}}
+	if _, err := check(empty); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("missing result: got %v, want ErrUpstreamUnavailable", err)
+	}
+	r := &NATSResolver{conn: &fakeRequester{err: errors.New("boom")}}
+	if _, err := check(r); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("transport error: got %v, want ErrUpstreamUnavailable", err)
+	}
+}
+
+// recordingRequester captures the request body it was sent.
+type recordingRequester struct {
+	reply []byte
+	sent  []byte
+}
+
+func (f *recordingRequester) RequestWithContext(_ context.Context, _ string, data []byte) (*nats.Msg, error) {
+	f.sent = data
+	return &nats.Msg{Data: f.reply}, nil
+}
