@@ -198,13 +198,21 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Reads on a specific owned initiative — kept allow_all even once
-    # openfga.enabled is true. lfx-self-serve calls these with a slug, not a
-    # UUID (crowdfunding.service.ts:207,422,462), and openfga_check has no way
-    # to resolve a slug to the UUID the crowdfunding_initiative tuples are
-    # keyed by — checking the raw capture would 403 legitimate owners. Needs a
-    # crowdfunding_slug_resolver_contextualizer (mirroring project's
-    # LFXV2-3324) plus a slug-to-uid endpoint before this can be checked.
+    # Owner-gated reads on a specific initiative (GetForUser,
+    # GetTransactionsForUser). lfx-self-serve calls these with a slug, but
+    # crowdfunding_initiative tuples are keyed by UUID, so the slug is resolved
+    # with crowdfunding_slug_resolver_contextualizer (lfx-v2-helm) before
+    # openfga_check runs. The resolver only does slug lookup and 404s on a
+    # UUID, and continue_pipeline_on_error is false, so it must be skipped when
+    # the capture is already a UUID — and the UUID branch must check the raw
+    # capture, never the resolver's Outputs (a skipped contextualizer's Outputs
+    # are undocumented Heimdall behavior). Hence two mutually exclusive
+    # openfga_check entries instead of one with a fallback. Same pattern as
+    # lfx-v2-campaign-service's project-api rule. $uuidRe is defined once so
+    # the slug/UUID branches stay exact negations of each other.
+    #
+    # Replaces the in-service canManage check on these reads; that check stays
+    # until NetworkPolicy is enabled in every environment.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-read"
       allow_encoded_slashes: "off"
       match:
@@ -213,6 +221,50 @@ spec:
         routes:
           - path: /crowdfunding/me/initiatives/:id
           - path: /crowdfunding/me/initiatives/:id/transactions
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        {{- if .Values.openfga.enabled }}
+        {{- $uuidRe := "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" }}
+        - contextualizer: crowdfunding_slug_resolver_contextualizer
+          if: '!Request.URL.Captures.id.matches("{{ $uuidRe }}")'
+          config:
+            values:
+              slug: "{{ "{{- .Request.URL.Captures.id -}}" }}"
+        - authorizer: openfga_check
+          if: '!Request.URL.Captures.id.matches("{{ $uuidRe }}")'
+          config:
+            values:
+              relation: writer
+              object: "crowdfunding_initiative:{{ "{{- .Outputs.crowdfunding_slug_resolver_contextualizer.uid -}}" }}"
+        - authorizer: openfga_check
+          if: 'Request.URL.Captures.id.matches("{{ $uuidRe }}")'
+          config:
+            values:
+              relation: writer
+              object: "crowdfunding_initiative:{{ "{{- .Request.URL.Captures.id -}}" }}"
+        {{- else }}
+        - authorizer: allow_all
+        {{- end }}
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
+    # The caller's own transactions on a published initiative (GetMyTransactions)
+    # — any authenticated donor, not just owners/writers, so this is not an
+    # openfga_check route. The service scopes the query to the caller's ledger
+    # user ID and only serves published initiatives. Kept separate from
+    # me-initiative-read so that rule can require writer.
+    - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-my-transactions"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
           - path: /crowdfunding/me/initiatives/:id/my-transactions
       execute:
         - authenticator: oidc
