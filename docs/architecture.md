@@ -148,11 +148,11 @@ backend/
 | `GET` | `/crowdfunding/statistics*` | None | Platform-wide funding statistics |
 | `GET` | `/crowdfunding/initiatives` | None | List initiatives (filterable, paginated) |
 | `GET` | `/crowdfunding/initiatives/{id}` | Optional | Initiative detail (optional auth lets approvers view unpublished) |
-| `GET` | `/crowdfunding/initiatives/{id}/transactions` | Optional | Donation/expense history (public when published; managers also read unpublished) |
+| `GET` | `/crowdfunding/initiatives/{id}/transactions` | None | Public donation/expense history |
 | `PATCH` | `/crowdfunding/me` | `access:me` | Profile sync (login trigger) |
 | `GET` | `/crowdfunding/me/initiatives` | `access:me` | Caller's own initiatives |
 | `POST` | `/crowdfunding/me/initiatives` | `access:me` | Create initiative |
-| `GET` | `/crowdfunding/me/initiatives/{id}` | `access:me` + manage | Get a managed initiative (deprecated alias; use `GET /crowdfunding/initiatives/{id}?view=manage`) |
+| `GET` | `/crowdfunding/me/initiatives/{id}` | `access:me` + manage | Get a managed initiative (creator or writer on the attributed entity), any status |
 | `PATCH` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Update initiative (creator or writer on the attributed entity); `/me/initiatives/{id}` is a deprecated alias |
 | `DELETE` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Delete initiative; `/me/initiatives/{id}` is a deprecated alias |
 | `POST` | `/crowdfunding/initiatives/{id}/announcements` | `access:me` + writer | Create announcement; `/me/initiatives/{id}/announcements` is a deprecated alias |

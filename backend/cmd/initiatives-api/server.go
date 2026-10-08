@@ -234,9 +234,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 		// Initiative detail — public for published initiatives; approvers may also
 		// view non-published initiatives if a valid token is supplied.
-		// ?view=manage returns the full payload in any status to callers who can manage it.
 		r.With(jwtAuth.OptionalMiddleware).Get("/initiatives/{id}", initiativeH.GetByID)
-		r.With(jwtAuth.OptionalMiddleware).Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
+		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
 
 		// Writer mutations on a specific initiative: creator or a writer on its
 		// attributed entity (service-side canManage; Heimdall guards on writer).
