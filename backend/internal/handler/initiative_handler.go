@@ -119,20 +119,15 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 
 // ListByAttribution returns a handler for GET /crowdfunding/{organizations|projects}/{uid}/initiatives:
 // every initiative (any status) attributed to that entity, for the Org/Project
-// lens pages. Because it returns unpublished initiatives, access is enforced
-// twice: at the gateway (Heimdall openfga_check on the parent) and in the
-// service (writer on the attributed entity: 403 for a non-writer, 503 on a
-// resolver outage).
+// lens pages, including unpublished ones. Access is enforced only at the
+// gateway: Heimdall always runs openfga_check on the parent (writer on b2b_org,
+// writer_guard on project), with no allow_all fallback. Per the platform rule
+// the gateway JWT is the authorization, so there is no service-side re-check.
 func (h *InitiativeHandler) ListByAttribution(t models.AttributionType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		attr := models.Attribution{Type: t, EntityUID: chi.URLParam(r, "uid")}
 		if err := attr.Validate(); err != nil {
 			Error(w, fmt.Errorf("%w: %v", domain.ErrInvalidInput, err))
-			return
-		}
-		principal := auth.PrincipalFromContext(r.Context())
-		if principal == nil || principal.Username == "" {
-			Error(w, domain.ErrUnauthorized)
 			return
 		}
 		limit, offset, ok := parsePaginationParams(w, r)
@@ -143,10 +138,12 @@ func (h *InitiativeHandler) ListByAttribution(t models.AttributionType) http.Han
 		if !ok {
 			return
 		}
-		initiatives, meta, err := h.svc.ListByAttribution(r.Context(), principal.Username, attr, models.InitiativeFilter{
-			Statuses: statuses,
-			Limit:    limit,
-			Offset:   offset,
+		initiatives, meta, err := h.svc.List(r.Context(), models.InitiativeFilter{
+			AttributedToType: attr.Type,
+			AttributedToUID:  attr.EntityUID,
+			Statuses:         statuses,
+			Limit:            limit,
+			Offset:           offset,
 		})
 		if err != nil {
 			Error(w, err)

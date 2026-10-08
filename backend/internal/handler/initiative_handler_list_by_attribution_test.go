@@ -11,32 +11,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
-	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/service"
 )
 
 func listByAttribution(t *testing.T, typ models.AttributionType, uid, query string) (*httptest.ResponseRecorder, *stubInitiativeRepoForListForUser) {
 	t.Helper()
-	return listByAttributionAs(t, typ, uid, query, writerResolver{ok: true})
-}
-
-// listByAttributionAs runs the handler as a writer-candidate principal against
-// the given resolver (nil leaves the service without one).
-func listByAttributionAs(t *testing.T, typ models.AttributionType, uid, query string, res fga.EntityRoleResolver) (*httptest.ResponseRecorder, *stubInitiativeRepoForListForUser) {
-	t.Helper()
 	repo := &stubInitiativeRepoForListForUser{}
 	svc := service.NewInitiativeService(repo, &stubUserRepoForListForUser{}, &apprLedgerClient{}, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
-	if res != nil {
-		svc.SetEntityRoleResolver(res)
-	}
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
 	r := chi.NewRouter()
 	r.Get("/x/{uid}/initiatives", h.ListByAttribution(typ))
 	req := httptest.NewRequest(http.MethodGet, "/x/"+uid+"/initiatives"+query, nil)
-	req = withPrincipal(req, &models.Principal{Username: "writer"})
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w, repo
@@ -83,27 +70,6 @@ func TestListByAttribution_MalformedUID_400(t *testing.T) {
 		}
 		if repo.capturedFilter.AttributedToUID != "" {
 			t.Errorf("repo must not be queried on invalid uid")
-		}
-	}
-}
-
-func TestListByAttribution_WriterCheck(t *testing.T) {
-	const org = "0014100000Te0yvAAB"
-	for _, tc := range []struct {
-		name string
-		res  fga.EntityRoleResolver
-		want int
-	}{
-		{"non-writer", writerResolver{ok: false}, http.StatusForbidden},
-		{"no resolver fails closed", nil, http.StatusForbidden},
-		{"resolver outage", writerResolver{err: domain.ErrUpstreamUnavailable}, http.StatusServiceUnavailable},
-	} {
-		w, repo := listByAttributionAs(t, models.AttributionOrganization, org, "", tc.res)
-		if w.Code != tc.want {
-			t.Errorf("%s: expected %d, got %d: %s", tc.name, tc.want, w.Code, w.Body.String())
-		}
-		if repo.capturedFilter.AttributedToUID != "" {
-			t.Errorf("%s: repo must not be queried when the check does not pass", tc.name)
 		}
 	}
 }
