@@ -214,13 +214,16 @@ Design rules:
   (consistent with today's read concealment). A *resolver error* (NATS/OpenFGA unavailable) also
   denies, but returns **503** — never a false 404 — so the outage is visible and clients can
   retry.
-- **Manage access comes from the directly attributed entity only (decided 2026-10-08,
-  lfx-crowdfunding#259).** Writers on the organization or project the initiative is attributed
-  to can manage it. Writer access that reaches that entity only through the org parent/child
-  cascade (`writer from parent`, `writer from child` on `b2b_org`) is not meant to grant
-  management. The current checks (`b2b_org#writer` in the service resolver, and
-  `crowdfunding_initiative#writer` at the gateway) evaluate the full cascade, so enforcing this
-  needs a follow-up change.
+- **Manage access follows the platform's full `writer` relation, including inherited access
+  (current direction, 2026-10-08, lfx-crowdfunding#259; open to change if PM or the architecture
+  team decide otherwise).** For an organization, `b2b_org#writer` cascades both ways (`writer from
+  parent` and `writer from child`) and includes `global_org_admin`, so writers on a parent *or* a
+  subsidiary org, and global org admins, can manage an initiative attributed to that org. For a
+  project, `writer_guard` includes writers inherited from parent projects and global project
+  writers. This is what the service resolver and the gateway's `crowdfunding_initiative#writer`
+  check already evaluate, so no code or model change is needed. Restricting management to direct
+  writers only would need a new direct-writer relation in the platform model plus a resolver
+  change.
 - **CF stores no roles.** No membership tables, no role columns — CF stores one entity reference
   and asks the platform the membership question at request time.
 - **Changing attribution is not the flat manage capability — it is creator-only
