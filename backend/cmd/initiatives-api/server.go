@@ -239,6 +239,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.With(jwtAuth.OptionalMiddleware).Get("/initiatives/{id}", initiativeH.GetByID)
 		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
 
+		// Rejects an Auth0 caller whose sub differs from the legacy_user_id bound to
+		// the row their username claim resolves to. Every route whose handler
+		// resolves the caller by principal.Username must carry it.
+		subjectBinding := auth.RequireSubjectBinding(userRepo.GetByUsername, logger)
+
 		// Writer mutations on a specific initiative: creator or a writer on its
 		// attributed entity (service-side canManage; Heimdall guards on writer).
 		// Initiative-scoped rather than identity-scoped, so they live outside /me.
@@ -250,7 +255,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
 			r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
 		}
-		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(initiativeWriterRoutes)
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), subjectBinding).Group(initiativeWriterRoutes)
 
 		// Per-entity lists for the Org/Project lens pages: all initiatives
 		// attributed to one parent, guarded at Heimdall on writer for that parent.
@@ -265,8 +270,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// caller's token, which may hold any scope. Internal-only: not meant for
 		// direct end-user use, mirroring lfx-v2-project-service's equivalent.
 		r.With(jwtAuth.Middleware).Get("/initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
-
-		subjectBinding := auth.RequireSubjectBinding(userRepo.GetByUsername, logger)
 
 		// Protected API — requires a valid bearer token with access:me scope.
 		// All routes are under {prefix}/me/* to make the identity-scoped contract explicit.
