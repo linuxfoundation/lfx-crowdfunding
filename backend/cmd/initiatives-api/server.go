@@ -244,6 +244,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// Initiative-scoped rather than identity-scoped, so they live outside /me.
 		// The /me aliases below stay until Self Serve migrates.
 		initiativeWriterRoutes := func(r chi.Router) {
+			// Full payload in any status, for managers only (Heimdall: writer).
+			r.Get("/initiatives/{id}/manage", initiativeH.GetForUser)
+			r.Get("/initiatives/{id}/manage/transactions", initiativeH.GetTransactionsForUser)
 			r.Patch("/initiatives/{id}", initiativeH.Update)
 			r.Delete("/initiatives/{id}", initiativeH.Delete)
 			r.Post("/initiatives/{id}/announcements", announcementH.Create)
