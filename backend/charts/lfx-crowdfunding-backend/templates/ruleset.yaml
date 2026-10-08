@@ -343,6 +343,58 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
+    # Per-entity initiative lists for the Org/Project lens pages: every initiative
+    # attributed to one parent, guarded on writer for that parent. A denial is a 403.
+    - id: "rule:lfx:lfx-crowdfunding-backend:org-initiatives-list"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /crowdfunding/organizations/:uid/initiatives
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        # Always enforced, even when openfga.enabled is false: this list exposes
+        # unpublished initiatives, so it must never fall back to allow_all.
+        - authorizer: openfga_check
+          config:
+            values:
+              relation: writer
+              object: "b2b_org:{{ "{{- .Request.URL.Captures.uid -}}" }}"
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
+    - id: "rule:lfx:lfx-crowdfunding-backend:project-initiatives-list"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /crowdfunding/projects/:uid/initiatives
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        # Always enforced, even when openfga.enabled is false: this list exposes
+        # unpublished initiatives, so it must never fall back to allow_all.
+        - authorizer: openfga_check
+          config:
+            values:
+              relation: writer_guard
+              object: "project:{{ "{{- .Request.URL.Captures.uid | lower -}}" }}"
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
     # Announcement create — POST /crowdfunding/me/initiatives/:id/announcements.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-announcement-create"
       allow_encoded_slashes: "off"

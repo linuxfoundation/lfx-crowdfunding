@@ -116,6 +116,47 @@ func (h *InitiativeHandler) ListForUser(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// ListByAttribution returns a handler for GET /crowdfunding/{organizations|projects}/{uid}/initiatives:
+// every initiative (any status) attributed to that entity, for the Org/Project
+// lens pages, including unpublished ones. Access is enforced only at the
+// gateway: Heimdall always runs openfga_check on the parent (writer on b2b_org,
+// writer_guard on project), with no allow_all fallback. Per the platform rule
+// the gateway JWT is the authorization, so there is no service-side re-check.
+func (h *InitiativeHandler) ListByAttribution(t models.AttributionType) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		attr := models.Attribution{Type: t, EntityUID: chi.URLParam(r, "uid")}
+		if err := attr.Validate(); err != nil {
+			Error(w, fmt.Errorf("%w: %v", domain.ErrInvalidInput, err))
+			return
+		}
+		limit, offset, ok := parsePaginationParams(w, r)
+		if !ok {
+			return
+		}
+		statuses, ok := parseStatusFilter(w, r)
+		if !ok {
+			return
+		}
+		initiatives, meta, err := h.svc.List(r.Context(), models.InitiativeFilter{
+			AttributedToType: attr.Type,
+			AttributedToUID:  attr.EntityUID,
+			Statuses:         statuses,
+			Limit:            limit,
+			Offset:           offset,
+		})
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		if initiatives == nil {
+			initiatives = []*models.Initiative{}
+		}
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("Vary", "Authorization")
+		JSON(w, http.StatusOK, map[string]any{"data": initiatives, "meta": meta})
+	}
+}
+
 // GetByID handles GET /crowdfunding/initiatives/{id} — accepts a slug or UUID.
 // Slugs are the canonical public identifier; UUIDs are supported as a fallback.
 // Only published initiatives are returned to anonymous callers; approvers may

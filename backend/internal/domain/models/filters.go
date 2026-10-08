@@ -13,15 +13,18 @@ type PaginationMeta struct {
 
 // InitiativeFilter constrains list queries for initiatives.
 type InitiativeFilter struct {
-	OwnerID        string
-	InitiativeType string
-	Status         InitiativeStatus   // single-value filter used by the public List handler
-	Statuses       []InitiativeStatus // multi-value filter used by the ListForUser handler
-	Search         string
-	SortBy         string // "supporters" | "trending" | "total_raised" | "name" | "created_on" (default)
-	SortDir        string // "asc" | "desc" (default)
-	Limit          int
-	Offset         int
+	OwnerID string
+	// AttributedToType/UID scope the list to one attributed entity (both or neither).
+	AttributedToType AttributionType
+	AttributedToUID  string
+	InitiativeType   string
+	Status           InitiativeStatus   // single-value filter used by the public List handler
+	Statuses         []InitiativeStatus // multi-value filter used by the ListForUser handler
+	Search           string
+	SortBy           string // "supporters" | "trending" | "total_raised" | "name" | "created_on" (default)
+	SortDir          string // "asc" | "desc" (default)
+	Limit            int
+	Offset           int
 }
 
 // DonationFilter constrains list queries for donations.
