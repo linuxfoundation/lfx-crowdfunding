@@ -173,12 +173,17 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// GetForUser handles GET /crowdfunding/me/initiatives/{id} — requires JWT with access:me scope.
-// Accepts a slug or UUID. Returns the caller's own initiative in any status, so
-// owners can open their drafts/submitted initiatives that the public detail
-// endpoint hides. Initiatives the caller does not own return 404 (not 403) to
-// avoid leaking their existence.
+// GetForUser handles GET /crowdfunding/initiatives/{id}/manage (and its deprecated
+// alias GET /crowdfunding/me/initiatives/{id}) — requires JWT with access:me scope.
+// Accepts a slug or UUID. Returns the initiative in any status, with contacts, to
+// callers who can manage it (creator or a writer on its attributed entity), so they
+// can open drafts the public detail endpoint hides. Others get 404 (not 403) to
+// avoid leaking its existence.
 func (h *InitiativeHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
+	// Caller-dependent and carries contact details: never shared-cacheable,
+	// including the 401/404 below.
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Vary", "Authorization")
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
@@ -445,7 +450,8 @@ func (h *InitiativeHandler) ListMyDonations(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// GetTransactionsForUser handles GET /crowdfunding/me/initiatives/{id}/transactions — requires
+// GetTransactionsForUser handles GET /crowdfunding/initiatives/{id}/manage/transactions (and its
+// deprecated alias /crowdfunding/me/initiatives/{id}/transactions) — requires
 // JWT with access:me scope. Returns transactions for the caller's own initiative in
 // any status, so owners can view their non-published initiative's transactions (the
 // public endpoint resolves published-only).
