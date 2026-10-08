@@ -78,10 +78,11 @@ func newSyncProfileRequest(principal *models.Principal) *http.Request {
 
 func TestSyncProfile_Success(t *testing.T) {
 	want := &models.User{
-		ID:       "uuid-1",
-		Username: "jdoe",
-		Email:    "jdoe@example.com",
-		Name:     "John Doe",
+		ID:           "uuid-1",
+		Username:     "jdoe",
+		LegacyUserID: "auth0|abc123",
+		Email:        "jdoe@example.com",
+		Name:         "John Doe",
 	}
 	repo := &testUserRepo{upsertResult: want}
 	fetcher := &testUserInfoFetcher{info: &auth.UserInfo{
@@ -172,6 +173,32 @@ func TestSyncProfile_HeimdallIssued_SkipsUserInfoAndUpsertsUsernameOnly(t *testi
 	}
 	if got.Email != "" || got.Name != "" || got.GivenName != "" || got.FamilyName != "" || got.AvatarURL != "" || got.LegacyUserID != "" {
 		t.Errorf("expected only Username to be set, got %+v", got)
+	}
+}
+
+// Seeded dev rows are bound to auth0|<username>, but the bypass principal's
+// UserID is the bare username; PATCH /me must not reject it as a mismatch.
+func TestSyncProfile_MockBypass_SkipsBindingForSeededRow(t *testing.T) {
+	seeded := &models.User{ID: "uuid-1", Username: "dev-user-001", LegacyUserID: "auth0|dev-user-001"}
+	repo := &testUserRepo{upsertResult: seeded}
+	fetcher := &testUserInfoFetcher{err: errors.New("must not be called")}
+	h := NewUserHandler(repo, fetcher)
+
+	principal := &models.Principal{
+		UserID:       "dev-user-001",
+		Username:     "dev-user-001",
+		Scope:        auth.ScopeMe,
+		IsMockBypass: true,
+	}
+
+	w := httptest.NewRecorder()
+	h.SyncProfile(w, newSyncProfileRequest(principal))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if got := repo.lastUpserted; got == nil || got.LegacyUserID != "" {
+		t.Errorf("expected a username-only upsert with no legacy_user_id, got %+v", got)
 	}
 }
 
@@ -353,5 +380,20 @@ func TestSyncProfile_RepoError_Returns500(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", w.Code)
+	}
+}
+
+// Upsert keeps an already-bound legacy_user_id, so a row bound to another Auth0
+// identity comes back with a different one — SyncProfile must not hand it over.
+func TestSyncProfile_RowBoundToOtherIdentity_Returns403(t *testing.T) {
+	repo := &testUserRepo{upsertResult: &models.User{ID: "uuid-1", Username: "456789", LegacyUserID: "github|456789"}}
+	fetcher := &testUserInfoFetcher{info: &auth.UserInfo{Sub: "auth0|attacker", Username: "456789"}}
+	h := NewUserHandler(repo, fetcher)
+
+	w := httptest.NewRecorder()
+	h.SyncProfile(w, newSyncProfileRequest(&models.Principal{UserID: "auth0|attacker", Username: "456789", Scope: auth.ScopeMe}))
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
 	}
 }

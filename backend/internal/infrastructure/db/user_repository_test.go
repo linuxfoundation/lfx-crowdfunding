@@ -171,3 +171,45 @@ func TestUserRepository_UpdateStripeInfo_NotFound(t *testing.T) {
 		t.Errorf("expected ErrUserNotFound, got %v", err)
 	}
 }
+
+// An already-bound legacy_user_id must survive an upsert that carries a
+// different one (a caller whose username claim collides with a migrated row),
+// and is filled in only when the row has none.
+func TestUserRepository_Upsert_KeepsBoundLegacyUserID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.users")
+	repo := NewUserRepository(testPool)
+
+	if _, err := repo.Upsert(ctx, &models.User{Username: "456789", LegacyUserID: "github|456789"}); err != nil {
+		t.Fatalf("seed Upsert() error = %v", err)
+	}
+	_, err := repo.Upsert(ctx, &models.User{Username: "456789", LegacyUserID: "auth0|attacker", Email: "evil@example.com"})
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("Upsert() error = %v, want ErrForbidden", err)
+	}
+	got, err := repo.GetByUsername(ctx, "456789")
+	if err != nil {
+		t.Fatalf("GetByUsername() error = %v", err)
+	}
+	if got.LegacyUserID != "github|456789" || got.Email != "" {
+		t.Errorf("row mutated by rejected upsert: legacy=%q email=%q", got.LegacyUserID, got.Email)
+	}
+	// A caller with no sub (e.g. payment flows) still upserts a bound row.
+	if _, err := repo.Upsert(ctx, &models.User{Username: "456789", Email: "ok@example.com"}); err != nil {
+		t.Fatalf("Upsert() without legacy id error = %v", err)
+	}
+
+	if _, err := repo.Upsert(ctx, &models.User{Username: "bob"}); err != nil {
+		t.Fatalf("seed Upsert() error = %v", err)
+	}
+	got, err = repo.Upsert(ctx, &models.User{Username: "bob", LegacyUserID: "auth0|bob"})
+	if err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+	if got.LegacyUserID != "auth0|bob" {
+		t.Errorf("LegacyUserID = %q, want auth0|bob (filled in when previously empty)", got.LegacyUserID)
+	}
+}

@@ -83,17 +83,23 @@ func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.Us
 	defer span.End()
 	span.SetAttributes(attribute.String("db.username", u.Username))
 
+	// An already-bound legacy_user_id is never replaced, and the WHERE makes the
+	// check atomic: a conflicting row bound to a different legacy_user_id is left
+	// untouched (no profile fields written) and surfaces as ErrForbidden.
 	const q = `
 		INSERT INTO users (username, legacy_user_id, email, given_name, family_name, name, avatar_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (username) DO UPDATE SET
-			legacy_user_id = COALESCE(EXCLUDED.legacy_user_id, users.legacy_user_id),
+			legacy_user_id = COALESCE(users.legacy_user_id, EXCLUDED.legacy_user_id),
 			email          = COALESCE(EXCLUDED.email, users.email),
 			given_name     = COALESCE(EXCLUDED.given_name, users.given_name),
 			family_name    = COALESCE(EXCLUDED.family_name, users.family_name),
 			name           = COALESCE(EXCLUDED.name, users.name),
 			avatar_url     = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
 			updated_on     = NOW()
+		WHERE EXCLUDED.legacy_user_id IS NULL
+		   OR users.legacy_user_id IS NULL
+		   OR users.legacy_user_id = EXCLUDED.legacy_user_id
 		RETURNING ` + userColumns
 
 	result, err := scanUser(r.pool.QueryRow(ctx, q,
@@ -101,6 +107,10 @@ func (r *UserRepository) Upsert(ctx context.Context, u *models.User) (*models.Us
 		nullableString(u.GivenName), nullableString(u.FamilyName),
 		nullableString(u.Name), nullableString(u.AvatarURL),
 	))
+	if errors.Is(err, domain.ErrUserNotFound) {
+		// RETURNING yielded no row: the conflict WHERE rejected a mismatched sub.
+		return nil, domain.ErrForbidden
+	}
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("upsert user: %w", err)

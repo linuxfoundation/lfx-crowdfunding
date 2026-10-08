@@ -60,4 +60,8 @@ type Principal struct {
 	// and Auth0's UserInfo endpoint rejects them, so callers must not forward
 	// them to Auth0.
 	IsHeimdallIssued bool
+	// IsMockBypass is true for the static local-dev principal injected when JWT
+	// validation is bypassed. Its UserID is the bare username, not an Auth0 sub,
+	// so it must never be compared against or bound to a legacy_user_id.
+	IsMockBypass bool
 }

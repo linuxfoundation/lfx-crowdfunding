@@ -239,6 +239,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.With(jwtAuth.OptionalMiddleware).Get("/initiatives/{id}", initiativeH.GetByID)
 		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
 
+		// Rejects an Auth0 caller whose sub differs from the legacy_user_id bound to
+		// the row their username claim resolves to. Every route whose handler
+		// resolves the caller by principal.Username must carry it.
+		subjectBinding := auth.RequireSubjectBinding(userRepo.GetByUsername, logger)
+
 		// Writer mutations on a specific initiative: creator or a writer on its
 		// attributed entity (service-side canManage; Heimdall guards on writer).
 		// Initiative-scoped rather than identity-scoped, so they live outside /me.
@@ -253,7 +258,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
 			r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
 		}
-		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(initiativeWriterRoutes)
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), subjectBinding).Group(initiativeWriterRoutes)
 
 		// Per-entity lists for the Org/Project lens pages: all initiatives
 		// attributed to one parent, guarded at Heimdall on writer for that parent.
@@ -274,6 +279,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Route("/me", func(r chi.Router) {
 			r.Use(jwtAuth.Middleware)
 			r.Use(jwtAuth.RequireScope(auth.ScopeMe))
+			r.Use(subjectBinding)
 
 			// Profile sync — calls Auth0 UserInfo, writes to DB.
 			r.Patch("/", userH.SyncProfile)
@@ -327,7 +333,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// identity-scoped; the handler enforces its own approver allowlist check.
 		// TODO: when M2M approver tokens are issued, switch to RequireScope(auth.ScopeManage).
 		// For now all callers hold user tokens with access:me, so that scope is used.
-		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), subjectBinding).
 			Post("/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
 
 		// M2M routes — require a valid bearer token with access:manage scope.
@@ -342,7 +348,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// an email link and may hold a minimal token. Authorization is per report,
 		// in the handler: the caller's email must be one the RS sent the approval
 		// email to (initiative owner, or Travel Fund admin).
-		r.With(jwtAuth.Middleware).
+		r.With(jwtAuth.Middleware, subjectBinding).
 			Post("/expense/{action}/{reportId}", expenseH.ProcessAction)
 	}
 
