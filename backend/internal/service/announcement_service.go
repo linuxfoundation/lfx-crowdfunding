@@ -11,6 +11,7 @@ import (
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -22,6 +23,12 @@ type AnnouncementService struct {
 	repo           domain.AnnouncementRepository
 	initiativeRepo domain.InitiativeRepository
 	userRepo       domain.UserRepository
+	roleResolver   fga.EntityRoleResolver // nil → creator-only
+}
+
+// SetEntityRoleResolver wires the entity-writer access check in after construction.
+func (s *AnnouncementService) SetEntityRoleResolver(r fga.EntityRoleResolver) {
+	s.roleResolver = r
 }
 
 // NewAnnouncementService returns an AnnouncementService.
@@ -126,7 +133,7 @@ func (s *AnnouncementService) Update(ctx context.Context, initiativeID, announce
 		return nil, err
 	}
 
-	result, err := s.repo.Update(ctx, announcementID, initiativeID, input)
+	result, err := s.repo.Update(ctx, announcementID, initiativeID, callerUsername, input)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("update announcement: %w", err)
@@ -175,12 +182,12 @@ func (s *AnnouncementService) requireOwnership(ctx context.Context, initiativeID
 		return fmt.Errorf("get initiative: %w", err)
 	}
 
-	ok, err := canManage(ctx, caller.ID, initiative)
+	ok, err := canManage(ctx, s.roleResolver, caller, initiative)
 	if err != nil {
 		return fmt.Errorf("check access: %w", err)
 	}
 	if !ok {
-		return domain.ErrForbidden
+		return domain.ErrInitiativeNotFound
 	}
 	return nil
 }

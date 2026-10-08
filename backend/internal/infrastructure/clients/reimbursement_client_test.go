@@ -56,7 +56,7 @@ func TestProcessExpenseAction_404_mapsToNotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -71,7 +71,7 @@ func TestProcessExpenseAction_HTTPError_mapsToUpstreamUnavailable(t *testing.T) 
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -86,7 +86,7 @@ func TestProcessExpenseAction_NetworkError_mapsToUpstreamUnavailable(t *testing.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
 	srv.Close() // close before the request is made
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -101,7 +101,7 @@ func TestProcessExpenseAction_200_returnsNil(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil)
 	if err != nil {
 		t.Errorf("expected nil error on 200, got: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestProcessExpenseAction_M2M_AddsBearer(t *testing.T) {
 	}))
 	defer tokenSrv.Close()
 
-	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestProcessExpenseAction_M2M_CachesToken(t *testing.T) {
 
 	c := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL)
 	for i := range 3 {
-		if err := c.ProcessExpenseAction(context.Background(), "approve", "R-001"); err != nil {
+		if err := c.ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil); err != nil {
 			t.Fatalf("call %d: unexpected error: %v", i, err)
 		}
 	}
@@ -188,7 +188,7 @@ func TestProcessExpenseAction_M2M_TokenFetchFails_mapsToUpstreamUnavailable(t *t
 	}))
 	defer rsSrv.Close()
 
-	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil)
 	if err == nil {
 		t.Fatal("expected error when token fetch fails")
 	}
@@ -210,7 +210,7 @@ func TestProcessExpenseAction_M2M_EmptyAccessToken_errors(t *testing.T) {
 	}))
 	defer rsSrv.Close()
 
-	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001")
+	err := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil)
 	if err == nil {
 		t.Fatal("expected error when access_token is empty")
 	}
@@ -238,7 +238,7 @@ func TestProcessExpenseAction_M2M_ShortTTL_doesNotCacheExpired(t *testing.T) {
 	c := newRSClientM2M(t, rsSrv.URL, tokenSrv.URL)
 	// Two back-to-back calls — token should be cached (expiry is in the future).
 	for i := range 2 {
-		if err := c.ProcessExpenseAction(context.Background(), "approve", "R-001"); err != nil {
+		if err := c.ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil); err != nil {
 			t.Fatalf("call %d: unexpected error: %v", i, err)
 		}
 	}
@@ -276,5 +276,93 @@ func TestSyncPolicy_EscapesSlugInProjectURL(t *testing.T) {
 	want := "https://example.com/initiatives/x%2Fprocess-approval%2Fdecline%23"
 	if body.ProjectURL != want {
 		t.Errorf("ProjectURL = %q, want %q", body.ProjectURL, want)
+	}
+}
+
+func TestProcessExpenseAction_SendsActorInBody(t *testing.T) {
+	var got map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	actor := &models.Principal{Username: "jane", Email: "jane@example.org"}
+	if err := newRSClient(t, srv.URL).ProcessExpenseAction(context.Background(), "approve", "R-001", "", actor); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["actorEmail"] != "jane@example.org" || got["actorUsername"] != "jane" {
+		t.Errorf("expected actor in body, got %v", got)
+	}
+}
+
+func TestProcessExpenseAction_ForwardsTokenAsQuery(t *testing.T) {
+	var gotToken string
+	var hasToken bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.URL.Query().Get("token")
+		_, hasToken = r.URL.Query()["token"]
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newRSClient(t, srv.URL)
+	if err := c.ProcessExpenseAction(context.Background(), "approve", "R-001", "a.b+c=", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotToken != "a.b+c=" {
+		t.Errorf("token = %q, want %q", gotToken, "a.b+c=")
+	}
+
+	hasToken = false
+	if err := c.ProcessExpenseAction(context.Background(), "approve", "R-001", "", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hasToken {
+		t.Errorf("empty token must not be sent")
+	}
+}
+
+func TestGetExpenseApprovers_200_returnsEmails(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		_, _ = w.Write([]byte(`{"approverEmails":["owner@example.org","tf-admin@example.org"]}`))
+	}))
+	defer srv.Close()
+
+	emails, err := newRSClient(t, srv.URL).GetExpenseApprovers(context.Background(), "R-001")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodGet || gotPath != "/expense/R-001/approvers" {
+		t.Errorf("unexpected request %s %s", gotMethod, gotPath)
+	}
+	if len(emails) != 2 || emails[0] != "owner@example.org" || emails[1] != "tf-admin@example.org" {
+		t.Errorf("unexpected emails: %v", emails)
+	}
+}
+
+func TestGetExpenseApprovers_404_mapsToNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	_, err := newRSClient(t, srv.URL).GetExpenseApprovers(context.Background(), "R-001")
+	if !errors.Is(err, domain.ErrExpenseReportNotFound) {
+		t.Errorf("expected ErrExpenseReportNotFound, got: %v", err)
+	}
+}
+
+func TestGetExpenseApprovers_HTTPError_mapsToUpstreamUnavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	_, err := newRSClient(t, srv.URL).GetExpenseApprovers(context.Background(), "R-001")
+	if !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("expected ErrUpstreamUnavailable, got: %v", err)
 	}
 }

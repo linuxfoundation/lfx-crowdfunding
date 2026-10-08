@@ -515,8 +515,8 @@ func TestInitiativeService_Delete_NotOwned(t *testing.T) {
 	userRepo := &mockUserRepository{user: &models.User{ID: "owner-uuid"}}
 
 	err := newReadSvc(repo, userRepo).Delete(context.Background(), "init-1", "alice")
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Errorf("expected ErrForbidden, got %v", err)
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Errorf("expected ErrInitiativeNotFound, got %v", err)
 	}
 }
 

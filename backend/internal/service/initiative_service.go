@@ -51,6 +51,7 @@ type InitiativeService struct {
 	emailService  domain.EmailService
 	reimbursement clients.ReimbursementClient // nil when RS integration is disabled
 	fgaPublisher  *fga.Publisher              // nil when FGA_NATS_URL is unset
+	roleResolver  fga.EntityRoleResolver      // nil when FGA_NATS_URL is unset
 	logger        *slog.Logger
 }
 
@@ -58,6 +59,12 @@ type InitiativeService struct {
 // (lfx-crowdfunding#277). A setter rather than a constructor param — the
 // constructor is called from many existing tests that don't exercise FGA
 // emission; a nil publisher is valid and every emission call becomes a no-op.
+// SetEntityRoleResolver wires the entity-writer access check in after
+// construction. Left nil, canManage is creator-only.
+func (s *InitiativeService) SetEntityRoleResolver(r fga.EntityRoleResolver) {
+	s.roleResolver = r
+}
+
 func (s *InitiativeService) SetFGAPublisher(p *fga.Publisher) {
 	s.fgaPublisher = p
 }
@@ -265,7 +272,7 @@ func (s *InitiativeService) GetForUser(ctx context.Context, idOrSlug, callerUser
 		return nil, err
 	}
 
-	ok, err := canManage(ctx, caller.ID, initiative)
+	ok, err := canManage(ctx, s.roleResolver, caller, initiative)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -314,7 +321,7 @@ func (s *InitiativeService) ResolveOwnedInitiativeID(ctx context.Context, idOrSl
 		return "", err
 	}
 
-	ok, err := canManage(ctx, caller.ID, initiative)
+	ok, err := canManage(ctx, s.roleResolver, caller, initiative)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
@@ -612,13 +619,14 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		span.RecordError(err)
 		return nil, err
 	}
-	ok, err := canManage(ctx, caller.ID, existing)
+	ok, err := canManage(ctx, s.roleResolver, caller, existing)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 	if !ok {
-		return nil, domain.ErrForbidden
+		// Do not leak existence of initiatives the caller cannot manage.
+		return nil, domain.ErrInitiativeNotFound
 	}
 
 	if input.Name != nil {
@@ -764,6 +772,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		}
 	}
 
+	existing.UpdatedBy = callerUsername
 	updated, err := s.repo.Update(ctx, existing, input)
 	if err != nil {
 		span.RecordError(err)
@@ -772,11 +781,30 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	// Sync beneficiaries and policy with the Reimbursement Service.
 	// Non-fatal; only takes effect when the initiative is published.
 	s.syncReimbursementPolicy(ctx, updated)
-	// Covers both the published/hidden toggle and an attribution re-parent —
-	// caller.Username is the owner's username since existing.OwnerID == caller.ID
-	// was already enforced above.
-	s.syncFGAAccess(ctx, updated, caller.Username)
+	// Covers both the published/hidden toggle and an attribution re-parent.
+	// Publish the creator as owner, not the caller: a writer's edit must not
+	// overwrite the owner tuple (syncFGAAccess full-syncs it).
+	ownerUsername, err := s.ownerUsername(ctx, existing.OwnerID, caller)
+	if err != nil {
+		s.logger.WarnContext(ctx, "fga sync: skipped, owner lookup failed",
+			"initiative_id", updated.ID, "error", err)
+		return updated, nil
+	}
+	s.syncFGAAccess(ctx, updated, ownerUsername)
 	return updated, nil
+}
+
+// ownerUsername returns the username of the initiative's creator, avoiding a
+// lookup when the caller is the creator.
+func (s *InitiativeService) ownerUsername(ctx context.Context, ownerID string, caller *models.User) (string, error) {
+	if ownerID == caller.ID {
+		return caller.Username, nil
+	}
+	owner, err := s.userRepo.GetByID(ctx, ownerID)
+	if err != nil {
+		return "", err
+	}
+	return owner.Username, nil
 }
 
 // ProcessApproval updates an initiative's status based on the given approval action.
@@ -1369,13 +1397,13 @@ func (s *InitiativeService) Delete(ctx context.Context, id, callerUsername strin
 		span.RecordError(err)
 		return err
 	}
-	ok, err := canManage(ctx, caller.ID, existing)
+	ok, err := canManage(ctx, s.roleResolver, caller, existing)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
 	if !ok {
-		return domain.ErrForbidden
+		return domain.ErrInitiativeNotFound
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		span.RecordError(err)

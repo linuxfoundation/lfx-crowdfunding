@@ -42,6 +42,7 @@ import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import useToastService from '~/components/uikit/toast/toast.service';
 import { ToastTypesEnum } from '~/components/uikit/toast/types/toast.types';
 import { getExpenseAction } from '~/components/modules/expense-email/config/expense-action.config';
+import { whenProfileSynced } from '~/composables/useAuth';
 
 // Require authentication — if the user is not logged in they will be redirected
 // to Auth0 and returned here after login.
@@ -57,6 +58,8 @@ const action = route.params.action as string;
 const reportId = route.params.reportId as string;
 const config = getExpenseAction(action);
 const submitting = ref(false);
+// Signed token from the emailed link; forwarded as-is for the Reimbursement Service to verify.
+const token = typeof route.query.token === 'string' ? route.query.token : undefined;
 
 // Loading this page must never change state; the POST only fires from an explicit click.
 onMounted(async () => {
@@ -71,8 +74,12 @@ const confirm = async () => {
   submitting.value = true;
 
   try {
+    // First-time approvers: the backend authorizes against the users row written by the
+    // post-login profile sync, so wait for it before submitting.
+    await whenProfileSynced();
     await $fetch(`/api/expense-email/${encodeURIComponent(action)}/${encodeURIComponent(reportId)}`, {
       method: 'POST',
+      query: token ? { token } : undefined,
     });
     showToast(`The expense report has been ${config.past}.`, ToastTypesEnum.positive);
   } catch {

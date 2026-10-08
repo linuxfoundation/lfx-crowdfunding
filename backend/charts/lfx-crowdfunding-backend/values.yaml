@@ -40,6 +40,16 @@ service:
   port: 80
   targetPort: 8080
 
+# Restricts ingress to the pod so only the gateway can reach it; Heimdall's
+# RuleSet is then the only way in, which is what lets services drop their own
+# access checks. Off by default: every env must list its peers (the Traefik
+# pods, plus anything else that calls this ClusterIP directly) in
+# lfx-v2-argocd values before enabling. The chart fails if enabled with no peers.
+networkPolicy:
+  enabled: false
+  ingress:
+    from: []
+
 ingress:
   # Must be disabled before/at the same time heimdall.enabled is flipped to
   # true (in lfx-v2-argocd values) — otherwise the backend stays reachable

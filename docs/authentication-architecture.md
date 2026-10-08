@@ -150,15 +150,17 @@ sequenceDiagram
     BFF->>BFF: validate state == auth_pkce cookie
     BFF->>Auth0: authorizationCodeGrant<br/>client_id, client_secret (confidential),<br/>code, code_verifier
     Auth0->>BFF: access token + refresh token + id token
-    BFF->>User: Set-Cookie: auth_oidc_token (access token, HTTP-only)<br/>Set-Cookie: auth_refresh_token (30-day, HTTP-only)<br/>Set-Cookie: auth_user_profile (display claims only, unsigned)<br/>Redirect → app
+    BFF->>User: Set-Cookie: auth_oidc_token (access token, HTTP-only)<br/>Set-Cookie: auth_refresh_token (30-day, HTTP-only)<br/>Set-Cookie: auth_user_profile (display claims only, encrypted)<br/>Redirect → app
 ```
 
 Cookie details:
 - `auth_oidc_token` — the Auth0 access token (`access:me` scope) forwarded to the CF Go API as a Bearer token
 - `auth_refresh_token` — used to silently refresh; 30-day TTL
-- `auth_user_profile` — base64 JSON of display claims (name, email, username); **unsigned, for display only, never for authorization**
-- All cookies: `httpOnly: true`, `secure` (non-local), `sameSite: lax`
-- **Target requirement:** the token cookies (`auth_oidc_token`, `auth_refresh_token`) should be **encrypted at rest** rather than storing the raw token. Not yet implemented.
+- `auth_user_profile` — base64 JSON of display claims (name, email, username), encrypted like the token cookies; **for display only, never for authorization**
+- All cookies: `httpOnly: true`, `secure` (non-local), `sameSite: lax`, and **host-only** (no `Domain` attribute), so they are never sent to sibling hosts under a shared parent domain
+- The token and profile cookies are **AES-256-GCM encrypted** (`v1.` prefix, key derived with HKDF from `NUXT_AUTH0_CLIENT_SECRET`) by `server/utils/auth-cookies.ts`. A leaked cookie value cannot be used directly as a Bearer token; the BFF decrypts it before forwarding. Plaintext or tampered cookies are treated as logged out. Rotating the client secret logs everyone out.
+- Cookies previously issued with `Domain=NUXT_AUTH0_COOKIE_DOMAIN` are expired on the next request by `server/middleware/clear-legacy-auth-cookies.ts` while that variable is set. Once expired, a host-only `auth_legacy_cleared` marker cookie (30-day) stops the cleanup from repeating. Remove the variable and the middleware once 30 days have passed since rollout.
+- Limitation: the cookie is still a bearer credential for the BFF. A party that obtains an encrypted cookie value and can send it to the crowdfunding host itself could still replay it. Closing that needs a server-side session store.
 
 ### 1.3 Authenticated API Call
 
@@ -455,7 +457,7 @@ rather than the LFX secrets-distribution pipeline.
 | `NUXT_PUBLIC_AUTH0_AUDIENCE` | Token audience (e.g. `https://crowdfunding-api.staging.lfx.dev`) |
 | `NUXT_PUBLIC_AUTH0_REDIRECT_URI` | OAuth2 callback URL |
 | `NUXT_API_BASE_URL` | CF Go API base URL (server-internal, default `http://localhost:8080`) |
-| `NUXT_AUTH0_COOKIE_DOMAIN` | Cookie domain scope for the auth cookies (required in production) |
+| `NUXT_AUTH0_COOKIE_DOMAIN` | Legacy, optional. Auth cookies are host-only; when set, old cookies scoped to this parent domain are expired. Leave unset for new deployments |
 
 ### LFX Self Serve (Express BFF)
 

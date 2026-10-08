@@ -921,6 +921,21 @@ func TestUpdate_ChildInputPassedToRepo(t *testing.T) {
 	}
 }
 
+func TestUpdate_StampsUpdatedBy(t *testing.T) {
+	repo := &mockInitiativeRepo{
+		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
+	}
+	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1",
+		models.InitiativeUpdateInput{},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastUpdated.UpdatedBy != "owner-1" {
+		t.Errorf("repo received UpdatedBy = %q, want owner-1", repo.lastUpdated.UpdatedBy)
+	}
+}
+
 func TestUpdate_NilChildFieldsAreNoOp(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
@@ -962,15 +977,15 @@ func TestUpdate_UnchangedLegacySlugAllowed(t *testing.T) {
 	}
 }
 
-func TestUpdate_ForbiddenForNonOwner(t *testing.T) {
+func TestUpdate_NotFoundForNonOwner(t *testing.T) {
 	repo := &mockInitiativeRepo{
 		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
 	}
 	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "other-user",
 		models.InitiativeUpdateInput{},
 	)
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("expected ErrForbidden, got %v", err)
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Fatalf("expected ErrInitiativeNotFound, got %v", err)
 	}
 }
 
@@ -1166,6 +1181,18 @@ func TestProcessApproval_SetsStatusPublished(t *testing.T) {
 	}
 	if repo.lastUpdated == nil || repo.lastUpdated.Status != models.StatusPublished {
 		t.Error("repo.Update was not called with the correct status")
+	}
+}
+
+func TestProcessApproval_DoesNotSetUpdatedBy(t *testing.T) {
+	// Approval has no editor identity; the repo's COALESCE keeps the prior updated_by
+	// only if the service passes it empty rather than a stale/foreign value.
+	repo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", Status: models.StatusSubmitted}}
+	if _, err := newProcessApprovalSvc(repo).ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastUpdated.UpdatedBy != "" {
+		t.Errorf("UpdatedBy = %q, want empty on approval", repo.lastUpdated.UpdatedBy)
 	}
 }
 
