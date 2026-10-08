@@ -245,6 +245,7 @@ func (r *InitiativeRepository) ListForFGABackfill(ctx context.Context) ([]fga.In
 		if attrUID != nil {
 			access.Attribution.EntityUID = *attrUID
 		}
+		access.Attribution = access.Attribution.Canonical()
 		access.Published = strings.EqualFold(string(status), string(models.StatusPublished))
 		results = append(results, access)
 	}
@@ -277,6 +278,11 @@ func (r *InitiativeRepository) List(ctx context.Context, filter models.Initiativ
 		where += fmt.Sprintf(" AND i.owner_id = $%d", argN)
 		args = append(args, filter.OwnerID)
 		argN++
+	}
+	if filter.AttributedToUID != "" {
+		where += fmt.Sprintf(" AND i.attributed_to_type = $%d AND i.attributed_to_uid = $%d", argN, argN+1)
+		args = append(args, string(filter.AttributedToType), filter.AttributedToUID)
+		argN += 2
 	}
 	if filter.InitiativeType != "" {
 		where += fmt.Sprintf(" AND i.initiative_type = $%d", argN)
@@ -1427,7 +1433,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	i.Attribution = models.Attribution{
 		Type:      models.AttributionType(attributedToType),
 		EntityUID: derefString(attributedToUID),
-	}
+	}.Canonical()
 	i.BenefitProjectUID = derefString(benefitProjectUID)
 	if acceptFunding != nil {
 		i.AcceptFunding = *acceptFunding

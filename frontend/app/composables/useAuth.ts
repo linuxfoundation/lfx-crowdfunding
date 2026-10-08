@@ -36,6 +36,14 @@ export const setRefreshAuth = (fn: () => Promise<unknown>) => {
   refreshAuthFn = fn;
 };
 
+// Resolves once the post-login profile sync (PATCH /api/me) has settled. Pages whose
+// backend calls depend on the synced users row await this before submitting.
+let profileSynced: Promise<void> = Promise.resolve();
+export const setProfileSynced = (p: Promise<void>) => {
+  profileSynced = p;
+};
+export const whenProfileSynced = () => profileSynced;
+
 export const login = async (redirectTo?: string) => {
   isAuthLoading.value = true;
   try {

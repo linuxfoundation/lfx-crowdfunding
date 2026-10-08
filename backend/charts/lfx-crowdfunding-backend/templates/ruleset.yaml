@@ -66,8 +66,8 @@ spec:
           - path: /crowdfunding/statistics/recent-donations
           - path: /crowdfunding/statistics/investing-companies
           - path: /crowdfunding/initiatives
-          - path: /crowdfunding/initiatives/:*/transactions
-          - path: /crowdfunding/initiatives/:*/announcements
+          - path: /crowdfunding/initiatives/:id/transactions
+          - path: /crowdfunding/initiatives/:id/announcements
       execute:
         - authenticator: oidc
         - authenticator: anonymous_authenticator
@@ -91,7 +91,7 @@ spec:
     # team check further down. No path capture needed — static object.
     #
     # Without this rule, published-list (a single path segment) would fall
-    # into the initiative-detail wildcard below (/crowdfunding/initiatives/:*) and
+    # into the initiative-detail wildcard below (/crowdfunding/initiatives/:id) and
     # become public; owner-info falls through to default_rule (deny_all in
     # staging/prod) instead.
     #
@@ -109,7 +109,7 @@ spec:
         methods:
           - GET
         routes:
-          - path: /crowdfunding/initiatives/:*/owner-info
+          - path: /crowdfunding/initiatives/:id/owner-info
           - path: /crowdfunding/initiatives/published-list
       execute:
         - authenticator: oidc
@@ -136,7 +136,7 @@ spec:
         methods:
           - GET
         routes:
-          - path: /crowdfunding/initiatives/:*
+          - path: /crowdfunding/initiatives/:id
       execute:
         - authenticator: oidc
         - authenticator: anonymous_authenticator
@@ -260,9 +260,12 @@ spec:
             values:
               aud: {{ .Values.app.audience }}
 
-    # Mutations on a specific owned initiative — UUID-only in practice (no
+    # Mutations on a specific initiative — UUID-only in practice (no
     # frontend or self-serve caller sends a slug here), so this is the route
     # that gets a real per-object openfga_check once openfga.enabled.
+    # /crowdfunding/initiatives/:id is the canonical path (initiative-scoped, writer-
+    # guarded); /crowdfunding/me/initiatives/:id is a deprecated alias until Self
+    # Serve migrates. A denial is a 403 here; the service-side check still 404s.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-write"
       allow_encoded_slashes: "off"
       match:
@@ -271,6 +274,7 @@ spec:
           - DELETE
         routes:
           - path: /crowdfunding/me/initiatives/:id
+          - path: /crowdfunding/initiatives/:id
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -291,6 +295,58 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
+    # Per-entity initiative lists for the Org/Project lens pages: every initiative
+    # attributed to one parent, guarded on writer for that parent. A denial is a 403.
+    - id: "rule:lfx:lfx-crowdfunding-backend:org-initiatives-list"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /crowdfunding/organizations/:uid/initiatives
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        # Always enforced, even when openfga.enabled is false: this list exposes
+        # unpublished initiatives, so it must never fall back to allow_all.
+        - authorizer: openfga_check
+          config:
+            values:
+              relation: writer
+              object: "b2b_org:{{ "{{- .Request.URL.Captures.uid -}}" }}"
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
+    - id: "rule:lfx:lfx-crowdfunding-backend:project-initiatives-list"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /crowdfunding/projects/:uid/initiatives
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        # Always enforced, even when openfga.enabled is false: this list exposes
+        # unpublished initiatives, so it must never fall back to allow_all.
+        - authorizer: openfga_check
+          config:
+            values:
+              relation: writer_guard
+              object: "project:{{ "{{- .Request.URL.Captures.uid | lower -}}" }}"
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
     # Announcement create — POST /crowdfunding/me/initiatives/:id/announcements.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-announcement-create"
       allow_encoded_slashes: "off"
@@ -299,6 +355,7 @@ spec:
           - POST
         routes:
           - path: /crowdfunding/me/initiatives/:id/announcements
+          - path: /crowdfunding/initiatives/:id/announcements
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -329,6 +386,7 @@ spec:
           - DELETE
         routes:
           - path: /crowdfunding/me/initiatives/:id/announcements/:announcementId
+          - path: /crowdfunding/initiatives/:id/announcements/:announcementId
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -417,7 +475,7 @@ spec:
         methods:
           - POST
         routes:
-          - path: /crowdfunding/initiatives/:*/process-approval/:*
+          - path: /crowdfunding/initiatives/:id/process-approval/:*
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
@@ -438,13 +496,12 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Expense actions — authenticated, no scope check today. reportId is an
-    # Expensify report id, not an FGA object. Pre-existing gap, not
-    # introduced by this PR: ExpenseHandler.ProcessAction never checks that
-    # the caller's principal is tied to the report/initiative being
-    # approved/rejected — any authenticated LF user can act on any report ID.
-    # Onboarding to Heimdall ratifies this as the gateway contract rather
-    # than leaving it an internal TODO. Tracked in #283.
+    # Expense actions — authenticated, no scope check. reportId is an
+    # Expensify report id, not an FGA object, so there is nothing for the
+    # gateway to check it against. Per-report authorization is enforced in
+    # ExpenseHandler.ProcessAction: the caller's email must be one the
+    # Reimbursement Service sent the approval email to (Heimdall tokens carry
+    # no email, so it is read from the caller's user row). Tracked in #283.
     - id: "rule:lfx:lfx-crowdfunding-backend:expense"
       allow_encoded_slashes: "off"
       match:

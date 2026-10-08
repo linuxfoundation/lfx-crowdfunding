@@ -12,6 +12,7 @@ vi.mock('h3', async (importOriginal) => {
     ...actual,
     defineEventHandler: (fn: unknown) => fn,
     getRouterParam: vi.fn(),
+    getQuery: vi.fn().mockReturnValue({}),
     createError: vi.fn().mockImplementation((input: unknown) => {
       const opts = input as { statusCode: number; statusMessage?: string };
       return Object.assign(new Error(opts.statusMessage ?? 'error'), {
@@ -30,6 +31,7 @@ import * as backendFetchModule from '../../../utils/backend-fetch';
 import handler from './[reportId].post';
 
 const mockGetRouterParam = vi.mocked(h3.getRouterParam);
+const mockGetQuery = vi.mocked(h3.getQuery);
 const mockCreateError = vi.mocked(h3.createError);
 const mockUseBackendFetch = vi.mocked(backendFetchModule.useBackendFetch);
 
@@ -46,6 +48,7 @@ const setupParams = (action: string, reportId: string) => {
 describe('POST /api/expense-email/:action/:reportId BFF handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetQuery.mockReturnValue({});
     mockCreateError.mockImplementation((input: unknown) => {
       const opts = input as { statusCode: number; statusMessage?: string };
       return Object.assign(new Error(opts.statusMessage ?? 'error'), {
@@ -83,6 +86,20 @@ describe('POST /api/expense-email/:action/:reportId BFF handler', () => {
         {
           method: 'POST',
         },
+      );
+    });
+
+    it('forwards the emailed ?token= to the backend', async () => {
+      setupParams('approve', 'R-001');
+      mockGetQuery.mockReturnValue({ token: 'signed.tok' });
+      mockUseBackendFetch.mockResolvedValue(undefined);
+
+      await (handler as (e: unknown) => Promise<void>)(mockEvent);
+
+      expect(mockUseBackendFetch).toHaveBeenCalledWith(
+        mockEvent,
+        '/crowdfunding/expense/approve/R-001',
+        { method: 'POST', query: { token: 'signed.tok' } },
       );
     });
 

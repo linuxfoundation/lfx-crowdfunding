@@ -85,47 +85,61 @@ func NewNATSResolver(conn *nats.Conn, timeout time.Duration) *NATSResolver {
 // entityTypePrefix maps CF's attribution type to the OpenFGA object-type
 // prefix used in tuple strings. b2b_org is member-service's object type for
 // canonical platform organizations (fga-sync-contract.md); project is
-// project-service's.
-func entityTypePrefix(attrType models.AttributionType) (string, error) {
+// project-service's. The relation matches what the gateway checks: projects
+// use the *_guard relations (writer_guard, auditor_guard, which include the
+// global_writer/global_auditor holders), so global holders pass here exactly as
+// they do at Heimdall; b2b_org has no guard relations. guard is the suffix to
+// append to a base relation (writer, auditor).
+func entityTypePrefix(attrType models.AttributionType) (prefix, guard string, err error) {
 	switch attrType {
 	case models.AttributionOrganization:
-		return "b2b_org", nil
+		return "b2b_org", "", nil
 	case models.AttributionProject:
-		return "project", nil
+		return "project", "_guard", nil
 	default:
-		return "", fmt.Errorf("access check requires organization or project attribution, got %q", attrType)
+		return "", "", fmt.Errorf("access check requires organization or project attribution, got %q", attrType)
 	}
 }
 
 // CanManage implements EntityRoleResolver.
 func (r *NATSResolver) CanManage(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error) {
-	prefix, err := entityTypePrefix(attrType)
+	prefix, guard, err := entityTypePrefix(attrType)
 	if err != nil {
 		return false, err
 	}
-	request := fmt.Sprintf("%s:%s#writer@user:%s", prefix, entityUID, username)
+	request := fmt.Sprintf("%s:%s#%s@user:%s", prefix, entityUID, "writer"+guard, username)
+	results, err := r.checks(ctx, request)
+	if err != nil {
+		return false, err
+	}
+	return results[request], nil
+}
 
+// checks sends one batched lfx.access_check.request and returns the result for
+// every token. Transport, parse and missing-result failures wrap
+// domain.ErrUpstreamUnavailable.
+func (r *NATSResolver) checks(ctx context.Context, requests ...string) (map[string]bool, error) {
 	if r.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, r.timeout)
 		defer cancel()
 	}
 
-	msg, err := r.conn.RequestWithContext(ctx, AccessCheckSubject, []byte(request))
+	msg, err := r.conn.RequestWithContext(ctx, AccessCheckSubject, []byte(strings.Join(requests, "\n")))
 	if err != nil {
-		return false, fmt.Errorf("%w: access check request: %w", domain.ErrUpstreamUnavailable, err)
+		return nil, fmt.Errorf("%w: access check request: %w", domain.ErrUpstreamUnavailable, err)
 	}
 
 	results, err := parseAccessCheckReply(msg.Data)
 	if err != nil {
-		return false, fmt.Errorf("%w: %w", domain.ErrUpstreamUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrUpstreamUnavailable, err)
 	}
-
-	allowed, ok := results[request]
-	if !ok {
-		return false, fmt.Errorf("%w: access check returned no result for %q", domain.ErrUpstreamUnavailable, request)
+	for _, req := range requests {
+		if _, ok := results[req]; !ok {
+			return nil, fmt.Errorf("%w: access check returned no result for %q", domain.ErrUpstreamUnavailable, req)
+		}
 	}
-	return allowed, nil
+	return results, nil
 }
 
 // parseAccessCheckReply parses a lfx.access_check.request reply: one line per
@@ -153,4 +167,30 @@ func parseAccessCheckReply(data []byte) (map[string]bool, error) {
 		}
 	}
 	return results, nil
+}
+
+// EntityAffiliationChecker answers "may this user attribute an initiative to
+// this entity?" (lfx-crowdfunding#259). It mirrors Self Serve's lens view gate:
+// a full FGA auditor check, so team grants and the b2b_org/project
+// parent/child cascade count (lf-staff holds auditor via the model, so staff
+// pass without an app-side persona check). Managing the initiative afterwards
+// still needs writer (EntityRoleResolver).
+type EntityAffiliationChecker interface {
+	IsAffiliated(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error)
+}
+
+// IsAffiliated implements EntityAffiliationChecker with one access check.
+// Like CanManage, a transport failure wraps domain.ErrUpstreamUnavailable and
+// is never turned into false.
+func (r *NATSResolver) IsAffiliated(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error) {
+	prefix, guard, err := entityTypePrefix(attrType)
+	if err != nil {
+		return false, err
+	}
+	auditor := fmt.Sprintf("%s:%s#%s@user:%s", prefix, entityUID, "auditor"+guard, username)
+	results, err := r.checks(ctx, auditor)
+	if err != nil {
+		return false, err
+	}
+	return results[auditor], nil
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/handler"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -107,8 +108,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	}
 
 	// fga-sync NATS connection — optional; nil when FGA_NATS_URL is unset.
-	// Shared by fga.NewNATSResolver (access-check request/reply, unused on
-	// any request path yet — M2) and fga.NewPublisher (crowdfunding_initiative
+	// Shared by fga.NewNATSResolver (access-check request/reply for entity-writer
+	// point checks, lfx-v2-crowdfunding#259) and fga.NewPublisher (crowdfunding_initiative
 	// tuple emission, lfx-crowdfunding#277) below.
 	//
 	// RetryOnFailedConnect: a transient fga-sync/NATS outage must not fail API
@@ -127,15 +128,22 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
+	var roleResolver fga.EntityRoleResolver
 	if fgaConn != nil {
 		initiativeSvc.SetFGAPublisher(fga.NewPublisher(fgaConn))
+		roleResolver = fga.NewNATSResolver(fgaConn, cfg.FGA.Timeout)
+		initiativeSvc.SetEntityRoleResolver(roleResolver)
 	}
+	initiativeSvc.SetSubscriptionRepo(subscriptionRepo)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 	orgSvc := service.NewOrganizationService(orgRepo, userRepo)
 	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)
+	if roleResolver != nil {
+		announcementSvc.SetEntityRoleResolver(roleResolver)
+	}
 
 	// JWT authenticator
 	jwtAuth, err := auth.NewJWTAuthenticator(ctx, auth.JWTAuthConfig{
@@ -167,7 +175,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, ledgerClient, donationRepo, subscriptionRepo, emailSvc, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 	uploadH := handler.NewUploadHandler(s3Client)
-	expenseH := handler.NewExpenseHandler(reimbursementClient)
+	expenseH := handler.NewExpenseHandler(reimbursementClient, userRepo)
 	orgH := handler.NewOrganizationHandler(orgSvc)
 	announcementH := handler.NewAnnouncementHandler(announcementSvc)
 
@@ -224,12 +232,32 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.Get("/statistics/recent-donations", statisticsH.GetRecentDonations)
 		r.Get("/statistics/investing-companies", statisticsH.GetInvestingCompanies)
 		r.Get("/initiatives", initiativeH.List)
-		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
 		r.Get("/initiatives/{id}/announcements", announcementH.List)
 
 		// Initiative detail — public for published initiatives; approvers may also
 		// view non-published initiatives if a valid token is supplied.
 		r.With(jwtAuth.OptionalMiddleware).Get("/initiatives/{id}", initiativeH.GetByID)
+		r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactions)
+
+		// Writer mutations on a specific initiative: creator or a writer on its
+		// attributed entity (service-side canManage; Heimdall guards on writer).
+		// Initiative-scoped rather than identity-scoped, so they live outside /me.
+		// The /me aliases below stay until Self Serve migrates.
+		initiativeWriterRoutes := func(r chi.Router) {
+			r.Patch("/initiatives/{id}", initiativeH.Update)
+			r.Delete("/initiatives/{id}", initiativeH.Delete)
+			r.Post("/initiatives/{id}/announcements", announcementH.Create)
+			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
+			r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
+		}
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(initiativeWriterRoutes)
+
+		// Per-entity lists for the Org/Project lens pages: all initiatives
+		// attributed to one parent, guarded at Heimdall on writer for that parent.
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(func(r chi.Router) {
+			r.Get("/organizations/{uid}/initiatives", initiativeH.ListByAttribution(models.AttributionOrganization))
+			r.Get("/projects/{uid}/initiatives", initiativeH.ListByAttribution(models.AttributionProject))
+		})
 
 		// Slug-to-UID resolver — requires a valid bearer token (any scope); no
 		// specific scope is enforced because it's called via Heimdall's
@@ -316,8 +344,10 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			Get("/initiatives/published-list", initiativeH.ListPublished)
 
 		// Expense action — proxies action to the Reimbursement Service.
-		// Requires a valid bearer token (any scope); no specific scope is enforced
-		// because the caller arrives via an email link and may hold a minimal token.
+		// Requires a valid bearer token (any scope) because the caller arrives via
+		// an email link and may hold a minimal token. Authorization is per report,
+		// in the handler: the caller's email must be one the RS sent the approval
+		// email to (initiative owner, or Travel Fund admin).
 		r.With(jwtAuth.Middleware, subjectBinding).
 			Post("/expense/{action}/{reportId}", expenseH.ProcessAction)
 	}

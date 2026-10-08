@@ -25,6 +25,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/errgroup"
 )
 
 var initiativeSvcTracer = otel.Tracer("initiatives-service")
@@ -51,6 +52,9 @@ type InitiativeService struct {
 	emailService  domain.EmailService
 	reimbursement clients.ReimbursementClient // nil when RS integration is disabled
 	fgaPublisher  *fga.Publisher              // nil when FGA_NATS_URL is unset
+	affiliation   fga.EntityAffiliationChecker
+	roleResolver  fga.EntityRoleResolver        // nil when FGA_NATS_URL is unset
+	subRepo       domain.SubscriptionRepository // nil in tests that don't exercise cancellation
 	logger        *slog.Logger
 }
 
@@ -58,8 +62,47 @@ type InitiativeService struct {
 // (lfx-crowdfunding#277). A setter rather than a constructor param — the
 // constructor is called from many existing tests that don't exercise FGA
 // emission; a nil publisher is valid and every emission call becomes a no-op.
+// SetEntityRoleResolver wires the entity-writer access check in after
+// construction. Left nil, canManage is creator-only.
+func (s *InitiativeService) SetEntityRoleResolver(r fga.EntityRoleResolver) {
+	s.roleResolver = r
+	// The NATS resolver also answers affiliation; resolvers that can't leave
+	// the attribution check off, like a nil resolver.
+	s.affiliation, _ = r.(fga.EntityAffiliationChecker)
+}
+
+// checkAffiliated enforces that the caller may attribute to a non-personal
+// target: FGA auditor on it (teams and parent/child count; 403 otherwise,
+// 503 on outage). With no checker wired
+// (FGA_NATS_URL unset) it fails closed with 403.
+func (s *InitiativeService) checkAffiliated(ctx context.Context, username string, a models.Attribution) error {
+	if a.Type != models.AttributionOrganization && a.Type != models.AttributionProject {
+		return nil
+	}
+	if s.affiliation == nil {
+		// Fail closed: without a resolver we cannot verify affiliation.
+		return fmt.Errorf("%w: cannot verify affiliation with that %s", domain.ErrForbidden, a.Type)
+	}
+	ok, err := s.affiliation.IsAffiliated(ctx, a.Type, a.EntityUID, username)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: you are not affiliated with that %s", domain.ErrForbidden, a.Type)
+	}
+	return nil
+}
+
 func (s *InitiativeService) SetFGAPublisher(p *fga.Publisher) {
 	s.fgaPublisher = p
+}
+
+// SetSubscriptionRepo wires the subscription repository used to cancel an
+// initiative's recurring subscriptions when it is declined or hidden. A setter
+// for the same reason as SetFGAPublisher: many tests construct the service
+// without it.
+func (s *InitiativeService) SetSubscriptionRepo(r domain.SubscriptionRepository) {
+	s.subRepo = r
 }
 
 // NewInitiativeService returns an InitiativeService.
@@ -265,7 +308,7 @@ func (s *InitiativeService) GetForUser(ctx context.Context, idOrSlug, callerUser
 		return nil, err
 	}
 
-	ok, err := canManage(ctx, caller.ID, initiative)
+	ok, err := canManage(ctx, s.roleResolver, caller, initiative)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -314,7 +357,7 @@ func (s *InitiativeService) ResolveOwnedInitiativeID(ctx context.Context, idOrSl
 		return "", err
 	}
 
-	ok, err := canManage(ctx, caller.ID, initiative)
+	ok, err := canManage(ctx, s.roleResolver, caller, initiative)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
@@ -490,10 +533,8 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	}
 
 	// Validate and default attribution (LFXV2-2956 M1). Omitting attribution
-	// defaults to personal — today's behavior. Shape-only validation; the
-	// affiliation check against the caller's real orgs/projects is blocked
-	// on the platform enumeration decision (design doc open question 4) and
-	// is out of scope here.
+	// defaults to personal — today's behavior. The caller must be
+	// affiliated with a non-personal target (checkAffiliated below).
 	attribution := models.Attribution{Type: models.AttributionPersonal}
 	if input.Attribution != nil {
 		attribution = *input.Attribution
@@ -521,6 +562,12 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		}
 		span.RecordError(err)
 		return nil, fmt.Errorf("get owner: %w", err)
+	}
+
+	// After the owner lookup so an unknown caller gets 403 without an FGA call
+	// (and a resolver outage can't turn that into a 503).
+	if err := s.checkAffiliated(ctx, owner.Username, attribution); err != nil {
+		return nil, err
 	}
 
 	// Create the Stripe Product first. If Stripe is unavailable, the whole
@@ -612,15 +659,17 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		span.RecordError(err)
 		return nil, err
 	}
-	ok, err := canManage(ctx, caller.ID, existing)
+	ok, err := canManage(ctx, s.roleResolver, caller, existing)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 	if !ok {
-		return nil, domain.ErrForbidden
+		// Do not leak existence of initiatives the caller cannot manage.
+		return nil, domain.ErrInitiativeNotFound
 	}
 
+	cancelSubs := false
 	if input.Name != nil {
 		existing.Name = *input.Name
 	}
@@ -637,6 +686,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 			return nil, err
 		}
 		existing.Status = *input.Status
+		cancelSubs = existing.Status.EqualFold(models.StatusDeclined) || existing.Status.EqualFold(models.StatusHidden)
 	}
 	if input.Description != nil {
 		if utf8.RuneCountInString(*input.Description) > 1500 {
@@ -665,12 +715,23 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	if input.CiiProjectID != nil {
 		existing.CiiProjectID = *input.CiiProjectID
 	}
-	// Attribution is validated but not yet gated by an entity-writer check
-	// (M2). Update is already creator-gated above, which is sufficient while
-	// an initiative has exactly one manager (design §2.2).
+	// Changing attribution is creator-only (lfx-crowdfunding#259, design §2.2):
+	// writers can edit content but not move the initiative, so an initiative
+	// stays with its creator if they leave the entity. Resubmitting the current
+	// attribution is not a change.
 	if input.Attribution != nil {
 		if err := input.Attribution.Validate(); err != nil {
 			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+		}
+		// Both sides are canonical: Validate above, and repository reads.
+		changed := *input.Attribution != existing.Attribution
+		if changed && existing.OwnerID != caller.ID {
+			return nil, fmt.Errorf("%w: only the creator can change attribution", domain.ErrForbidden)
+		}
+		if changed {
+			if err := s.checkAffiliated(ctx, caller.Username, *input.Attribution); err != nil {
+				return nil, err
+			}
 		}
 		existing.Attribution = *input.Attribution
 	}
@@ -765,6 +826,15 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	}
 
 	existing.UpdatedBy = callerUsername
+	// Cancel before the status write: a failure aborts the change so it can be
+	// retried (cancellation is idempotent), instead of leaving donors billed.
+	if cancelSubs {
+		if err := s.cancelInitiativeSubscriptions(ctx, id); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+	}
+
 	updated, err := s.repo.Update(ctx, existing, input)
 	if err != nil {
 		span.RecordError(err)
@@ -773,11 +843,30 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	// Sync beneficiaries and policy with the Reimbursement Service.
 	// Non-fatal; only takes effect when the initiative is published.
 	s.syncReimbursementPolicy(ctx, updated)
-	// Covers both the published/hidden toggle and an attribution re-parent —
-	// caller.Username is the owner's username since existing.OwnerID == caller.ID
-	// was already enforced above.
-	s.syncFGAAccess(ctx, updated, caller.Username)
+	// Covers both the published/hidden toggle and an attribution re-parent.
+	// Publish the creator as owner, not the caller: a writer's edit must not
+	// overwrite the owner tuple (syncFGAAccess full-syncs it).
+	ownerUsername, err := s.ownerUsername(ctx, existing.OwnerID, caller)
+	if err != nil {
+		s.logger.WarnContext(ctx, "fga sync: skipped, owner lookup failed",
+			"initiative_id", updated.ID, "error", err)
+		return updated, nil
+	}
+	s.syncFGAAccess(ctx, updated, ownerUsername)
 	return updated, nil
+}
+
+// ownerUsername returns the username of the initiative's creator, avoiding a
+// lookup when the caller is the creator.
+func (s *InitiativeService) ownerUsername(ctx context.Context, ownerID string, caller *models.User) (string, error) {
+	if ownerID == caller.ID {
+		return caller.Username, nil
+	}
+	owner, err := s.userRepo.GetByID(ctx, ownerID)
+	if err != nil {
+		return "", err
+	}
+	return owner.Username, nil
 }
 
 // ProcessApproval updates an initiative's status based on the given approval action.
@@ -810,6 +899,10 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	case models.ApprovalActionApprove:
 		initiative.Status = models.StatusPublished
 	case models.ApprovalActionDecline:
+		if err := s.cancelInitiativeSubscriptions(ctx, initiativeID); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
 		initiative.Status = models.StatusDeclined
 	}
 
@@ -860,6 +953,57 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 		s.syncReimbursementPolicy(ctx, processed)
 	}
 	return processed, nil
+}
+
+// cancelSubscriptionConcurrency bounds in-flight Stripe cancellations per page.
+const cancelSubscriptionConcurrency = 8
+
+// cancelInitiativeSubscriptions cancels every non-canceled subscription on the
+// initiative in Stripe and marks it canceled locally. Idempotent: a subscription
+// already gone from Stripe (missing, or terminal such as incomplete_expired) is
+// just marked canceled.
+func (s *InitiativeService) cancelInitiativeSubscriptions(ctx context.Context, initiativeID string) error {
+	if s.subRepo == nil {
+		return nil
+	}
+	// Page through everything; cancelled rows stay in the list (no status filter)
+	// so offsets don't shift while we update.
+	for offset := 0; ; offset += 100 {
+		subs, _, err := s.subRepo.ListByInitiative(ctx, initiativeID, models.SubscriptionFilter{Limit: 100, Offset: offset})
+		if err != nil {
+			return fmt.Errorf("list subscriptions: %w", err)
+		}
+		// Bounded parallelism: sequential Stripe + DB round trips for a full page
+		// can outlast the request deadline.
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(cancelSubscriptionConcurrency)
+		for i := range subs {
+			sub := subs[i]
+			if sub.Status == models.SubscriptionStatusCanceled {
+				continue
+			}
+			g.Go(func() error {
+				// No Stripe ID (legacy/incomplete row): nothing to cancel remotely,
+				// and Stripe rejects an empty ID, which would block the status change.
+				if sub.StripeSubscriptionID != "" {
+					if err := s.stripe.CancelSubscription(gctx, sub.StripeSubscriptionID); err != nil && !isStripeSubscriptionGone(err) {
+						return fmt.Errorf("cancel stripe subscription %s: %w", sub.StripeSubscriptionID, err)
+					}
+				}
+				sub.Status = models.SubscriptionStatusCanceled
+				if _, err := s.subRepo.Update(gctx, &sub); err != nil {
+					return fmt.Errorf("mark subscription %s canceled: %w", sub.ID, err)
+				}
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return err
+		}
+		if len(subs) < 100 {
+			return nil
+		}
+	}
 }
 
 // validateOwnerStatusTransition validates status changes requested through owner
@@ -1370,13 +1514,13 @@ func (s *InitiativeService) Delete(ctx context.Context, id, callerUsername strin
 		span.RecordError(err)
 		return err
 	}
-	ok, err := canManage(ctx, caller.ID, existing)
+	ok, err := canManage(ctx, s.roleResolver, caller, existing)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
 	if !ok {
-		return domain.ErrForbidden
+		return domain.ErrInitiativeNotFound
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		span.RecordError(err)

@@ -274,8 +274,8 @@ func TestAnnouncementService_Create_NotOwner(t *testing.T) {
 		Title:       "Hello",
 		Description: "World",
 	})
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Errorf("expected ErrForbidden, got %v", err)
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Errorf("expected ErrInitiativeNotFound, got %v", err)
 	}
 }
 
@@ -389,7 +389,7 @@ func TestAnnouncementService_Delete_Forbidden(t *testing.T) {
 		&mockUserRepoForAnn{user: &models.User{ID: "other", Username: "bob"}},
 	)
 	err := svc.Delete(context.Background(), "init-1", "ann-1", "bob")
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Errorf("expected ErrForbidden, got %v", err)
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Errorf("expected ErrInitiativeNotFound, got %v", err)
 	}
 }

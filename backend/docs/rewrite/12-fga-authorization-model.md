@@ -248,14 +248,14 @@ Validate locally against OpenFGA in Docker before proposing — a mis-scoped rel
 
 Resolved during review — kept here for the record rather than left in the open-questions table:
 
-- **Attribution-change authorization (was open question A).** The two-entity dual-check design
-  this question raised is unnecessary: **the original creator always retains access to their
-  initiative**, including the ability to move it to a different org/project they now belong to.
-  Attribution changes are authorized by the standard `writer` check alone (owner, or the target
-  entity's writer) — no separate check against the *current* attributed entity is required. This
-  is a check against the target `project`/`b2b_org` object directly (`writer@user:X` on the
-  entity being moved to), not the initiative's own `crowdfunding_initiative#writer` relation,
-  which reflects only the current attribution.
+- **Attribution-change authorization (was open question A).** **Creator-only (decided,
+  lfx-crowdfunding#259).** Writers can edit an initiative's content but cannot change its
+  attribution, to another entity or to `personal`; only the creator can. This keeps the initiative
+  with its creator if they leave the entity. No target-*writer* check is needed, but a
+  non-personal target still requires the affiliation check (an FGA `auditor` check on the target
+  `project`/`b2b_org`; doc 11 §2.1). Both checks live in the CF
+  service (`owner_id` match, `checkAffiliated`), not in Heimdall. This supersedes both the earlier dual-check design and the interim "owner, or the
+  target entity's writer" ruling.
 - **`b2b_org` writer non-cascading (was open question B).** Confirmed as the intended design, not
   just an accepted platform limitation: **no parent- or child-org population ever gains writer
   access** — only the org actually assigned to the initiative does. No change needed; `writer from

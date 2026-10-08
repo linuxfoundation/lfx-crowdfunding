@@ -371,6 +371,20 @@ func isStripeSubscriptionMissing(err error) bool {
 	return strings.Contains(err.Error(), "resource_missing")
 }
 
+// isStripeSubscriptionGone extends isStripeSubscriptionMissing with Stripe's
+// refusal to cancel a subscription that is already terminal (incomplete_expired
+// can precede the webhook that updates the local row). The subscription cannot
+// bill again, so callers treat it as already canceled.
+// ponytail: matches the status name in the error message; replace with a typed
+// check if Stripe exposes a dedicated error code.
+func isStripeSubscriptionGone(err error) bool {
+	if isStripeSubscriptionMissing(err) {
+		return true
+	}
+	var se *stripe.Error
+	return errors.As(err, &se) && se.HTTPStatusCode == 400 && strings.Contains(se.Msg, "incomplete_expired")
+}
+
 func (s *SubscriptionService) enrichNextChargeDates(ctx context.Context, subs []models.Subscription) {
 	for i := range subs {
 		s.enrichNextChargeDate(ctx, &subs[i])
