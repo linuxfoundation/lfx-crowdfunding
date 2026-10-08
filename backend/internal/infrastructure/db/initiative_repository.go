@@ -245,6 +245,7 @@ func (r *InitiativeRepository) ListForFGABackfill(ctx context.Context) ([]fga.In
 		if attrUID != nil {
 			access.Attribution.EntityUID = *attrUID
 		}
+		access.Attribution = access.Attribution.Canonical()
 		access.Published = strings.EqualFold(string(status), string(models.StatusPublished))
 		results = append(results, access)
 	}
@@ -1427,7 +1428,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	i.Attribution = models.Attribution{
 		Type:      models.AttributionType(attributedToType),
 		EntityUID: derefString(attributedToUID),
-	}
+	}.Canonical()
 	i.BenefitProjectUID = derefString(benefitProjectUID)
 	if acceptFunding != nil {
 		i.AcceptFunding = *acceptFunding

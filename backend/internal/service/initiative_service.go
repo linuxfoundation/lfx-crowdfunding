@@ -50,8 +50,9 @@ type InitiativeService struct {
 	ledger        clients.LedgerClient
 	stripe        clients.StripeClient
 	emailService  domain.EmailService
-	reimbursement clients.ReimbursementClient   // nil when RS integration is disabled
-	fgaPublisher  *fga.Publisher                // nil when FGA_NATS_URL is unset
+	reimbursement clients.ReimbursementClient // nil when RS integration is disabled
+	fgaPublisher  *fga.Publisher              // nil when FGA_NATS_URL is unset
+	affiliation   fga.EntityAffiliationChecker
 	roleResolver  fga.EntityRoleResolver        // nil when FGA_NATS_URL is unset
 	subRepo       domain.SubscriptionRepository // nil in tests that don't exercise cancellation
 	logger        *slog.Logger
@@ -65,6 +66,31 @@ type InitiativeService struct {
 // construction. Left nil, canManage is creator-only.
 func (s *InitiativeService) SetEntityRoleResolver(r fga.EntityRoleResolver) {
 	s.roleResolver = r
+	// The NATS resolver also answers affiliation; resolvers that can't leave
+	// the attribution check off, like a nil resolver.
+	s.affiliation, _ = r.(fga.EntityAffiliationChecker)
+}
+
+// checkAffiliated enforces that the caller may attribute to a non-personal
+// target: FGA auditor on it (teams and parent/child count; 403 otherwise,
+// 503 on outage). With no checker wired
+// (FGA_NATS_URL unset) it fails closed with 403.
+func (s *InitiativeService) checkAffiliated(ctx context.Context, username string, a models.Attribution) error {
+	if a.Type != models.AttributionOrganization && a.Type != models.AttributionProject {
+		return nil
+	}
+	if s.affiliation == nil {
+		// Fail closed: without a resolver we cannot verify affiliation.
+		return fmt.Errorf("%w: cannot verify affiliation with that %s", domain.ErrForbidden, a.Type)
+	}
+	ok, err := s.affiliation.IsAffiliated(ctx, a.Type, a.EntityUID, username)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: you are not affiliated with that %s", domain.ErrForbidden, a.Type)
+	}
+	return nil
 }
 
 func (s *InitiativeService) SetFGAPublisher(p *fga.Publisher) {
@@ -507,10 +533,8 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	}
 
 	// Validate and default attribution (LFXV2-2956 M1). Omitting attribution
-	// defaults to personal — today's behavior. Shape-only validation; the
-	// affiliation check against the caller's real orgs/projects is blocked
-	// on the platform enumeration decision (design doc open question 4) and
-	// is out of scope here.
+	// defaults to personal — today's behavior. The caller must be
+	// affiliated with a non-personal target (checkAffiliated below).
 	attribution := models.Attribution{Type: models.AttributionPersonal}
 	if input.Attribution != nil {
 		attribution = *input.Attribution
@@ -538,6 +562,12 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 		}
 		span.RecordError(err)
 		return nil, fmt.Errorf("get owner: %w", err)
+	}
+
+	// After the owner lookup so an unknown caller gets 403 without an FGA call
+	// (and a resolver outage can't turn that into a 503).
+	if err := s.checkAffiliated(ctx, owner.Username, attribution); err != nil {
+		return nil, err
 	}
 
 	// Create the Stripe Product first. If Stripe is unavailable, the whole
@@ -685,12 +715,23 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	if input.CiiProjectID != nil {
 		existing.CiiProjectID = *input.CiiProjectID
 	}
-	// Attribution is validated but not yet gated by an entity-writer check
-	// (M2). Update is already creator-gated above, which is sufficient while
-	// an initiative has exactly one manager (design §2.2).
+	// Changing attribution is creator-only (lfx-crowdfunding#259, design §2.2):
+	// writers can edit content but not move the initiative, so an initiative
+	// stays with its creator if they leave the entity. Resubmitting the current
+	// attribution is not a change.
 	if input.Attribution != nil {
 		if err := input.Attribution.Validate(); err != nil {
 			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+		}
+		// Both sides are canonical: Validate above, and repository reads.
+		changed := *input.Attribution != existing.Attribution
+		if changed && existing.OwnerID != caller.ID {
+			return nil, fmt.Errorf("%w: only the creator can change attribution", domain.ErrForbidden)
+		}
+		if changed {
+			if err := s.checkAffiliated(ctx, caller.Username, *input.Attribution); err != nil {
+				return nil, err
+			}
 		}
 		existing.Attribution = *input.Attribution
 	}

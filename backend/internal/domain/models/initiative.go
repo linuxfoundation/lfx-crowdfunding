@@ -142,6 +142,39 @@ type Attribution struct {
 // sfidPattern matches a Salesforce ID: 15 or 18 alphanumeric characters.
 var sfidPattern = regexp.MustCompile(`^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$`)
 
+// canonicalSFID returns the 18-character form of a Salesforce ID. The 15-character
+// form is case-sensitive; the 3-character suffix encodes which of each 5-character
+// chunk's letters are uppercase. FGA b2b_org objects use the 18-character form, so
+// the two spellings of one record would otherwise be different objects.
+func canonicalSFID(id string) string {
+	if len(id) != 15 {
+		return id
+	}
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+	suffix := make([]byte, 3)
+	for chunk := 0; chunk < 3; chunk++ {
+		idx := 0
+		for i := 0; i < 5; i++ {
+			if c := id[chunk*5+i]; c >= 'A' && c <= 'Z' {
+				idx |= 1 << i
+			}
+		}
+		suffix[chunk] = alphabet[idx]
+	}
+	return id + string(suffix)
+}
+
+// Canonical returns a with an organization SFID in its 18-character form.
+// Rows written before Validate canonicalized SFIDs may hold the 15-character
+// form; repository reads normalize through here so FGA checks and reconcile
+// always see the canonical b2b_org object.
+func (a Attribution) Canonical() Attribution {
+	if a.Type == AttributionOrganization {
+		a.EntityUID = canonicalSFID(a.EntityUID)
+	}
+	return a
+}
+
 // Validate reports whether a is a well-formed attribution: a known type, with
 // EntityUID present and shaped correctly for Type — a Salesforce SFID for
 // organization, a UUID for project — and empty for personal. The returned
@@ -172,6 +205,7 @@ func (a *Attribution) Validate() error {
 		if !sfidPattern.MatchString(a.EntityUID) {
 			return fmt.Errorf("attribution.entity_uid must be a 15 or 18-character Salesforce ID")
 		}
+		a.EntityUID = canonicalSFID(a.EntityUID)
 	case AttributionProject:
 		parsed, err := uuid.Parse(a.EntityUID)
 		if err != nil {
