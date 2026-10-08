@@ -186,6 +186,10 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // passes canManage. A non-writer gets 404 (existence concealed), a resolver
 // outage 503.
 func (h *InitiativeHandler) getForManage(w http.ResponseWriter, r *http.Request, id string) {
+	// Set before any check so a 401/404/503 is never cached and reused for a
+	// caller who can manage.
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Vary", "Authorization")
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
@@ -196,8 +200,6 @@ func (h *InitiativeHandler) getForManage(w http.ResponseWriter, r *http.Request,
 		Error(w, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("Vary", "Authorization")
 	JSON(w, http.StatusOK, initiative)
 }
 
@@ -294,10 +296,13 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		// Not published: a caller who can manage the initiative still reads it.
 		if errors.Is(err, domain.ErrInitiativeNotFound) {
+			// The outcome now depends on the caller, so no response from here
+			// on may be cached and reused for a different caller.
+			w.Header().Set("Cache-Control", "private, no-store")
+			w.Header().Set("Vary", "Authorization")
 			if principal := auth.PrincipalFromContext(r.Context()); principal != nil && principal.Username != "" {
 				id, werr := h.svc.ResolveOwnedInitiativeID(r.Context(), value, principal.Username)
 				if werr == nil {
-					w.Header().Set("Vary", "Authorization")
 					h.writeTransactions(w, r, id, "private, max-age=60")
 					return
 				}
