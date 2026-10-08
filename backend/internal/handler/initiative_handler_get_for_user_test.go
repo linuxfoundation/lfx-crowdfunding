@@ -135,6 +135,9 @@ func TestGetForUser_OwnerSeesOwnDraft(t *testing.T) {
 	if body.ID != "init-1" {
 		t.Errorf("expected init-1, got %s", body.ID)
 	}
+	if w.Header().Get("Cache-Control") != "private, no-store" || w.Header().Get("Vary") != "Authorization" {
+		t.Errorf("manage read must be private and vary on Authorization, got %v", w.Header())
+	}
 	// The owner view keeps the contact lists the public detail omits.
 	if len(body.Beneficiaries) != 1 || body.Beneficiaries[0].Email != "ben@example.com" {
 		t.Errorf("expected owner to see beneficiary email, got %+v", body.Beneficiaries)

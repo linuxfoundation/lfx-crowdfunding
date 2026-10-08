@@ -198,13 +198,61 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Reads on a specific owned initiative — kept allow_all even once
-    # openfga.enabled is true. lfx-self-serve calls these with a slug, not a
-    # UUID (crowdfunding.service.ts:207,422,462), and openfga_check has no way
-    # to resolve a slug to the UUID the crowdfunding_initiative tuples are
-    # keyed by — checking the raw capture would 403 legitimate owners. Needs a
-    # crowdfunding_slug_resolver_contextualizer (mirroring project's
-    # LFXV2-3324) plus a slug-to-uid endpoint before this can be checked.
+    # Manager reads: an initiative in any status, with contacts, and its
+    # transactions. Authorized here with openfga_check writer, not in the service
+    # behind allow_all (the service's canManage check stays as defense in depth).
+    # Callers may pass a slug, but crowdfunding_initiative tuples are keyed by
+    # UUID, so a slug goes through crowdfunding_slug_resolver_contextualizer first.
+    # That resolver 404s on a UUID and continue_pipeline_on_error is false, so it
+    # is skipped for UUID captures, and the UUID branch checks the raw capture,
+    # never the skipped contextualizer's Outputs. Hence two mutually exclusive
+    # openfga_check entries. $uuidRe is defined once so the branches stay exact
+    # negations. Same pattern as lfx-v2-campaign-service's project-api rule.
+    - id: "rule:lfx:lfx-crowdfunding-backend:initiative-manage-read"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /crowdfunding/initiatives/:id/manage
+          - path: /crowdfunding/initiatives/:id/manage/transactions
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        {{- if .Values.openfga.enabled }}
+        {{- $uuidRe := "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" }}
+        - contextualizer: crowdfunding_slug_resolver_contextualizer
+          if: '!Request.URL.Captures.id.matches("{{ $uuidRe }}")'
+          config:
+            values:
+              slug: "{{ "{{- .Request.URL.Captures.id -}}" }}"
+        - authorizer: openfga_check
+          if: '!Request.URL.Captures.id.matches("{{ $uuidRe }}")'
+          config:
+            values:
+              relation: writer
+              object: "crowdfunding_initiative:{{ "{{- .Outputs.crowdfunding_slug_resolver_contextualizer.uid -}}" }}"
+        - authorizer: openfga_check
+          if: 'Request.URL.Captures.id.matches("{{ $uuidRe }}")'
+          config:
+            values:
+              relation: writer
+              object: "crowdfunding_initiative:{{ "{{- .Request.URL.Captures.id -}}" }}"
+        {{- else }}
+        - authorizer: allow_all
+        {{- end }}
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
+    # Reads on a specific owned initiative. The first two are deprecated aliases
+    # of initiative-manage-read, kept allow_all (service-side canManage only)
+    # until lfx-self-serve moves to /manage and they are removed. my-transactions
+    # is the caller's own donor history, open to any authenticated donor.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-read"
       allow_encoded_slashes: "off"
       match:
