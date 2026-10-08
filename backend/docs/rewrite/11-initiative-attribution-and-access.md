@@ -151,7 +151,8 @@ it's accepted anyway.
 Constraining the dropdown is UX only — a caller can POST a create/update request with any entity
 UID directly. On create, and on update when the attribution actually changes, the service
 therefore requires the caller to be able to **view** the
-target `b2b_org` or `project`: a full FGA `auditor` check (one batched `lfx.access_check.request`),
+target `b2b_org` or `project`: a full FGA `auditor` check (`auditor_guard` on a `project`, so global auditors and writers pass, as at
+Heimdall; plain `auditor` on a `b2b_org`),
 the same gate Self Serve's org/project lens uses to show an entity. Because it is a full check,
 team grants, the parent/child cascade and a membership `key_contact` all count, consistent with the
 inherited-access reasoning in §3.3. There is no app-side `lf-staff` clause: staff hold `auditor` on the

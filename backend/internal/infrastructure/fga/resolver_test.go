@@ -40,6 +40,37 @@ func (blockingRequester) RequestWithContext(ctx context.Context, _ string, _ []b
 	return nil, ctx.Err()
 }
 
+// capturingRequester records the request it was sent and replies true to it.
+type capturingRequester struct{ sent string }
+
+func (c *capturingRequester) RequestWithContext(_ context.Context, _ string, data []byte) (*nats.Msg, error) {
+	c.sent = string(data)
+	return &nats.Msg{Data: []byte(c.sent + "\ttrue\n")}, nil
+}
+
+// The relation must mirror the gateway: writer_guard for projects (so global
+// project writers pass), plain writer for b2b_org.
+func TestNATSResolver_CanManage_RelationByEntityType(t *testing.T) {
+	cases := map[models.AttributionType]string{
+		models.AttributionProject:      "project:p1#writer_guard@user:alice",
+		models.AttributionOrganization: "b2b_org:o1#writer@user:alice",
+	}
+	for attrType, want := range cases {
+		uid := "p1"
+		if attrType == models.AttributionOrganization {
+			uid = "o1"
+		}
+		c := &capturingRequester{}
+		r := &NATSResolver{conn: c}
+		if _, err := r.CanManage(context.Background(), attrType, uid, "alice"); err != nil {
+			t.Fatalf("%s: unexpected error: %v", attrType, err)
+		}
+		if c.sent != want {
+			t.Errorf("%s: sent %q, want %q", attrType, c.sent, want)
+		}
+	}
+}
+
 func TestNATSResolver_CanManage(t *testing.T) {
 	const (
 		project  = "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
@@ -48,7 +79,7 @@ func TestNATSResolver_CanManage(t *testing.T) {
 
 	t.Run("writer true", func(t *testing.T) {
 		r := &NATSResolver{conn: &fakeRequester{
-			reply: []byte("project:" + project + "#writer@user:" + username + "\ttrue\n"),
+			reply: []byte("project:" + project + "#writer_guard@user:" + username + "\ttrue\n"),
 		}}
 		allowed, err := r.CanManage(context.Background(), models.AttributionProject, project, username)
 		if err != nil {
@@ -61,7 +92,7 @@ func TestNATSResolver_CanManage(t *testing.T) {
 
 	t.Run("definitively not writer", func(t *testing.T) {
 		r := &NATSResolver{conn: &fakeRequester{
-			reply: []byte("project:" + project + "#writer@user:" + username + "\tfalse\n"),
+			reply: []byte("project:" + project + "#writer_guard@user:" + username + "\tfalse\n"),
 		}}
 		allowed, err := r.CanManage(context.Background(), models.AttributionProject, project, username)
 		if err != nil {
@@ -78,7 +109,7 @@ func TestNATSResolver_CanManage(t *testing.T) {
 		// be returned first)". A resolver that trusted line position would
 		// read the wrong answer here.
 		reply := "committee:other-id#writer@user:bob\ttrue\n" +
-			"project:" + project + "#writer@user:" + username + "\tfalse\n"
+			"project:" + project + "#writer_guard@user:" + username + "\tfalse\n"
 		r := &NATSResolver{conn: &fakeRequester{reply: []byte(reply)}}
 		allowed, err := r.CanManage(context.Background(), models.AttributionProject, project, username)
 		if err != nil {
@@ -171,6 +202,17 @@ func TestNATSResolver_IsAffiliated(t *testing.T) {
 		if got, err := check(r); err != nil || got != c.want {
 			t.Errorf("%s: got (%v, %v), want %v", c.name, got, err, c.want)
 		}
+	}
+
+	// Projects use auditor_guard so global_auditor/global_writer holders pass.
+	const project = "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
+	pAuditor := "project:" + project + "#auditor_guard@user:alice"
+	prec := &recordingRequester{reply: []byte(pAuditor + "\ttrue\n")}
+	if ok, err := (&NATSResolver{conn: prec}).IsAffiliated(context.Background(), models.AttributionProject, project, username); err != nil || !ok {
+		t.Fatalf("project: got (%v, %v), want true", ok, err)
+	}
+	if got := string(prec.sent); got != pAuditor {
+		t.Errorf("project request = %q, want %q", got, pAuditor)
 	}
 
 	// Exactly one auditor token goes out; no persona checks.

@@ -85,25 +85,29 @@ func NewNATSResolver(conn *nats.Conn, timeout time.Duration) *NATSResolver {
 // entityTypePrefix maps CF's attribution type to the OpenFGA object-type
 // prefix used in tuple strings. b2b_org is member-service's object type for
 // canonical platform organizations (fga-sync-contract.md); project is
-// project-service's.
-func entityTypePrefix(attrType models.AttributionType) (string, error) {
+// project-service's. The relation matches what the gateway checks: projects
+// use the *_guard relations (writer_guard, auditor_guard, which include the
+// global_writer/global_auditor holders), so global holders pass here exactly as
+// they do at Heimdall; b2b_org has no guard relations. guard is the suffix to
+// append to a base relation (writer, auditor).
+func entityTypePrefix(attrType models.AttributionType) (prefix, guard string, err error) {
 	switch attrType {
 	case models.AttributionOrganization:
-		return "b2b_org", nil
+		return "b2b_org", "", nil
 	case models.AttributionProject:
-		return "project", nil
+		return "project", "_guard", nil
 	default:
-		return "", fmt.Errorf("access check requires organization or project attribution, got %q", attrType)
+		return "", "", fmt.Errorf("access check requires organization or project attribution, got %q", attrType)
 	}
 }
 
 // CanManage implements EntityRoleResolver.
 func (r *NATSResolver) CanManage(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error) {
-	prefix, err := entityTypePrefix(attrType)
+	prefix, guard, err := entityTypePrefix(attrType)
 	if err != nil {
 		return false, err
 	}
-	request := fmt.Sprintf("%s:%s#writer@user:%s", prefix, entityUID, username)
+	request := fmt.Sprintf("%s:%s#%s@user:%s", prefix, entityUID, "writer"+guard, username)
 	results, err := r.checks(ctx, request)
 	if err != nil {
 		return false, err
@@ -179,11 +183,11 @@ type EntityAffiliationChecker interface {
 // Like CanManage, a transport failure wraps domain.ErrUpstreamUnavailable and
 // is never turned into false.
 func (r *NATSResolver) IsAffiliated(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error) {
-	prefix, err := entityTypePrefix(attrType)
+	prefix, guard, err := entityTypePrefix(attrType)
 	if err != nil {
 		return false, err
 	}
-	auditor := fmt.Sprintf("%s:%s#auditor@user:%s", prefix, entityUID, username)
+	auditor := fmt.Sprintf("%s:%s#%s@user:%s", prefix, entityUID, "auditor"+guard, username)
 	results, err := r.checks(ctx, auditor)
 	if err != nil {
 		return false, err

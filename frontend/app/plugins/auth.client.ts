@@ -3,7 +3,13 @@
 
 import { defineNuxtPlugin, useAsyncData, useRoute, navigateTo } from 'nuxt/app';
 import { watch } from 'vue';
-import { authState, isAuthLoading, isAuthReady, setRefreshAuth } from '~/composables/useAuth';
+import {
+  authState,
+  isAuthLoading,
+  isAuthReady,
+  setProfileSynced,
+  setRefreshAuth,
+} from '~/composables/useAuth';
 import { useErrorToast } from '~/composables/useErrorToast';
 import type { AuthState } from '~/composables/useAuth';
 
@@ -45,6 +51,29 @@ export default defineNuxtPlugin(() => {
 
   const route = useRoute();
 
+  const syncProfile = async () => {
+    // wait for auth state to be hydrated before syncing the profile so the
+    // session cookie is guaranteed to be present server-side.
+    if (!isAuthReady.value) {
+      await new Promise<void>((resolve) => {
+        const stop = watch(isAuthReady, (ready) => {
+          if (!ready) return;
+          stop();
+          resolve();
+        });
+      });
+    }
+    // authState is now guaranteed to be populated: watch(status) sets it
+    // synchronously before raising isAuthReady (see above).
+
+    if (authState.value.isAuthenticated) {
+      await $fetch('/api/me', { method: 'PATCH', credentials: 'include' }).catch((err) => {
+        console.error('Profile sync error:', err);
+        showError('We could not update your profile. Please try again later.');
+      });
+    }
+  };
+
   const handleAuthQuery = async (authParam: string | undefined) => {
     if (authParam === 'logout') {
       await navigateTo('/', { replace: true });
@@ -52,26 +81,11 @@ export default defineNuxtPlugin(() => {
     }
 
     if (authParam === 'success') {
-      // wait for auth state to be hydrated before syncing the profile so the
-      // session cookie is guaranteed to be present server-side.
-      if (!isAuthReady.value) {
-        await new Promise<void>((resolve) => {
-          const stop = watch(isAuthReady, (ready) => {
-            if (!ready) return;
-            stop();
-            resolve();
-          });
-        });
-      }
-      // authState is now guaranteed to be populated: watch(status) sets it
-      // synchronously before raising isAuthReady (see above).
-
-      if (authState.value.isAuthenticated) {
-        await $fetch('/api/me', { method: 'PATCH', credentials: 'include' }).catch((err) => {
-          console.error('Profile sync error:', err);
-          showError('We could not update your profile. Please try again later.');
-        });
-      }
+      // Registered synchronously (before any await) so pages mounting after login can
+      // wait for the users row to exist before calling endpoints that read it.
+      const sync = syncProfile();
+      setProfileSynced(sync);
+      await sync;
 
       // Strip ?auth=success from the URL without triggering a navigation.
       const { auth: _auth, ...rest } = route.query;
