@@ -253,7 +253,7 @@ Resolved during review — kept here for the record rather than left in the open
   attribution, to another entity or to `personal`; only the creator can. This keeps the initiative
   with its creator if they leave the entity. No target-*writer* check is needed, but a
   non-personal target still requires the affiliation check (an FGA `auditor` check on the target
-  `project`/`b2b_org`, or `team:lf-staff` membership; doc 11 §2.1). Both checks live in the CF
+  `project`/`b2b_org`; doc 11 §2.1). Both checks live in the CF
   service (`owner_id` match, `checkAffiliated`), not in Heimdall. This supersedes both the earlier dual-check design and the interim "owner, or the
   target entity's writer" ruling.
 - **`b2b_org` writer non-cascading (was open question B).** Confirmed as the intended design, not

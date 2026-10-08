@@ -165,34 +165,28 @@ func parseAccessCheckReply(data []byte) (map[string]bool, error) {
 	return results, nil
 }
 
-// staffTeam members may attribute to any org or project, mirroring Self Serve's
-// isStaff (LF_TEAM_IDS in persona.constants.ts). Attribution only: it grants no
-// manage rights, which stay with CanManage.
-// ponytail: hardcoded single team, make it config if more staff teams appear.
-const staffTeam = "lf-staff"
-
 // EntityAffiliationChecker answers "may this user attribute an initiative to
 // this entity?" (lfx-crowdfunding#259). It mirrors Self Serve's lens view gate:
 // a full FGA auditor check, so team grants and the b2b_org/project
-// parent/child cascade count, plus lf-staff membership. Managing the
-// initiative afterwards still needs writer (EntityRoleResolver).
+// parent/child cascade count (lf-staff holds auditor via the model, so staff
+// pass without an app-side persona check). Managing the initiative afterwards
+// still needs writer (EntityRoleResolver).
 type EntityAffiliationChecker interface {
 	IsAffiliated(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error)
 }
 
-// IsAffiliated implements EntityAffiliationChecker with one batched access
-// check. Like CanManage, a transport failure wraps domain.ErrUpstreamUnavailable
-// and is never turned into false.
+// IsAffiliated implements EntityAffiliationChecker with one access check.
+// Like CanManage, a transport failure wraps domain.ErrUpstreamUnavailable and
+// is never turned into false.
 func (r *NATSResolver) IsAffiliated(ctx context.Context, attrType models.AttributionType, entityUID, username string) (bool, error) {
 	prefix, err := entityTypePrefix(attrType)
 	if err != nil {
 		return false, err
 	}
 	auditor := fmt.Sprintf("%s:%s#auditor@user:%s", prefix, entityUID, username)
-	staff := fmt.Sprintf("team:%s#member@user:%s", staffTeam, username)
-	results, err := r.checks(ctx, auditor, staff)
+	results, err := r.checks(ctx, auditor)
 	if err != nil {
 		return false, err
 	}
-	return results[auditor] || results[staff], nil
+	return results[auditor], nil
 }

@@ -70,8 +70,8 @@ func (s *InitiativeService) SetEntityRoleResolver(r fga.EntityRoleResolver) {
 }
 
 // checkAffiliated enforces that the caller may attribute to a non-personal
-// target: FGA auditor on it (teams and parent/child count) or lf-staff
-// membership (403 otherwise, 503 on outage). With no checker wired
+// target: FGA auditor on it (teams and parent/child count; 403 otherwise,
+// 503 on outage). With no checker wired
 // (FGA_NATS_URL unset) it fails closed with 403.
 func (s *InitiativeService) checkAffiliated(ctx context.Context, username string, a models.Attribution) error {
 	if a.Type != models.AttributionOrganization && a.Type != models.AttributionProject {

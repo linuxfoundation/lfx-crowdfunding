@@ -156,41 +156,36 @@ func TestNATSResolver_IsAffiliated(t *testing.T) {
 		username = "alice"
 	)
 	auditor := "b2b_org:" + org + "#auditor@user:alice"
-	staff := "team:lf-staff#member@user:alice"
-	reply := func(a, s string) *NATSResolver {
-		return &NATSResolver{conn: &fakeRequester{reply: []byte(auditor + "\t" + a + "\n" + staff + "\t" + s + "\n")}}
-	}
 	check := func(r *NATSResolver) (bool, error) {
 		return r.IsAffiliated(context.Background(), models.AttributionOrganization, org, username)
 	}
 
 	for _, c := range []struct {
-		name, auditor, staff string
-		want                 bool
+		name, auditor string
+		want          bool
 	}{
-		{"auditor only (direct, team or inherited)", "true", "false", true},
-		{"lf-staff only", "false", "true", true},
-		{"both", "true", "true", true},
-		{"neither", "false", "false", false},
+		{"auditor (direct, team or inherited)", "true", true},
+		{"not an auditor", "false", false},
 	} {
-		if got, err := check(reply(c.auditor, c.staff)); err != nil || got != c.want {
+		r := &NATSResolver{conn: &fakeRequester{reply: []byte(auditor + "\t" + c.auditor + "\n")}}
+		if got, err := check(r); err != nil || got != c.want {
 			t.Errorf("%s: got (%v, %v), want %v", c.name, got, err, c.want)
 		}
 	}
 
-	// Both tokens go out in a single batched request.
-	rec := &recordingRequester{reply: []byte(auditor + "\ttrue\n" + staff + "\tfalse\n")}
+	// Exactly one auditor token goes out; no persona checks.
+	rec := &recordingRequester{reply: []byte(auditor + "\ttrue\n")}
 	if _, err := check(&NATSResolver{conn: rec}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got, want := string(rec.sent), auditor+"\n"+staff; got != want {
-		t.Errorf("request body = %q, want %q", got, want)
+	if got := string(rec.sent); got != auditor {
+		t.Errorf("request body = %q, want %q", got, auditor)
 	}
 
-	// A reply missing one of the tokens is an upstream failure, never false.
-	partial := &NATSResolver{conn: &fakeRequester{reply: []byte(auditor + "\tfalse\n")}}
-	if _, err := check(partial); !errors.Is(err, domain.ErrUpstreamUnavailable) {
-		t.Errorf("missing staff result: got %v, want ErrUpstreamUnavailable", err)
+	// A reply missing the token is an upstream failure, never false.
+	empty := &NATSResolver{conn: &fakeRequester{reply: []byte("")}}
+	if _, err := check(empty); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Errorf("missing result: got %v, want ErrUpstreamUnavailable", err)
 	}
 	r := &NATSResolver{conn: &fakeRequester{err: errors.New("boom")}}
 	if _, err := check(r); !errors.Is(err, domain.ErrUpstreamUnavailable) {
