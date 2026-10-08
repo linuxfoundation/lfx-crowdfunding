@@ -8,7 +8,6 @@ import (
 	"crypto/md5" //nolint:gosec // MD5 used for non-cryptographic ETag generation only
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -164,17 +163,9 @@ func (h *InitiativeHandler) ListByAttribution(t models.AttributionType) http.Han
 // retrieve initiatives in any status (e.g. "submitted") for review purposes.
 // Beneficiaries, contributors, mentors and contacts are never included: they
 // hold third-party contact details (emails, phone numbers) and this response
-// is publicly cacheable. With ?view=manage, callers who can manage the initiative
-// (creator or a writer on its attributed entity) instead get the full payload in
-// any status, privately cached; everyone else gets 404. Only that opt-in makes
-// the writer (FGA) check, so plain reads never pay for it.
-// GET /crowdfunding/me/initiatives/{id} remains as an alias.
+// is publicly cacheable. Owners read them via GET /crowdfunding/me/initiatives/{id}.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if r.URL.Query().Get("view") == "manage" {
-		h.getForManage(w, r, id)
-		return
-	}
 	var (
 		initiative *models.Initiative
 		err        error
@@ -221,27 +212,6 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
-}
-
-// getForManage serves GetByID's ?view=manage: the full payload for a caller who
-// passes canManage. A non-writer gets 404 (existence concealed), a resolver
-// outage 503.
-func (h *InitiativeHandler) getForManage(w http.ResponseWriter, r *http.Request, id string) {
-	// Set before any check so a 401/404/503 is never cached and reused for a
-	// caller who can manage.
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("Vary", "Authorization")
-	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil || principal.Username == "" {
-		Error(w, domain.ErrUnauthorized)
-		return
-	}
-	initiative, err := h.svc.GetForUser(r.Context(), id, principal.Username)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	JSON(w, http.StatusOK, initiative)
 }
 
 // GetForUser handles GET /crowdfunding/me/initiatives/{id} — requires JWT with access:me scope.
@@ -335,24 +305,6 @@ func (h *InitiativeHandler) GetTransactions(w http.ResponseWriter, r *http.Reque
 
 	initiativeID, err := h.resolvePublishedInitiativeID(r, value)
 	if err != nil {
-		// Not published: a caller who can manage the initiative still reads it.
-		if errors.Is(err, domain.ErrInitiativeNotFound) {
-			// The outcome now depends on the caller, so no response from here
-			// on may be cached and reused for a different caller.
-			w.Header().Set("Cache-Control", "private, no-store")
-			w.Header().Set("Vary", "Authorization")
-			if principal := auth.PrincipalFromContext(r.Context()); principal != nil && principal.Username != "" {
-				id, werr := h.svc.ResolveOwnedInitiativeID(r.Context(), value, principal.Username)
-				if werr == nil {
-					h.writeTransactions(w, r, id, "private, max-age=60")
-					return
-				}
-				// A resolver outage must not become a false 404.
-				if !errors.Is(werr, domain.ErrInitiativeNotFound) {
-					err = werr
-				}
-			}
-		}
 		Error(w, err)
 		return
 	}
