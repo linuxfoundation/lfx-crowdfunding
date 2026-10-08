@@ -31,7 +31,7 @@ func (r writerResolver) CanManage(_ context.Context, _ models.AttributionType, _
 const writerInitiativeID = "44444444-4444-4444-4444-444444444444"
 
 // writerHandler builds a handler over a non-published initiative attributed to an
-// org, with the caller being a non-creator whose writer access is res.
+// org. The caller is not the creator, so manage access comes only from res.
 func writerHandler(status models.InitiativeStatus, res fga.EntityRoleResolver) *InitiativeHandler {
 	repo := &stubRepoForGetForUser{initiative: &models.Initiative{
 		ID: writerInitiativeID, Slug: "org-fund", OwnerID: "creator", Status: status,
@@ -81,6 +81,9 @@ func TestGetByID_Manage_NonWriterIs404_EvenWhenPublished(t *testing.T) {
 		w := writerGetQuery(writerHandler(st, writerResolver{}).GetByID, "", manage)
 		if w.Code != http.StatusNotFound {
 			t.Errorf("%s: expected 404, got %d", st, w.Code)
+		}
+		if w.Header().Get("Cache-Control") != "private, no-store" || w.Header().Get("Vary") != "Authorization" {
+			t.Errorf("%s: 404 must be private and vary on Authorization, got %v", st, w.Header())
 		}
 	}
 }
@@ -138,6 +141,9 @@ func TestGetTransactions_Writer(t *testing.T) {
 	w = writerGet(writerHandler(models.StatusSubmitted, writerResolver{}).GetTransactions, "/transactions")
 	if w.Code != http.StatusNotFound {
 		t.Errorf("non-writer: expected 404, got %d", w.Code)
+	}
+	if w.Header().Get("Cache-Control") != "private, no-store" || w.Header().Get("Vary") != "Authorization" {
+		t.Errorf("non-writer: 404 must be private and vary on Authorization, got %v", w.Header())
 	}
 
 	outage := writerResolver{err: fmt.Errorf("nats: %w", domain.ErrUpstreamUnavailable)}

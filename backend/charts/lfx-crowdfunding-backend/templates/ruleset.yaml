@@ -66,8 +66,8 @@ spec:
           - path: /crowdfunding/statistics/recent-donations
           - path: /crowdfunding/statistics/investing-companies
           - path: /crowdfunding/initiatives
-          - path: /crowdfunding/initiatives/:*/transactions
-          - path: /crowdfunding/initiatives/:*/announcements
+          - path: /crowdfunding/initiatives/:id/transactions
+          - path: /crowdfunding/initiatives/:id/announcements
       execute:
         - authenticator: oidc
         - authenticator: anonymous_authenticator
@@ -91,7 +91,7 @@ spec:
     # team check further down. No path capture needed — static object.
     #
     # Without this rule, published-list (a single path segment) would fall
-    # into the initiative-detail wildcard below (/crowdfunding/initiatives/:*) and
+    # into the initiative-detail wildcard below (/crowdfunding/initiatives/:id) and
     # become public; owner-info falls through to default_rule (deny_all in
     # staging/prod) instead.
     #
@@ -109,7 +109,7 @@ spec:
         methods:
           - GET
         routes:
-          - path: /crowdfunding/initiatives/:*/owner-info
+          - path: /crowdfunding/initiatives/:id/owner-info
           - path: /crowdfunding/initiatives/published-list
       execute:
         - authenticator: oidc
@@ -136,7 +136,7 @@ spec:
         methods:
           - GET
         routes:
-          - path: /crowdfunding/initiatives/:*
+          - path: /crowdfunding/initiatives/:id
       execute:
         - authenticator: oidc
         - authenticator: anonymous_authenticator
@@ -475,7 +475,7 @@ spec:
         methods:
           - POST
         routes:
-          - path: /crowdfunding/initiatives/:*/process-approval/:*
+          - path: /crowdfunding/initiatives/:id/process-approval/:*
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}
