@@ -1,0 +1,28 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+{{- if .Values.networkPolicy.enabled }}
+{{- if not .Values.networkPolicy.ingress.from }}
+{{- fail "networkPolicy.ingress.from must contain at least one ingress peer when networkPolicy.enabled is true" }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "lfx-v2-initiatives-service.fullname" . }}-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ include "lfx-v2-initiatives-service.name" . }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- toYaml .Values.networkPolicy.ingress.from | nindent 8 }}
+      ports:
+        # Container port, not the Service port: NetworkPolicy matches the pod.
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+{{- end }}
