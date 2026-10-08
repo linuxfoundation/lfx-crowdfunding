@@ -25,6 +25,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/errgroup"
 )
 
 var initiativeSvcTracer = otel.Tracer("initiatives-service")
@@ -52,7 +53,8 @@ type InitiativeService struct {
 	reimbursement clients.ReimbursementClient // nil when RS integration is disabled
 	fgaPublisher  *fga.Publisher              // nil when FGA_NATS_URL is unset
 	affiliation   fga.EntityAffiliationChecker
-	roleResolver  fga.EntityRoleResolver // nil when FGA_NATS_URL is unset
+	roleResolver  fga.EntityRoleResolver        // nil when FGA_NATS_URL is unset
+	subRepo       domain.SubscriptionRepository // nil in tests that don't exercise cancellation
 	logger        *slog.Logger
 }
 
@@ -93,6 +95,14 @@ func (s *InitiativeService) checkAffiliated(ctx context.Context, username string
 
 func (s *InitiativeService) SetFGAPublisher(p *fga.Publisher) {
 	s.fgaPublisher = p
+}
+
+// SetSubscriptionRepo wires the subscription repository used to cancel an
+// initiative's recurring subscriptions when it is declined or hidden. A setter
+// for the same reason as SetFGAPublisher: many tests construct the service
+// without it.
+func (s *InitiativeService) SetSubscriptionRepo(r domain.SubscriptionRepository) {
+	s.subRepo = r
 }
 
 // NewInitiativeService returns an InitiativeService.
@@ -659,6 +669,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		return nil, domain.ErrInitiativeNotFound
 	}
 
+	cancelSubs := false
 	if input.Name != nil {
 		existing.Name = *input.Name
 	}
@@ -675,6 +686,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 			return nil, err
 		}
 		existing.Status = *input.Status
+		cancelSubs = existing.Status.EqualFold(models.StatusDeclined) || existing.Status.EqualFold(models.StatusHidden)
 	}
 	if input.Description != nil {
 		if utf8.RuneCountInString(*input.Description) > 1500 {
@@ -814,6 +826,15 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	}
 
 	existing.UpdatedBy = callerUsername
+	// Cancel before the status write: a failure aborts the change so it can be
+	// retried (cancellation is idempotent), instead of leaving donors billed.
+	if cancelSubs {
+		if err := s.cancelInitiativeSubscriptions(ctx, id); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+	}
+
 	updated, err := s.repo.Update(ctx, existing, input)
 	if err != nil {
 		span.RecordError(err)
@@ -878,6 +899,10 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 	case models.ApprovalActionApprove:
 		initiative.Status = models.StatusPublished
 	case models.ApprovalActionDecline:
+		if err := s.cancelInitiativeSubscriptions(ctx, initiativeID); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
 		initiative.Status = models.StatusDeclined
 	}
 
@@ -928,6 +953,57 @@ func (s *InitiativeService) ProcessApproval(ctx context.Context, initiativeID st
 		s.syncReimbursementPolicy(ctx, processed)
 	}
 	return processed, nil
+}
+
+// cancelSubscriptionConcurrency bounds in-flight Stripe cancellations per page.
+const cancelSubscriptionConcurrency = 8
+
+// cancelInitiativeSubscriptions cancels every non-canceled subscription on the
+// initiative in Stripe and marks it canceled locally. Idempotent: a subscription
+// already gone from Stripe (missing, or terminal such as incomplete_expired) is
+// just marked canceled.
+func (s *InitiativeService) cancelInitiativeSubscriptions(ctx context.Context, initiativeID string) error {
+	if s.subRepo == nil {
+		return nil
+	}
+	// Page through everything; cancelled rows stay in the list (no status filter)
+	// so offsets don't shift while we update.
+	for offset := 0; ; offset += 100 {
+		subs, _, err := s.subRepo.ListByInitiative(ctx, initiativeID, models.SubscriptionFilter{Limit: 100, Offset: offset})
+		if err != nil {
+			return fmt.Errorf("list subscriptions: %w", err)
+		}
+		// Bounded parallelism: sequential Stripe + DB round trips for a full page
+		// can outlast the request deadline.
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(cancelSubscriptionConcurrency)
+		for i := range subs {
+			sub := subs[i]
+			if sub.Status == models.SubscriptionStatusCanceled {
+				continue
+			}
+			g.Go(func() error {
+				// No Stripe ID (legacy/incomplete row): nothing to cancel remotely,
+				// and Stripe rejects an empty ID, which would block the status change.
+				if sub.StripeSubscriptionID != "" {
+					if err := s.stripe.CancelSubscription(gctx, sub.StripeSubscriptionID); err != nil && !isStripeSubscriptionGone(err) {
+						return fmt.Errorf("cancel stripe subscription %s: %w", sub.StripeSubscriptionID, err)
+					}
+				}
+				sub.Status = models.SubscriptionStatusCanceled
+				if _, err := s.subRepo.Update(gctx, &sub); err != nil {
+					return fmt.Errorf("mark subscription %s canceled: %w", sub.ID, err)
+				}
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return err
+		}
+		if len(subs) < 100 {
+			return nil
+		}
+	}
 }
 
 // validateOwnerStatusTransition validates status changes requested through owner
