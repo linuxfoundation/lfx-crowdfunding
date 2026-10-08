@@ -711,10 +711,8 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		if err := input.Attribution.Validate(); err != nil {
 			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
 		}
-		// Compare canonical forms: a legacy row may hold a 15-character SFID.
-		current := existing.Attribution
-		_ = current.Validate()
-		changed := *input.Attribution != current
+		// Both sides are canonical: Validate above, and repository reads.
+		changed := *input.Attribution != existing.Attribution
 		if changed && existing.OwnerID != caller.ID {
 			return nil, fmt.Errorf("%w: only the creator can change attribution", domain.ErrForbidden)
 		}

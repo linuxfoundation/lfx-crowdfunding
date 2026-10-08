@@ -164,6 +164,17 @@ func canonicalSFID(id string) string {
 	return id + string(suffix)
 }
 
+// Canonical returns a with an organization SFID in its 18-character form.
+// Rows written before Validate canonicalized SFIDs may hold the 15-character
+// form; repository reads normalize through here so FGA checks and reconcile
+// always see the canonical b2b_org object.
+func (a Attribution) Canonical() Attribution {
+	if a.Type == AttributionOrganization {
+		a.EntityUID = canonicalSFID(a.EntityUID)
+	}
+	return a
+}
+
 // Validate reports whether a is a well-formed attribution: a known type, with
 // EntityUID present and shaped correctly for Type — a Salesforce SFID for
 // organization, a UUID for project — and empty for personal. The returned

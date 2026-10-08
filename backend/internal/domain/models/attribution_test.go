@@ -63,3 +63,17 @@ func TestAttribution_Validate_CanonicalizesSFID(t *testing.T) {
 		}
 	}
 }
+
+func TestAttribution_Canonical(t *testing.T) {
+	tests := []struct{ in, want Attribution }{
+		{Attribution{Type: AttributionOrganization, EntityUID: "0012M00002qnukO"}, Attribution{Type: AttributionOrganization, EntityUID: "0012M00002qnukOQAQ"}},
+		{Attribution{Type: AttributionOrganization, EntityUID: "0012M00002qnukOQAQ"}, Attribution{Type: AttributionOrganization, EntityUID: "0012M00002qnukOQAQ"}},
+		{Attribution{Type: AttributionProject, EntityUID: "7cad5a8d-19d0-41a"}, Attribution{Type: AttributionProject, EntityUID: "7cad5a8d-19d0-41a"}},
+		{Attribution{Type: AttributionPersonal}, Attribution{Type: AttributionPersonal}},
+	}
+	for _, tt := range tests {
+		if got := tt.in.Canonical(); got != tt.want {
+			t.Errorf("Canonical(%+v) = %+v, want %+v", tt.in, got, tt.want)
+		}
+	}
+}
