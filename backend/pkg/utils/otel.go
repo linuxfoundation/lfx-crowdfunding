@@ -7,6 +7,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -20,8 +21,8 @@ import (
 type OTelConfig struct {
 	ServiceName    string
 	ServiceVersion string
-	// Endpoint is the full OTLP HTTP endpoint URL (e.g. "http://localhost:4318").
-	// Must include the scheme — passed to WithEndpointURL which handles http/https.
+	// Endpoint is the OTLP HTTP base URL (e.g. "http://localhost:4318"), as in
+	// OTEL_EXPORTER_OTLP_ENDPOINT. Must include the scheme; "/v1/traces" is appended.
 	// If empty, a no-op tracer is used.
 	Endpoint string
 }
@@ -42,8 +43,14 @@ func InitOTel(ctx context.Context, cfg OTelConfig) (func(), error) {
 
 	var tp *sdktrace.TracerProvider
 	if cfg.Endpoint != "" {
+		// WithEndpointURL sends to the URL as given (since otlptracehttp v1.45.0), so
+		// append the traces signal path to the base URL ourselves, per the OTel spec.
+		tracesURL, err := url.JoinPath(cfg.Endpoint, "v1/traces")
+		if err != nil {
+			return nil, fmt.Errorf("otel endpoint: %w", err)
+		}
 		exp, err := otlptracehttp.New(ctx,
-			otlptracehttp.WithEndpointURL(cfg.Endpoint),
+			otlptracehttp.WithEndpointURL(tracesURL),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("otel exporter: %w", err)
