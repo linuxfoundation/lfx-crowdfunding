@@ -13,9 +13,10 @@ ALTER TABLE initiatives
   ADD COLUMN IF NOT EXISTS attributed_to_name     TEXT,
   ADD COLUMN IF NOT EXISTS attributed_to_logo_url TEXT;
 
--- Attribution columns are user-editable, so changing only them must still bump
--- updated_on (see the MAINTENANCE note on the trigger in 001_initial).
--- attributed_to_type/uid were missed when 007 added them.
+-- Every user-editable column must bump updated_on when it alone changes
+-- (see the MAINTENANCE note on the trigger in 001_initial).
+-- attributed_to_type/uid, benefit_project_uid and donation_mode were missed
+-- when 004 and 007 added them.
 DROP TRIGGER IF EXISTS set_updated_on ON initiatives;
 CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives
     FOR EACH ROW
@@ -47,7 +48,9 @@ CREATE TRIGGER set_updated_on BEFORE UPDATE ON initiatives
         OLD.attributed_to_type IS DISTINCT FROM NEW.attributed_to_type OR
         OLD.attributed_to_uid IS DISTINCT FROM NEW.attributed_to_uid OR
         OLD.attributed_to_name IS DISTINCT FROM NEW.attributed_to_name OR
-        OLD.attributed_to_logo_url IS DISTINCT FROM NEW.attributed_to_logo_url
+        OLD.attributed_to_logo_url IS DISTINCT FROM NEW.attributed_to_logo_url OR
+        OLD.benefit_project_uid IS DISTINCT FROM NEW.benefit_project_uid OR
+        OLD.donation_mode IS DISTINCT FROM NEW.donation_mode
     )
     EXECUTE FUNCTION set_updated_on();
 

@@ -96,10 +96,12 @@ export const getAffiliations = async (event: H3Event): Promise<AffiliationCandid
   return { organizations, projects };
 };
 
-// Mirrors the backend's logo_url check: an https scheme, a non-empty host, and at most 2048 bytes.
-// Matched on the raw string: WHATWG `new URL` normalizes `https:///x` to host `x`, Go's url.Parse
-// doesn't.
-const LOGO_URL_PATTERN = /^https:\/\/[^/?#\s]+/;
+// Conservative subset of what the backend's logo_url check (Go url.Parse: https, non-empty host,
+// at most 2048 bytes) accepts: a plain hostname, an optional numeric port, then RFC 3986 path/query
+// characters with well-formed %XX escapes. Matched on the raw string because WHATWG `new URL`
+// normalizes inputs (`https:///x` gets host `x`) that Go rejects.
+const LOGO_URL_PATTERN =
+  /^https:\/\/[A-Za-z0-9.-]+(:\d{1,5})?([/?#]([A-Za-z0-9\-._~!$&'()*+,;=:@/?#]|%[0-9A-Fa-f]{2})*)?$/;
 const MAX_LOGO_URL_BYTES = 2048;
 
 export const isAcceptedLogoUrl = (url: string | undefined): url is string =>
@@ -122,7 +124,8 @@ export const getAttributionDisplay = async (
     // Drop a logo the backend would reject (`Attribution.Validate`) rather than fail the whole
     // fundraise.
     const logoUrl = isAcceptedLogoUrl(entity.logoUrl) ? entity.logoUrl : undefined;
-    return { name: entity.name.slice(0, 255), logo_url: logoUrl };
+    // Cut by code points, as the backend counts them, so a surrogate pair is never split.
+    return { name: Array.from(entity.name).slice(0, 255).join(''), logo_url: logoUrl };
   } catch {
     return {};
   }

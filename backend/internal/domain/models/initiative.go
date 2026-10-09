@@ -216,7 +216,7 @@ func (a *Attribution) Validate() error {
 		if a.EntityUID != "" {
 			return fmt.Errorf("attribution.entity_uid must be empty for personal attribution")
 		}
-		// The personal label is the creator's name; never store a stray entity name.
+		// Personal initiatives show no source label; drop any stray display values.
 		a.Name, a.LogoURL = "", ""
 		return nil
 	}

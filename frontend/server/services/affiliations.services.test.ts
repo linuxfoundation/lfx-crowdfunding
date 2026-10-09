@@ -18,6 +18,11 @@ describe('isAcceptedLogoUrl', () => {
     ['http://example.com/logo.png', false],
     ['javascript:alert(1)', false],
     ['https:///logo.png', false],
+    ['https://cdn.example.com:8443/a%20b/logo.png?v=2', true],
+    ['https://[::1/logo.png', false],
+    ['https://example.com:bad/logo.png', false],
+    ['https://example.com/a%zzb.png', false],
+    ['https://example.com/a b.png', false],
     [`https://example.com/${'a'.repeat(2048)}`, false],
   ])('%s → %s', (url, expected) => {
     expect(isAcceptedLogoUrl(url)).toBe(expected);
