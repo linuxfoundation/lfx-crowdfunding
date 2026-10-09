@@ -77,3 +77,13 @@ func TestAttribution_Canonical(t *testing.T) {
 		}
 	}
 }
+
+func TestAttribution_Validate_PersonalClearsDisplay(t *testing.T) {
+	a := Attribution{Type: AttributionPersonal, Name: "Acme", LogoURL: "https://x/acme.png"}
+	if err := a.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if a.Name != "" || a.LogoURL != "" {
+		t.Errorf("personal display fields = %q/%q, want empty", a.Name, a.LogoURL)
+	}
+}

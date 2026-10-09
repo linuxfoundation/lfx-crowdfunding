@@ -65,6 +65,22 @@ SPDX-License-Identifier: MIT
                   {{ initiative.name }}
                 </h1>
 
+                <!-- Source label: who the initiative is run on behalf of -->
+                <div
+                  v-if="initiative.attribution"
+                  class="flex items-center gap-2"
+                  :class="{ hidden: isScrolled }"
+                >
+                  <lfx-avatar
+                    :type="initiative.attribution.type"
+                    size="xsmall"
+                    :src="initiative.attribution.logoUrl"
+                  />
+                  <span class="text-sm text-neutral-600 leading-5">
+                    {{ initiative.attribution.name }}
+                  </span>
+                </div>
+
                 <!-- Description -->
                 <div :class="{ hidden: isScrolled }">
                   <p

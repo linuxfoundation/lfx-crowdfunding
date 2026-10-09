@@ -49,6 +49,7 @@ const initiativeSelect = `
 		i.country, i.city, i.is_online,
 		i.donation_mode,
 		i.attributed_to_type, i.attributed_to_uid, i.benefit_project_uid,
+		i.attributed_to_name, i.attributed_to_logo_url,
 		i.created_on, i.updated_on,
 		COALESCE(ls.total_raised_cents, 0)      AS total_raised_cents,
 		COALESCE(ls.total_debited_cents, 0)     AS total_disbursed_cents,
@@ -411,9 +412,10 @@ const (
 		        stripe_plan_id, stripe_product_id, accept_funding, cii_project_id,
 		        eventbrite_url, application_url, event_start_date, event_end_date,
 		        country, city, is_online, donation_mode,
-		        attributed_to_type, attributed_to_uid, benefit_project_uid)
+		        attributed_to_type, attributed_to_uid, benefit_project_uid,
+		        attributed_to_name, attributed_to_logo_url)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-		        $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`
+		        $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`
 
 	insertGoal = `
 		INSERT INTO initiative_goals
@@ -521,7 +523,9 @@ const (
 		    attributed_to_type   = $21,
 		    attributed_to_uid    = $22,
 		    benefit_project_uid  = $23,
-		    updated_by           = COALESCE($24, updated_by) -- keep last editor when caller supplies none (e.g. ProcessApproval)
+		    updated_by           = COALESCE($24, updated_by), -- keep last editor when caller supplies none (e.g. ProcessApproval)
+		    attributed_to_name     = $25,
+		    attributed_to_logo_url = $26
 		WHERE id = $1`
 )
 
@@ -557,6 +561,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		nullableString(i.Country), nullableString(i.City), i.IsOnline,
 		string(i.DonationMode),
 		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
+		nullableString(i.Attribution.Name), nullableString(i.Attribution.LogoURL),
 	); err != nil {
 		return nil, fmt.Errorf("create initiative: %w", err)
 	}
@@ -736,6 +741,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		string(i.DonationMode),
 		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
 		nullableString(i.UpdatedBy),
+		nullableString(i.Attribution.Name), nullableString(i.Attribution.LogoURL),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update initiative: %w", err)
@@ -1378,6 +1384,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		donationMode                                                  string
 		attributedToType                                              string
 		attributedToUID, benefitProjectUID                            *string
+		attributedToName, attributedToLogoURL                         *string
 	)
 	err := row.Scan(
 		&i.ID, &i.InitiativeType, &sourceDynamoTable, &i.OwnerID,
@@ -1390,6 +1397,7 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 		&country, &city, &isOnline,
 		&donationMode,
 		&attributedToType, &attributedToUID, &benefitProjectUID,
+		&attributedToName, &attributedToLogoURL,
 		&createdOn, &updatedOn,
 		&i.Financials.TotalRaisedCents,
 		&i.Financials.TotalDisbursedCents,
@@ -1433,6 +1441,8 @@ func scanInitiative(row scanner) (*models.Initiative, error) {
 	i.Attribution = models.Attribution{
 		Type:      models.AttributionType(attributedToType),
 		EntityUID: derefString(attributedToUID),
+		Name:      derefString(attributedToName),
+		LogoURL:   derefString(attributedToLogoURL),
 	}.Canonical()
 	i.BenefitProjectUID = derefString(benefitProjectUID)
 	if acceptFunding != nil {

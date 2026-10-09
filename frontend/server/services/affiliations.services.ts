@@ -11,6 +11,7 @@ import type {
 } from '../types/query-service.types';
 import { getAuthCookie } from '../utils/auth-cookies';
 import { useBackendFetch } from '../utils/backend-fetch';
+import type { AttributionInput } from '../types/fundraise.types';
 import type { AffiliationCandidates, AffiliationEntity } from '#shared/types/affiliation.types';
 
 // Username claim on gateway-audience access tokens (the ID token carries
@@ -93,4 +94,23 @@ export const getAffiliations = async (event: H3Event): Promise<AffiliationCandid
     getProjects(event),
   ]);
   return { organizations, projects };
+};
+
+// Display values for the public source label (lfx-crowdfunding#346), taken from the caller's own
+// candidates rather than the client so an initiative can't carry another entity's name. Empty on a
+// miss or a query failure: the attribution still saves (the backend gates it), just unlabeled.
+// ponytail: refetches both candidate lists on submit; fine at one call per fundraise.
+export const getAttributionDisplay = async (
+  event: H3Event,
+  { kind, entityId }: AttributionInput,
+): Promise<{ name?: string; logo_url?: string }> => {
+  try {
+    const { organizations, projects } = await getAffiliations(event);
+    const entity = (kind === 'organization' ? organizations : projects).find(
+      (e) => e.id === entityId,
+    );
+    return entity ? { name: entity.name, logo_url: entity.logoUrl } : {};
+  } catch {
+    return {};
+  }
 };

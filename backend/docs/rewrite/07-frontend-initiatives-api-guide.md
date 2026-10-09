@@ -178,6 +178,10 @@ initiative type (LFXV2-2956 M1).
   `attribution` entirely on create defaults to `personal`.
 - `attribution.entity_uid` — must be **absent** when `type` is `"personal"`, and a
   valid UUID for `"organization"` / `"project"`.
+- `attribution.name` / `attribution.logo_url` — optional display values for the
+  public source label (lfx-crowdfunding#346), captured at attribution time and
+  returned on reads. Cleared for `personal`. On update, resubmitting the same entity
+  without a `name` keeps the stored values.
 - `benefit_project_uid` — an independent, optional UUID. It is not coupled to
   `attribution` — an initiative can be attributed to an organization while
   benefiting a different project.

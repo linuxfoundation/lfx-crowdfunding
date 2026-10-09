@@ -134,9 +134,23 @@ var ValidAttributionTypes = map[AttributionType]bool{
 // invariant. It deliberately does NOT check that the caller is affiliated
 // with EntityUID — that check is blocked on the platform enumeration
 // decision (design doc open question 4) and is out of scope for M1.
+//
+// Name and LogoURL are the entity's display values, captured at attribution
+// time for the public source label (lfx-crowdfunding#346) — b2b_org is
+// non-public in the query service, so they can't be resolved live for
+// anonymous viewers. They are display-only: never part of identity
+// (SameEntity) or authorization.
 type Attribution struct {
 	Type      AttributionType `json:"type"`
 	EntityUID string          `json:"entity_uid,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	LogoURL   string          `json:"logo_url,omitempty"`
+}
+
+// SameEntity reports whether a and b attribute to the same entity, ignoring
+// the display fields. Both sides must be canonical.
+func (a Attribution) SameEntity(b Attribution) bool {
+	return a.Type == b.Type && a.EntityUID == b.EntityUID
 }
 
 // sfidPattern matches a Salesforce ID: 15 or 18 alphanumeric characters.
@@ -195,6 +209,8 @@ func (a *Attribution) Validate() error {
 		if a.EntityUID != "" {
 			return fmt.Errorf("attribution.entity_uid must be empty for personal attribution")
 		}
+		// The personal label is the creator's name; never store a stray entity name.
+		a.Name, a.LogoURL = "", ""
 		return nil
 	}
 	if a.EntityUID == "" {
@@ -247,11 +263,8 @@ type Initiative struct {
 	AcceptFunding  bool             `json:"accept_funding"`
 	DonationMode   DonationMode     `json:"donation_mode"`
 
-	// Attribution — who this initiative is run on behalf of (LFXV2-2956 M1).
-	// The public source label driven by Attribution is suppressed until M2
-	// ships the access rule that lets the attributed entity's writers police
-	// it (design §5 coupling note) — it is captured here but not yet surfaced
-	// beyond this API response.
+	// Attribution — who this initiative is run on behalf of (LFXV2-2956 M1),
+	// shown publicly as the source label (lfx-crowdfunding#346).
 	Attribution       Attribution `json:"attribution"`
 	BenefitProjectUID string      `json:"benefit_project_uid,omitempty"`
 

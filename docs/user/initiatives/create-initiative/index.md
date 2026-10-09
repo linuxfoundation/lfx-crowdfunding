@@ -69,6 +69,8 @@ Choose who this initiative is being created on behalf of:
 
 If you choose an organization or project, pick it from the list; you can't type in an entity by hand. The organization list shows organizations where you've been granted a role in LFX Self Serve. The project list shows projects and foundations where you've been granted access directly. If you have none of that kind yet, that option is disabled with a short explanation. Access that comes only through a team or a parent foundation doesn't appear in the list, but it still lets you attribute the initiative to that entity.
 
+An initiative attributed to an organization or project shows that entity's name and logo under its title on the public detail page. The name and logo are saved when you attribute the initiative, so if the entity is later renamed or changes its logo, the label keeps the old values until the initiative is attributed again. Personal initiatives show no label.
+
 ### Compliance and terms
 
 ![Compliance and terms step](/images/docs/screenshots/initiatives/create-initiative-compliance.png)
