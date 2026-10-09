@@ -404,6 +404,60 @@ func TestInitiativeRepository_Attribution_RoundTrip(t *testing.T) {
 	}
 }
 
+// Display fields go through positional INSERT/UPDATE args and the scan, so a
+// misordered column shows up here; a label-only change must bump updated_on.
+func TestInitiativeRepository_AttributionDisplay_RoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "attribution-display-owner")
+	repo := NewInitiativeRepository(testPool)
+
+	attr := models.Attribution{
+		Type: models.AttributionOrganization, EntityUID: "0012M00002qnukOQAQ",
+		Name: "Acme", LogoURL: "https://example.com/acme.png",
+	}
+	created, err := repo.Create(ctx, &models.Initiative{
+		ID: uuid.New().String(), InitiativeType: "project", OwnerID: owner.ID,
+		Name: "Display Fund", Slug: "display-fund", Status: models.StatusPublished,
+		DonationMode: models.DonationModeOpen, Attribution: attr,
+	}, models.InitiativeCreateInput{InitiativeType: "project", Name: "Display Fund", Slug: "display-fund"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.Attribution != attr {
+		t.Errorf("Create() attribution = %+v, want %+v", created.Attribution, attr)
+	}
+
+	if _, err := testPool.Exec(ctx, `UPDATE crowdfunding.initiatives SET updated_on = NOW() - INTERVAL '1 day' WHERE id = $1`, created.ID); err != nil {
+		t.Fatalf("backdate updated_on: %v", err)
+	}
+
+	created.Attribution.Name, created.Attribution.LogoURL = "Acme Corp", "https://example.com/acme-2.png"
+	if _, err := repo.Update(ctx, created, models.InitiativeUpdateInput{}); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	got, err := repo.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if got.Attribution != created.Attribution {
+		t.Errorf("GetByID() attribution = %+v, want %+v", got.Attribution, created.Attribution)
+	}
+
+	var stale bool
+	if err := testPool.QueryRow(ctx, `SELECT updated_on < NOW() - INTERVAL '1 hour' FROM crowdfunding.initiatives WHERE id = $1`, created.ID).Scan(&stale); err != nil {
+		t.Fatalf("select updated_on: %v", err)
+	}
+	if stale {
+		t.Error("updated_on not bumped when only the attribution label changed")
+	}
+}
+
 func TestInitiativeRepository_Update_EmptyUpdatedByPreservesLastEditor(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DB integration test")

@@ -11,6 +11,7 @@ import type {
 } from '../types/query-service.types';
 import { getAuthCookie } from '../utils/auth-cookies';
 import { useBackendFetch } from '../utils/backend-fetch';
+import type { AttributionInput } from '../types/fundraise.types';
 import type { AffiliationCandidates, AffiliationEntity } from '#shared/types/affiliation.types';
 
 // Username claim on gateway-audience access tokens (the ID token carries
@@ -93,4 +94,39 @@ export const getAffiliations = async (event: H3Event): Promise<AffiliationCandid
     getProjects(event),
   ]);
   return { organizations, projects };
+};
+
+// Conservative subset of what the backend's logo_url check (Go url.Parse: https, non-empty host,
+// at most 2048 bytes) accepts: a plain hostname, an optional numeric port, then RFC 3986 path/query
+// characters with well-formed %XX escapes. Matched on the raw string because WHATWG `new URL`
+// normalizes inputs (`https:///x` gets host `x`) that Go rejects.
+const LOGO_URL_PATTERN =
+  /^https:\/\/[A-Za-z0-9.-]+(:\d{1,5})?([/?#]([A-Za-z0-9\-._~!$&'()*+,;=:@/?#]|%[0-9A-Fa-f]{2})*)?$/;
+const MAX_LOGO_URL_BYTES = 2048;
+
+export const isAcceptedLogoUrl = (url: string | undefined): url is string =>
+  !!url && LOGO_URL_PATTERN.test(url) && Buffer.byteLength(url) <= MAX_LOGO_URL_BYTES;
+
+// Display values for the public source label (lfx-crowdfunding#346), taken from the caller's own
+// candidates rather than the client so an initiative can't carry another entity's name. Empty on a
+// miss or a query failure: the attribution still saves (the backend gates it), just unlabeled.
+// ponytail: refetches both candidate lists on submit; fine at one call per fundraise.
+export const getAttributionDisplay = async (
+  event: H3Event,
+  { kind, entityId }: AttributionInput,
+): Promise<{ name?: string; logo_url?: string }> => {
+  try {
+    const { organizations, projects } = await getAffiliations(event);
+    const entity = (kind === 'organization' ? organizations : projects).find(
+      (e) => e.id === entityId,
+    );
+    if (!entity) return {};
+    // Drop a logo the backend would reject (`Attribution.Validate`) rather than fail the whole
+    // fundraise.
+    const logoUrl = isAcceptedLogoUrl(entity.logoUrl) ? entity.logoUrl : undefined;
+    // Cut by code points, as the backend counts them, so a surrogate pair is never split.
+    return { name: Array.from(entity.name).slice(0, 255).join(''), logo_url: logoUrl };
+  } catch {
+    return {};
+  }
 };
