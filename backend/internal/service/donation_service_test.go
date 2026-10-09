@@ -970,6 +970,72 @@ func TestProjectDonationSummaries_PreservesDonationTier(t *testing.T) {
 	}
 }
 
+// --- organization ownership (#278) ---
+
+func TestOwnedOrg(t *testing.T) {
+	const orgID = "11111111-1111-1111-1111-111111111111"
+	repo := &summaryInitiativeRepo{
+		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
+			return map[string]models.Organization{orgID: {ID: orgID, OwnerID: "owner", Name: "Acme"}}, nil
+		},
+	}
+	tests := []struct {
+		name, orgID, userID, wantID, wantName string
+		wantErr                               error
+	}{
+		{"no org", "", "owner", "", "", nil},
+		{"own org", orgID, "owner", orgID, "Acme", nil},
+		{"own org uppercase", strings.ToUpper(orgID), "owner", orgID, "Acme", nil},
+		{"foreign org", orgID, "someone-else", "", "", domain.ErrOrganizationNotFound},
+		{"unknown org", "22222222-2222-2222-2222-222222222222", "owner", "", "", domain.ErrOrganizationNotFound},
+		{"not a uuid", "not-a-uuid", "owner", "", "", domain.ErrOrganizationNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotID, gotName, err := ownedOrg(context.Background(), repo, tt.orgID, tt.userID)
+			if !errors.Is(err, tt.wantErr) || gotID != tt.wantID || gotName != tt.wantName {
+				t.Errorf("ownedOrg() = %q, %q, %v; want %q, %q, %v", gotID, gotName, err, tt.wantID, tt.wantName, tt.wantErr)
+			}
+		})
+	}
+}
+
+// A lookup failure must fail closed with a real error, not be mistaken for
+// "not found" or swallowed like the old best-effort name lookup.
+func TestOwnedOrg_RepoErrorFailsClosed(t *testing.T) {
+	repoErr := errors.New("db down")
+	repo := &summaryInitiativeRepo{
+		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
+			return nil, repoErr
+		},
+	}
+	_, _, err := ownedOrg(context.Background(), repo, "11111111-1111-1111-1111-111111111111", "owner")
+	if !errors.Is(err, repoErr) || errors.Is(err, domain.ErrOrganizationNotFound) {
+		t.Errorf("error = %v, want wrapped %v and not ErrOrganizationNotFound", err, repoErr)
+	}
+}
+
+func TestDonationService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T) {
+	stripeCalled := false
+	stripe := &configStripeClient{
+		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
+			stripeCalled = true
+			return "cus_1", nil
+		},
+	}
+	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), &testUserRepo{}, stripe)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem", OrganizationID: "11111111-1111-1111-1111-111111111111",
+	})
+	if !errors.Is(err, domain.ErrOrganizationNotFound) {
+		t.Fatalf("error = %v, want ErrOrganizationNotFound", err)
+	}
+	if stripeCalled {
+		t.Error("Stripe must not be called for a foreign organization")
+	}
+}
+
 // --- initiative list visibility (#186) ---
 
 func TestDonationService_ListByInitiative_OnlySucceeded(t *testing.T) {

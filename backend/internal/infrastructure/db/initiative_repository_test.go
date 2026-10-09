@@ -501,3 +501,34 @@ func TestInitiativeRepository_List_ByAttribution(t *testing.T) {
 		t.Fatalf("got %d items (total %d), want 2 (published + submitted for that org only)", len(got), meta.Total)
 	}
 }
+
+// GetOrganizationsByIDs must populate OwnerID: donation/subscription create
+// relies on it to reject orgs the caller does not own (lfx-self-serve-ops#278).
+func TestInitiativeRepository_GetOrganizationsByIDs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.organizations", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "org-owner")
+	org, err := NewOrganizationRepository(testPool).Create(ctx, owner.ID, models.OrganizationCreateInput{
+		Name: "Acme", AvatarURL: "https://example.com/acme.png",
+	})
+	if err != nil {
+		t.Fatalf("create organization: %v", err)
+	}
+
+	missing := uuid.New().String()
+	orgs, err := NewInitiativeRepository(testPool).GetOrganizationsByIDs(ctx, []string{org.ID, missing})
+	if err != nil {
+		t.Fatalf("GetOrganizationsByIDs: %v", err)
+	}
+	if len(orgs) != 1 {
+		t.Fatalf("len = %d, want 1 (missing ID must be omitted)", len(orgs))
+	}
+	got := orgs[org.ID]
+	if got.ID != org.ID || got.OwnerID != owner.ID || got.Name != "Acme" || got.AvatarURL != "https://example.com/acme.png" {
+		t.Errorf("got %+v, want ID=%s OwnerID=%s Name=Acme AvatarURL set", got, org.ID, owner.ID)
+	}
+}

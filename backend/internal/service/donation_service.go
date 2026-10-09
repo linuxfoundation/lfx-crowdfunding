@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -261,6 +262,14 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	if user.Email == "" {
 		return nil, fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before donating", domain.ErrProfileNotSynced)
 	}
+
+	// The donor may only attribute to an organization they own (#278).
+	orgID, orgName, err := ownedOrg(ctx, s.initiativeRepo, input.OrganizationID, user.ID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	input.OrganizationID = orgID
 	customerID := user.StripeCustomerID
 	if customerID == "" {
 		customerID, err = s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
@@ -285,16 +294,6 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	if owner, ownerErr := s.userRepo.GetByID(ctx, initiative.OwnerID); ownerErr == nil {
 		ownerEmail = owner.Email
 		ownerName = owner.Name
-	}
-
-	// Best-effort org name lookup for email rendering.
-	orgName := ""
-	if input.OrganizationID != "" {
-		if orgs, orgErr := s.initiativeRepo.GetOrganizationsByIDs(ctx, []string{input.OrganizationID}); orgErr == nil {
-			if org, ok := orgs[input.OrganizationID]; ok {
-				orgName = org.Name
-			}
-		}
 	}
 
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
@@ -354,4 +353,30 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	created.Status = pi.Status
 	created.ClientSecret = pi.ClientSecret
 	return created, nil
+}
+
+// ownedOrg returns the canonical ID and name of orgID when it belongs to userID,
+// empty strings when orgID is empty, and ErrOrganizationNotFound when the org is
+// missing or owned by someone else (featured-company org IDs are public, so
+// ownership must be checked).
+// ponytail: interim guard until org donations move to canonical b2b_org records (lfx-crowdfunding#261).
+func ownedOrg(ctx context.Context, repo domain.InitiativeRepository, orgID, userID string) (id, name string, err error) {
+	if orgID == "" {
+		return "", "", nil
+	}
+	parsed, err := uuid.Parse(orgID)
+	if err != nil {
+		return "", "", domain.ErrOrganizationNotFound
+	}
+	// Postgres returns UUIDs lowercase; canonicalize so uppercase input still matches.
+	id = parsed.String()
+	orgs, err := repo.GetOrganizationsByIDs(ctx, []string{id})
+	if err != nil {
+		return "", "", fmt.Errorf("resolve organization: %w", err)
+	}
+	org, ok := orgs[id]
+	if !ok || org.OwnerID != userID {
+		return "", "", domain.ErrOrganizationNotFound
+	}
+	return id, org.Name, nil
 }
