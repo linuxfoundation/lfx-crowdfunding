@@ -81,7 +81,7 @@ func TestSyncer_Run_normalisesStatusToLowercase(t *testing.T) {
 		{"Published", "published"},
 		{"Pending", "pending"},
 		{"Hidden", "hidden"},
-		{"Rejected", "rejected"},
+		{"Declined", "declined"},
 		{"hide", "hidden"}, // Jobspring legacy value
 	}
 
@@ -226,8 +226,8 @@ func TestSyncer_Run_countsUpsertErrorsWithoutHalting(t *testing.T) {
 
 	src := &mockMentorshipSource{
 		programs: []models.MentorshipProgram{
-			{JobspringProjectID: "js-1", Name: "Good", OwnerLFUsername: "alice"},
-			{JobspringProjectID: "js-2", Name: "Bad", OwnerLFUsername: "bob"},
+			{JobspringProjectID: "js-1", Name: "Good", Status: "published", OwnerLFUsername: "alice"},
+			{JobspringProjectID: "js-2", Name: "Bad", Status: "published", OwnerLFUsername: "bob"},
 		},
 	}
 	repo := &mockMentorshipRepo{}
@@ -396,6 +396,34 @@ func TestSyncer_Run_skipsAndCountsErrorForEmptyOwnerLFUsername(t *testing.T) {
 	}
 	if result.errors != 1 {
 		t.Errorf("errors: got %d, want 1 (missing OwnerLFUsername counts as error)", result.errors)
+	}
+	if len(repo.upsertedPrograms) != 1 || repo.upsertedPrograms[0].JobspringProjectID != "js-2" {
+		t.Errorf("only js-2 should be upserted, got %+v", repo.upsertedPrograms)
+	}
+}
+
+func TestSyncer_Run_skipsAndCountsErrorForInvalidStatus(t *testing.T) {
+	t.Parallel()
+
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{JobspringProjectID: "js-1", Name: "Bad Status", Status: "approved", OwnerLFUsername: "alice"},
+			{JobspringProjectID: "js-2", Name: "Good Status", Status: "Published", OwnerLFUsername: "alice"},
+		},
+	}
+	repo := &mockMentorshipRepo{}
+
+	s := newSyncer(repo, src, discardLogger())
+	result, err := s.Run(context.Background())
+
+	if err != nil {
+		t.Fatalf("unexpected top-level error: %v", err)
+	}
+	if result.upserted != 1 {
+		t.Errorf("upserted: got %d, want 1", result.upserted)
+	}
+	if result.errors != 1 {
+		t.Errorf("errors: got %d, want 1 (invalid status counts as error)", result.errors)
 	}
 	if len(repo.upsertedPrograms) != 1 || repo.upsertedPrograms[0].JobspringProjectID != "js-2" {
 		t.Errorf("only js-2 should be upserted, got %+v", repo.upsertedPrograms)
