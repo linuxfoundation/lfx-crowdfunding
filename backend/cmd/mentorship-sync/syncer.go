@@ -65,6 +65,14 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 		if p.Status == legacyStatusHide {
 			p.Status = normalizedStatusHidden
 		}
+		if !models.InitiativeStatus(p.Status).IsValid() {
+			s.logger.ErrorContext(ctx, "skipping program: invalid status",
+				"jobspring_project_id", p.JobspringProjectID,
+				"status", p.Status,
+			)
+			result.errors++
+			continue
+		}
 
 		p.OwnerLFUsername = strings.TrimSpace(p.OwnerLFUsername)
 		if p.OwnerLFUsername == "" {

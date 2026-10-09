@@ -5,10 +5,12 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
@@ -40,16 +42,13 @@ func (r *MentorshipRepositoryImpl) UpsertProgram(ctx context.Context, p models.M
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// 1. Resolve owner: upsert a stub user row by LF username, then fetch the UUID.
-	// Use COALESCE(NULLIF(...,''), col) so empty strings don't overwrite existing values.
+	// 1. Resolve owner: create a stub user row by LF username if none exists, then fetch the UUID.
+	// Existing users are never modified — Snowflake owner data must not overwrite
+	// profile fields (email, names, avatar) of a real CF user.
 	const insertOwner = `
 INSERT INTO users (username, email, given_name, family_name, avatar_url, created_on, updated_on)
 VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), NOW(), NOW())
-ON CONFLICT (username) DO UPDATE SET
-	email       = COALESCE(NULLIF(EXCLUDED.email, ''), users.email),
-	given_name  = COALESCE(NULLIF(EXCLUDED.given_name, ''), users.given_name),
-	family_name = COALESCE(NULLIF(EXCLUDED.family_name, ''), users.family_name),
-	avatar_url  = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), users.avatar_url)`
+ON CONFLICT (username) DO NOTHING`
 	const selectOwner = `SELECT id FROM users WHERE username = $1`
 
 	if _, err := tx.Exec(ctx, insertOwner, p.OwnerLFUsername, p.OwnerEmail, p.OwnerFirstName, p.OwnerLastName, p.OwnerAvatarURL); err != nil {
@@ -63,6 +62,8 @@ ON CONFLICT (username) DO UPDATE SET
 	// 2. Upsert initiative row with all Snowflake-sourced fields.
 	// PROGRAM_ID is used directly as initiatives.id (PK) and jobspring_project_id,
 	// so ON CONFLICT (id) is always valid and needs no separate unique index.
+	// The conflict update is restricted to mentorship rows: a PROGRAM_ID colliding
+	// with any other initiative type updates nothing and returns no row.
 	const upsertInitiative = `
 INSERT INTO initiatives (
 	id,
@@ -98,6 +99,7 @@ ON CONFLICT (id) DO UPDATE SET
 	slug        = EXCLUDED.slug,
 	industry    = EXCLUDED.industry,
 	updated_on  = NOW()
+WHERE initiatives.initiative_type = $2
 RETURNING id`
 
 	var id string
@@ -111,6 +113,9 @@ RETURNING id`
 		nullableMentorshipString(p.Slug),
 		nullableMentorshipString(p.Industry),
 	).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("upsert mentorship program %q: id belongs to a non-mentorship initiative, skipped", p.JobspringProjectID)
+		}
 		return "", fmt.Errorf("upsert mentorship program %q: %w", p.JobspringProjectID, err)
 	}
 
