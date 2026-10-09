@@ -13,6 +13,7 @@ name: CI — Backend
     paths:
       - "backend/**"
       - ".github/workflows/ci-backend.yml"
+  merge_group:
 
 permissions:
   contents: read
