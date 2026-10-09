@@ -9,7 +9,7 @@
 # Covers doc 12's named "tests.yaml merge gate" scenarios (cross-project
 # denial, hidden withdraws the wildcard, parent-project inheritance) plus
 # the attribution shapes a project-rooted model can't express (personal,
-# b2b_org, non-cascading org writers), and the global approver-team grant.
+# b2b_org, parent-org writer cascade), and the global approver-team grant.
 
 name: Crowdfunding Authorization Model Tests (example)
 model_file: model.fga
@@ -71,16 +71,20 @@ tests:
         assertions:
           writer: false
 
-  - name: b2b_org writer access is non-cascading (doc 12 Decided B)
+  - name: b2b_org writer access cascades from the parent org (doc 11 §2.2)
     check:
       - user: user:orgwriter
         object: crowdfunding_initiative:org-published
         assertions:
           writer: true
-      # no writer relation exists between b2b_org:acme-parent and acme, or
-      # to org-published at all — asserting a non-member here would be a
-      # tautology, not a real cascade check. The absence of any tuple
-      # linking a parent org to acme *is* the non-cascading proof.
+      - user: user:orgwriter-parent
+        object: crowdfunding_initiative:org-published
+        assertions:
+          writer: true
+      - user: user:orgwriter-other
+        object: crowdfunding_initiative:org-published
+        assertions:
+          writer: false
 
   - name: an org writer is scoped to their own org, not other initiatives
     check:
