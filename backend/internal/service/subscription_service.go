@@ -186,6 +186,13 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		return nil, fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 	}
 
+	// The donor may only attribute to an organization they own (#278).
+	orgName, err := ownedOrgName(ctx, s.initiativeRepo, input.OrganizationID, user.ID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	// Prevent duplicate active subscriptions for the same user + initiative.
 	// A user may only hold one non-terminal subscription at a time per initiative.
 	if existing, lookupErr := s.repo.GetActiveByUserAndInitiative(ctx, user.ID, initiativeID); lookupErr == nil {
@@ -243,16 +250,6 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	if owner, ownerErr := s.userRepo.GetByID(ctx, initiative.OwnerID); ownerErr == nil {
 		ownerEmail = owner.Email
 		ownerName = owner.Name
-	}
-
-	// Best-effort org name lookup for email rendering.
-	orgName := ""
-	if input.OrganizationID != "" {
-		if orgs, orgErr := s.initiativeRepo.GetOrganizationsByIDs(ctx, []string{input.OrganizationID}); orgErr == nil {
-			if org, ok := orgs[input.OrganizationID]; ok {
-				orgName = org.Name
-			}
-		}
 	}
 
 	result, err := s.stripe.CreateSubscription(ctx, models.StripeSubscriptionRequest{

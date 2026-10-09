@@ -1595,7 +1595,7 @@ func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []
 		return result, nil
 	}
 
-	const q = `SELECT id, name, avatar_url FROM organizations WHERE id = ANY($1::uuid[])`
+	const q = `SELECT id, owner_id, name, avatar_url FROM organizations WHERE id = ANY($1::uuid[])`
 	rows, err := r.pool.Query(ctx, q, ids)
 	if err != nil {
 		span.RecordError(err)
@@ -1606,7 +1606,7 @@ func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []
 	for rows.Next() {
 		var o models.Organization
 		var avatarURL *string
-		if err := rows.Scan(&o.ID, &o.Name, &avatarURL); err != nil {
+		if err := rows.Scan(&o.ID, &o.OwnerID, &o.Name, &avatarURL); err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("scan organization: %w", err)
 		}

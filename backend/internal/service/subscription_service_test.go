@@ -785,3 +785,27 @@ func TestSubscriptionService_GetByIDForUser_RepoError_IsWrapped(t *testing.T) {
 		t.Error("db error should not be treated as not-found")
 	}
 }
+
+// --- organization ownership (#278) ---
+
+func TestSubscriptionService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T) {
+	stripeCalled := false
+	stripe := &configStripeClient{
+		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
+			stripeCalled = true
+			return "cus_1", nil
+		},
+	}
+	svc := newSubscriptionSvc(&testSubscriptionRepo{}, acceptingInitiative(), &testUserRepo{}, stripe)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.SubscriptionCreateInput{
+		AmountCents: 2000, Frequency: "monthly", StripePaymentMethodID: "pm_test", IdempotencyKey: "idem",
+		OrganizationID: "11111111-1111-1111-1111-111111111111",
+	})
+	if !errors.Is(err, domain.ErrOrganizationNotFound) {
+		t.Fatalf("error = %v, want ErrOrganizationNotFound", err)
+	}
+	if stripeCalled {
+		t.Error("Stripe must not be called for a foreign organization")
+	}
+}

@@ -969,3 +969,53 @@ func TestProjectDonationSummaries_PreservesDonationTier(t *testing.T) {
 		t.Errorf("summary[1].DonationTier = %q, want empty", result[1].DonationTier)
 	}
 }
+
+// --- organization ownership (#278) ---
+
+func TestOwnedOrgName(t *testing.T) {
+	const orgID = "11111111-1111-1111-1111-111111111111"
+	repo := &summaryInitiativeRepo{
+		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
+			return map[string]models.Organization{orgID: {ID: orgID, OwnerID: "owner", Name: "Acme"}}, nil
+		},
+	}
+	tests := []struct {
+		name, orgID, userID, wantName string
+		wantErr                       error
+	}{
+		{"no org", "", "owner", "", nil},
+		{"own org", orgID, "owner", "Acme", nil},
+		{"foreign org", orgID, "someone-else", "", domain.ErrOrganizationNotFound},
+		{"unknown org", "22222222-2222-2222-2222-222222222222", "owner", "", domain.ErrOrganizationNotFound},
+		{"not a uuid", "not-a-uuid", "owner", "", domain.ErrOrganizationNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ownedOrgName(context.Background(), repo, tt.orgID, tt.userID)
+			if !errors.Is(err, tt.wantErr) || got != tt.wantName {
+				t.Errorf("ownedOrgName() = %q, %v; want %q, %v", got, err, tt.wantName, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDonationService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T) {
+	stripeCalled := false
+	stripe := &configStripeClient{
+		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
+			stripeCalled = true
+			return "cus_1", nil
+		},
+	}
+	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), &testUserRepo{}, stripe)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem", OrganizationID: "11111111-1111-1111-1111-111111111111",
+	})
+	if !errors.Is(err, domain.ErrOrganizationNotFound) {
+		t.Fatalf("error = %v, want ErrOrganizationNotFound", err)
+	}
+	if stripeCalled {
+		t.Error("Stripe must not be called for a foreign organization")
+	}
+}
