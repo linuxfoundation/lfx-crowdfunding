@@ -28,10 +28,13 @@ type project
     define parent: [project]
     define writer: [user] or writer from parent
 
-# Stand-in for the real platform `b2b_org` type.
+# Stand-in for the real platform `b2b_org` type. Carries only the parent/child
+# writer cascade (doc 11 §2.2); the real one also includes global_org_admin.
 type b2b_org
   relations
-    define writer: [user]
+    define parent: [b2b_org]
+    define child: [b2b_org]
+    define writer: [user] or writer from parent or writer from child
 
 # Stand-in for the real platform `team` type (defined in
 # lfx-v2-helm/charts/lfx-platform/files/model.fga, not in this repo).

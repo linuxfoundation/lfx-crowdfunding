@@ -144,8 +144,9 @@ it's accepted anyway.
 > authoritative check (no authoritative affiliation source exists — involvement is best-effort and
 > self-attested), so attribution is a **self-attested claim**; the server validates that the entity
 > exists and is the right type, and the false-claim risk is mitigated by label suppression + writer
-> policing, not by an affiliation lookup. Confirmation of this framing with the architect is
-> tracked in open question 4.
+> policing, not by an affiliation lookup. **Superseded (2026-10-08, lfx-crowdfunding#259):** the
+> self-attested/existence-only framing in this note is replaced by the required FGA `auditor` check
+> below; the note is kept for the reasoning it records.
 
 **Eligibility is enforced server-side, not by the picker (decided, lfx-crowdfunding#259).**
 Constraining the dropdown is UX only — a caller can POST a create/update request with any entity
@@ -671,9 +672,10 @@ below.
 >   filtered query on the existing `List` (`attributed_to_type`/`attributed_to_uid`), so there is no
 >   candidate enumeration, no batch check, no merged `owner_id OR attributed_to IN (…)` branch and no
 >   per-user cache, and totals and pagination are correct by construction.
-> - **Manager reads** (#340): `GET /crowdfunding/initiatives/{id}/manage` and
->   `/manage/transactions` return one initiative in any status to callers who pass the gateway's
->   `openfga_check writer` on `crowdfunding_initiative:{id}`.
+> - **Manager reads** (#340): `GET /crowdfunding/initiatives/{id}/manage` returns one initiative in
+>   any status, and `GET /crowdfunding/initiatives/{id}/manage/transactions` returns that
+>   initiative's transactions, both to callers who pass the gateway's `openfga_check writer` on
+>   `crowdfunding_initiative:{id}`.
 >
 > The text below is kept as the record of the design that was considered.
 
@@ -796,7 +798,7 @@ maintainer story is the strongest).
    §3.5). With the write gate itself deferred to the gateway milestone (§3.4, §3.5, open question
    8), there is no near-term consumer for this resolver work either.
 4. **Candidate enumeration — largely resolved (2026-08); org picker source superseded again, gate
-   framing remains open.** The shared "enumerate a user's entities" dependency dissolved once the
+   framing superseded (2026-10-08, §2.1).** The shared "enumerate a user's entities" dependency dissolved once the
    platform ruled FGA enumeration out (ListObjects is an anti-pattern; fga-sync PR #57 being closed
    — see §5.1):
    - ~~**Gateway-milestone writable-set**~~ **Resolved:** CF-local candidates (distinct attributed
@@ -837,7 +839,10 @@ maintainer story is the strongest).
      </details>
    - ~~**New, still open: project name/logo half**~~ **Resolved** by the same v2 query-service
      answer above — it was the missing half, not a separate dependency.
-   - ~~**Gate framing.**~~ **Resolved (PM, 2026-08).** Attribution stays a self-attested claim — no
+   - ~~**Gate framing.**~~ **Superseded (2026-10-08, lfx-crowdfunding#259):** attribution now
+     requires an FGA `auditor` check on the target `project`/`b2b_org` (§2.1, "Eligibility is
+     enforced server-side"), not a self-attested claim. The 2026-08 resolution below is kept for
+     history. **Resolved (PM, 2026-08).** Attribution stays a self-attested claim — no
      access derived from it, entity existence validated server-side, public label suppressed until
      gateway-milestone writer policing (§2.1 ruling note). Both sub-parts raised by architecture review: (i)
      excluding private/formation projects (§2.1) is confirmed sufficient — no further framing

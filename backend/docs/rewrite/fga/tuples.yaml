@@ -23,14 +23,22 @@
   relation: writer
   object: project:other
 
-# --- b2b_org: acme, and an unrelated "parent" org proving non-cascading ---
+# --- b2b_org: acme under acme-parent, plus an unrelated org ---
 - user: user:orgwriter
   relation: writer
   object: b2b_org:acme
 
-# b2b_org:acme-parent deliberately gets NO tuple relating it to acme, and no
-# writer relation of its own — there is no parent-org concept in the model,
-# so a writer on any other org must never reach acme. See tests.yaml.
+- user: b2b_org:acme-parent
+  relation: parent
+  object: b2b_org:acme
+
+- user: user:orgwriter-parent
+  relation: writer
+  object: b2b_org:acme-parent
+
+- user: user:orgwriter-other
+  relation: writer
+  object: b2b_org:other-org
 
 # --- Initiative attributed to a project, published ---
 - user: project:lf-child
