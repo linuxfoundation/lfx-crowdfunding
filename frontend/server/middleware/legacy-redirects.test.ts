@@ -41,6 +41,7 @@ describe('legacy-redirects middleware', () => {
     [`/details/${ID}/financial`, `/initiatives/${ID}`],
     [`/events/${ID}/edit`, `/initiatives/${ID}`],
     [`/initiative/${ID}`, `/initiatives/${ID}`],
+    [`/ostif/${ID}`, `/initiatives/${ID}`],
   ])('redirects the legacy page %s to %s', (from, to) => {
     handler(request(from));
     expect(mockSendRedirect).toHaveBeenCalledWith(expect.anything(), to, 301);

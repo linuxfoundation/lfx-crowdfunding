@@ -5,12 +5,12 @@ import { defineEventHandler, getRequestURL, sendRedirect } from 'h3';
 
 // The legacy host (crowdfunding.lfx.linuxfoundation.org) redirects here keeping the
 // path, so old bookmarks, project websites and emails still arrive with the legacy
-// Angular app's URL shapes. Projects, entities, events and initiatives all became
-// initiatives with their legacy id kept, and the API resolves an id or a slug, so
-// every legacy detail page maps onto /initiatives/{idOrSlug}.
+// Angular app's URL shapes. Projects, entities, events, initiatives and OSTIF funds
+// all became initiatives with their legacy id kept, and the API resolves an id or a
+// slug, so every legacy detail page maps onto /initiatives/{idOrSlug}.
 // Compiled once at module load — not inside the handler — to avoid allocating a
 // new RegExp on every request.
-const RE_LEGACY_DETAIL = /^\/(?:projects|details|events|initiative)\/([^/]+)(?:\/.*)?$/;
+const RE_LEGACY_DETAIL = /^\/(?:projects|details|events|initiative|ostif)\/([^/]+)(?:\/.*)?$/;
 // Authenticated flows (project creation, applications, email approvals) have no
 // equivalent on this site, and their tokens are legacy-only, so the query is dropped.
 const RE_LEGACY_FLOW = /^\/(?:projects\/create|email|apply)(?:\/.*)?$/;
