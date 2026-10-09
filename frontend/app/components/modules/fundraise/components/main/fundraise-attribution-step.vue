@@ -18,7 +18,7 @@ SPDX-License-Identifier: MIT
           class="flex flex-col gap-5 p-5"
           :class="[
             modelValue.kind === option.value ? 'bg-accent-50' : 'bg-white hover:bg-neutral-50',
-            isDisabled(option.value) ? 'opacity-60 hover:bg-white' : '',
+            isDisabled(option.value) && !isLoading ? 'opacity-60 hover:bg-white' : '',
           ]"
         >
           <div
@@ -37,8 +37,16 @@ SPDX-License-Identifier: MIT
             <div class="flex flex-col gap-1">
               <span class="text-sm font-semibold text-neutral-900">{{ option.label }}</span>
               <p class="text-xs text-neutral-600 leading-4">{{ option.description }}</p>
+              <template v-if="isLoading && option.value !== 'personal'">
+                <lfx-skeleton
+                  width="12rem"
+                  height="0.75rem"
+                  custom-class="mt-1"
+                />
+                <span class="sr-only">Loading your affiliations…</span>
+              </template>
               <p
-                v-if="isDisabled(option.value)"
+                v-else-if="isDisabled(option.value)"
                 class="text-xs text-neutral-500 leading-4 italic"
               >
                 {{ disabledMessage(option) }}
@@ -49,7 +57,11 @@ SPDX-License-Identifier: MIT
           <!-- Entity picker — only for non-personal kinds, revealed when selected;
                the escape-hatch link below stays reachable even while disabled. -->
           <div
-            v-if="option.value !== 'personal' && (modelValue.kind === option.value || isDisabled(option.value))"
+            v-if="
+              option.value !== 'personal' &&
+              !isLoading &&
+              (modelValue.kind === option.value || isDisabled(option.value))
+            "
             class="flex flex-col gap-2 pl-7"
           >
             <template v-if="!isDisabled(option.value)">
@@ -104,6 +116,7 @@ import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
+import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
 import type { AttributionData, AttributionKind, AttributionOption } from '~/types/fundraise.types';
 import type { AffiliationEntity } from '#shared/types/affiliation.types';
 
@@ -132,14 +145,12 @@ const isDisabled = (kind: AttributionKind): boolean =>
   kind !== 'personal' && (status.value !== 'success' || candidatesFor(kind).length === 0);
 
 // While the fetch is idle/pending we don't yet know if the user has
-// affiliations, so show a loading line instead of the "you aren't
-// affiliated" message. A failed fetch gets its own message so it doesn't
-// look like a stuck loading state.
-const disabledMessage = (option: AttributionOption): string | undefined => {
-  if (status.value === 'success') return option.emptyMessage;
-  if (status.value === 'error') return "We couldn't load your affiliations — refresh and try again.";
-  return 'Loading your affiliations…';
-};
+// affiliations, so org/project show a skeleton instead of looking unavailable.
+const isLoading = computed(() => status.value === 'idle' || status.value === 'pending');
+
+// A failed fetch gets its own message so it doesn't read as "not affiliated".
+const disabledMessage = (option: AttributionOption): string | undefined =>
+  status.value === 'error' ? "We couldn't load your affiliations — refresh and try again." : option.emptyMessage;
 
 const affiliationsManagementUrl = computed(
   () => `${useRuntimeConfig().public.selfServeUrl}${AFFILIATIONS_MANAGEMENT_PATH}`,

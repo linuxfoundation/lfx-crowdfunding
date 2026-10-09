@@ -12,10 +12,12 @@ export const useBackendFetch = async <T = unknown>(
     method?: 'GET' | 'POST' | 'DELETE' | 'PATCH';
     body?: unknown;
     headers?: Record<string, string>;
+    // Platform v2 API (e.g. /query/resources) rather than the CF backend.
+    platform?: boolean;
   } = {},
 ): Promise<T> => {
   const config = useRuntimeConfig();
-  const baseURL = config.apiBaseUrl as string;
+  const baseURL = ((options.platform && config.lfxApiBaseUrl) || config.apiBaseUrl) as string;
   const token = getAuthCookie(event, 'auth_oidc_token') ?? '';
 
   try {

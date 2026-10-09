@@ -33,6 +33,11 @@ const auth0CookieDomain = process.env.NUXT_AUTH0_COOKIE_DOMAIN;
 export default {
   // Server-only
   apiBaseUrl: process.env.NUXT_API_BASE_URL || 'http://localhost:8080',
+  // Platform v2 APIs (query service) behind the same gateway. Empty = use apiBaseUrl, which is
+  // the gateway in every deployed env; set it locally to the dev gateway while apiBaseUrl
+  // points at a local backend. Fallback is resolved at request time, not here — runtime env
+  // overrides only replace keys whose own NUXT_* var is set.
+  lfxApiBaseUrl: process.env.NUXT_LFX_API_BASE_URL || '',
   auth0ClientSecret: process.env.NUXT_AUTH0_CLIENT_SECRET || '',
   auth0CookieDomain,
   githubOauthClientSecret: process.env.NUXT_GITHUB_OAUTH_CLIENT_SECRET || '',
