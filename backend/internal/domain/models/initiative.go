@@ -6,9 +6,11 @@ package models
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -153,6 +155,11 @@ func (a Attribution) SameEntity(b Attribution) bool {
 	return a.Type == b.Type && a.EntityUID == b.EntityUID
 }
 
+const (
+	maxAttributionNameLen    = 255
+	maxAttributionLogoURLLen = 2048
+)
+
 // sfidPattern matches a Salesforce ID: 15 or 18 alphanumeric characters.
 var sfidPattern = regexp.MustCompile(`^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$`)
 
@@ -228,6 +235,16 @@ func (a *Attribution) Validate() error {
 			return fmt.Errorf("attribution.entity_uid must be a UUID")
 		}
 		a.EntityUID = parsed.String()
+	}
+	// Display fields are rendered publicly, so bound them and keep the logo to https.
+	if utf8.RuneCountInString(a.Name) > maxAttributionNameLen {
+		return fmt.Errorf("attribution.name must be at most %d characters", maxAttributionNameLen)
+	}
+	if a.LogoURL != "" {
+		u, err := url.Parse(a.LogoURL)
+		if err != nil || u.Scheme != "https" || u.Host == "" || len(a.LogoURL) > maxAttributionLogoURLLen {
+			return fmt.Errorf("attribution.logo_url must be an https URL of at most %d characters", maxAttributionLogoURLLen)
+		}
 	}
 	return nil
 }

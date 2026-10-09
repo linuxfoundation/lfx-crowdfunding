@@ -3,7 +3,10 @@
 
 package models
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAttribution_Validate(t *testing.T) {
 	const (
@@ -29,6 +32,12 @@ func TestAttribution_Validate(t *testing.T) {
 		{"project, malformed uid", Attribution{Type: AttributionProject, EntityUID: "not-a-uuid"}, true},
 		{"project, sfid instead of uuid", Attribution{Type: AttributionProject, EntityUID: validSFID18}, true},
 		{"unknown type", Attribution{Type: "bogus"}, true},
+		{"display fields, valid", Attribution{Type: AttributionProject, EntityUID: validUUID, Name: "CNCF", LogoURL: "https://x/cncf.png"}, false},
+		{"name too long", Attribution{Type: AttributionProject, EntityUID: validUUID, Name: strings.Repeat("a", 256)}, true},
+		{"logo_url not https", Attribution{Type: AttributionProject, EntityUID: validUUID, LogoURL: "http://x/l.png"}, true},
+		{"logo_url javascript scheme", Attribution{Type: AttributionOrganization, EntityUID: validSFID18, LogoURL: "javascript:alert(1)"}, true},
+		{"logo_url no host", Attribution{Type: AttributionProject, EntityUID: validUUID, LogoURL: "https:///l.png"}, true},
+		{"logo_url too long", Attribution{Type: AttributionProject, EntityUID: validUUID, LogoURL: "https://x/" + strings.Repeat("a", 2048)}, true},
 	}
 
 	for _, tt := range tests {

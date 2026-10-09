@@ -109,7 +109,10 @@ export const getAttributionDisplay = async (
     const entity = (kind === 'organization' ? organizations : projects).find(
       (e) => e.id === entityId,
     );
-    return entity ? { name: entity.name, logo_url: entity.logoUrl } : {};
+    if (!entity) return {};
+    // The backend rejects non-https logos; drop one rather than fail the whole fundraise.
+    const logoUrl = entity.logoUrl?.startsWith('https://') ? entity.logoUrl : undefined;
+    return { name: entity.name.slice(0, 255), logo_url: logoUrl };
   } catch {
     return {};
   }
