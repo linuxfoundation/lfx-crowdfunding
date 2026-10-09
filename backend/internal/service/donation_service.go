@@ -259,11 +259,12 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	}
 
 	// The donor may only attribute to an organization they own (#278).
-	orgName, err := ownedOrgName(ctx, s.initiativeRepo, input.OrganizationID, user.ID)
+	orgID, orgName, err := ownedOrg(ctx, s.initiativeRepo, input.OrganizationID, user.ID)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
+	input.OrganizationID = orgID
 	customerID := user.StripeCustomerID
 	if customerID == "" {
 		customerID, err = s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
@@ -349,24 +350,28 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	return created, nil
 }
 
-// ownedOrgName returns the name of orgID when it belongs to userID, "" when
-// orgID is empty, and ErrOrganizationNotFound when the org is missing or owned
-// by someone else (featured-company org IDs are public, so ownership must be checked).
+// ownedOrg returns the canonical ID and name of orgID when it belongs to userID,
+// empty strings when orgID is empty, and ErrOrganizationNotFound when the org is
+// missing or owned by someone else (featured-company org IDs are public, so
+// ownership must be checked).
 // ponytail: interim guard until org donations move to canonical b2b_org records (lfx-crowdfunding#261).
-func ownedOrgName(ctx context.Context, repo domain.InitiativeRepository, orgID, userID string) (string, error) {
+func ownedOrg(ctx context.Context, repo domain.InitiativeRepository, orgID, userID string) (id, name string, err error) {
 	if orgID == "" {
-		return "", nil
+		return "", "", nil
 	}
-	if _, err := uuid.Parse(orgID); err != nil {
-		return "", domain.ErrOrganizationNotFound
-	}
-	orgs, err := repo.GetOrganizationsByIDs(ctx, []string{orgID})
+	parsed, err := uuid.Parse(orgID)
 	if err != nil {
-		return "", fmt.Errorf("resolve organization: %w", err)
+		return "", "", domain.ErrOrganizationNotFound
 	}
-	org, ok := orgs[orgID]
+	// Postgres returns UUIDs lowercase; canonicalize so uppercase input still matches.
+	id = parsed.String()
+	orgs, err := repo.GetOrganizationsByIDs(ctx, []string{id})
+	if err != nil {
+		return "", "", fmt.Errorf("resolve organization: %w", err)
+	}
+	org, ok := orgs[id]
 	if !ok || org.OwnerID != userID {
-		return "", domain.ErrOrganizationNotFound
+		return "", "", domain.ErrOrganizationNotFound
 	}
-	return org.Name, nil
+	return id, org.Name, nil
 }

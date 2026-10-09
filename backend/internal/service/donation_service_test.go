@@ -972,7 +972,7 @@ func TestProjectDonationSummaries_PreservesDonationTier(t *testing.T) {
 
 // --- organization ownership (#278) ---
 
-func TestOwnedOrgName(t *testing.T) {
+func TestOwnedOrg(t *testing.T) {
 	const orgID = "11111111-1111-1111-1111-111111111111"
 	repo := &summaryInitiativeRepo{
 		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
@@ -980,22 +980,38 @@ func TestOwnedOrgName(t *testing.T) {
 		},
 	}
 	tests := []struct {
-		name, orgID, userID, wantName string
-		wantErr                       error
+		name, orgID, userID, wantID, wantName string
+		wantErr                               error
 	}{
-		{"no org", "", "owner", "", nil},
-		{"own org", orgID, "owner", "Acme", nil},
-		{"foreign org", orgID, "someone-else", "", domain.ErrOrganizationNotFound},
-		{"unknown org", "22222222-2222-2222-2222-222222222222", "owner", "", domain.ErrOrganizationNotFound},
-		{"not a uuid", "not-a-uuid", "owner", "", domain.ErrOrganizationNotFound},
+		{"no org", "", "owner", "", "", nil},
+		{"own org", orgID, "owner", orgID, "Acme", nil},
+		{"own org uppercase", strings.ToUpper(orgID), "owner", orgID, "Acme", nil},
+		{"foreign org", orgID, "someone-else", "", "", domain.ErrOrganizationNotFound},
+		{"unknown org", "22222222-2222-2222-2222-222222222222", "owner", "", "", domain.ErrOrganizationNotFound},
+		{"not a uuid", "not-a-uuid", "owner", "", "", domain.ErrOrganizationNotFound},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ownedOrgName(context.Background(), repo, tt.orgID, tt.userID)
-			if !errors.Is(err, tt.wantErr) || got != tt.wantName {
-				t.Errorf("ownedOrgName() = %q, %v; want %q, %v", got, err, tt.wantName, tt.wantErr)
+			gotID, gotName, err := ownedOrg(context.Background(), repo, tt.orgID, tt.userID)
+			if !errors.Is(err, tt.wantErr) || gotID != tt.wantID || gotName != tt.wantName {
+				t.Errorf("ownedOrg() = %q, %q, %v; want %q, %q, %v", gotID, gotName, err, tt.wantID, tt.wantName, tt.wantErr)
 			}
 		})
+	}
+}
+
+// A lookup failure must fail closed with a real error, not be mistaken for
+// "not found" or swallowed like the old best-effort name lookup.
+func TestOwnedOrg_RepoErrorFailsClosed(t *testing.T) {
+	repoErr := errors.New("db down")
+	repo := &summaryInitiativeRepo{
+		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
+			return nil, repoErr
+		},
+	}
+	_, _, err := ownedOrg(context.Background(), repo, "11111111-1111-1111-1111-111111111111", "owner")
+	if !errors.Is(err, repoErr) || errors.Is(err, domain.ErrOrganizationNotFound) {
+		t.Errorf("error = %v, want wrapped %v and not ErrOrganizationNotFound", err, repoErr)
 	}
 }
 

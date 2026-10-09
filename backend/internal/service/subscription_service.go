@@ -187,11 +187,12 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	}
 
 	// The donor may only attribute to an organization they own (#278).
-	orgName, err := ownedOrgName(ctx, s.initiativeRepo, input.OrganizationID, user.ID)
+	orgID, orgName, err := ownedOrg(ctx, s.initiativeRepo, input.OrganizationID, user.ID)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
+	input.OrganizationID = orgID
 
 	// Prevent duplicate active subscriptions for the same user + initiative.
 	// A user may only hold one non-terminal subscription at a time per initiative.
