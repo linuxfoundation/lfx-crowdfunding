@@ -45,6 +45,11 @@ func (s *DonationService) ListByInitiative(ctx context.Context, initiativeID str
 	defer span.End()
 	span.SetAttributes(attribute.String("initiative.id", initiativeID))
 
+	// The per-initiative list is public: only completed donations are shown,
+	// whatever ?status the caller asks for. Pending/failed attempts stay
+	// visible to the donor via /me/donations (lfx-self-serve-ops#186).
+	filter.Status = models.DonationStatusSucceeded
+
 	donations, meta, err := s.repo.ListByInitiative(ctx, initiativeID, filter)
 	if err != nil {
 		span.RecordError(err)

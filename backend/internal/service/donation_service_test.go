@@ -969,3 +969,26 @@ func TestProjectDonationSummaries_PreservesDonationTier(t *testing.T) {
 		t.Errorf("summary[1].DonationTier = %q, want empty", result[1].DonationTier)
 	}
 }
+
+// --- initiative list visibility (#186) ---
+
+func TestDonationService_ListByInitiative_OnlySucceeded(t *testing.T) {
+	for _, requested := range []string{"", models.DonationStatusFailed, models.DonationStatusPending, models.DonationStatusSucceeded} {
+		t.Run("status="+requested, func(t *testing.T) {
+			var got string
+			repo := &testDonationRepo{
+				onListByInitiative: func(_ context.Context, _ string, f models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
+					got = f.Status
+					return nil, &models.PaginationMeta{}, nil
+				},
+			}
+			svc := newDonationSvc(repo, acceptingInitiative(), &testUserRepo{}, &configStripeClient{})
+			if _, _, err := svc.ListByInitiative(context.Background(), "init-1", models.DonationFilter{Status: requested, Limit: 10}); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != models.DonationStatusSucceeded {
+				t.Errorf("repo filter status = %q, want %q", got, models.DonationStatusSucceeded)
+			}
+		})
+	}
+}
