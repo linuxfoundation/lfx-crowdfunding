@@ -96,6 +96,15 @@ export const getAffiliations = async (event: H3Event): Promise<AffiliationCandid
   return { organizations, projects };
 };
 
+// Mirrors the backend's logo_url check: an https scheme, a non-empty host, and at most 2048 bytes.
+// Matched on the raw string: WHATWG `new URL` normalizes `https:///x` to host `x`, Go's url.Parse
+// doesn't.
+const LOGO_URL_PATTERN = /^https:\/\/[^/?#\s]+/;
+const MAX_LOGO_URL_BYTES = 2048;
+
+export const isAcceptedLogoUrl = (url: string | undefined): url is string =>
+  !!url && LOGO_URL_PATTERN.test(url) && Buffer.byteLength(url) <= MAX_LOGO_URL_BYTES;
+
 // Display values for the public source label (lfx-crowdfunding#346), taken from the caller's own
 // candidates rather than the client so an initiative can't carry another entity's name. Empty on a
 // miss or a query failure: the attribution still saves (the backend gates it), just unlabeled.
@@ -110,8 +119,9 @@ export const getAttributionDisplay = async (
       (e) => e.id === entityId,
     );
     if (!entity) return {};
-    // The backend rejects non-https logos; drop one rather than fail the whole fundraise.
-    const logoUrl = entity.logoUrl?.startsWith('https://') ? entity.logoUrl : undefined;
+    // Drop a logo the backend would reject (`Attribution.Validate`) rather than fail the whole
+    // fundraise.
+    const logoUrl = isAcceptedLogoUrl(entity.logoUrl) ? entity.logoUrl : undefined;
     return { name: entity.name.slice(0, 255), logo_url: logoUrl };
   } catch {
     return {};
