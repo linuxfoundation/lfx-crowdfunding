@@ -2,29 +2,95 @@
 // SPDX-License-Identifier: MIT
 
 import type { H3Event } from 'h3';
-import type { AffiliationCandidates } from '#shared/types/affiliation.types';
+import { decodeJwt } from 'jose';
+import type {
+  EntityDoc,
+  OrgSettingsDoc,
+  QueryResource,
+  QueryResourcesResponse,
+} from '../types/query-service.types';
+import { getAuthCookie } from '../utils/auth-cookies';
+import { useBackendFetch } from '../utils/backend-fetch';
+import type { AffiliationCandidates, AffiliationEntity } from '#shared/types/affiliation.types';
 
-const isProduction = process.env.NUXT_PUBLIC_APP_ENV === 'production';
+// Username claim on gateway-audience access tokens (the ID token carries
+// `https://sso.linuxfoundation.org/claims/username` instead).
+const USERNAME_CLAIM = 'http://lfx.dev/claims/username';
 
-// ponytail: stubbed candidate source — platform entity enumeration is an open,
-// blocking decision (epic LFXV2-2759, "entity enumeration from outside Heimdall").
-// This is the single seam the fundraise-form attribution step depends on; swap
-// this function's body for a real platform lookup once that decision lands and
-// nothing else in the frontend needs to change.
-export const getAffiliations = async (_event: H3Event): Promise<AffiliationCandidates> => {
-  if (isProduction) return { organizations: [], projects: [] };
+// Upstream filters_or batch limit, and the cap on how many settings docs we read — so the
+// name lookup below is always a single call.
+const PAGE_SIZE = 100;
 
-  // Organization IDs are 18-char Salesforce Account SFIDs, not UUIDs; project
-  // IDs are UUIDs. The backend (lfx-crowdfunding#263) validates
-  // attribution.entity_uid shape per attribution type accordingly.
-  return {
-    organizations: [
-      { id: '0012M00002qnukOQAQ', name: 'Sample Org — Acme Corp' },
-      { id: '0012M00002qnukPQAQ', name: 'Sample Org — Globex' },
-    ],
-    projects: [
-      { id: '0c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f', name: 'Sample Project — Kubernetes' },
-      { id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d', name: 'Sample Foundation — CNCF' },
-    ],
-  };
+// The ROOT pseudo-project is administrative, never an attribution target.
+const ROOT_PROJECT_SLUG = 'ROOT';
+
+const uidOf = (id: string) => id.slice(id.indexOf(':') + 1);
+
+const toEntity = (r: QueryResource<EntityDoc>): AffiliationEntity => ({
+  id: uidOf(r.id),
+  name: r.data.name ?? uidOf(r.id),
+  ...(r.data.logo_url ? { logoUrl: r.data.logo_url } : {}),
+});
+
+const usernameFromToken = (token: string): string | undefined => {
+  try {
+    const username = decodeJwt(token)[USERNAME_CLAIM];
+    return typeof username === 'string' ? username : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const query = <T>(event: H3Event, params: string) =>
+  useBackendFetch<QueryResourcesResponse<T>>(event, `/query/resources?v=1&${params}`, {
+    platform: true,
+  });
+
+// Orgs where the caller is an accepted writer or auditor — mirrors Self Serve's org lens
+// (`org-role-grants.service.ts`). Both roles pass the save gate (FGA `auditor` on the b2b_org).
+const getOrganizations = async (event: H3Event, username: string) => {
+  const settings = await query<OrgSettingsDoc>(
+    event,
+    `type=b2b_org_settings&tags=${encodeURIComponent(`member:${username}`)}&page_size=${PAGE_SIZE}`,
+  );
+  const uids = settings.resources
+    .filter(({ data }) =>
+      [...(data.members ?? []), ...(data.writers ?? []), ...(data.auditors ?? [])].some(
+        (m) => m.username === username && m.invite_status === 'accepted',
+      ),
+    )
+    .map((r) => uidOf(r.id));
+
+  // An empty tag list makes the b2b_org query unfiltered (arbitrary orgs from the whole
+  // index) — a user with no grants must see none.
+  if (!uids.length) return [];
+
+  const tags = uids.map((uid) => `tags=${encodeURIComponent(`b2b_org_uid:${uid}`)}`).join('&');
+  const orgs = await query<EntityDoc>(event, `type=b2b_org&${tags}&page_size=${PAGE_SIZE}`);
+  return orgs.resources.map(toEntity);
+};
+
+// Projects the caller holds a direct FGA grant on — mirrors Self Serve's
+// `getDirectGrantProjectRows`. Inherited/team grants aren't listed here, but still pass the
+// server-side save gate.
+// ponytail: first page only (100); paginate via page_token if anyone outgrows it.
+const getProjects = async (event: H3Event) => {
+  const projects = await query<EntityDoc>(
+    event,
+    `type=project&filter_grants=direct&page_size=${PAGE_SIZE}`,
+  );
+  return projects.resources.filter((r) => r.data.slug !== ROOT_PROJECT_SLUG).map(toEntity);
+};
+
+// A query failure propagates: the attribution step shows its "couldn't load" state with only
+// Personal selectable, so fundraise creation is never blocked.
+export const getAffiliations = async (event: H3Event): Promise<AffiliationCandidates> => {
+  const username = usernameFromToken(getAuthCookie(event, 'auth_oidc_token') ?? '');
+  if (!username) return { organizations: [], projects: [] };
+
+  const [organizations, projects] = await Promise.all([
+    getOrganizations(event, username),
+    getProjects(event),
+  ]);
+  return { organizations, projects };
 };

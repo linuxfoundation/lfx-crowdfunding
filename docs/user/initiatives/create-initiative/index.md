@@ -67,7 +67,7 @@ Choose who this initiative is being created on behalf of:
 - **On behalf of an organization** — attribute the initiative to a company or organization you're affiliated with.
 - **On behalf of a project or foundation** — attribute the initiative to an LF project or foundation you participate in.
 
-If you choose an organization or project, pick it from the list — only entities you're already affiliated with are shown; you can't type in an entity by hand. If you have no affiliations of that kind yet, that option is disabled with a short explanation, and a link takes you to **Work History & Affiliations** to add one before continuing.
+If you choose an organization or project, pick it from the list; you can't type in an entity by hand. The organization list shows organizations where you've been granted a role in LFX Self Serve. The project list shows projects and foundations where you've been granted access directly. If you have none of that kind yet, that option is disabled with a short explanation. Access that comes only through a team or a parent foundation doesn't appear in the list, but it still lets you attribute the initiative to that entity.
 
 ### Compliance and terms
 
