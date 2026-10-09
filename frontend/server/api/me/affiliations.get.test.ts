@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { vi, describe, it, expect, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { H3Event } from 'h3';
 
 // Auth guards are tested in require-auth.test.ts. This file tests handler logic only.
@@ -14,40 +14,126 @@ vi.mock('h3', async (importOriginal) => {
   };
 });
 
-const mockEvent = {} as H3Event;
+vi.mock('../../utils/backend-fetch', () => ({
+  useBackendFetch: vi.fn(),
+}));
 
-// isProduction in affiliations.services.ts is a module-level const read at import time, so each
-// case reloads the module fresh with the env var it needs to observe.
-describe('GET /api/me/affiliations BFF handler', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
+vi.mock('../../utils/auth-cookies', () => ({
+  getAuthCookie: vi.fn(),
+}));
+
+import * as backendFetchModule from '../../utils/backend-fetch';
+import * as authCookiesModule from '../../utils/auth-cookies';
+import handler from './affiliations.get';
+
+const mockUseBackendFetch = vi.mocked(backendFetchModule.useBackendFetch);
+const mockGetAuthCookie = vi.mocked(authCookiesModule.getAuthCookie);
+const mockEvent = {} as H3Event;
+const run = () => (handler as (e: unknown) => Promise<unknown>)(mockEvent);
+
+// Unsigned JWT — the service only decodes claims; the gateway verifies the signature.
+const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const tokenFor = (claims: object) => `${b64({ alg: 'none' })}.${b64(claims)}.sig`;
+
+// Routes each query-service call by its `type=` so tests don't depend on call order.
+const respond = (byType: Record<string, unknown[]>) =>
+  mockUseBackendFetch.mockImplementation(async (_e, path) => {
+    const type = new URLSearchParams(path.split('?')[1]).get('type') ?? '';
+    return { resources: byType[type] ?? [] };
   });
 
-  it('returns sample organizations and projects outside production', async () => {
-    vi.stubEnv('NUXT_PUBLIC_APP_ENV', 'development');
-    const handler = (await import('./affiliations.get')).default;
+const calledTypes = () =>
+  mockUseBackendFetch.mock.calls.map(([, path]) =>
+    new URLSearchParams(path.split('?')[1]).get('type'),
+  );
 
-    const result = await (handler as (e: unknown) => Promise<unknown>)(mockEvent);
+describe('GET /api/me/affiliations BFF handler', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAuthCookie.mockReturnValue(tokenFor({ 'http://lfx.dev/claims/username': 'elim' }));
+  });
 
-    expect(result).toEqual({
+  it('returns accepted org grants and direct-grant projects with names and logos', async () => {
+    respond({
+      b2b_org_settings: [
+        {
+          type: 'b2b_org_settings',
+          id: 'b2b_org_settings:0012M00002qnukOQAQ',
+          data: { members: [{ username: 'elim', role: 'auditor', invite_status: 'accepted' }] },
+        },
+        {
+          type: 'b2b_org_settings',
+          id: 'b2b_org_settings:0012M00002qnukPQAQ',
+          data: { members: [{ username: 'elim', role: 'writer', invite_status: 'pending' }] },
+        },
+      ],
+      b2b_org: [
+        {
+          type: 'b2b_org',
+          id: 'b2b_org:0012M00002qnukOQAQ',
+          data: { name: 'Acme Corp', logo_url: 'https://example.com/acme.png' },
+        },
+      ],
+      project: [
+        { type: 'project', id: 'project:root-uid', data: { name: 'ROOT', slug: 'ROOT' } },
+        {
+          type: 'project',
+          id: 'project:0c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f',
+          data: { name: 'Kubernetes', slug: 'kubernetes', logo_url: null },
+        },
+      ],
+    });
+
+    expect(await run()).toEqual({
       organizations: [
-        { id: '0012M00002qnukOQAQ', name: 'Sample Org — Acme Corp' },
-        { id: '0012M00002qnukPQAQ', name: 'Sample Org — Globex' },
+        { id: '0012M00002qnukOQAQ', name: 'Acme Corp', logoUrl: 'https://example.com/acme.png' },
       ],
-      projects: [
-        { id: '0c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f', name: 'Sample Project — Kubernetes' },
-        { id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d', name: 'Sample Foundation — CNCF' },
+      projects: [{ id: '0c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f', name: 'Kubernetes' }],
+    });
+
+    // Only the accepted grant is looked up — the pending invite is dropped.
+    const orgLookup = mockUseBackendFetch.mock.calls.find(([, p]) => p.includes('type=b2b_org&'));
+    expect(orgLookup?.[1]).toContain('tags=b2b_org_uid%3A0012M00002qnukOQAQ');
+    expect(orgLookup?.[1]).not.toContain('0012M00002qnukPQAQ');
+    // Every query-service call targets the platform gateway, not the CF backend.
+    expect(mockUseBackendFetch.mock.calls.every(([, , opts]) => opts?.platform)).toBe(true);
+  });
+
+  it('shows no orgs and skips the unfiltered b2b_org lookup when the user has no org grants', async () => {
+    respond({ b2b_org_settings: [], project: [] });
+
+    expect(await run()).toEqual({ organizations: [], projects: [] });
+    expect(calledTypes()).not.toContain('b2b_org');
+  });
+
+  it('accepts legacy writers[]/auditors[] settings docs', async () => {
+    respond({
+      b2b_org_settings: [
+        {
+          type: 'b2b_org_settings',
+          id: 'b2b_org_settings:0012M00002qnukOQAQ',
+          data: { auditors: [{ username: 'elim', invite_status: 'accepted' }] },
+        },
       ],
+      b2b_org: [{ type: 'b2b_org', id: 'b2b_org:0012M00002qnukOQAQ', data: { name: 'Acme Corp' } }],
+    });
+
+    expect(await run()).toEqual({
+      organizations: [{ id: '0012M00002qnukOQAQ', name: 'Acme Corp' }],
+      projects: [],
     });
   });
 
-  it('returns empty organizations and projects in production', async () => {
-    vi.stubEnv('NUXT_PUBLIC_APP_ENV', 'production');
-    const handler = (await import('./affiliations.get')).default;
+  it('returns nothing and makes no calls without a username claim', async () => {
+    mockGetAuthCookie.mockReturnValue(undefined);
 
-    const result = await (handler as (e: unknown) => Promise<unknown>)(mockEvent);
+    expect(await run()).toEqual({ organizations: [], projects: [] });
+    expect(mockUseBackendFetch).not.toHaveBeenCalled();
+  });
 
-    expect(result).toEqual({ organizations: [], projects: [] });
+  it('propagates a query-service failure so the step shows its error state', async () => {
+    mockUseBackendFetch.mockRejectedValue(new Error('Upstream error'));
+
+    await expect(run()).rejects.toThrow('Upstream error');
   });
 });
