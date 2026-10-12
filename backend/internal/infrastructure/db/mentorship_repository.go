@@ -90,12 +90,13 @@ INSERT INTO initiatives (
 	NOW()
 )
 ON CONFLICT (id) DO UPDATE SET
+	-- slug is insert-only: it must stay unique (idx_initiatives_slug), so a
+	-- duplicate renamed by migration 011 is never written back.
 	jobspring_project_id = EXCLUDED.jobspring_project_id,
 	owner_id    = EXCLUDED.owner_id,
 	name        = EXCLUDED.name,
 	status      = EXCLUDED.status,
 	description = EXCLUDED.description,
-	slug        = EXCLUDED.slug,
 	industry    = EXCLUDED.industry,
 	updated_on  = NOW()
 RETURNING id`
