@@ -81,6 +81,7 @@ func TestSyncer_Run_normalisesStatusToLowercase(t *testing.T) {
 		{"Published", "published"},
 		{"Pending", "pending"},
 		{"Hidden", "hidden"},
+		{"Rejected", "declined"}, // Jobspring status with no CF equivalent
 		{"Declined", "declined"},
 		{"hide", "hidden"}, // Jobspring legacy value
 	}
