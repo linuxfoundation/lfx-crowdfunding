@@ -762,6 +762,12 @@ validated, just not shown publicly until the people who can police it have the t
 M1 into one release with that milestone was the rejected alternative; suppression keeps M1
 independently shippable.
 
+_(Lifted 2026-10: the label is live now that #259 has shipped writer management. #346 shows the
+entity's name and logo under the title on the details page. CF stores them on the initiative
+(`attributed_to_name`, `attributed_to_logo_url`) at attribution time by design, because `b2b_org`
+is non-public in the query service and anonymous viewers can't resolve it live. A rename or logo
+change shows only after re-attribution.)_
+
 **Consequence, stated plainly rather than glossed: this is now a longer wait than originally
 scoped.** The gateway milestone folds in the entire write gate for both attribution types (§5
 table above), not just the org half — so M1's captured-but-suppressed attribution stays invisible
