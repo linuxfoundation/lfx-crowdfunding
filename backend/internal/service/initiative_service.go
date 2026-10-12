@@ -458,7 +458,8 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	if utf8.RuneCountInString(input.Description) > 1500 {
 		return nil, fmt.Errorf("%w: description must be 1500 characters or fewer", domain.ErrInvalidInput)
 	}
-	if input.Slug == "" {
+	autoSlug := input.Slug == ""
+	if autoSlug {
 		input.Slug = slug.Make(input.Name)
 		if input.Slug == "" {
 			return nil, fmt.Errorf("%w: name must contain at least one letter or digit", domain.ErrInvalidInput)
@@ -552,6 +553,19 @@ func (s *InitiativeService) Create(ctx context.Context, ownerUsername string, in
 	// Product metadata and the DB INSERT — no follow-up UPDATE needed.
 	initiativeID := uuid.New().String()
 	span.SetAttributes(attribute.String("initiative.id", initiativeID))
+
+	// A slug derived from the name can collide with an existing initiative of
+	// the same name; disambiguate it instead of failing. An explicit slug that
+	// is taken is rejected with 409 by the unique index on insert.
+	// ponytail: check-then-insert race; the loser gets 409 from the index.
+	if autoSlug {
+		if _, err := s.repo.ResolveSlug(ctx, input.Slug); err == nil {
+			input.Slug += "-" + initiativeID[:8]
+		} else if !errors.Is(err, domain.ErrInitiativeNotFound) {
+			span.RecordError(err)
+			return nil, fmt.Errorf("check slug: %w", err)
+		}
+	}
 
 	// Resolve owner before creating any external resources so we fail fast
 	// with a clean error when the user does not exist.

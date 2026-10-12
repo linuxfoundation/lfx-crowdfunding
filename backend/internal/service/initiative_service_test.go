@@ -58,7 +58,7 @@ func (m *mockInitiativeRepo) ResolveSlug(_ context.Context, _ string) (string, e
 	if m.initiative != nil {
 		return m.initiative.ID, nil
 	}
-	return "", nil
+	return "", domain.ErrInitiativeNotFound
 }
 func (m *mockInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	return nil, nil, nil
@@ -688,6 +688,22 @@ func TestCreate_MissingSlug_AutoGeneratesFromName(t *testing.T) {
 	}
 	if repo.lastCreated.Slug != "my-cool-project" {
 		t.Errorf("expected slug %q, got %q", "my-cool-project", repo.lastCreated.Slug)
+	}
+}
+
+func TestCreate_MissingSlug_TakenNameGetsIDSuffix(t *testing.T) {
+	repo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "existing"}}
+	svc := newCreateSvc(repo)
+	_, _ = svc.Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Cool Project", InitiativeType: "project"},
+	)
+	if repo.lastCreated == nil {
+		t.Fatal("expected repo.Create to be called")
+	}
+	want := "my-cool-project-" + repo.lastCreated.ID[:8]
+	if repo.lastCreated.Slug != want {
+		t.Errorf("expected slug %q, got %q", want, repo.lastCreated.Slug)
 	}
 }
 

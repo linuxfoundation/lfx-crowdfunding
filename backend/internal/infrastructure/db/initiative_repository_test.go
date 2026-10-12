@@ -5,6 +5,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -584,5 +585,31 @@ func TestInitiativeRepository_GetOrganizationsByIDs(t *testing.T) {
 	got := orgs[org.ID]
 	if got.ID != org.ID || got.OwnerID != owner.ID || got.Name != "Acme" || got.AvatarURL != "https://example.com/acme.png" {
 		t.Errorf("got %+v, want ID=%s OwnerID=%s Name=Acme AvatarURL set", got, org.ID, owner.ID)
+	}
+}
+
+func TestInitiativeRepository_DuplicateSlug_Conflict(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "slug-owner")
+	repo := NewInitiativeRepository(testPool)
+	seedInitiative(t, ctx, owner.ID, "Victim", "victim")
+	other := seedInitiative(t, ctx, owner.ID, "Other", "other")
+
+	_, err := repo.Create(ctx, &models.Initiative{
+		ID: uuid.New().String(), InitiativeType: "project", OwnerID: owner.ID,
+		Name: "Shadow", Slug: "victim", Status: models.StatusSubmitted, DonationMode: models.DonationModeOpen,
+	}, models.InitiativeCreateInput{})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("Create() with taken slug error = %v, want ErrConflict", err)
+	}
+
+	other.Slug = "victim"
+	if _, err := repo.Update(ctx, other, models.InitiativeUpdateInput{}); !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("Update() to taken slug error = %v, want ErrConflict", err)
 	}
 }

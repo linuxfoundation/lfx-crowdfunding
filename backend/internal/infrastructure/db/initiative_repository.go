@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -529,6 +530,16 @@ const (
 		WHERE id = $1`
 )
 
+// slugConflict maps a unique violation on idx_initiatives_slug to
+// domain.ErrConflict so a taken slug returns 409 instead of 500.
+func slugConflict(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "idx_initiatives_slug" {
+		return fmt.Errorf("%w: slug is already in use", domain.ErrConflict)
+	}
+	return err
+}
+
 // Create inserts a new initiative and all of its child-table rows in a single
 // transaction. If any insert fails the transaction is rolled back and the error
 // is returned. On success it re-fetches the row via GetByID so that all
@@ -563,7 +574,7 @@ func (r *InitiativeRepository) Create(ctx context.Context, i *models.Initiative,
 		attributionType(i.Attribution), nullableString(i.Attribution.EntityUID), nullableString(i.BenefitProjectUID),
 		nullableString(i.Attribution.Name), nullableString(i.Attribution.LogoURL),
 	); err != nil {
-		return nil, fmt.Errorf("create initiative: %w", err)
+		return nil, fmt.Errorf("create initiative: %w", slugConflict(err))
 	}
 
 	// 2. Goals
@@ -744,7 +755,7 @@ func (r *InitiativeRepository) Update(ctx context.Context, i *models.Initiative,
 		nullableString(i.Attribution.Name), nullableString(i.Attribution.LogoURL),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("update initiative: %w", err)
+		return nil, fmt.Errorf("update initiative: %w", slugConflict(err))
 	}
 	if tag.RowsAffected() == 0 {
 		return nil, domain.ErrInitiativeNotFound
