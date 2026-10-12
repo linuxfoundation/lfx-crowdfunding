@@ -9,7 +9,7 @@
 # Covers doc 12's named "tests.yaml merge gate" scenarios (cross-project
 # denial, hidden withdraws the wildcard, parent-project inheritance) plus
 # the attribution shapes a project-rooted model can't express (personal,
-# b2b_org, parent-org writer cascade), and the global approver-team grant.
+# b2b_org, parent- and subsidiary-org writer cascade), and the global approver-team grant.
 
 name: Crowdfunding Authorization Model Tests (example)
 model_file: model.fga
@@ -71,13 +71,17 @@ tests:
         assertions:
           writer: false
 
-  - name: b2b_org writer access cascades from the parent org (doc 11 §2.2)
+  - name: b2b_org writer access cascades from parent and subsidiary orgs (doc 11 §2.2)
     check:
       - user: user:orgwriter
         object: crowdfunding_initiative:org-published
         assertions:
           writer: true
       - user: user:orgwriter-parent
+        object: crowdfunding_initiative:org-published
+        assertions:
+          writer: true
+      - user: user:orgwriter-child
         object: crowdfunding_initiative:org-published
         assertions:
           writer: true

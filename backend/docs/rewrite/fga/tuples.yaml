@@ -23,7 +23,7 @@
   relation: writer
   object: project:other
 
-# --- b2b_org: acme under acme-parent, plus an unrelated org ---
+# --- b2b_org: acme under acme-parent, with subsidiary acme-child, plus an unrelated org ---
 - user: user:orgwriter
   relation: writer
   object: b2b_org:acme
@@ -35,6 +35,14 @@
 - user: user:orgwriter-parent
   relation: writer
   object: b2b_org:acme-parent
+
+- user: b2b_org:acme-child
+  relation: child
+  object: b2b_org:acme
+
+- user: user:orgwriter-child
+  relation: writer
+  object: b2b_org:acme-child
 
 - user: user:orgwriter-other
   relation: writer
