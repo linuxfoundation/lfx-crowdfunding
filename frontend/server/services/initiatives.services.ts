@@ -46,6 +46,11 @@ export const mapToInitiativeDetail = (b: BackendInitiative): InitiativeDetail =>
     ...mapToInitiativeBase(b),
     currentBalanceCents,
     githubURL,
+    // Personal initiatives (and entities attributed before names were stored) show no label.
+    attribution:
+      b.attribution && b.attribution.type !== 'personal' && b.attribution.name
+        ? { type: b.attribution.type, name: b.attribution.name, logoUrl: b.attribution.logo_url }
+        : undefined,
     fundingGoals: (b.goals ?? []).map((g) => ({
       id: g.id,
       name: g.name,

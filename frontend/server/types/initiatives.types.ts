@@ -65,6 +65,12 @@ export interface BackendInitiative {
     available_cents: number;
   };
   custom_websites?: { id?: string; name?: string; url: string }[];
+  attribution?: {
+    type: 'personal' | 'organization' | 'project';
+    entity_uid?: string;
+    name?: string;
+    logo_url?: string;
+  };
 }
 
 export interface BackendResponse {

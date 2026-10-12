@@ -25,7 +25,7 @@ No sign-in is required to browse initiatives. To donate to one, you will need an
 
     ![Initiative detail page](/images/docs/initiatives-detail.png)
 
-5. Review the initiative details:
+5. Review the initiative details. If the initiative is run on behalf of an organization or project, that entity's name and logo appear under the title.
    - **Overview** — the project's mission and how funds will be used
    - **Financials** — a breakdown of income and expenses
    - **Supporters** — a list of donors

@@ -2343,6 +2343,30 @@ func TestUpdate_Attribution_ChangeIsCreatorOnly(t *testing.T) {
 	}
 }
 
+// Display fields don't make a resubmission a change: a writer may refresh the
+// name/logo, and a resubmission without them keeps the stored ones.
+func TestUpdate_Attribution_DisplayFields(t *testing.T) {
+	org := models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB", Name: "Acme", LogoURL: "https://x/acme.png"}
+	update := func(in models.Attribution) models.Attribution {
+		t.Helper()
+		repo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Attribution: org}}
+		s := newUpdateSvc(repo)
+		s.SetEntityRoleResolver(&fakeResolver{ok: true})
+		if _, err := s.Update(context.Background(), "init-1", "writer-1", models.InitiativeUpdateInput{Attribution: &in}); err != nil {
+			t.Fatalf("Update(%+v): unexpected error %v", in, err)
+		}
+		return repo.lastUpdated.Attribution
+	}
+
+	if got := update(models.Attribution{Type: org.Type, EntityUID: org.EntityUID}); got != org {
+		t.Errorf("bare resubmission: Attribution = %+v, want stored %+v", got, org)
+	}
+	renamed := models.Attribution{Type: org.Type, EntityUID: org.EntityUID, Name: "Acme Corp"}
+	if got := update(renamed); got != renamed {
+		t.Errorf("refresh: Attribution = %+v, want %+v", got, renamed)
+	}
+}
+
 type affiliationFake struct {
 	fakeResolver
 	ok  bool

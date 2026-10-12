@@ -724,7 +724,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
 		}
 		// Both sides are canonical: Validate above, and repository reads.
-		changed := *input.Attribution != existing.Attribution
+		changed := !input.Attribution.SameEntity(existing.Attribution)
 		if changed && existing.OwnerID != caller.ID {
 			return nil, fmt.Errorf("%w: only the creator can change attribution", domain.ErrForbidden)
 		}
@@ -733,7 +733,10 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 				return nil, err
 			}
 		}
-		existing.Attribution = *input.Attribution
+		// An unchanged entity resubmitted without display values keeps the stored ones.
+		if changed || input.Attribution.Name != "" {
+			existing.Attribution = *input.Attribution
+		}
 	}
 	if input.BenefitProjectUID != nil {
 		if *input.BenefitProjectUID != "" {

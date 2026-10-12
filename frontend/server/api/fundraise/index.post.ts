@@ -3,6 +3,7 @@
 
 import { defineEventHandler, readBody, createError } from 'h3';
 import { useBackendFetch } from '../../utils/backend-fetch';
+import { getAttributionDisplay } from '../../services/affiliations.services';
 import type { BackendInitiative } from '../../types/initiatives.types';
 import type {
   FundraisePayload,
@@ -23,12 +24,21 @@ export default defineEventHandler(async (event): Promise<FundraiseResult> => {
     });
   }
 
+  const backendBody = buildBackendPayload(body);
+  if (body.attribution) {
+    backendBody.attribution = {
+      type: body.attribution.kind,
+      entity_uid: body.attribution.entityId,
+      ...(await getAttributionDisplay(event, body.attribution)),
+    };
+  }
+
   const initiative = await useBackendFetch<BackendInitiative>(
     event,
     '/crowdfunding/me/initiatives',
     {
       method: 'POST',
-      body: buildBackendPayload(body),
+      body: backendBody,
     },
   );
 

@@ -65,7 +65,15 @@ export interface ProjectHealthStat {
   value: string;
 }
 
+/** The entity a non-personal initiative is run on behalf of — the public source label. */
+export interface InitiativeAttribution {
+  type: 'organization' | 'project';
+  name: string;
+  logoUrl?: string;
+}
+
 export interface InitiativeDetail extends InitiativeBase {
+  attribution?: InitiativeAttribution;
   websiteURL?: string;
   githubURL?: string;
   currentBalanceCents?: number;
