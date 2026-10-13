@@ -129,7 +129,9 @@ func (r *DonationRepository) listDonations(ctx context.Context, col, val string,
 	return donations, &models.PaginationMeta{Total: total, Limit: limit, Offset: offset}, nil
 }
 
-// Create inserts a new donation row.
+// Create inserts a new donation row. A row for the same Stripe PaymentIntent
+// already exists when a client replays its Idempotency-Key (Stripe answers
+// with the cached PaymentIntent); that row is returned instead of a duplicate.
 func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*models.Donation, error) {
 	ctx, span := donationTracer.Start(ctx, "db.donations.Create")
 	defer span.End()
@@ -140,6 +142,7 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 		        current_amount_in_cents, po_number, payment_method,
 		        status, stripe_payment_intent_id, stripe_charge_id, donation_tier)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		ON CONFLICT (stripe_payment_intent_id) WHERE stripe_payment_intent_id IS NOT NULL DO NOTHING
 		RETURNING id, user_id, initiative_id, organization_id, category,
 		          current_amount_in_cents, po_number, payment_method,
 		          status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on`
@@ -152,6 +155,13 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 		nullableString(d.StripeChargeID), nullableString(d.DonationTier),
 	)
 	created, err := scanDonation(row)
+	if errors.Is(err, domain.ErrDonationNotFound) && d.StripePaymentIntentID != "" {
+		created, err = scanDonation(r.pool.QueryRow(ctx, `
+			SELECT id, user_id, initiative_id, organization_id, category,
+			       current_amount_in_cents, po_number, payment_method,
+			       status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on
+			FROM donations WHERE stripe_payment_intent_id = $1`, d.StripePaymentIntentID))
+	}
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("create donation: %w", err)

@@ -58,7 +58,7 @@ func (m *mockInitiativeRepo) ResolveSlug(_ context.Context, _ string) (string, e
 	if m.initiative != nil {
 		return m.initiative.ID, nil
 	}
-	return "", nil
+	return "", domain.ErrInitiativeNotFound
 }
 func (m *mockInitiativeRepo) List(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
 	return nil, nil, nil
@@ -688,6 +688,22 @@ func TestCreate_MissingSlug_AutoGeneratesFromName(t *testing.T) {
 	}
 	if repo.lastCreated.Slug != "my-cool-project" {
 		t.Errorf("expected slug %q, got %q", "my-cool-project", repo.lastCreated.Slug)
+	}
+}
+
+func TestCreate_MissingSlug_TakenNameGetsIDSuffix(t *testing.T) {
+	repo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "existing"}}
+	svc := newCreateSvc(repo)
+	_, _ = svc.Create(
+		context.Background(), "owner-1",
+		models.InitiativeCreateInput{Name: "My Cool Project", InitiativeType: "project"},
+	)
+	if repo.lastCreated == nil {
+		t.Fatal("expected repo.Create to be called")
+	}
+	want := "my-cool-project-" + repo.lastCreated.ID[:8]
+	if repo.lastCreated.Slug != want {
+		t.Errorf("expected slug %q, got %q", want, repo.lastCreated.Slug)
 	}
 }
 
@@ -2340,6 +2356,30 @@ func TestUpdate_Attribution_ChangeIsCreatorOnly(t *testing.T) {
 	}
 	if repo.lastUpdated.Attribution.Type != models.AttributionPersonal {
 		t.Errorf("Attribution.Type = %q, want personal", repo.lastUpdated.Attribution.Type)
+	}
+}
+
+// Display fields don't make a resubmission a change: a writer may refresh the
+// name/logo, and a resubmission without them keeps the stored ones.
+func TestUpdate_Attribution_DisplayFields(t *testing.T) {
+	org := models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB", Name: "Acme", LogoURL: "https://x/acme.png"}
+	update := func(in models.Attribution) models.Attribution {
+		t.Helper()
+		repo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Attribution: org}}
+		s := newUpdateSvc(repo)
+		s.SetEntityRoleResolver(&fakeResolver{ok: true})
+		if _, err := s.Update(context.Background(), "init-1", "writer-1", models.InitiativeUpdateInput{Attribution: &in}); err != nil {
+			t.Fatalf("Update(%+v): unexpected error %v", in, err)
+		}
+		return repo.lastUpdated.Attribution
+	}
+
+	if got := update(models.Attribution{Type: org.Type, EntityUID: org.EntityUID}); got != org {
+		t.Errorf("bare resubmission: Attribution = %+v, want stored %+v", got, org)
+	}
+	renamed := models.Attribution{Type: org.Type, EntityUID: org.EntityUID, Name: "Acme Corp"}
+	if got := update(renamed); got != renamed {
+		t.Errorf("refresh: Attribution = %+v, want %+v", got, renamed)
 	}
 }
 

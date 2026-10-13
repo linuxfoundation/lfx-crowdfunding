@@ -192,3 +192,48 @@ func TestDonationRepository_ListByInitiative_Pagination(t *testing.T) {
 		t.Errorf("meta.Offset = %d, want 0", meta.Offset)
 	}
 }
+
+func TestDonationRepository_Create_ReplayedPaymentIntentReturnsExistingRow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.donations", "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "test-owner-replay")
+	initiative := seedInitiative(t, ctx, owner.ID, "Test Initiative Replay", "test-initiative-replay")
+	repo := NewDonationRepository(testPool)
+
+	newDonation := func() *models.Donation {
+		return &models.Donation{
+			UserID:                owner.ID,
+			InitiativeID:          initiative.ID,
+			CurrentAmountCents:    5000,
+			Status:                models.DonationStatusPending,
+			StripePaymentIntentID: "pi_replay",
+		}
+	}
+	first, err := repo.Create(ctx, newDonation())
+	if err != nil {
+		t.Fatalf("first Create() error = %v", err)
+	}
+	replay, err := repo.Create(ctx, newDonation())
+	if err != nil {
+		t.Fatalf("replayed Create() error = %v", err)
+	}
+	if replay.ID != first.ID {
+		t.Errorf("replayed Create() ID = %q, want existing %q", replay.ID, first.ID)
+	}
+
+	// Rows without a PaymentIntent are not deduplicated.
+	seedDonation(t, ctx, owner.ID, initiative.ID)
+	seedDonation(t, ctx, owner.ID, initiative.ID)
+
+	var n int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM crowdfunding.donations`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("donation rows = %d, want 3", n)
+	}
+}
