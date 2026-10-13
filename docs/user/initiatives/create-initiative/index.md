@@ -64,10 +64,10 @@ Fill in the details for your initiative. Fields vary by type, but all types ask 
 Choose who this initiative is being created on behalf of:
 
 - **Personal** — the initiative is attributed to you. This is the default.
-- **On behalf of an organization** — attribute the initiative to a company or organization you're affiliated with.
+- **On behalf of an organization** — attribute the initiative to a company or organization where you have a role in LFX.
 - **On behalf of a project or foundation** — attribute the initiative to an LF project or foundation you participate in.
 
-If you choose an organization or project, pick it from the list; you can't type in an entity by hand. The organization list shows organizations where you've been granted a role in LFX Self Serve. The project list shows projects and foundations where you've been granted access directly. If you have none of that kind yet, that option is disabled with a short explanation. Access that comes only through a team or a parent foundation doesn't appear in the list, but it still lets you attribute the initiative to that entity.
+If you choose an organization or project, pick it from the list; you can't type in an entity by hand. The organization list shows organizations where you've been granted a role in LFX Self Serve. The project list shows projects and foundations where you've been granted access directly. If you have none of that kind yet, that option is disabled with a short explanation. To be added, ask an existing admin of that organization or project to grant you a role in LFX Self Serve. Access that comes only through a team or a parent foundation doesn't appear in the list, but it still lets you attribute the initiative to that entity.
 
 An initiative attributed to an organization or project shows that entity's name and logo under its title on the public detail page. The name and logo are saved when you attribute the initiative, so if the entity is later renamed or changes its logo, the label keeps the old values until the initiative is attributed again. Personal initiatives show no label.
 
