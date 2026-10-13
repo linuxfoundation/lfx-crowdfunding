@@ -112,11 +112,11 @@ SPDX-License-Identifier: MIT
                 />
                 {{ option.escapeHatchLabel }}
                 <a
-                  :href="affiliationsManagementUrl"
+                  :href="selfServeUrl"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="text-accent-500 hover:text-accent-600"
-                  >Work History &amp; Affiliations</a
+                  >LFX Self Serve</a
                 >.
               </p>
             </div>
@@ -134,7 +134,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { ATTRIBUTION_OPTIONS, AFFILIATIONS_MANAGEMENT_PATH } from '../../config/attribution.config';
+import { ATTRIBUTION_OPTIONS } from '../../config/attribution.config';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
@@ -180,9 +180,9 @@ const isLoading = computed(() => status.value === 'idle' || status.value === 'pe
 const disabledMessage = (option: AttributionOption): string | undefined =>
   status.value === 'error' ? "We couldn't load your affiliations — refresh and try again." : option.emptyMessage;
 
-const affiliationsManagementUrl = computed(
-  () => `${useRuntimeConfig().public.selfServeUrl}${AFFILIATIONS_MANAGEMENT_PATH}`,
-);
+const {
+  public: { selfServeUrl },
+} = useRuntimeConfig();
 
 const selectKind = (kind: AttributionKind) => {
   if (isDisabled(kind)) return;
