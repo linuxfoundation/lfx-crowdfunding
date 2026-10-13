@@ -309,6 +309,11 @@ type Initiative struct {
 	EntityDetails    map[string]string `json:"entity_details,omitempty"`
 	GitHubStats      *GitHubStats      `json:"github_stats,omitempty"`
 
+	// IsOwner reports whether the caller created the initiative. Set only on
+	// the manage read, so clients can offer creator-only actions such as
+	// re-attribution (lfx-crowdfunding#342).
+	IsOwner bool `json:"is_owner,omitempty"`
+
 	// Populated from initiative_ledger_stats; zero when cron has not yet run
 	Financials Financials `json:"financials"`
 
@@ -392,11 +397,10 @@ type InitiativeUpdateInput struct {
 	AcceptFunding *bool             `json:"accept_funding,omitempty"`
 	DonationMode  *DonationMode     `json:"donation_mode,omitempty"`
 
-	// Attribution — nil means "leave unchanged". Changing attribution is
-	// captured here as one atomic unit (Type + EntityUID together); design
-	// §2.2 makes an attribution change a separately-authorized action once
-	// M2 introduces entity writers, but M1 has only one manager (the
-	// creator), so no additional authorization is needed yet.
+	// Attribution is rejected when set: an attribution change has its own
+	// creator-guarded route, PUT /initiatives/{id}/attribution
+	// (lfx-crowdfunding#342). Decoded only so a stray field 400s instead of
+	// being silently dropped.
 	Attribution       *Attribution `json:"attribution,omitempty"`
 	BenefitProjectUID *string      `json:"benefit_project_uid,omitempty"`
 

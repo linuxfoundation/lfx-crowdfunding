@@ -318,6 +318,7 @@ func (s *InitiativeService) GetForUser(ctx context.Context, idOrSlug, callerUser
 		return nil, domain.ErrInitiativeNotFound
 	}
 
+	initiative.IsOwner = initiative.OwnerID == caller.ID
 	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
 	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
@@ -729,28 +730,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	if input.CiiProjectID != nil {
 		existing.CiiProjectID = *input.CiiProjectID
 	}
-	// Changing attribution is creator-only (lfx-crowdfunding#259, design §2.2):
-	// writers can edit content but not move the initiative, so an initiative
-	// stays with its creator if they leave the entity. Resubmitting the current
-	// attribution is not a change.
+	// Attribution has its own creator-guarded route (lfx-crowdfunding#342).
 	if input.Attribution != nil {
-		if err := input.Attribution.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
-		}
-		// Both sides are canonical: Validate above, and repository reads.
-		changed := !input.Attribution.SameEntity(existing.Attribution)
-		if changed && existing.OwnerID != caller.ID {
-			return nil, fmt.Errorf("%w: only the creator can change attribution", domain.ErrForbidden)
-		}
-		if changed {
-			if err := s.checkAffiliated(ctx, caller.Username, *input.Attribution); err != nil {
-				return nil, err
-			}
-		}
-		// An unchanged entity resubmitted without display values keeps the stored ones.
-		if changed || input.Attribution.Name != "" {
-			existing.Attribution = *input.Attribution
-		}
+		return nil, fmt.Errorf("%w: attribution is changed via PUT /initiatives/{id}/attribution", domain.ErrInvalidInput)
 	}
 	if input.BenefitProjectUID != nil {
 		if *input.BenefitProjectUID != "" {
@@ -860,8 +842,7 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	// Sync beneficiaries and policy with the Reimbursement Service.
 	// Non-fatal; only takes effect when the initiative is published.
 	s.syncReimbursementPolicy(ctx, updated)
-	// Covers both the published/hidden toggle and an attribution re-parent.
-	// Publish the creator as owner, not the caller: a writer's edit must not
+	// Covers the published/hidden toggle. Publish the creator as owner, not the caller: a writer's edit must not
 	// overwrite the owner tuple (syncFGAAccess full-syncs it).
 	ownerUsername, err := s.ownerUsername(ctx, existing.OwnerID, caller)
 	if err != nil {
@@ -870,6 +851,69 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 		return updated, nil
 	}
 	s.syncFGAAccess(ctx, updated, ownerUsername)
+	return updated, nil
+}
+
+// UpdateAttribution moves an initiative to a new attribution
+// (lfx-crowdfunding#342). Creator-only (Heimdall checks owner too), only
+// while the initiative is submitted (decided 2026-10-12: a published
+// initiative is never re-attributed), and to an org or project the creator
+// is affiliated with. Every call counts as a change, so the affiliation check
+// always runs, matching the gateway's check on the body.
+func (s *InitiativeService) UpdateAttribution(ctx context.Context, id, callerUsername string, a models.Attribution) (*models.Initiative, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.UpdateAttribution")
+	defer span.End()
+	span.SetAttributes(attribute.String("initiative.id", id))
+
+	if err := a.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err)
+	}
+
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	caller, err := s.userRepo.GetByUsername(ctx, callerUsername)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrForbidden
+		}
+		span.RecordError(err)
+		return nil, err
+	}
+	if existing.OwnerID != caller.ID {
+		// Writers may know the initiative exists; anyone else gets 404.
+		ok, err := canManage(ctx, s.roleResolver, caller, existing)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		if !ok {
+			return nil, domain.ErrInitiativeNotFound
+		}
+		return nil, fmt.Errorf("%w: only the creator can change attribution", domain.ErrForbidden)
+	}
+
+	if !existing.Status.EqualFold(models.StatusSubmitted) {
+		return nil, fmt.Errorf("%w: attribution can only be changed while the initiative is submitted, not %q",
+			domain.ErrInvalidInput, existing.Status)
+	}
+	if err := s.checkAffiliated(ctx, caller.Username, a); err != nil {
+		return nil, err
+	}
+
+	existing.Attribution = a
+	existing.UpdatedBy = callerUsername
+	// Empty input: only the main row is rewritten; child tables stay as they are.
+	updated, err := s.repo.Update(ctx, existing, models.InitiativeUpdateInput{})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("update initiative attribution: %w", err)
+	}
+	// Re-parents the FGA tuples; the caller is the creator, so the owner stays.
+	s.syncFGAAccess(ctx, updated, caller.Username)
 	return updated, nil
 }
 

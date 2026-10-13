@@ -17,6 +17,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/fga"
 )
 
 // --- mocks ---
@@ -2193,36 +2194,20 @@ func TestUpdate_Attribution_NilIsNoOp(t *testing.T) {
 	}
 }
 
-func TestUpdate_Attribution_ChangedAndValidated(t *testing.T) {
-	repo := &mockInitiativeRepo{
-		initiative: &models.Initiative{
-			ID: "init-1", OwnerID: "owner-1",
-			Attribution: models.Attribution{Type: models.AttributionPersonal},
-		},
-	}
-	uid := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
-	svc := newUpdateSvc(repo)
-	svc.SetEntityRoleResolver(&affiliationFake{ok: true})
-	_, err := svc.Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{
-		Attribution: &models.Attribution{Type: models.AttributionProject, EntityUID: uid},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if repo.lastUpdated.Attribution.Type != models.AttributionProject || repo.lastUpdated.Attribution.EntityUID != uid {
-		t.Errorf("Attribution = %+v, want {project %s}", repo.lastUpdated.Attribution, uid)
-	}
-}
-
-func TestUpdate_Attribution_InvalidShapeRejected(t *testing.T) {
-	repo := &mockInitiativeRepo{
-		initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"},
-	}
-	_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{
-		Attribution: &models.Attribution{Type: models.AttributionOrganization, EntityUID: "not-a-uuid"},
-	})
-	if !errors.Is(err, domain.ErrInvalidInput) {
-		t.Fatalf("expected ErrInvalidInput for malformed entity_uid, got %v", err)
+// Attribution has its own route; PATCH rejects it even when unchanged or malformed.
+func TestUpdate_Attribution_Rejected(t *testing.T) {
+	for name, a := range map[string]models.Attribution{
+		"personal":  {Type: models.AttributionPersonal},
+		"malformed": {Type: models.AttributionOrganization, EntityUID: "not-a-uuid"},
+	} {
+		repo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"}}
+		_, err := newUpdateSvc(repo).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: &a})
+		if !errors.Is(err, domain.ErrInvalidInput) {
+			t.Errorf("%s: expected ErrInvalidInput, got %v", name, err)
+		}
+		if repo.lastUpdated != nil {
+			t.Errorf("%s: repo.Update called, want no write", name)
+		}
 	}
 }
 
@@ -2323,63 +2308,76 @@ func TestUpdate_DonationMode_TiersMode_BlankBenefitsCleaned(t *testing.T) {
 	}
 }
 
-func TestUpdate_Attribution_ChangeIsCreatorOnly(t *testing.T) {
+func submittedInit(a models.Attribution) *mockInitiativeRepo {
+	return &mockInitiativeRepo{initiative: &models.Initiative{
+		ID: "init-1", OwnerID: "owner-1", Status: models.StatusSubmitted, Attribution: a,
+	}}
+}
+
+func TestUpdateAttribution_CreatorOnly(t *testing.T) {
 	org := models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB"}
-	newInit := func() *mockInitiativeRepo {
-		return &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Attribution: org}}
-	}
-	writerSvc := func(repo *mockInitiativeRepo) *InitiativeService {
+	personal := models.Attribution{Type: models.AttributionPersonal}
+	svc := func(repo *mockInitiativeRepo, r fga.EntityRoleResolver) *InitiativeService {
 		s := newUpdateSvc(repo)
-		s.SetEntityRoleResolver(&fakeResolver{ok: true})
+		if r != nil {
+			s.SetEntityRoleResolver(r)
+		}
 		return s
 	}
 
 	// A writer (not the creator) cannot move the initiative, even to personal.
-	_, err := writerSvc(newInit()).Update(context.Background(), "init-1", "writer-1", models.InitiativeUpdateInput{
-		Attribution: &models.Attribution{Type: models.AttributionPersonal},
-	})
+	_, err := svc(submittedInit(org), &fakeResolver{ok: true}).UpdateAttribution(context.Background(), "init-1", "writer-1", personal)
 	if !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("writer reattribution: expected ErrForbidden, got %v", err)
+		t.Fatalf("writer: expected ErrForbidden, got %v", err)
+	}
+	// Someone who can't manage it doesn't learn it exists.
+	_, err = svc(submittedInit(org), &fakeResolver{ok: false}).UpdateAttribution(context.Background(), "init-1", "stranger", personal)
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Fatalf("stranger: expected ErrInitiativeNotFound, got %v", err)
 	}
 
-	// A writer resubmitting the unchanged attribution is fine.
-	if _, err := writerSvc(newInit()).Update(context.Background(), "init-1", "writer-1", models.InitiativeUpdateInput{Attribution: &org}); err != nil {
-		t.Fatalf("writer resubmitting same attribution: unexpected error %v", err)
+	// The creator can change it; display fields come from the request.
+	repo := submittedInit(org)
+	target := models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yzAAB", Name: "Acme", LogoURL: "https://x/acme.png"}
+	if _, err := svc(repo, &affiliationFake{ok: true}).UpdateAttribution(context.Background(), "init-1", "owner-1", target); err != nil {
+		t.Fatalf("creator: unexpected error %v", err)
 	}
-
-	// The creator can change it.
-	repo := newInit()
-	if _, err := writerSvc(repo).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{
-		Attribution: &models.Attribution{Type: models.AttributionPersonal},
-	}); err != nil {
-		t.Fatalf("creator reattribution: unexpected error %v", err)
+	if repo.lastUpdated.Attribution != target {
+		t.Errorf("Attribution = %+v, want %+v", repo.lastUpdated.Attribution, target)
 	}
-	if repo.lastUpdated.Attribution.Type != models.AttributionPersonal {
-		t.Errorf("Attribution.Type = %q, want personal", repo.lastUpdated.Attribution.Type)
+	if repo.lastUpdated.UpdatedBy != "owner-1" {
+		t.Errorf("UpdatedBy = %q, want owner-1", repo.lastUpdated.UpdatedBy)
 	}
 }
 
-// Display fields don't make a resubmission a change: a writer may refresh the
-// name/logo, and a resubmission without them keeps the stored ones.
-func TestUpdate_Attribution_DisplayFields(t *testing.T) {
-	org := models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB", Name: "Acme", LogoURL: "https://x/acme.png"}
-	update := func(in models.Attribution) models.Attribution {
-		t.Helper()
-		repo := &mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1", Attribution: org}}
-		s := newUpdateSvc(repo)
-		s.SetEntityRoleResolver(&fakeResolver{ok: true})
-		if _, err := s.Update(context.Background(), "init-1", "writer-1", models.InitiativeUpdateInput{Attribution: &in}); err != nil {
-			t.Fatalf("Update(%+v): unexpected error %v", in, err)
+// Decided 2026-10-12: only a submitted initiative can be re-attributed.
+func TestUpdateAttribution_SubmittedOnly(t *testing.T) {
+	personal := models.Attribution{Type: models.AttributionPersonal}
+	for _, st := range []models.InitiativeStatus{models.StatusPending, models.StatusPublished, models.StatusDeclined, models.StatusHidden} {
+		repo := submittedInit(personal)
+		repo.initiative.Status = st
+		_, err := newUpdateSvc(repo).UpdateAttribution(context.Background(), "init-1", "owner-1", personal)
+		if !errors.Is(err, domain.ErrInvalidInput) {
+			t.Errorf("%s: expected ErrInvalidInput, got %v", st, err)
 		}
-		return repo.lastUpdated.Attribution
+		if repo.lastUpdated != nil {
+			t.Errorf("%s: repo.Update called, want no write", st)
+		}
 	}
+	// Status comparison ignores case, like the other status guards.
+	repo := submittedInit(personal)
+	repo.initiative.Status = "Submitted"
+	if _, err := newUpdateSvc(repo).UpdateAttribution(context.Background(), "init-1", "owner-1", personal); err != nil {
+		t.Fatalf("mixed-case submitted: unexpected error %v", err)
+	}
+}
 
-	if got := update(models.Attribution{Type: org.Type, EntityUID: org.EntityUID}); got != org {
-		t.Errorf("bare resubmission: Attribution = %+v, want stored %+v", got, org)
-	}
-	renamed := models.Attribution{Type: org.Type, EntityUID: org.EntityUID, Name: "Acme Corp"}
-	if got := update(renamed); got != renamed {
-		t.Errorf("refresh: Attribution = %+v, want %+v", got, renamed)
+func TestUpdateAttribution_InvalidShape(t *testing.T) {
+	repo := submittedInit(models.Attribution{Type: models.AttributionPersonal})
+	_, err := newUpdateSvc(repo).UpdateAttribution(context.Background(), "init-1", "owner-1",
+		models.Attribution{Type: models.AttributionOrganization, EntityUID: "not-a-sfid"})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -2395,40 +2393,40 @@ func (a *affiliationFake) IsAffiliated(context.Context, models.AttributionType, 
 
 func TestAttribution_RequiresAffiliation(t *testing.T) {
 	uid := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
-	proj := &models.Attribution{Type: models.AttributionProject, EntityUID: uid}
+	proj := models.Attribution{Type: models.AttributionProject, EntityUID: uid}
 	svc := func(f *affiliationFake) *InitiativeService {
-		s := newUpdateSvc(&mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"}})
+		s := newUpdateSvc(submittedInit(models.Attribution{Type: models.AttributionPersonal}))
 		s.SetEntityRoleResolver(f)
 		return s
 	}
 
-	// Update: creator moving to an entity they aren't affiliated with.
-	_, err := svc(&affiliationFake{ok: false}).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: proj})
+	// UpdateAttribution: creator moving to an entity they aren't affiliated with.
+	_, err := svc(&affiliationFake{ok: false}).UpdateAttribution(context.Background(), "init-1", "owner-1", proj)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("unaffiliated update: expected ErrForbidden, got %v", err)
 	}
 	// Outage surfaces as upstream-unavailable, never a false deny.
-	_, err = svc(&affiliationFake{err: domain.ErrUpstreamUnavailable}).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: proj})
+	_, err = svc(&affiliationFake{err: domain.ErrUpstreamUnavailable}).UpdateAttribution(context.Background(), "init-1", "owner-1", proj)
 	if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 		t.Fatalf("outage: expected ErrUpstreamUnavailable, got %v", err)
 	}
 	// Affiliated passes.
-	if _, err := svc(&affiliationFake{ok: true}).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: proj}); err != nil {
+	if _, err := svc(&affiliationFake{ok: true}).UpdateAttribution(context.Background(), "init-1", "owner-1", proj); err != nil {
 		t.Fatalf("affiliated update: unexpected error %v", err)
 	}
 	// Personal never consults the checker.
-	if _, err := svc(&affiliationFake{ok: false}).Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: &models.Attribution{Type: models.AttributionPersonal}}); err != nil {
+	if _, err := svc(&affiliationFake{ok: false}).UpdateAttribution(context.Background(), "init-1", "owner-1", models.Attribution{Type: models.AttributionPersonal}); err != nil {
 		t.Fatalf("personal: unexpected error %v", err)
 	}
 	// No resolver wired: fail closed for org/project targets.
-	noResolver := newUpdateSvc(&mockInitiativeRepo{initiative: &models.Initiative{ID: "init-1", OwnerID: "owner-1"}})
-	if _, err := noResolver.Update(context.Background(), "init-1", "owner-1", models.InitiativeUpdateInput{Attribution: proj}); !errors.Is(err, domain.ErrForbidden) {
+	noResolver := newUpdateSvc(submittedInit(models.Attribution{Type: models.AttributionPersonal}))
+	if _, err := noResolver.UpdateAttribution(context.Background(), "init-1", "owner-1", proj); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("no resolver: expected ErrForbidden, got %v", err)
 	}
 	// Create enforces it too.
 	c := newCreateSvc(&mockInitiativeRepo{})
 	c.SetEntityRoleResolver(&affiliationFake{ok: false})
-	_, err = c.Create(context.Background(), "owner-1", models.InitiativeCreateInput{Name: "N", InitiativeType: "project", Attribution: proj})
+	_, err = c.Create(context.Background(), "owner-1", models.InitiativeCreateInput{Name: "N", InitiativeType: "project", Attribution: &proj})
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("unaffiliated create: expected ErrForbidden, got %v", err)
 	}
