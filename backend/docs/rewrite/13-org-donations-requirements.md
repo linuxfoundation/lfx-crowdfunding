@@ -242,6 +242,29 @@ D lack.
 - Whether CF gets its own CDP M2M client and scopes (§5.2 item 3).
 - How CDP → SFID mapping coverage looks for typical donor orgs.
 - How to handle CDP's weak dedup (§3.3), since it can merge unrelated same-named orgs.
+- **Self Serve Organization lens visibility** (§5.1 item 5). The lens only exists for `b2b_org`
+  orgs, so CDP-only orgs can never appear there.
+
+**Org lens constraint (confirmed in lfx-self-serve).** The Organization lens is built entirely on
+`b2b_org`:
+
+- The org selector lists the caller's `b2b_org` role grants and searches the catalogue with
+  `GET /query/resources?type=b2b_org` (`server/services/org-navigation.service.ts:153`, `:221`).
+- Lens routes only accept an 18-char Salesforce Account ID (`server/helpers/org-uid.helper.ts`,
+  `assertOrgUid`).
+- Access is checked as `auditor`/`writer` on `b2b_org` (`server/helpers/org-lens-read-access.helper.ts:142`).
+
+The lens does bridge to CDP for some data. It reads `CDEV_ORG_ID` for an account from the
+Snowflake table `ORG_LENS_ACCOUNT_CONTEXT` (`server/services/organization.service.ts:1043-1070`).
+So with option A:
+
+- Donations to a CDP org that maps to a `b2b_org` *could* appear in that org's lens, by looking
+  them up with the mapped CDP ID.
+- Donations to a CDP org with no `b2b_org` never appear in the lens, because there is no lens
+  page for that org. `b2b_org` records are created only by the org admins (§4, option B).
+
+If PM requires every org donation to show in the lens, option A doesn't meet that and the source
+has to be `b2b_org` (option B), with its member-only coverage.
 
 ---
 
@@ -257,6 +280,10 @@ D lack.
    Where should org donations appear (initiative page, SS Organization lens, emails)?
 4. **Existing data.** Migrate or merge the existing per-user orgs (606 from v1 plus those
    created since), including the 16 featured companies?
+5. **Self Serve Organization lens.** Must org donations show in the SS Organization lens? The
+   lens only covers `b2b_org` orgs (§4.1). If yes for *every* donation, option A can't work and
+   the source must be `b2b_org`. If showing only for orgs that have a `b2b_org` is acceptable,
+   option A still works.
 
 ### 5.2 Architecture
 
