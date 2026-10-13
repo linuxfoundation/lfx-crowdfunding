@@ -16,8 +16,8 @@ in [#367](https://github.com/linuxfoundation/lfx-crowdfunding/issues/367).
 orgs that nothing else in LFX knows about. PM's preferred source for the org list is the user's
 Self Serve **Work history & Affiliations**. That data lives in **CDP (crowd.dev)** and is keyed by
 **CDP organization UUIDs**, not Salesforce Account IDs / `b2b_org` UIDs. The alternatives are
-`b2b_org` (member service; covers only Salesforce Accounts with a membership), raw Salesforce
-Accounts, and the Clearbit suggest API. Each source trades off coverage against being canonical.
+`b2b_org` (member service; covers only Salesforce Accounts with a membership) and raw Salesforce
+Accounts. Each source trades off coverage against being canonical.
 **Leaning: option A (CDP work history)**, pending architecture review (§4.1). §5 lists the
 decisions needed.
 
@@ -191,15 +191,15 @@ If nothing matches, the dropdown footer offers **"I want to create '<term>'"**
 
 ## 4. Org list sources compared
 
-| | **A. Self Serve work history (CDP)** | **B. `b2b_org` (member service)** | **C. Salesforce Accounts** | **D. Clearbit suggest (query-service)** |
-|---|---|---|---|---|
-| ID | CDP org UUID | 18-char SFID | SFID | none (name + domain) |
-| Coverage | Any org a user has added; many | **Only Accounts with a membership Asset** (`account_repo.go:25-46`) | All Accounts | Worldwide companies |
-| Canonical / joins to SS org lens | Via Snowflake mapping only | **Yes** | Yes | No |
-| User ↔ org link | **Yes** (that's what work history is) | Only roles: writer/auditor/key contact | No | No |
-| Search API | CDP exact name/domain lookups; no fuzzy search | `GET /query/resources?type=b2b_org&name=`, non-public: results filtered to orgs where the caller has `auditor`; CF has no credential today | Member service removed its SOQL search; no LFX API exposes it | `GET /query/orgs/suggest`, needs an OIDC token through Heimdall |
-| Create new | Self-serve find-or-create, no review | **No.** `POST /b2b_orgs` only registers an *existing* SF Account, restricted to org-admin clients | Out of scope from checkout | n/a |
-| CF access today | None (needs a CDP M2M client + scopes) | None for listing | None | None (CF isn't behind the gateway for users yet) |
+| | **A. Self Serve work history (CDP)** | **B. `b2b_org` (member service)** | **C. Salesforce Accounts** |
+|---|---|---|---|
+| ID | CDP org UUID | 18-char SFID | SFID |
+| Coverage | Any org a user has added; many | **Only Accounts with a membership Asset** (`account_repo.go:25-46`) | All Accounts |
+| Canonical / joins to SS org lens | Via Snowflake mapping only | **Yes** | Yes |
+| User ↔ org link | **Yes** (that's what work history is) | Only roles: writer/auditor/key contact | No |
+| Search API | CDP exact name/domain lookups; no fuzzy search | `GET /query/resources?type=b2b_org&name=`, non-public: results filtered to orgs where the caller has `auditor`; CF has no credential today | Member service removed its SOQL search; no LFX API exposes it |
+| Create new | Self-serve find-or-create, no review | **No.** `POST /b2b_orgs` only registers an *existing* SF Account, restricted to org-admin clients | Out of scope from checkout |
+| CF access today | None (needs a CDP M2M client + scopes) | None for listing | None |
 
 **Notes on each source:**
 
@@ -215,14 +215,17 @@ If nothing matches, the dropdown footer offers **"I want to create '<term>'"**
   which is the same blocker that deferred the M1 org picker (doc 11, open questions 4 and 7).
 - **C** has the widest canonical coverage, but no supported LFX API searches it, and checkout
   must never create Accounts.
-- **D** is useful as an auto-fill and logo source, but it has no stable ID, so it can't be the
-  record of truth.
+
+Clearbit (`/query/orgs/suggest`, an external third-party company-data API) isn't listed as a
+source. It returns no stable ID, so it can't be the record of truth. With option A, CF still
+gets Clearbit data indirectly: Self Serve's autocomplete (§3.2) saves picked Clearbit
+suggestions into CDP.
 
 ### 4.1 Leaning: option A (CDP work history)
 
 Pending architecture review. Option A matches PM's direction and the designer's "send them to
-Self Serve" flow, covers non-member companies, and gives CF a real user ↔ org link that B, C and
-D lack.
+Self Serve" flow, covers non-member companies, and gives CF a real user ↔ org link that B and C
+lack.
 
 **Draft shape** (for discussion):
 
