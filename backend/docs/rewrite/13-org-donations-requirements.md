@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS organizations (
   created_on TIMESTAMPTZ DEFAULT NOW(), updated_on TIMESTAMPTZ DEFAULT NOW());
 ```
 
-- The table has no unique constraint and no external or canonical ID. Its only index is on
-  `owner_id`.
+- Apart from the `id` primary key, the table has no unique constraint (nothing on name or any
+  business key) and no external or canonical ID. Its only other index is on `owner_id`.
 - `donations.organization_id` and `subscriptions.organization_id` reference it with
   `ON DELETE SET NULL` (`001_initial.up.sql:363`, `:385`).
 - 606 orgs were migrated from v1 (`05-migration-plan.md:367`). The migration nulled out donation
@@ -235,9 +235,15 @@ lack.
   #261's "fall back to unlinked" idea.
 - **Storage.** A CF org row keyed by the CDP org UUID (unique), shared across donors and not
   editable from CF. The name and logo are refreshed from CDP.
-- **Ledger and the org lens.** Resolve CDP → SFID asynchronously, through the Snowflake mapping
-  or a back-office job, so org donations can show in the Self Serve Organization lens. Checkout
-  never blocks on that mapping.
+- **Authorization.** Shared rows break today's `ownedOrg()` check, which rejects any donor who
+  doesn't own the row (`donation_service.go:266-270`, `subscription_service.go:189-193`).
+  Replace it with a server-side check that the selected CDP org is in the donor's CDP work
+  history. Sharing the row or dropping the check alone would let anyone donate as any org.
+- **Ledger.** Ledger receives the CF org row ID at posting time. That ID is known at checkout,
+  so posting doesn't depend on any CDP → SFID mapping.
+- **Org lens.** CDP → SFID resolution (Snowflake mapping or a back-office job) is a read-time
+  lookup so org donations can show in the Self Serve Organization lens. Nothing at checkout or
+  Ledger posting waits on it.
 
 **Open questions for option A:**
 
@@ -275,8 +281,8 @@ has to be `b2b_org` (option B), with its member-only coverage.
 
 ### 5.1 Product (PM)
 
-1. **Who can donate as an org.** Anyone typing any name, only orgs in the donor's work history,
-   or only current employment?
+1. **Who can donate as an org.** Any org in the donor's work history, or only current
+   employment? (Free-text entry is ruled out by the designer decision in item 2.)
 2. ~~**Inline add.**~~ **Decided (designer):** no inline add in CF. Donors whose org isn't
    listed are directed to Self Serve to add it to their work history.
 3. **Display.** Can a donor edit an org's name and logo? Today they can, which rewrites history.
