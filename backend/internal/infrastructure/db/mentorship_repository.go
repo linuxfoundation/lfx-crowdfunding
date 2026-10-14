@@ -25,12 +25,17 @@ const (
 
 // MentorshipRepositoryImpl implements domain.MentorshipRepository against CF Postgres.
 type MentorshipRepositoryImpl struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger *slog.Logger
 }
 
 // NewMentorshipRepository returns a MentorshipRepositoryImpl backed by pool.
-func NewMentorshipRepository(pool *pgxpool.Pool) *MentorshipRepositoryImpl {
-	return &MentorshipRepositoryImpl{pool: pool}
+// logger receives operational warnings; nil falls back to slog.Default().
+func NewMentorshipRepository(pool *pgxpool.Pool, logger *slog.Logger) *MentorshipRepositoryImpl {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &MentorshipRepositoryImpl{pool: pool, logger: logger}
 }
 
 // UpsertProgram inserts or updates the mentorship initiative row identified by
@@ -217,7 +222,7 @@ ON CONFLICT (initiative_id, name) DO NOTHING`
 		if storedSlug != nil {
 			stored = *storedSlug
 		}
-		slog.WarnContext(ctx, "mentorship program slug already taken, stored with fallback slug",
+		r.logger.WarnContext(ctx, "mentorship program slug already taken, stored with fallback slug",
 			"jobspring_project_id", p.JobspringProjectID,
 			"program_slug", p.Slug,
 			"stored_slug", stored,

@@ -4,7 +4,10 @@
 package db
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -26,7 +29,7 @@ func TestMentorshipRepository_UpsertProgram_OnlyTouchesOwnedRows(t *testing.T) {
 
 	owner := seedUser(t, ctx, "project-owner")
 	project := seedInitiative(t, ctx, owner.ID, "Project Fund", "project-fund")
-	repo := NewMentorshipRepository(testPool)
+	repo := NewMentorshipRepository(testPool, nil)
 
 	hijack := models.MentorshipProgram{
 		JobspringProjectID: project.ID, Name: "Hijacked", Status: "published",
@@ -80,7 +83,9 @@ func TestMentorshipRepository_UpsertProgram_SuffixesTakenSlug(t *testing.T) {
 	}
 	ctx := context.Background()
 	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
-	repo := NewMentorshipRepository(testPool)
+	var logs bytes.Buffer
+	repo := NewMentorshipRepository(testPool, slog.New(slog.NewJSONHandler(&logs, nil)))
+	const slugWarning = "mentorship program slug already taken"
 
 	first := models.MentorshipProgram{
 		JobspringProjectID: uuid.New().String(), Name: "Newlib Optimization", Status: "published",
@@ -111,6 +116,9 @@ func TestMentorshipRepository_UpsertProgram_SuffixesTakenSlug(t *testing.T) {
 	if got := slugOf(dup.JobspringProjectID); got != want {
 		t.Errorf("duplicate slug = %q, want %q", got, want)
 	}
+	if n := strings.Count(logs.String(), slugWarning); n != 1 {
+		t.Errorf("slug warnings on injected logger = %d, want 1; logs: %s", n, logs.String())
+	}
 
 	// Re-syncing both leaves slugs alone.
 	for _, p := range []models.MentorshipProgram{first, dup} {
@@ -124,6 +132,9 @@ func TestMentorshipRepository_UpsertProgram_SuffixesTakenSlug(t *testing.T) {
 	if got := slugOf(dup.JobspringProjectID); got != want {
 		t.Errorf("duplicate slug after re-sync = %q, want %q", got, want)
 	}
+	if n := strings.Count(logs.String(), slugWarning); n != 1 {
+		t.Errorf("slug warnings after re-sync = %d, want still 1", n)
+	}
 }
 
 // The "-<id8>" fallback can itself be taken; the program must still sync,
@@ -134,7 +145,7 @@ func TestMentorshipRepository_UpsertProgram_FallbackSlugTaken(t *testing.T) {
 	}
 	ctx := context.Background()
 	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
-	repo := NewMentorshipRepository(testPool)
+	repo := NewMentorshipRepository(testPool, nil)
 
 	upsert := func(id, slug string) {
 		t.Helper()

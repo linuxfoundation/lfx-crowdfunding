@@ -70,7 +70,7 @@ func run(logger *slog.Logger) error {
 		src = client
 	}
 
-	repo := db.NewMentorshipRepository(pool)
+	repo := db.NewMentorshipRepository(pool, logger)
 	syncer := newSyncer(repo, src, logger)
 
 	logger.Info("mentorship-sync starting")
