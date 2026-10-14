@@ -34,17 +34,10 @@ export default {
     { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
     { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous' },
     { rel: 'dns-prefetch', href: 'https://kit.fontawesome.com' },
-    {
-      rel: 'preload',
-      as: 'style',
-      href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto+Slab:wght@300;400;600&display=swap',
-      onload: "this.onload=null;this.rel='stylesheet'",
-    },
+    // Plain stylesheet: inline onload handlers can't carry a CSP nonce (lfx-self-serve-ops#491).
     {
       rel: 'stylesheet',
       href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto+Slab:wght@300;400;600&display=swap',
-      media: 'print',
-      onload: "this.media='all'",
     },
   ],
   script: [
