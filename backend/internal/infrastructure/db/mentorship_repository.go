@@ -68,6 +68,8 @@ ON CONFLICT (username) DO NOTHING`
 	// Jobspring does not enforce unique program slugs, so a new program whose
 	// slug is already held by another initiative gets the same "-<id8>" suffix
 	// migration 011 applied, instead of failing the unique index and never syncing.
+	// If that is taken too it falls back to "-<full id>", and finally to NULL
+	// (still reachable by UUID), so the fallback itself can never collide.
 	const upsertInitiative = `
 INSERT INTO initiatives (
 	id,
@@ -89,9 +91,14 @@ INSERT INTO initiatives (
 	$4,
 	$5,
 	$6,
-	CASE WHEN EXISTS (SELECT 1 FROM initiatives WHERE slug = $7 AND id <> $1::uuid)
-		THEN $7 || '-' || left($1::text, 8)
-		ELSE $7
+	CASE
+		WHEN NOT EXISTS (SELECT 1 FROM initiatives WHERE slug = $7 AND id <> $1::uuid)
+			THEN $7
+		WHEN NOT EXISTS (SELECT 1 FROM initiatives WHERE slug = $7 || '-' || left($1::text, 8) AND id <> $1::uuid)
+			THEN $7 || '-' || left($1::text, 8)
+		WHEN NOT EXISTS (SELECT 1 FROM initiatives WHERE slug = $7 || '-' || $1::text AND id <> $1::uuid)
+			THEN $7 || '-' || $1::text
+		ELSE NULL
 	END,
 	$8,
 	NOW(),
@@ -129,7 +136,7 @@ RETURNING id, slug, (xmax = 0) AS inserted`
 		return "", fmt.Errorf("upsert mentorship program %q: %w", p.JobspringProjectID, err)
 	}
 	// Logged after commit so the warning only reflects persisted state.
-	slugSuffixed := inserted && p.Slug != "" && storedSlug != nil && *storedSlug != p.Slug
+	slugSuffixed := inserted && p.Slug != "" && (storedSlug == nil || *storedSlug != p.Slug)
 
 	// 3. Ensure the fixed "mentee" funding goal row exists (idempotent).
 	const insertMenteeGoal = `
@@ -206,10 +213,14 @@ ON CONFLICT (initiative_id, name) DO NOTHING`
 		return "", fmt.Errorf("commit program tx for %q: %w", p.JobspringProjectID, err)
 	}
 	if slugSuffixed {
-		slog.WarnContext(ctx, "mentorship program slug already taken, stored with suffix",
+		stored := ""
+		if storedSlug != nil {
+			stored = *storedSlug
+		}
+		slog.WarnContext(ctx, "mentorship program slug already taken, stored with fallback slug",
 			"jobspring_project_id", p.JobspringProjectID,
 			"program_slug", p.Slug,
-			"stored_slug", *storedSlug,
+			"stored_slug", stored,
 		)
 	}
 	return id, nil

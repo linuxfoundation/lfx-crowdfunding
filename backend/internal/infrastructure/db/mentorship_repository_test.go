@@ -125,3 +125,50 @@ func TestMentorshipRepository_UpsertProgram_SuffixesTakenSlug(t *testing.T) {
 		t.Errorf("duplicate slug after re-sync = %q, want %q", got, want)
 	}
 }
+
+// The "-<id8>" fallback can itself be taken; the program must still sync,
+// falling back to "-<full id>" and finally to a NULL slug.
+func TestMentorshipRepository_UpsertProgram_FallbackSlugTaken(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+	repo := NewMentorshipRepository(testPool)
+
+	upsert := func(id, slug string) {
+		t.Helper()
+		p := models.MentorshipProgram{
+			JobspringProjectID: id, Name: "Program " + slug, Status: "published",
+			Slug: slug, OwnerLFUsername: "flashy",
+		}
+		if _, err := repo.UpsertProgram(ctx, p); err != nil {
+			t.Fatalf("UpsertProgram(%q) error = %v", slug, err)
+		}
+	}
+	slugOf := func(id string) *string {
+		t.Helper()
+		var s *string
+		if err := testPool.QueryRow(ctx, `SELECT slug FROM crowdfunding.initiatives WHERE id = $1`, id).Scan(&s); err != nil {
+			t.Fatalf("select slug for %s: %v", id, err)
+		}
+		return s
+	}
+
+	dupID := uuid.New().String()
+	upsert(uuid.New().String(), "taken")
+	upsert(uuid.New().String(), "taken-"+dupID[:8])
+
+	upsert(dupID, "taken")
+	if got, want := slugOf(dupID), "taken-"+dupID; got == nil || *got != want {
+		t.Errorf("slug with id8 suffix taken = %v, want %q", got, want)
+	}
+
+	nullID := uuid.New().String()
+	upsert(uuid.New().String(), "taken-"+nullID[:8])
+	upsert(uuid.New().String(), "taken-"+nullID)
+	upsert(nullID, "taken")
+	if got := slugOf(nullID); got != nil {
+		t.Errorf("slug with all fallbacks taken = %q, want NULL", *got)
+	}
+}
