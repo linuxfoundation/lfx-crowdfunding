@@ -12,14 +12,22 @@ architecture. Tracked in
 [#261](https://github.com/linuxfoundation/lfx-crowdfunding/issues/261)). Implementation follows
 in [#367](https://github.com/linuxfoundation/lfx-crowdfunding/issues/367).
 
+**Where we are (October 2026).** Architecture recommends option D and against option A (§4).
+Nothing is formally decided. The PM has been asked who can publicly credit an org (§5.1
+item 1) and whether donors can type an org by hand (§5.1 item 2). If the PM still prefers work
+history, that goes back to architecture.
+
 **TL;DR.** Today "donate as an organization" picks from a private, per-user list of free-text
 orgs that nothing else in LFX knows about. PM's preferred source for the org list is the user's
 Self Serve **Work history & Affiliations**. That data lives in **CDP (crowd.dev)** and is keyed by
 **CDP organization UUIDs**, not Salesforce Account IDs / `b2b_org` UIDs. The alternatives are
 `b2b_org` (member service; covers only Salesforce Accounts with a membership) and raw Salesforce
 Accounts. Each source trades off coverage against being canonical.
-**Leaning: option A (CDP work history)**, pending architecture review (§4.1). §5 lists the
-decisions needed.
+**Architecture recommends against CDP.** Their recommended shape is **option D**, the
+committee-member pattern: each org donation stores a name and domain, plus a `b2b_org` reference
+when the org is a member company, with no CDP IDs (§4.1). Option A (CDP work history) isn't
+formally rejected, but direct CDP access is ruled out, which makes it costly (§4.2). The main
+open decision is a PM one: **who can publicly credit an org** (§5.1 item 1).
 
 ---
 
@@ -98,11 +106,19 @@ PM wants the donor's org list to come from the orgs the user has added under **S
 Profile → Work history & Affiliations**. This can change depending on architecture constraints
 and decisions. §3 records how that data is stored, and §4 compares it with the alternatives.
 
+Architecture feedback (Eric Searcy, Luis Mori Guerra, October 2026) is that how donation orgs
+connect to the rest of the LFX entity graph needs product and technical alignment. The only
+foreign key that matters in LFX is `b2b_org` (it drives the Organization lens), so CF shouldn't
+store CDP org IDs. Eric framed this as an initial impression, not a ruling, and PM input is
+still needed. Work history as the source is not recommended (§4.2).
+
 ---
 
 ## 3. Self Serve "Work history & Affiliations": investigation
 
 Repo: `linuxfoundation/lfx-self-serve` (paths relative to `apps/lfx-one/src/` unless noted).
+
+> Research for option A, which architecture doesn't recommend (§4.2).
 
 ### 3.1 Where work history is stored
 
@@ -133,8 +149,7 @@ It isn't stored in Salesforce, member service, NATS KV or Auth0 metadata.
   2. `GET /v1/members/{memberId}/work-experiences` (scope `read:work-experiences`)
 
   Both need an Auth0 M2M token with the CDP audience. **CF can't call these directly**: the
-  architecture team has ruled out giving external consumers CDP `read:members` access (§5.2
-  item 3).
+  architecture team has ruled out giving external consumers CDP `read:members` access (§4.2).
 
 ### 3.2 Where the autocomplete list comes from
 
@@ -185,30 +200,30 @@ If nothing matches, the dropdown footer offers **"I want to create '<term>'"**
 - Orgs created by users in Self Serve are **self-asserted**, just like CF's current orgs: there's
   no review and dedup is weak. The difference is that they're **shared across users** (one CDP
   org per domain) instead of private per user.
-- Using work history limits CF to orgs the donor has already added in Self Serve. **Decided
-  (designer):** CF won't add orgs inline. If the donor's org isn't listed, CF directs them to
-  Self Serve's Work history & Affiliations tab to add it.
+- Using work history limits CF to orgs the donor has already added in Self Serve. The designer
+  decided CF wouldn't add orgs inline and would send donors to Self Serve's Work history &
+  Affiliations tab instead. That decision assumed option A and is reopened (§5.1 item 2).
 
 ---
 
 ## 4. Org list sources compared
 
-| | **A. Self Serve work history (CDP)** | **B. `b2b_org` (member service)** | **C. Salesforce Accounts** |
-|---|---|---|---|
-| ID | CDP org UUID | 18-char SFID | SFID |
-| Coverage | Any org a user has added; many | **Only Accounts with a membership Asset** (`account_repo.go:25-46`) | All Accounts |
-| Canonical / joins to SS org lens | Via Snowflake mapping only | **Yes** | Yes |
-| User ↔ org link | **Yes** (that's what work history is) | Only roles: writer/auditor/key contact | No |
-| Search API | CDP exact name/domain lookups; no fuzzy search | `GET /query/resources?type=b2b_org&name=`, non-public: results filtered to orgs where the caller has `auditor`; CF has no credential today | Member service removed its SOQL search; no LFX API exposes it |
-| Create new | Self-serve find-or-create, no review | **No.** `POST /b2b_orgs` only registers an *existing* SF Account, restricted to org-admin clients | Out of scope from checkout |
-| CF access today | None (needs a v2 API behind Heimdall; direct CDP access ruled out, §5.2) | None for listing | None |
+| | **A. Self Serve work history (CDP)** | **B. `b2b_org` (member service)** | **C. Salesforce Accounts** | **D. Committee pattern (name + domain, optional `b2b_org`)** |
+|---|---|---|---|---|
+| ID | CDP org UUID | 18-char SFID | SFID | `b2b_org` SFID when matched, else none |
+| Coverage | Any org a user has added; many | **Only Accounts with a membership Asset** (`account_repo.go:25-46`) | All Accounts | Any org (Clearbit or typed) |
+| Canonical / joins to SS org lens | Via Snowflake mapping only | **Yes** | Yes | Only when the `b2b_org` reference is set |
+| User ↔ org link | **Yes** (that's what work history is) | Only roles: writer/auditor/key contact | No | No |
+| Search API | CDP exact name/domain lookups; no fuzzy search | `GET /query/resources?type=b2b_org&name=`, non-public: results filtered to orgs where the caller has `auditor`; CF has no credential today | Member service removed its SOQL search; no LFX API exposes it | query-service org search, `b2b_org` + Clearbit with `b2b_org` first (planned, LFXV2-2400) |
+| Create new | Self-serve find-or-create, no review | **No.** `POST /b2b_orgs` only registers an *existing* SF Account, restricted to org-admin clients | Out of scope from checkout | Nothing created; the record is just a name and domain |
+| CF access today | None (needs a v2 API behind Heimdall; direct CDP access ruled out, §4.2) | None for listing | None | Clearbit suggest only; `b2b_org` search not yet open to donors |
 
 **Notes on each source:**
 
 - **A** best matches PM's intent ("orgs I work for"). It covers non-member companies, and it
   verifies affiliation in the same loose way Self Serve does. Costs:
   - a new v2 API, behind Heimdall, that reads the caller's work history from CDP. CF can't get
-    its own CDP M2M client (§5.2 item 3), so this is a cross-team dependency;
+    its own CDP M2M client (§4.2), so this is a cross-team dependency;
   - CDP IDs in CF and Ledger that need mapping to SFIDs before org donations can show in the
     org lens;
   - self-asserted orgs.
@@ -218,52 +233,67 @@ If nothing matches, the dropdown footer offers **"I want to create '<term>'"**
   which is the same blocker that deferred the M1 org picker (doc 11, open questions 4 and 7).
 - **C** has the widest canonical coverage, but no supported LFX API searches it, and checkout
   must never create Accounts.
+- **D** is how committee members store orgs today, and what doc 11 §4 already sketched as the
+  "hybrid picker". It needs no new CDP or v2 integration, and the lens works through the
+  `b2b_org` reference. Costs: no user ↔ org link (§5.1 item 1), and the `b2b_org` half of the
+  search depends on platform work (§5.2 item 3).
 
 Clearbit (`/query/orgs/suggest`, an external third-party company-data API) isn't listed as a
-source. It returns no stable ID, so it can't be the record of truth. With option A, CF still
-gets Clearbit data indirectly: Self Serve's autocomplete (§3.2) saves picked Clearbit
-suggestions into CDP.
+source of record. It returns no stable ID, so it can't be the record of truth. In option D it
+supplies names and domains for orgs that aren't member companies.
 
-### 4.1 Leaning: option A (CDP work history)
+### 4.1 Recommended: option D (committee-member pattern)
 
-Pending architecture review. Option A matches PM's direction and the designer's "send them to
-Self Serve" flow, covers non-member companies, and gives CF a real user ↔ org link that B and C
-lack.
+Proposed by Eric Searcy in architecture review, and matches the committee service. Pending PM
+and architecture sign-off.
 
 **Draft shape** (for discussion):
 
-- **Picker.** At checkout, CF lists the donor's work-history orgs through a v2 API behind
-  Heimdall, scoped to the caller (§5.2 item 3). If their org isn't listed, CF links them to Self
-  Serve's Work history & Affiliations tab (§3.4). CF has no free-text fallback, which replaces
-  #261's "fall back to unlinked" idea.
-- **Storage.** A CF org row keyed by the CDP org UUID (unique), shared across donors and not
-  editable from CF. The name and logo are refreshed from CDP.
-- **Authorization.** Shared rows break today's `ownedOrg()` check, which rejects any donor who
-  doesn't own the row (`donation_service.go:266-270`, `subscription_service.go:189-193`).
-  Replace it with a server-side check that the selected CDP org is in the donor's CDP work
-  history. Sharing the row or dropping the check alone would let anyone donate as any org.
-  **This check alone isn't enough.** Work history is self-attested: anyone can add any org in
-  Self Serve with no review (§3.3), and `verifiedBy: <lfid>` is the user verifying themselves.
-  A donor can add an org to their work history and then donate as it, which reopens the hole
-  #349 closed. What counts as proof of affiliation is a PM decision (§5.1 item 6).
-- **Ledger.** Ledger receives the CF org row ID at posting time. That ID is known at checkout,
-  so posting doesn't depend on any CDP → SFID mapping.
-- **Org lens.** CDP → SFID resolution (Snowflake mapping or a back-office job) is a read-time
-  lookup so org donations can show in the Self Serve Organization lens. Nothing at checkout or
-  Ledger posting waits on it.
+- **Data.** An org donation carries an `organization` attribute: required **name** and
+  **domain**, plus an optional **`b2b_org` SFID**. This mirrors committee members
+  (`organization: {id, name, website}`, lfx-v2-committee-service
+  `cmd/committee-api/design/type.go`, `OrganizationInfoAttributes`). There are no foreign keys
+  to CDP or anything else. Committee members stopped storing CDP org IDs (LFXV2-2647).
+- **Picker.** The same org lookup committees use: the query-service org search, which per
+  LFXV2-2400 combines `b2b_org` and Clearbit, with `b2b_org` results first and duplicates
+  removed by domain. If the donor picks a `b2b_org` result, the reference is filled in.
+  Otherwise the donation stores only the name and domain. CF calls query-service directly. It
+  doesn't copy Self Serve's committee picker, which still creates orgs in CDP.
+- **Free text.** In Eric's model, a donor can also type a name and domain by hand. This
+  conflicts with the earlier designer decision (§5.1 item 2).
+- **Org lens.** Donations with a `b2b_org` reference can show in that org's lens. Name and
+  domain only donations can't, since the lens only exists for `b2b_org` orgs (see the
+  constraint in §4.3). Doc 11 §4 already accepted this.
+- **Adopting older records (later).** Services can listen for org created and updated events
+  and attach a `b2b_org` reference to records whose domain matches. That would also cover the
+  existing per-user orgs and the featured companies. CF has no such subscriber today, so this is
+  out of scope for the first version.
+- **Authorization.** Nothing links the donor to the org, so anyone can donate "as Google". Who
+  may publicly credit an org is the main open PM decision (§5.1 item 1). It's the same hole
+  #349 closed for today's per-user orgs.
+- **Ledger.** Today Ledger gets the CF org row ID. With option D it would get the `b2b_org`
+  SFID when there is one, plus the name and domain. Needs agreement with ledger-service
+  (§5.2 item 2).
 
-**Open questions for option A:**
+### 4.2 Not recommended: option A (CDP work history)
 
-- Whether donors may pick past employers or only current ones (§5.1 item 1).
-- Which v2 service owns the work-history API, and its cost (§5.2 item 3).
-- What counts as proof of affiliation, since work history is self-attested (§5.1 item 6).
-- How CDP → SFID mapping coverage looks for typical donor orgs.
-- How to handle CDP's weak dedup (§3.3), since it can merge unrelated same-named orgs.
-- **Self Serve Organization lens visibility** (§5.1 item 5). The lens only exists for `b2b_org`
-  orgs, so CDP-only orgs can never appear there.
+Option A lists the donor's Self Serve work-history orgs and stores CDP org UUIDs. Architecture
+recommends against it. It isn't formally rejected, and it remains possible if PM still wants it
+and architecture agrees to the cost:
 
-**Org lens constraint (confirmed in lfx-self-serve).** The Organization lens is built entirely on
-`b2b_org`:
+- **Data path.** A CDP M2M client for CF is ruled out. External consumers don't get unscoped
+  CDP `read:members` access (Eric Searcy, 2026-09-29, "Maintainer GitHub ↔ LFID Resolution",
+  `lfx-architecture-scratch/2026-09-Maintainer-GitHub-Resolution`; applied to CF by Michal
+  Lehotsky in review). Option A would need a new v2 API behind Heimdall, which makes it much
+  more expensive.
+- **Entity graph.** Eric's view is that CDP org IDs aren't foreign keys that matter in LFX;
+  only `b2b_org` is (LFXV2-2647 removed them from committee members).
+- **Authorization.** Work history is self-attested (§3.3), so it doesn't prove affiliation
+  either.
+
+### 4.3 Org lens constraint (all options)
+
+Confirmed in lfx-self-serve: the Organization lens is built entirely on `b2b_org`.
 
 - The org selector lists the caller's `b2b_org` role grants and searches the catalogue with
   `GET /query/resources?type=b2b_org` (`server/services/org-navigation.service.ts:153`, `:221`).
@@ -273,15 +303,8 @@ lack.
 
 The lens does bridge to CDP for some data. It reads `CDEV_ORG_ID` for an account from the
 Snowflake table `ORG_LENS_ACCOUNT_CONTEXT` (`server/services/organization.service.ts:1043-1070`).
-So with option A:
-
-- Donations to a CDP org that maps to a `b2b_org` *could* appear in that org's lens, by looking
-  them up with the mapped CDP ID.
-- Donations to a CDP org with no `b2b_org` never appear in the lens, because there is no lens
-  page for that org. `b2b_org` records are created only by the org admins (§4, option B).
-
-If PM requires every org donation to show in the lens, option A doesn't meet that and the source
-has to be `b2b_org` (option B), with its member-only coverage.
+Orgs with no `b2b_org` have no lens page, and `b2b_org` records are created only by the org
+admins (§4, option B). This applies to every option.
 
 ---
 
@@ -289,49 +312,44 @@ has to be `b2b_org` (option B), with its member-only coverage.
 
 ### 5.1 Product (PM)
 
-1. **Who can donate as an org.** Any org in the donor's work history, or only current
-   employment? (Free-text entry is ruled out by the designer decision in item 2.)
-2. ~~**Inline add.**~~ **Decided (designer):** no inline add in CF. Donors whose org isn't
-   listed are directed to Self Serve to add it to their work history.
-3. **Display.** Can a donor edit an org's name and logo? Today they can, which rewrites history.
-   Where should org donations appear (initiative page, SS Organization lens, emails)?
-4. **Existing data.** Migrate or merge the existing per-user orgs (606 from v1 plus those
-   created since), including the 16 featured companies?
-5. **Self Serve Organization lens.** Must org donations show in the SS Organization lens? The
-   lens only covers `b2b_org` orgs (§4.1). If yes for *every* donation, option A can't work and
-   the source must be `b2b_org`. If showing only for orgs that have a `b2b_org` is acceptable,
-   option A still works.
-6. **Proof of affiliation.** Work history is self-attested (§4.1 Authorization), so a
-   work-history check alone lets anyone donate as any org. What counts as enough proof: an email
-   domain matching the org, a `b2b_org` role, an Auth0-linked or otherwise verified signal, or
-   accepting self-attestation as a known risk?
+1. **Who can publicly credit an org.** With option D, nothing links the donor to the org, so
+   anyone could donate "as Google" and have it shown publicly. Options:
+   - **Anyone, as stated by the donor.** Accept the risk. Doc 11 §4 took this view: donating
+     gives money in the org's name, which is lower risk than raising money in its name.
+   - **Anyone, shown differently.** Matched `b2b_org` orgs show as the org; everything else
+     shows as stated by the donor, or isn't shown publicly.
+   - **Only with proof.** For example, a verified email domain that matches the org's domain,
+     or a role on the `b2b_org`. This blocks most donors at non-member companies.
+2. **Free text.** The designer decided earlier that CF has no inline add and sends donors to
+   Self Serve work history (option A). With option D, can donors type an org name and domain
+   when search doesn't find it?
+3. **Display.** Can a donor edit an org's name and logo after donating? Today they can, which
+   rewrites history. Where should org donations appear (initiative page, SS Organization lens,
+   emails)?
+4. **Existing data.** Convert the existing per-user orgs (606 from v1 plus those created since),
+   including the 16 featured companies, to name and domain records? Many have no domain today.
+5. **Self Serve Organization lens.** Is it acceptable that only donations to member companies
+   (`b2b_org`) show in the lens?
 
 ### 5.2 Architecture
 
-1. **Source of truth for the list:** CDP work history (A), `b2b_org` (B), or a hybrid.
-   Leaning A (§4.1); needs architecture confirmation.
-2. **Which ID CF and Ledger store** for an org donation: CDP UUID, SFID, or a CF UUID with
-   external refs. Also how CDP → SFID resolution happens (Snowflake mapping, CDP API, back-office
-   job).
-3. **Credentials and data path.** A CDP M2M client for CF is **ruled out**. The architecture
-   team doesn't give external consumers unscoped CDP `read:members` access. Another system's data
-   goes through a v2 service behind Heimdall (Eric Searcy, 2026-09-29, "Maintainer GitHub ↔ LFID
-   Resolution", `lfx-architecture-scratch/2026-09-Maintainer-GitHub-Resolution`). For option A:
-   - **A v2 API scoped to the caller** (for example `GET /me/work-experiences`). Heimdall
-     authorizes the request, and the service reads CDP service-to-service. CDP keeps ownership of
-     the data; v2 owns the contract and the access control. Still open: which service owns it (a
-     new service, `lfx-v2-auth-service`, or member service) and who builds it.
-   - **Snowflake** isn't a good fit. It can be up to 12 hours behind, so a donor who adds their
-     org in Self Serve and comes back wouldn't see it.
-   - Option B already goes through v2 (query-service), so this narrows the cost gap between A
-     and B. B still needs a `b2b_org`-wide read credential.
-4. **Org-row ownership.** Shared or platform-managed linked rows vs today's per-user editable
-   rows. This is the open fork carried over from #261.
+1. **Source of truth:** option D (§4.1), proposed in architecture review. Needs formal
+   architecture sign-off.
+2. **What CF and Ledger store** for an org donation: name, domain and optional `b2b_org` SFID,
+   either on the donation or on shared CF rows that donors can't edit. Ledger needs to agree to
+   the change from the CF org row ID.
+3. **Search dependency.** Today `/query/orgs/suggest` is Clearbit only, and `b2b_org` search
+   only returns orgs where the caller is an `auditor`. Donors can only find member companies
+   once query-service ships the combined search (LFXV2-2400) and `b2b_org` names and domains
+   are visible to all logged-in users. Until then, CF gets Clearbit results with no `b2b_org`
+   reference.
+4. **Adopting older records.** Whether and when CF subscribes to org created and updated events
+   to attach `b2b_org` references by domain (§4.1). Not needed for the first version.
 
 ### 5.3 Sign-off
 
 - [ ] Requirements agreed (§5.1)
-- [ ] Org list source decided (§5.2)
+- [ ] Option D confirmed (§5.2)
 - [ ] PM sign-off
 - [ ] Architecture sign-off
 
@@ -342,6 +360,15 @@ has to be `b2b_org` (option B), with its member-only coverage.
 - `backend/docs/rewrite/11-initiative-attribution-and-access.md`: §4 "Organization donations"
   (the earlier hybrid-picker design) and open questions 4 and 7 (org picker source and
   credential).
+- Architecture feedback on this doc (October 2026):
+  - Eric Searcy: treat donation orgs like committee-member orgs (§4.1).
+  - Luis Mori Guerra: Self Serve's committee picker still writes to CDP; `b2b_org` search isn't
+    open to donors yet; name and domain alone reopen #349.
+- lfx-v2-committee-service:
+  - `cmd/committee-api/design/type.go` (`OrganizationInfoAttributes`)
+  - `gen/http/openapi3.yaml` (add committee member payload, `organization`)
+- Jira: LFXV2-2400 (org search: `b2b_org` + Clearbit, `b2b_org` first) and LFXV2-2647 (stop
+  storing CDP org IDs on committee members).
 - lfx-self-serve:
   - `apps/lfx-one/src/server/services/cdp.service.ts`
   - `apps/lfx-one/src/server/services/organization.service.ts`
