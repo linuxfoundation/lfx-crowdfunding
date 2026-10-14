@@ -14,7 +14,8 @@ in [#367](https://github.com/linuxfoundation/lfx-crowdfunding/issues/367).
 
 **Where we are (October 2026).** Architecture recommends option D and against option A (§4).
 The PM has answered the two open product questions: anyone can publicly credit an org, as
-stated by the donor (§5.1 item 1), and donors can type an org by hand (§5.1 item 2). The PM
+stated by the donor (§5.1 item 1), and donors can type an org by hand (§5.1 item 2). PM also
+wants a donations list page on the Self Serve Organization lens (§5.1 item 3). The PM
 didn't ask to take work history back to architecture. Formal sign-off (§5.3) is still pending.
 
 **TL;DR.** Today "donate as an organization" picks from a private, per-user list of free-text
@@ -264,13 +265,17 @@ and architecture sign-off.
 - **Free text.** If search doesn't find the org, the donor types a name and domain by hand.
   PM confirmed this (§5.1 item 2); it replaces the earlier designer decision to send donors to
   Self Serve.
-- **Org lens.** Donations with a `b2b_org` reference can show in that org's lens. Name and
-  domain only donations can't, since the lens only exists for `b2b_org` orgs (see the
-  constraint in §4.3). Doc 11 §4 already accepted this.
+- **Org lens.** PM wants a donations list page on the Organization lens (§5.1 item 3). Donations
+  with a `b2b_org` reference show on that org's page. Name and domain only donations can't,
+  since the lens only exists for `b2b_org` orgs (see the constraint in §4.3). So the page is
+  only as complete as the `b2b_org` matching: until donors can find member companies in search
+  (§5.2 item 3), every new org donation is name and domain only and the page stays empty.
+  CF serves the list (§5.2 item 5); Self Serve builds the page.
 - **Adopting older records (later).** Services can listen for org created and updated events
   and attach a `b2b_org` reference to records whose domain matches. That would also cover the
   existing per-user orgs and the featured companies. CF has no such subscriber today, so this is
-  out of scope for the first version.
+  out of scope for the first version. The lens page makes this more valuable, since it is the
+  only way donations made before matching existed can reach the page (§5.2 item 4).
 - **Authorization.** Nothing links the donor to the org, so anyone can donate "as Google". PM
   accepted this: the donor's stated org is shown as is (§5.1 item 1). It's the same hole #349
   closed for today's per-user orgs, now accepted on purpose.
@@ -328,13 +333,17 @@ admins (§4, option B). This applies to every option.
    type the name and domain by hand. PM checked other donation platforms and a free-text org
    field is standard. This replaces the earlier designer decision to send donors to Self Serve
    work history (option A).
-3. **Display.** Can a donor edit an org's name and logo after donating? Today they can, which
-   rewrites history. Where should org donations appear (initiative page, SS Organization lens,
-   emails)?
+3. **Display.** *Where org donations appear.* **Decided (PM, October 2026): the SS Organization
+   lens gets a donations list page.** Still open: emails, and
+   whether a donor can edit an org's name and logo after donating (today they can, which
+   rewrites history).
 4. **Existing data.** Convert the existing per-user orgs (606 from v1 plus those created since),
    including the 16 featured companies, to name and domain records? Many have no domain today.
-5. **Self Serve Organization lens.** Is it acceptable that only donations to member companies
-   (`b2b_org`) show in the lens?
+5. **Lens page coverage.** Only donations with a `b2b_org` reference can show on the lens page
+   (§4.1). Is it acceptable to ship the page while it misses name and domain only donations, or
+   must `b2b_org` search (§5.2 item 3) or domain matching (§5.2 item 4) ship with it?
+6. **Lens page content.** What the page shows per donation: initiative, amount, date, and
+   which donor details (name, email). Anonymous donations need a rule too.
 
 ### 5.2 Architecture
 
@@ -349,7 +358,14 @@ admins (§4, option B). This applies to every option.
    are visible to all logged-in users. Until then, CF gets Clearbit results with no `b2b_org`
    reference.
 4. **Adopting older records.** Whether and when CF subscribes to org created and updated events
-   to attach `b2b_org` references by domain (§4.1). Not needed for the first version.
+   to attach `b2b_org` references by domain (§4.1). Not needed for the first version, unless
+   PM wants the lens page to cover older donations (§5.1 item 5).
+5. **Lens donations API.** CF exposes `GET /crowdfunding/organizations/{uid}/donations`,
+   following the per-entity initiatives list that already ships for the lens
+   (`GET /crowdfunding/organizations/{uid}/initiatives`, #333; doc 11 §5.1): a filtered query on
+   the donation's `b2b_org` SFID, guarded in Heimdall with `openfga_check` on `b2b_org:{uid}`.
+   Open: `auditor` (matches the lens read gate, §4.3) or `writer` (what the initiatives list
+   uses). Self Serve builds the page (cross-team).
 
 ### 5.3 Sign-off
 
@@ -364,7 +380,8 @@ admins (§4, option B). This applies to every option.
 
 - `backend/docs/rewrite/11-initiative-attribution-and-access.md`: §4 "Organization donations"
   (the earlier hybrid-picker design) and open questions 4 and 7 (org picker source and
-  credential).
+  credential). §5.1 (superseded note) describes the per-entity lens lists from #333 that the
+  lens donations API follows.
 - Architecture feedback on this doc (October 2026):
   - Eric Searcy: treat donation orgs like committee-member orgs (§4.1).
   - Luis Mori Guerra: Self Serve's committee picker still writes to CDP; `b2b_org` search isn't
