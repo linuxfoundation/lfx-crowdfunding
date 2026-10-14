@@ -9,6 +9,7 @@ export const buttonTypes = [
   'outline',
   'nav',
   'dark',
+  'danger',
 ] as const;
 export const buttonSizes = ['small', 'medium', 'large'] as const;
 export const iconPosition = ['left', 'right'] as const;

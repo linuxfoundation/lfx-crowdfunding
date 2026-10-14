@@ -11,7 +11,7 @@ All components auto-registered via Nuxt; import is not required in `<template>`.
 ```vue
 <lfx-button
   label="Click me"
-  type="primary"        <!-- primary | secondary | tertiary | transparent | ghost | outline | nav -->
+  type="primary"        <!-- primary | secondary | tertiary | transparent | ghost | outline | nav | dark | danger -->
   button-style="pill"   <!-- rounded (default) | pill -->
   size="medium"         <!-- small | medium | large -->
   icon="box-dollar"     <!-- FA icon name, no fa- prefix -->

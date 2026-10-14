@@ -115,6 +115,22 @@
     }
   }
 
+  &-danger {
+    @apply bg-negative-500 text-white font-semibold;
+
+    &:hover {
+      @apply bg-negative-600;
+    }
+
+    &:active {
+      @apply bg-negative-500 outline outline-negative-200 outline-3;
+    }
+
+    &:disabled {
+      @apply bg-negative-200 cursor-not-allowed;
+    }
+  }
+
   &-nav {
     @apply bg-transparent text-neutral-500 font-medium;
 
