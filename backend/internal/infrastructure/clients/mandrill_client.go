@@ -47,6 +47,13 @@ const (
 	MandrillTemplateDonationAdminNotification MandrillTemplateName = "admin-donation-notification-ledger"
 )
 
+// templateSubjects overrides the subject stored in the Mandrill template. The
+// review template is shared with mentorship and its stored subject says
+// "LFX Mentorship". Templates not listed keep their stored subject.
+var templateSubjects = map[MandrillTemplateName]string{
+	MandrillTemplateSubmittedForReview: "LFX Crowdfunding Project application is pending your review",
+}
+
 // MandrillClient is the interface consumed by the email service layer.
 type MandrillClient interface {
 	// SendTemplate sends a Mandrill transactional template to a single recipient.
@@ -99,6 +106,7 @@ type mandrillRecipient struct {
 type mandrillMessage struct {
 	FromEmail       string              `json:"from_email"`
 	FromName        string              `json:"from_name"`
+	Subject         string              `json:"subject,omitempty"` // empty keeps the template's subject
 	To              []mandrillRecipient `json:"to"`
 	GlobalMergeVars []mandrillMergeVar  `json:"global_merge_vars"`
 	MergeLanguage   string              `json:"merge_language"`
@@ -145,6 +153,7 @@ func (c *mandrillClient) SendTemplate(ctx context.Context, templateName Mandrill
 		Message: mandrillMessage{
 			FromEmail:       c.cfg.FromEmail,
 			FromName:        c.cfg.FromName,
+			Subject:         templateSubjects[templateName],
 			To:              []mandrillRecipient{{Email: toEmail, Name: toName, Type: "to"}},
 			GlobalMergeVars: globalMergeVars,
 			// The published templates are Handlebars. {{safehtml}} is an allowlist sanitizer, not an
