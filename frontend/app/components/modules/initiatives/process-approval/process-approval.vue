@@ -126,6 +126,13 @@ SPDX-License-Identifier: MIT
         </p>
 
         <div class="flex gap-3 justify-center">
+          <NuxtLink :to="`/initiatives/${props.slug}`">
+            <lfx-button
+              label="View Submission"
+              type="tertiary"
+              icon="eye"
+            />
+          </NuxtLink>
           <lfx-button
             :label="action === 'approve' ? 'Approve' : 'Decline'"
             :type="action === 'approve' ? 'primary' : 'secondary'"
