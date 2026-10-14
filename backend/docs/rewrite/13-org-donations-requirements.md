@@ -13,9 +13,9 @@ architecture. Tracked in
 in [#367](https://github.com/linuxfoundation/lfx-crowdfunding/issues/367).
 
 **Where we are (October 2026).** Architecture recommends option D and against option A (§4).
-Nothing is formally decided. The PM has been asked who can publicly credit an org (§5.1
-item 1) and whether donors can type an org by hand (§5.1 item 2). If the PM still prefers work
-history, that goes back to architecture.
+The PM has answered the two open product questions: anyone can publicly credit an org, as
+stated by the donor (§5.1 item 1), and donors can type an org by hand (§5.1 item 2). The PM
+didn't ask to take work history back to architecture. Formal sign-off (§5.3) is still pending.
 
 **TL;DR.** Today "donate as an organization" picks from a private, per-user list of free-text
 orgs that nothing else in LFX knows about. PM's preferred source for the org list is the user's
@@ -26,8 +26,9 @@ Accounts. Each source trades off coverage against being canonical.
 **Architecture recommends against CDP.** Their recommended shape is **option D**, the
 committee-member pattern: each org donation stores a name and domain, plus a `b2b_org` reference
 when the org is a member company, with no CDP IDs (§4.1). Option A (CDP work history) isn't
-formally rejected, but direct CDP access is ruled out, which makes it costly (§4.2). The main
-open decision is a PM one: **who can publicly credit an org** (§5.1 item 1).
+formally rejected, but direct CDP access is ruled out, which makes it costly (§4.2). PM has
+decided that **anyone can publicly credit an org, as stated**, and that donors can type an org
+by hand (§5.1 items 1 and 2).
 
 ---
 
@@ -202,7 +203,8 @@ If nothing matches, the dropdown footer offers **"I want to create '<term>'"**
   org per domain) instead of private per user.
 - Using work history limits CF to orgs the donor has already added in Self Serve. The designer
   decided CF wouldn't add orgs inline and would send donors to Self Serve's Work history &
-  Affiliations tab instead. That decision assumed option A and is reopened (§5.1 item 2).
+  Affiliations tab instead. That decision assumed option A and has been replaced: donors can type
+an org by hand (§5.1 item 2).
 
 ---
 
@@ -259,8 +261,9 @@ and architecture sign-off.
   removed by domain. If the donor picks a `b2b_org` result, the reference is filled in.
   Otherwise the donation stores only the name and domain. CF calls query-service directly. It
   doesn't copy Self Serve's committee picker, which still creates orgs in CDP.
-- **Free text.** In Eric's model, a donor can also type a name and domain by hand. This
-  conflicts with the earlier designer decision (§5.1 item 2).
+- **Free text.** If search doesn't find the org, the donor types a name and domain by hand.
+  PM confirmed this (§5.1 item 2); it replaces the earlier designer decision to send donors to
+  Self Serve.
 - **Org lens.** Donations with a `b2b_org` reference can show in that org's lens. Name and
   domain only donations can't, since the lens only exists for `b2b_org` orgs (see the
   constraint in §4.3). Doc 11 §4 already accepted this.
@@ -268,9 +271,9 @@ and architecture sign-off.
   and attach a `b2b_org` reference to records whose domain matches. That would also cover the
   existing per-user orgs and the featured companies. CF has no such subscriber today, so this is
   out of scope for the first version.
-- **Authorization.** Nothing links the donor to the org, so anyone can donate "as Google". Who
-  may publicly credit an org is the main open PM decision (§5.1 item 1). It's the same hole
-  #349 closed for today's per-user orgs.
+- **Authorization.** Nothing links the donor to the org, so anyone can donate "as Google". PM
+  accepted this: the donor's stated org is shown as is (§5.1 item 1). It's the same hole #349
+  closed for today's per-user orgs, now accepted on purpose.
 - **Ledger.** Today Ledger gets the CF org row ID. With option D it would get the `b2b_org`
   SFID when there is one, plus the name and domain. Needs agreement with ledger-service
   (§5.2 item 2).
@@ -312,17 +315,19 @@ admins (§4, option B). This applies to every option.
 
 ### 5.1 Product (PM)
 
-1. **Who can publicly credit an org.** With option D, nothing links the donor to the org, so
-   anyone could donate "as Google" and have it shown publicly. Options:
-   - **Anyone, as stated by the donor.** Accept the risk. Doc 11 §4 took this view: donating
-     gives money in the org's name, which is lower risk than raising money in its name.
+1. **Who can publicly credit an org. Decided (PM, October 2026): anyone, as stated by the
+   donor.** The donor's chosen org is shown as is, with no proof of affiliation. PM's reasoning:
+   people are unlikely to donate on behalf of an org they aren't part of, and doc 11 §4 took the
+   same view (donating gives money in the org's name, which is lower risk than raising money in
+   its name). Options considered and not chosen:
    - **Anyone, shown differently.** Matched `b2b_org` orgs show as the org; everything else
      shows as stated by the donor, or isn't shown publicly.
    - **Only with proof.** For example, a verified email domain that matches the org's domain,
      or a role on the `b2b_org`. This blocks most donors at non-member companies.
-2. **Free text.** The designer decided earlier that CF has no inline add and sends donors to
-   Self Serve work history (option A). With option D, can donors type an org name and domain
-   when search doesn't find it?
+2. **Free text. Decided (PM, October 2026): yes.** When search doesn't find their org, donors
+   type the name and domain by hand. PM checked other donation platforms and a free-text org
+   field is standard. This replaces the earlier designer decision to send donors to Self Serve
+   work history (option A).
 3. **Display.** Can a donor edit an org's name and logo after donating? Today they can, which
    rewrites history. Where should org donations appear (initiative page, SS Organization lens,
    emails)?
