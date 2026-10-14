@@ -105,7 +105,11 @@ SPDX-License-Identifier: MIT
                 </lfx-dropdown-item>
               </lfx-select>
 
-              <p class="text-xs text-neutral-500 leading-4 flex items-center gap-1">
+              <!-- A load failure isn't missing access, so don't point at an admin. -->
+              <p
+                v-if="status !== 'error'"
+                class="text-xs text-neutral-500 leading-4 flex items-center gap-1"
+              >
                 <lfx-icon
                   name="circle-info"
                   :size="12"
@@ -178,7 +182,9 @@ const isLoading = computed(() => status.value === 'idle' || status.value === 'pe
 
 // A failed fetch gets its own message so it doesn't read as "not affiliated".
 const disabledMessage = (option: AttributionOption): string | undefined =>
-  status.value === 'error' ? "We couldn't load your affiliations — refresh and try again." : option.emptyMessage;
+  status.value === 'error'
+    ? "We couldn't load your organizations and projects — refresh and try again."
+    : option.emptyMessage;
 
 const {
   public: { selfServeUrl },
