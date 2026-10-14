@@ -71,3 +71,57 @@ func TestMentorshipRepository_UpsertProgram_OnlyTouchesOwnedRows(t *testing.T) {
 		t.Errorf("mentorship name = %q, want %q", name, "Mentorship Renamed")
 	}
 }
+
+// Jobspring allows two programs with the same slug; the second must still sync
+// (with a suffixed slug) rather than fail the unique index forever.
+func TestMentorshipRepository_UpsertProgram_SuffixesTakenSlug(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+	repo := NewMentorshipRepository(testPool)
+
+	first := models.MentorshipProgram{
+		JobspringProjectID: uuid.New().String(), Name: "Newlib Optimization", Status: "published",
+		Slug: "newlib-optimization", OwnerLFUsername: "flashy",
+	}
+	if _, err := repo.UpsertProgram(ctx, first); err != nil {
+		t.Fatalf("UpsertProgram() first error = %v", err)
+	}
+
+	dup := first
+	dup.JobspringProjectID = uuid.New().String()
+	dup.Status = "pending"
+	if _, err := repo.UpsertProgram(ctx, dup); err != nil {
+		t.Fatalf("UpsertProgram() duplicate slug error = %v", err)
+	}
+
+	slugOf := func(id string) string {
+		var s string
+		if err := testPool.QueryRow(ctx, `SELECT slug FROM crowdfunding.initiatives WHERE id = $1`, id).Scan(&s); err != nil {
+			t.Fatalf("select slug for %s: %v", id, err)
+		}
+		return s
+	}
+	if got := slugOf(first.JobspringProjectID); got != "newlib-optimization" {
+		t.Errorf("first slug = %q, want unchanged", got)
+	}
+	want := "newlib-optimization-" + dup.JobspringProjectID[:8]
+	if got := slugOf(dup.JobspringProjectID); got != want {
+		t.Errorf("duplicate slug = %q, want %q", got, want)
+	}
+
+	// Re-syncing both leaves slugs alone.
+	for _, p := range []models.MentorshipProgram{first, dup} {
+		if _, err := repo.UpsertProgram(ctx, p); err != nil {
+			t.Fatalf("UpsertProgram() re-sync error = %v", err)
+		}
+	}
+	if got := slugOf(first.JobspringProjectID); got != "newlib-optimization" {
+		t.Errorf("first slug after re-sync = %q", got)
+	}
+	if got := slugOf(dup.JobspringProjectID); got != want {
+		t.Errorf("duplicate slug after re-sync = %q, want %q", got, want)
+	}
+}

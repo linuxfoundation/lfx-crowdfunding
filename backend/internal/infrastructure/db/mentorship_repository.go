@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
@@ -64,6 +65,9 @@ ON CONFLICT (username) DO NOTHING`
 	// so ON CONFLICT (id) is always valid and needs no separate unique index.
 	// The conflict update is restricted to mentorship rows: a PROGRAM_ID colliding
 	// with any other initiative type updates nothing and returns no row.
+	// Jobspring does not enforce unique program slugs, so a new program whose
+	// slug is already held by another initiative gets the same "-<id8>" suffix
+	// migration 011 applied, instead of failing the unique index and never syncing.
 	const upsertInitiative = `
 INSERT INTO initiatives (
 	id,
@@ -85,7 +89,10 @@ INSERT INTO initiatives (
 	$4,
 	$5,
 	$6,
-	$7,
+	CASE WHEN EXISTS (SELECT 1 FROM initiatives WHERE slug = $7 AND id <> $1::uuid)
+		THEN $7 || '-' || left($1::text, 8)
+		ELSE $7
+	END,
 	$8,
 	NOW(),
 	NOW()
@@ -101,9 +108,11 @@ ON CONFLICT (id) DO UPDATE SET
 	industry    = EXCLUDED.industry,
 	updated_on  = NOW()
 WHERE initiatives.initiative_type = $2
-RETURNING id`
+RETURNING id, slug, (xmax = 0) AS inserted`
 
 	var id string
+	var storedSlug *string
+	var inserted bool
 	if err := tx.QueryRow(ctx, upsertInitiative,
 		p.JobspringProjectID,
 		initiativeTypeMentorship,
@@ -113,11 +122,18 @@ RETURNING id`
 		nullableMentorshipString(p.Description),
 		nullableMentorshipString(p.Slug),
 		nullableMentorshipString(p.Industry),
-	).Scan(&id); err != nil {
+	).Scan(&id, &storedSlug, &inserted); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", fmt.Errorf("upsert mentorship program %q: id belongs to a non-mentorship initiative, skipped", p.JobspringProjectID)
 		}
 		return "", fmt.Errorf("upsert mentorship program %q: %w", p.JobspringProjectID, err)
+	}
+	if inserted && p.Slug != "" && storedSlug != nil && *storedSlug != p.Slug {
+		slog.WarnContext(ctx, "mentorship program slug already taken, stored with suffix",
+			"jobspring_project_id", p.JobspringProjectID,
+			"program_slug", p.Slug,
+			"stored_slug", *storedSlug,
+		)
 	}
 
 	// 3. Ensure the fixed "mentee" funding goal row exists (idempotent).

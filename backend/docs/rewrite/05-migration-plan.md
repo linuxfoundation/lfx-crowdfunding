@@ -271,8 +271,8 @@ DynamoDB uses string IDs (e.g., `projectId: "abc-123"`). Postgres uses UUIDs. Al
 - Subscriptions referencing non-existent project or entity IDs → log as warnings, skip or null-out
 - Donations referencing non-existent project or entity IDs → same
 - `stripe_subscription_id` / `stripe_charge_id` — no UNIQUE constraint in schema; duplicates are not an error at the DB level
-- Missing `slug` on initiatives → log as warning (`slug` is nullable TEXT with an index, not NOT NULL UNIQUE)
-- Initiatives with same slug → log as warning (no UNIQUE constraint on slug)
+- Missing `slug` on initiatives → log as warning; stored as NULL (`slug` is nullable, unique when present — migration 011)
+- Initiatives with same slug → `slug` is UNIQUE since migration 011. Existing duplicates were renamed `<slug>-<id8>` (published/oldest row keeps the clean slug). `mentorship-sync` applies the same suffix when a new Jobspring program's slug is already taken, and logs a warning.
 - Null `owner_id` → error
 - Unexpected `status` values → log as warning; normalize `'hide'` → `'hidden'`; otherwise preserve the source value unchanged
 - `current_amount_in_cents` outside valid range → log as warning
