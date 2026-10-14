@@ -128,11 +128,13 @@ It isn't stored in Salesforce, member service, NATS KV or Auth0 metadata.
   *"CDP internal organization ID (not a Salesforce SFID — never forward to v1 Project Service)"*
   (`packages/shared/src/interfaces/organization.interface.ts:34`).
 - **Read API.** Self Serve's `GET /api/profile/work-experiences` only works for the logged-in
-  Self Serve session, so other services can't call it. CF would call CDP directly:
+  Self Serve session, so other services can't call it. The CDP calls behind it are:
   1. `POST /v1/members/resolve {lfids:[username]}` (scope `read:members`)
   2. `GET /v1/members/{memberId}/work-experiences` (scope `read:work-experiences`)
 
-  Both need an Auth0 M2M token with the CDP audience.
+  Both need an Auth0 M2M token with the CDP audience. **CF can't call these directly**: the
+  architecture team has ruled out giving external consumers CDP `read:members` access (§5.2
+  item 3).
 
 ### 3.2 Where the autocomplete list comes from
 
@@ -199,13 +201,14 @@ If nothing matches, the dropdown footer offers **"I want to create '<term>'"**
 | User ↔ org link | **Yes** (that's what work history is) | Only roles: writer/auditor/key contact | No |
 | Search API | CDP exact name/domain lookups; no fuzzy search | `GET /query/resources?type=b2b_org&name=`, non-public: results filtered to orgs where the caller has `auditor`; CF has no credential today | Member service removed its SOQL search; no LFX API exposes it |
 | Create new | Self-serve find-or-create, no review | **No.** `POST /b2b_orgs` only registers an *existing* SF Account, restricted to org-admin clients | Out of scope from checkout |
-| CF access today | None (needs a CDP M2M client + scopes) | None for listing | None |
+| CF access today | None (needs a v2 API behind Heimdall; direct CDP access ruled out, §5.2) | None for listing | None |
 
 **Notes on each source:**
 
 - **A** best matches PM's intent ("orgs I work for"). It covers non-member companies, and it
   verifies affiliation in the same loose way Self Serve does. Costs:
-  - a new CDP integration (M2M client, scopes, member resolve);
+  - a new v2 API, behind Heimdall, that reads the caller's work history from CDP. CF can't get
+    its own CDP M2M client (§5.2 item 3), so this is a cross-team dependency;
   - CDP IDs in CF and Ledger that need mapping to SFIDs before org donations can show in the
     org lens;
   - self-asserted orgs.
@@ -229,8 +232,8 @@ lack.
 
 **Draft shape** (for discussion):
 
-- **Picker.** At checkout, CF lists the donor's work-history orgs from CDP
-  (`members/resolve` → `work-experiences`). If their org isn't listed, CF links them to Self
+- **Picker.** At checkout, CF lists the donor's work-history orgs through a v2 API behind
+  Heimdall, scoped to the caller (§5.2 item 3). If their org isn't listed, CF links them to Self
   Serve's Work history & Affiliations tab (§3.4). CF has no free-text fallback, which replaces
   #261's "fall back to unlinked" idea.
 - **Storage.** A CF org row keyed by the CDP org UUID (unique), shared across donors and not
@@ -239,6 +242,10 @@ lack.
   doesn't own the row (`donation_service.go:266-270`, `subscription_service.go:189-193`).
   Replace it with a server-side check that the selected CDP org is in the donor's CDP work
   history. Sharing the row or dropping the check alone would let anyone donate as any org.
+  **This check alone isn't enough.** Work history is self-attested: anyone can add any org in
+  Self Serve with no review (§3.3), and `verifiedBy: <lfid>` is the user verifying themselves.
+  A donor can add an org to their work history and then donate as it, which reopens the hole
+  #349 closed. What counts as proof of affiliation is a PM decision (§5.1 item 6).
 - **Ledger.** Ledger receives the CF org row ID at posting time. That ID is known at checkout,
   so posting doesn't depend on any CDP → SFID mapping.
 - **Org lens.** CDP → SFID resolution (Snowflake mapping or a back-office job) is a read-time
@@ -248,7 +255,8 @@ lack.
 **Open questions for option A:**
 
 - Whether donors may pick past employers or only current ones (§5.1 item 1).
-- Whether CF gets its own CDP M2M client and scopes (§5.2 item 3).
+- Which v2 service owns the work-history API, and its cost (§5.2 item 3).
+- What counts as proof of affiliation, since work history is self-attested (§5.1 item 6).
 - How CDP → SFID mapping coverage looks for typical donor orgs.
 - How to handle CDP's weak dedup (§3.3), since it can merge unrelated same-named orgs.
 - **Self Serve Organization lens visibility** (§5.1 item 5). The lens only exists for `b2b_org`
@@ -293,6 +301,10 @@ has to be `b2b_org` (option B), with its member-only coverage.
    lens only covers `b2b_org` orgs (§4.1). If yes for *every* donation, option A can't work and
    the source must be `b2b_org`. If showing only for orgs that have a `b2b_org` is acceptable,
    option A still works.
+6. **Proof of affiliation.** Work history is self-attested (§4.1 Authorization), so a
+   work-history check alone lets anyone donate as any org. What counts as enough proof: an email
+   domain matching the org, a `b2b_org` role, an Auth0-linked or otherwise verified signal, or
+   accepting self-attestation as a known risk?
 
 ### 5.2 Architecture
 
@@ -301,10 +313,18 @@ has to be `b2b_org` (option B), with its member-only coverage.
 2. **Which ID CF and Ledger store** for an org donation: CDP UUID, SFID, or a CF UUID with
    external refs. Also how CDP → SFID resolution happens (Snowflake mapping, CDP API, back-office
    job).
-3. **Credentials.**
-   - A CDP M2M client for CF (audience, scopes `read:members`, `read:work-experiences`,
-     `read:organizations`; read-only, since there's no inline add).
-   - Or a `b2b_org`-wide read credential via query-service.
+3. **Credentials and data path.** A CDP M2M client for CF is **ruled out**. The architecture
+   team doesn't give external consumers unscoped CDP `read:members` access. Another system's data
+   goes through a v2 service behind Heimdall (Eric Searcy, 2026-09-29, "Maintainer GitHub ↔ LFID
+   Resolution", `lfx-architecture-scratch/2026-09-Maintainer-GitHub-Resolution`). For option A:
+   - **A v2 API scoped to the caller** (for example `GET /me/work-experiences`). Heimdall
+     authorizes the request, and the service reads CDP service-to-service. CDP keeps ownership of
+     the data; v2 owns the contract and the access control. Still open: which service owns it (a
+     new service, `lfx-v2-auth-service`, or member service) and who builds it.
+   - **Snowflake** isn't a good fit. It can be up to 12 hours behind, so a donor who adds their
+     org in Self Serve and comes back wouldn't see it.
+   - Option B already goes through v2 (query-service), so this narrows the cost gap between A
+     and B. B still needs a `b2b_org`-wide read credential.
 4. **Org-row ownership.** Shared or platform-managed linked rows vs today's per-user editable
    rows. This is the open fork carried over from #261.
 
