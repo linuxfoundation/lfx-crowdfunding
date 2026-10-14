@@ -17,6 +17,8 @@ const (
 	// legacyStatusHide is the Jobspring legacy status value that maps to hidden.
 	legacyStatusHide       = "hide"
 	normalizedStatusHidden = "hidden"
+	// statusRejected is a Jobspring program_status with no CF equivalent; it maps to declined.
+	statusRejected = "rejected"
 )
 
 // mentorshipSource is the interface Syncer needs from its data source.
@@ -61,9 +63,20 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 
 	for _, p := range programs {
 		p.Status = strings.ToLower(p.Status)
-		// Jobspring legacy value — normalise to match CF Postgres expected value.
-		if p.Status == legacyStatusHide {
+		// Map Jobspring values with no CF equivalent onto CF statuses.
+		switch p.Status {
+		case legacyStatusHide:
 			p.Status = normalizedStatusHidden
+		case statusRejected:
+			p.Status = string(models.StatusDeclined)
+		}
+		if !models.InitiativeStatus(p.Status).IsValid() {
+			s.logger.ErrorContext(ctx, "skipping program: invalid status",
+				"jobspring_project_id", p.JobspringProjectID,
+				"status", p.Status,
+			)
+			result.errors++
+			continue
 		}
 
 		p.OwnerLFUsername = strings.TrimSpace(p.OwnerLFUsername)

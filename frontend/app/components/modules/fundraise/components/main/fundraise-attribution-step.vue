@@ -4,9 +4,9 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <div class="flex flex-col gap-5">
-    <div class="flex flex-col gap-1">
+    <div class="flex flex-col gap-2">
       <h2 class="text-base font-semibold text-neutral-900">Initiative attribution</h2>
-      <p class="text-sm text-neutral-600 leading-5">Tell us who this initiative is being created on behalf of.</p>
+      <p class="text-xs text-neutral-900 leading-4">Tell us who this initiative is being created on behalf of.</p>
     </div>
 
     <div class="border border-neutral-200 rounded-xl overflow-hidden">
@@ -62,41 +62,68 @@ SPDX-License-Identifier: MIT
               !isLoading &&
               (modelValue.kind === option.value || isDisabled(option.value))
             "
-            class="flex flex-col gap-2 pl-7"
+            class="flex flex-col gap-1 pl-7"
           >
-            <template v-if="!isDisabled(option.value)">
-              <p class="text-sm font-medium text-neutral-900">
-                {{ option.entityLabel }} <span class="text-negative-500">*</span>
-              </p>
+            <p
+              v-if="!isDisabled(option.value)"
+              class="text-xs font-medium text-neutral-900 leading-4"
+            >
+              {{ option.entityLabel }} <span class="text-negative-500">*</span>
+            </p>
 
+            <div class="flex flex-col gap-2">
               <lfx-select
+                v-if="!isDisabled(option.value)"
                 :model-value="modelValue.entityId ?? ''"
                 placeholder="Select option..."
+                pill
                 @update:model-value="selectEntity($event)"
               >
+                <template #prefix>
+                  <lfx-avatar
+                    v-if="selectedEntity"
+                    :type="option.value"
+                    size="xsmall"
+                    :src="selectedEntity.logoUrl"
+                    class="mr-2"
+                  />
+                </template>
                 <lfx-dropdown-item
                   v-for="entity in candidatesFor(option.value)"
                   :key="entity.id"
                   :value="entity.id"
                   :label="entity.name"
-                />
+                >
+                  <span class="flex items-center gap-2">
+                    <lfx-avatar
+                      :type="option.value"
+                      size="xsmall"
+                      :src="entity.logoUrl"
+                    />
+                    {{ entity.name }}
+                  </span>
+                </lfx-dropdown-item>
               </lfx-select>
-            </template>
 
-            <p class="text-xs text-neutral-600 flex items-center gap-1">
-              <lfx-icon
-                name="circle-info"
-                :size="12"
-              />
-              {{ option.escapeHatchLabel }}
-              <a
-                :href="affiliationsManagementUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-accent-500 underline hover:text-accent-600"
-                >Work History &amp; Affiliations</a
-              >.
-            </p>
+              <!-- A load failure isn't missing access, so don't point at an admin. -->
+              <p
+                v-if="status !== 'error'"
+                class="text-xs text-neutral-500 leading-4 flex items-center gap-1"
+              >
+                <lfx-icon
+                  name="circle-info"
+                  :size="12"
+                />
+                {{ option.escapeHatchLabel }}
+                <a
+                  :href="selfServeUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-accent-500 hover:text-accent-600"
+                  >LFX Self Serve</a
+                >.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -111,12 +138,13 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { ATTRIBUTION_OPTIONS, AFFILIATIONS_MANAGEMENT_PATH } from '../../config/attribution.config';
+import { ATTRIBUTION_OPTIONS } from '../../config/attribution.config';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
+import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import type { AttributionData, AttributionKind, AttributionOption } from '~/types/fundraise.types';
 import type { AffiliationEntity } from '#shared/types/affiliation.types';
 
@@ -138,6 +166,10 @@ const candidatesFor = (kind: AttributionKind): AffiliationEntity[] => {
   return [];
 };
 
+const selectedEntity = computed(() =>
+  candidatesFor(props.modelValue.kind).find((e) => e.id === props.modelValue.entityId),
+);
+
 // Personal is always available; org/project stay disabled while the fetch is
 // idle/pending (data.value is undefined, so we can't yet tell if there are
 // candidates) and remain disabled only if it resolves with an empty list.
@@ -150,11 +182,13 @@ const isLoading = computed(() => status.value === 'idle' || status.value === 'pe
 
 // A failed fetch gets its own message so it doesn't read as "not affiliated".
 const disabledMessage = (option: AttributionOption): string | undefined =>
-  status.value === 'error' ? "We couldn't load your affiliations — refresh and try again." : option.emptyMessage;
+  status.value === 'error'
+    ? "We couldn't load your organizations and projects — refresh and try again."
+    : option.emptyMessage;
 
-const affiliationsManagementUrl = computed(
-  () => `${useRuntimeConfig().public.selfServeUrl}${AFFILIATIONS_MANAGEMENT_PATH}`,
-);
+const {
+  public: { selfServeUrl },
+} = useRuntimeConfig();
 
 const selectKind = (kind: AttributionKind) => {
   if (isDisabled(kind)) return;

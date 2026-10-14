@@ -42,4 +42,7 @@ func TestSendTemplate_EscapesMergeVars(t *testing.T) {
 	if got.Message.MergeLanguage != "handlebars" {
 		t.Errorf("merge_language = %q, want handlebars", got.Message.MergeLanguage)
 	}
+	if want := "LFX Crowdfunding Project application is pending your review"; got.Message.Subject != want {
+		t.Errorf("subject = %q, want %q", got.Message.Subject, want)
+	}
 }

@@ -99,9 +99,10 @@ Notes:
   wildcard must be withdrawn on the `published → hidden` transition, not just granted on the way up.
 - `owner` becomes a tuple rather than a Postgres comparison — the one change that moves CF's last
   in-backend authorization decision to the edge.
-- `b2b_org`-attributed writer access is deliberately non-cascading, PM-confirmed (2026-09-01, open
-  question B below): only the org actually assigned to the initiative gets writer access — no
-  parent- or child-org population is ever granted it.
+- `b2b_org`-attributed writer access follows the platform's full `b2b_org#writer`, which cascades
+  both ways (`writer from parent`, `writer from child`) and includes `global_org_admin` (doc 11
+  §2.2, current direction 2026-10-08, lfx-crowdfunding#259). This supersedes the 2026-09-01
+  non-cascading decision (open question B below).
 
 ## Approvers as a global team grant (accepted, reopens 2026-09-01 decision)
 
@@ -256,7 +257,10 @@ Resolved during review — kept here for the record rather than left in the open
   `project`/`b2b_org`; doc 11 §2.1). Both checks live in the CF
   service (`owner_id` match, `checkAffiliated`), not in Heimdall. This supersedes both the earlier dual-check design and the interim "owner, or the
   target entity's writer" ruling.
-- **`b2b_org` writer non-cascading (was open question B).** Confirmed as the intended design, not
+- ~~**`b2b_org` writer non-cascading (was open question B).**~~ **Superseded (2026-10-08,
+  lfx-crowdfunding#259):** manage access now follows the platform's full `b2b_org#writer`,
+  including parent/child cascade and `global_org_admin` (doc 11 §2.2). Original decision, kept
+  for history: Confirmed as the intended design, not
   just an accepted platform limitation: **no parent- or child-org population ever gains writer
   access** — only the org actually assigned to the initiative does. No change needed; `writer from
   b2b_org` already has this shape.

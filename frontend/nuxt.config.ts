@@ -31,6 +31,15 @@ export default defineNuxtConfig({
   primevue,
   robots,
   routeRules: {
+    // Baseline CSP (lfx-self-serve-ops#491): stops owner HTML that slips past
+    // the sanitizer from posting forms off-site, and blocks framing.
+    // ponytail: no script/style/connect-src yet — needs nonces for Nuxt/PrimeVue inline code.
+    '/**': {
+      headers: {
+        'Content-Security-Policy':
+          "form-action 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
+      },
+    },
     // Auth-gated / transactional pages — exclude from search engines
     '/initiatives/*/process-approval/**': { robots: false },
     '/expense-email/**': { robots: false },
