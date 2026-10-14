@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -30,6 +31,9 @@ type mockInitiativeRepo struct {
 	lastUpdateInput         models.InitiativeUpdateInput
 	err                     error
 	updateErr               error
+	lastAttribution         *models.Attribution
+	lastAttributionBy       string
+	updateAttributionErr    error
 	ownerEmail              string
 	ownerName               string
 	ownerEmailErr           error
@@ -103,6 +107,14 @@ func (m *mockInitiativeRepo) UpdateStripeProductID(ctx context.Context, id, prod
 	if m.onUpdateStripeProductID != nil {
 		return m.onUpdateStripeProductID(ctx, id, productID)
 	}
+	return nil
+}
+func (m *mockInitiativeRepo) UpdateAttribution(_ context.Context, _ string, a models.Attribution, updatedBy string) error {
+	if m.updateAttributionErr != nil {
+		return m.updateAttributionErr
+	}
+	m.lastAttribution, m.lastAttributionBy = &a, updatedBy
+	m.initiative.Attribution = a
 	return nil
 }
 
@@ -502,6 +514,9 @@ func (m *mockRepoForEnrich) Update(_ context.Context, i *models.Initiative, _ mo
 }
 func (m *mockRepoForEnrich) Delete(_ context.Context, _ string) error                   { return nil }
 func (m *mockRepoForEnrich) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (m *mockRepoForEnrich) UpdateAttribution(_ context.Context, _ string, _ models.Attribution, _ string) error {
+	return nil
+}
 func (m *mockRepoForEnrich) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }
@@ -2342,11 +2357,11 @@ func TestUpdateAttribution_CreatorOnly(t *testing.T) {
 	if _, err := svc(repo, &affiliationFake{ok: true}).UpdateAttribution(context.Background(), "init-1", "owner-1", target); err != nil {
 		t.Fatalf("creator: unexpected error %v", err)
 	}
-	if repo.lastUpdated.Attribution != target {
-		t.Errorf("Attribution = %+v, want %+v", repo.lastUpdated.Attribution, target)
+	if *repo.lastAttribution != target {
+		t.Errorf("Attribution = %+v, want %+v", *repo.lastAttribution, target)
 	}
-	if repo.lastUpdated.UpdatedBy != "owner-1" {
-		t.Errorf("UpdatedBy = %q, want owner-1", repo.lastUpdated.UpdatedBy)
+	if repo.lastAttributionBy != "owner-1" {
+		t.Errorf("UpdatedBy = %q, want owner-1", repo.lastAttributionBy)
 	}
 }
 
@@ -2360,8 +2375,8 @@ func TestUpdateAttribution_SubmittedOnly(t *testing.T) {
 		if !errors.Is(err, domain.ErrInvalidInput) {
 			t.Errorf("%s: expected ErrInvalidInput, got %v", st, err)
 		}
-		if repo.lastUpdated != nil {
-			t.Errorf("%s: repo.Update called, want no write", st)
+		if repo.lastAttribution != nil {
+			t.Errorf("%s: repo.UpdateAttribution called, want no write", st)
 		}
 	}
 	// Status comparison ignores case, like the other status guards.
@@ -2369,6 +2384,33 @@ func TestUpdateAttribution_SubmittedOnly(t *testing.T) {
 	repo.initiative.Status = "Submitted"
 	if _, err := newUpdateSvc(repo).UpdateAttribution(context.Background(), "init-1", "owner-1", personal); err != nil {
 		t.Fatalf("mixed-case submitted: unexpected error %v", err)
+	}
+}
+
+// Approved between the read and the write: the guarded UPDATE matches no
+// row, so the caller gets the same 400 and nothing is written.
+func TestUpdateAttribution_PublishedMidRequest(t *testing.T) {
+	repo := submittedInit(models.Attribution{Type: models.AttributionPersonal})
+	repo.updateAttributionErr = fmt.Errorf("%w: not submitted", domain.ErrInvalidInput)
+	_, err := newUpdateSvc(repo).UpdateAttribution(context.Background(), "init-1", "owner-1",
+		models.Attribution{Type: models.AttributionPersonal})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+	if repo.lastUpdated != nil {
+		t.Error("repo.Update called; the full-row write must not be used")
+	}
+}
+
+// A caller with no user row is neither creator nor writer: 404, like the
+// manage read, so an existing ID looks the same as a missing one.
+func TestUpdateAttribution_UnknownUser_NotFound(t *testing.T) {
+	repo := submittedInit(models.Attribution{Type: models.AttributionPersonal})
+	svc := NewInitiativeService(repo, &mockUserRepository{err: domain.ErrUserNotFound}, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
+	_, err := svc.UpdateAttribution(context.Background(), "init-1", "no-such-user",
+		models.Attribution{Type: models.AttributionPersonal})
+	if !errors.Is(err, domain.ErrInitiativeNotFound) {
+		t.Fatalf("expected ErrInitiativeNotFound, got %v", err)
 	}
 }
 

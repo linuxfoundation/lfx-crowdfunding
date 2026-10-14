@@ -92,6 +92,9 @@ func (r *listInitiativeRepo) ListPublished(ctx context.Context) ([]models.Initia
 func (r *listInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error {
 	return nil
 }
+func (r *listInitiativeRepo) UpdateAttribution(_ context.Context, _ string, _ models.Attribution, _ string) error {
+	return nil
+}
 
 func newReadSvc(repo domain.InitiativeRepository, userRepo domain.UserRepository) *InitiativeService {
 	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())

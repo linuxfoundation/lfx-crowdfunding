@@ -842,8 +842,9 @@ func (s *InitiativeService) Update(ctx context.Context, id, callerUsername strin
 	// Sync beneficiaries and policy with the Reimbursement Service.
 	// Non-fatal; only takes effect when the initiative is published.
 	s.syncReimbursementPolicy(ctx, updated)
-	// Covers the published/hidden toggle. Publish the creator as owner, not the caller: a writer's edit must not
-	// overwrite the owner tuple (syncFGAAccess full-syncs it).
+	// Covers the published/hidden toggle. Publish the creator as owner, not the
+	// caller: a writer's edit must not overwrite the owner tuple (syncFGAAccess
+	// full-syncs it).
 	ownerUsername, err := s.ownerUsername(ctx, existing.OwnerID, caller)
 	if err != nil {
 		s.logger.WarnContext(ctx, "fga sync: skipped, owner lookup failed",
@@ -878,7 +879,8 @@ func (s *InitiativeService) UpdateAttribution(ctx context.Context, id, callerUse
 	caller, err := s.userRepo.GetByUsername(ctx, callerUsername)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
-			return nil, domain.ErrForbidden
+			// Neither creator nor writer: same 404 as the manage read.
+			return nil, domain.ErrInitiativeNotFound
 		}
 		span.RecordError(err)
 		return nil, err
@@ -904,13 +906,16 @@ func (s *InitiativeService) UpdateAttribution(ctx context.Context, id, callerUse
 		return nil, err
 	}
 
-	existing.Attribution = a
-	existing.UpdatedBy = callerUsername
-	// Empty input: only the main row is rewritten; child tables stay as they are.
-	updated, err := s.repo.Update(ctx, existing, models.InitiativeUpdateInput{})
-	if err != nil {
+	// Writes only the attribution columns, guarded on status in SQL, so an
+	// approval between the read above and this write isn't overwritten.
+	if err := s.repo.UpdateAttribution(ctx, id, a, callerUsername); err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("update initiative attribution: %w", err)
+	}
+	updated, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
 	}
 	// Re-parents the FGA tuples; the caller is the creator, so the owner stays.
 	s.syncFGAAccess(ctx, updated, caller.Username)

@@ -397,10 +397,11 @@ type InitiativeUpdateInput struct {
 	AcceptFunding *bool             `json:"accept_funding,omitempty"`
 	DonationMode  *DonationMode     `json:"donation_mode,omitempty"`
 
-	// Attribution is rejected when set: an attribution change has its own
+	// A non-null Attribution is rejected: an attribution change has its own
 	// creator-guarded route, PUT /initiatives/{id}/attribution
 	// (lfx-crowdfunding#342). Decoded only so a stray field 400s instead of
-	// being silently dropped.
+	// being silently dropped. "attribution": null decodes to nil, which, like
+	// every other nil field here, leaves the value unchanged.
 	Attribution       *Attribution `json:"attribution,omitempty"`
 	BenefitProjectUID *string      `json:"benefit_project_uid,omitempty"`
 

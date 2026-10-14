@@ -27,6 +27,9 @@ type InitiativeRepository interface {
 	// UpdateStripeProductID patches only the stripe_product_id column for the given
 	// initiative. Used to auto-heal initiatives with stale/missing Stripe products.
 	UpdateStripeProductID(ctx context.Context, id, productID string) error
+	// UpdateAttribution patches only the attribution columns and updated_by,
+	// and only while the initiative is submitted (ErrInvalidInput otherwise).
+	UpdateAttribution(ctx context.Context, id string, a models.Attribution, updatedBy string) error
 
 	// GetUsersByIDs returns a map of user UUID → User for the given UUIDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger transactions.

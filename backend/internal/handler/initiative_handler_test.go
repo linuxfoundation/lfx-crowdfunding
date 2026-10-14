@@ -94,6 +94,10 @@ func (r *initiativeRepo) Delete(_ context.Context, id string) error {
 	return r.deleteErr
 }
 func (r *initiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (r *initiativeRepo) UpdateAttribution(_ context.Context, _ string, a models.Attribution, _ string) error {
+	r.initiative.Attribution = a
+	return nil
+}
 func (r *initiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
