@@ -128,13 +128,8 @@ RETURNING id, slug, (xmax = 0) AS inserted`
 		}
 		return "", fmt.Errorf("upsert mentorship program %q: %w", p.JobspringProjectID, err)
 	}
-	if inserted && p.Slug != "" && storedSlug != nil && *storedSlug != p.Slug {
-		slog.WarnContext(ctx, "mentorship program slug already taken, stored with suffix",
-			"jobspring_project_id", p.JobspringProjectID,
-			"program_slug", p.Slug,
-			"stored_slug", *storedSlug,
-		)
-	}
+	// Logged after commit so the warning only reflects persisted state.
+	slugSuffixed := inserted && p.Slug != "" && storedSlug != nil && *storedSlug != p.Slug
 
 	// 3. Ensure the fixed "mentee" funding goal row exists (idempotent).
 	const insertMenteeGoal = `
@@ -209,6 +204,13 @@ ON CONFLICT (initiative_id, name) DO NOTHING`
 
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit program tx for %q: %w", p.JobspringProjectID, err)
+	}
+	if slugSuffixed {
+		slog.WarnContext(ctx, "mentorship program slug already taken, stored with suffix",
+			"jobspring_project_id", p.JobspringProjectID,
+			"program_slug", p.Slug,
+			"stored_slug", *storedSlug,
+		)
 	}
 	return id, nil
 }
