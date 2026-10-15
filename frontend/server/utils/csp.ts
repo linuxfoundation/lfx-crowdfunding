@@ -20,8 +20,8 @@ const SOURCES: Record<string, string[]> = {
     'https://js.intercomcdn.com',
     'https://js.stripe.com',
     'https://*.js.stripe.com',
-    // Cookie consent, loaded by the lfx-ui-core footer.
-    'https://cmp.osano.com',
+    // Transcend cookie consent (setup/head.ts).
+    'https://transcend-cdn.com',
   ],
   // ponytail: 'unsafe-inline' kept on purpose — SSR style="" attributes, Stripe Elements,
   // Intercom and the Font Awesome kit inject inline styles that can't carry a nonce.
@@ -68,8 +68,7 @@ const SOURCES: Record<string, string[]> = {
     'wss://nexus-websocket-b.intercom.io',
     'https://uploads.intercomcdn.com',
     'https://uploads.intercomusercontent.com',
-    'https://cmp.osano.com',
-    'https://consent.api.osano.com',
+    'https://transcend-cdn.com',
   ],
   'frame-src': [
     'https://js.stripe.com',
@@ -77,7 +76,6 @@ const SOURCES: Record<string, string[]> = {
     'https://hooks.stripe.com',
     'https://intercom-sheets.com',
     'https://www.intercom-reporting.com',
-    'https://cmp.osano.com',
   ],
   // Datadog session replay runs its compression worker from a blob: URL.
   'worker-src': ["'self'", 'blob:'],
@@ -108,8 +106,3 @@ export const datadogCspReportUri = (clientToken: string, env: string, version?: 
   });
   return `https://browser-intake-datadoghq.com/api/v2/logs?${params}`;
 };
-
-// Stamps the nonce on every <script> Nuxt renders. Vue escapes `<` in rendered text and
-// attributes, so a literal `<script` only ever starts a real tag.
-export const addScriptNonce = (chunk: string, nonce: string): string =>
-  chunk.replace(/<script(?![^>]*\snonce=)/g, `<script nonce="${nonce}"`);

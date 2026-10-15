@@ -2,24 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect } from 'vitest';
-import { addScriptNonce, buildCspPolicy, datadogCspReportUri } from './csp';
-
-describe('addScriptNonce', () => {
-  it('stamps every script tag, inline and external', () => {
-    const out = addScriptNonce('<script>a()</script><script src="/x.js" async></script>', 'N');
-    expect(out).toBe('<script nonce="N">a()</script><script nonce="N" src="/x.js" async></script>');
-  });
-
-  it('leaves tags that already carry a nonce alone', () => {
-    expect(addScriptNonce('<script nonce="old">a()</script>', 'N')).toBe(
-      '<script nonce="old">a()</script>',
-    );
-  });
-
-  it('ignores escaped text', () => {
-    expect(addScriptNonce('&lt;script&gt;', 'N')).toBe('&lt;script&gt;');
-  });
-});
+import { buildCspPolicy, datadogCspReportUri } from './csp';
 
 describe('buildCspPolicy', () => {
   it('puts the nonce and strict-dynamic in script-src', () => {
