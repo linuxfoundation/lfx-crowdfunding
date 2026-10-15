@@ -48,6 +48,12 @@ export default {
     },
   ],
   script: [
+    // Transcend cookie consent manager (replaces Osano — lfx-self-serve-ops#517)
+    {
+      src: 'https://transcend-cdn.com/cm/f484e2d0-ad2e-43a9-9d64-d07f6fa20966/airgap.js',
+      'data-cfasync': 'false',
+      'data-prompt': 'auto',
+    },
     { src: 'https://kit.fontawesome.com/0c49a28643.js', crossorigin: 'anonymous', async: true },
     // Privacy-friendly analytics by Plausible
     { src: 'https://plausible.io/js/pa-Z7youDetgVMZFqKWkN7xd.js', async: true },
