@@ -372,7 +372,7 @@ sequenceDiagram
     participant DB as Postgres
     participant FS as fga-sync (NATS)
 
-    U->>API: PATCH /crowdfunding/me/initiatives/{id}
+    U->>API: PATCH /crowdfunding/initiatives/{id}
     API->>DB: load initiative (owner_id, attribution)
     alt caller is creator
         API-->>U: 200 OK

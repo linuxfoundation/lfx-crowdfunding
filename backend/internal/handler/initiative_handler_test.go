@@ -849,7 +849,7 @@ func TestGetTransactions_NotPublished_Returns404(t *testing.T) {
 func TestGetTransactionsForUser_NoPrincipal_Returns401(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/some-id/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/some-id/manage/transactions", nil)
 	req = withURLParam(req, "id", "some-id")
 	w := httptest.NewRecorder()
 	h.GetTransactionsForUser(w, req)
@@ -874,7 +874,7 @@ func TestGetTransactionsForUser_NotOwner_Returns404(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, userRepo)
 
-	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/manage/transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: "other"})
 	w := httptest.NewRecorder()
@@ -907,7 +907,7 @@ func TestGetTransactionsForUser_Owner_Returns200(t *testing.T) {
 	svc := service.NewInitiativeService(repo, userRepo, ledger, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/manage/transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: "owner"})
 	w := httptest.NewRecorder()

@@ -307,15 +307,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			// Logo uploads (used during initiative creation by the owning user).
 			r.Post("/presigned-url", uploadH.CreatePresignedURL)
 
-			// Owner-checked initiative read + mutations. The detail read returns the
-			// caller's own initiative in any status (the public detail endpoint hides
-			// non-published initiatives from non-approvers).
-			r.Get("/initiatives/{id}", initiativeH.GetForUser)
-			r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactionsForUser)
+			// Caller's own donor history on an initiative, and initiative create
+			// (the owner is always the caller). Manager reads and writes live
+			// outside /me under /initiatives/{id} (lfx-crowdfunding#341).
 			r.Get("/initiatives/{id}/my-transactions", initiativeH.GetMyTransactions)
 			r.Post("/initiatives", initiativeH.Create)
-			r.Patch("/initiatives/{id}", initiativeH.Update)
-			r.Delete("/initiatives/{id}", initiativeH.Delete)
 
 			// Donations and subscriptions on a specific initiative (caller is the donor).
 			r.Get("/initiatives/{id}/donations", donationH.List)
@@ -323,11 +319,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Get("/initiatives/{id}/subscriptions", subscriptionH.List)
 			r.Post("/initiatives/{id}/subscriptions", subscriptionH.Create)
 			r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
-
-			// Announcements on a specific initiative (caller must be the initiative owner).
-			r.Post("/initiatives/{id}/announcements", announcementH.Create)
-			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
-			r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
 		})
 
 		// Approval route — caller is an approver (allowlist check), not the resource owner.
