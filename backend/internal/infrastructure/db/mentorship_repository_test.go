@@ -4,7 +4,10 @@
 package db
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -26,7 +29,7 @@ func TestMentorshipRepository_UpsertProgram_OnlyTouchesOwnedRows(t *testing.T) {
 
 	owner := seedUser(t, ctx, "project-owner")
 	project := seedInitiative(t, ctx, owner.ID, "Project Fund", "project-fund")
-	repo := NewMentorshipRepository(testPool)
+	repo := NewMentorshipRepository(testPool, nil)
 
 	hijack := models.MentorshipProgram{
 		JobspringProjectID: project.ID, Name: "Hijacked", Status: "published",
@@ -69,5 +72,114 @@ func TestMentorshipRepository_UpsertProgram_OnlyTouchesOwnedRows(t *testing.T) {
 	}
 	if name != "Mentorship Renamed" {
 		t.Errorf("mentorship name = %q, want %q", name, "Mentorship Renamed")
+	}
+}
+
+// Jobspring allows two programs with the same slug; the second must still sync
+// (with a suffixed slug) rather than fail the unique index forever.
+func TestMentorshipRepository_UpsertProgram_SuffixesTakenSlug(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+	var logs bytes.Buffer
+	repo := NewMentorshipRepository(testPool, slog.New(slog.NewJSONHandler(&logs, nil)))
+	const slugWarning = "mentorship program slug already taken"
+
+	first := models.MentorshipProgram{
+		JobspringProjectID: uuid.New().String(), Name: "Newlib Optimization", Status: "published",
+		Slug: "newlib-optimization", OwnerLFUsername: "flashy",
+	}
+	if _, err := repo.UpsertProgram(ctx, first); err != nil {
+		t.Fatalf("UpsertProgram() first error = %v", err)
+	}
+
+	dup := first
+	dup.JobspringProjectID = uuid.New().String()
+	dup.Status = "pending"
+	if _, err := repo.UpsertProgram(ctx, dup); err != nil {
+		t.Fatalf("UpsertProgram() duplicate slug error = %v", err)
+	}
+
+	slugOf := func(id string) string {
+		var s string
+		if err := testPool.QueryRow(ctx, `SELECT slug FROM crowdfunding.initiatives WHERE id = $1`, id).Scan(&s); err != nil {
+			t.Fatalf("select slug for %s: %v", id, err)
+		}
+		return s
+	}
+	if got := slugOf(first.JobspringProjectID); got != "newlib-optimization" {
+		t.Errorf("first slug = %q, want unchanged", got)
+	}
+	want := "newlib-optimization-" + dup.JobspringProjectID[:8]
+	if got := slugOf(dup.JobspringProjectID); got != want {
+		t.Errorf("duplicate slug = %q, want %q", got, want)
+	}
+	if n := strings.Count(logs.String(), slugWarning); n != 1 {
+		t.Errorf("slug warnings on injected logger = %d, want 1; logs: %s", n, logs.String())
+	}
+
+	// Re-syncing both leaves slugs alone.
+	for _, p := range []models.MentorshipProgram{first, dup} {
+		if _, err := repo.UpsertProgram(ctx, p); err != nil {
+			t.Fatalf("UpsertProgram() re-sync error = %v", err)
+		}
+	}
+	if got := slugOf(first.JobspringProjectID); got != "newlib-optimization" {
+		t.Errorf("first slug after re-sync = %q", got)
+	}
+	if got := slugOf(dup.JobspringProjectID); got != want {
+		t.Errorf("duplicate slug after re-sync = %q, want %q", got, want)
+	}
+	if n := strings.Count(logs.String(), slugWarning); n != 1 {
+		t.Errorf("slug warnings after re-sync = %d, want still 1", n)
+	}
+}
+
+// The "-<id8>" fallback can itself be taken; the program must still sync,
+// falling back to "-<full id>" and finally to a NULL slug.
+func TestMentorshipRepository_UpsertProgram_FallbackSlugTaken(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+	repo := NewMentorshipRepository(testPool, nil)
+
+	upsert := func(id, slug string) {
+		t.Helper()
+		p := models.MentorshipProgram{
+			JobspringProjectID: id, Name: "Program " + slug, Status: "published",
+			Slug: slug, OwnerLFUsername: "flashy",
+		}
+		if _, err := repo.UpsertProgram(ctx, p); err != nil {
+			t.Fatalf("UpsertProgram(%q) error = %v", slug, err)
+		}
+	}
+	slugOf := func(id string) *string {
+		t.Helper()
+		var s *string
+		if err := testPool.QueryRow(ctx, `SELECT slug FROM crowdfunding.initiatives WHERE id = $1`, id).Scan(&s); err != nil {
+			t.Fatalf("select slug for %s: %v", id, err)
+		}
+		return s
+	}
+
+	dupID := uuid.New().String()
+	upsert(uuid.New().String(), "taken")
+	upsert(uuid.New().String(), "taken-"+dupID[:8])
+
+	upsert(dupID, "taken")
+	if got, want := slugOf(dupID), "taken-"+dupID; got == nil || *got != want {
+		t.Errorf("slug with id8 suffix taken = %v, want %q", got, want)
+	}
+
+	nullID := uuid.New().String()
+	upsert(uuid.New().String(), "taken-"+nullID[:8])
+	upsert(uuid.New().String(), "taken-"+nullID)
+	upsert(nullID, "taken")
+	if got := slugOf(nullID); got != nil {
+		t.Errorf("slug with all fallbacks taken = %q, want NULL", *got)
 	}
 }
