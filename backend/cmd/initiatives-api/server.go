@@ -77,15 +77,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		return nil, fmt.Errorf("s3 client: %w", err)
 	}
 
-	// Mandrill email client
-	mandrillClient := clients.NewMandrillClient(clients.MandrillConfig{
-		APIKey:    cfg.Mandrill.APIKey,
-		FromEmail: cfg.Mandrill.FromEmail,
-		FromName:  cfg.Mandrill.FromName,
-		Timeout:   cfg.Mandrill.Timeout,
-	})
-	emailSvc := clients.NewEmailService(mandrillClient, cfg.Mandrill.FrontendBase, cfg.Mandrill.NotificationEmails)
-
 	// Reimbursement Service client — nil when REIMBURSEMENTS_API_URL is unset
 	// (integration disabled; no sync calls are made).
 	// Fail fast when URL is set but KEY is missing — the service would otherwise
@@ -96,7 +87,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	reimbursementClient := clients.NewReimbursementClient(clients.ReimbursementConfig{
 		APIURL:                cfg.Reimbursement.APIURL,
 		APIKey:                cfg.Reimbursement.APIKey,
-		FrontendBase:          cfg.Mandrill.FrontendBase,
+		FrontendBase:          cfg.Email.FrontendBase,
 		Timeout:               cfg.Reimbursement.Timeout,
 		Auth0TokenURL:         cfg.Reimbursement.Auth0TokenURL,
 		Auth0ClientID:         cfg.Reimbursement.Auth0ClientID,
@@ -109,8 +100,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 	// fga-sync NATS connection — optional; nil when FGA_NATS_URL is unset.
 	// Shared by fga.NewNATSResolver (access-check request/reply for entity-writer
-	// point checks, lfx-v2-crowdfunding#259) and fga.NewPublisher (crowdfunding_initiative
-	// tuple emission, lfx-crowdfunding#277) below.
+	// point checks, lfx-v2-crowdfunding#259), fga.NewPublisher (crowdfunding_initiative
+	// tuple emission, lfx-crowdfunding#277), and the lfx-v2-email-service client
+	// (lfx-crowdfunding#289) below.
 	//
 	// RetryOnFailedConnect: a transient fga-sync/NATS outage must not fail API
 	// startup — Connect enters background reconnect instead of erroring.
@@ -123,8 +115,16 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			return nil, fmt.Errorf("fga-sync nats connect: %w", err)
 		}
 	} else {
-		logger.Warn("FGA_NATS_URL is not set — fga-sync access checks are disabled")
+		logger.Warn("FGA_NATS_URL is not set — fga-sync access checks and email notifications are disabled")
 	}
+
+	// Email goes through lfx-v2-email-service on the same connection; a nil
+	// sender makes every send return ErrEmailNotConfigured.
+	var emailSender clients.EmailSender
+	if fgaConn != nil {
+		emailSender = clients.NewEmailClient(fgaConn, cfg.Email.FromDisplayName)
+	}
+	emailSvc := clients.NewEmailService(emailSender, cfg.Email.FrontendBase, cfg.Email.NotificationEmails)
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)

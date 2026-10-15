@@ -1,0 +1,10 @@
+{{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
+{{- /* SPDX-License-Identifier: MIT */ -}}
+{{template "header" .}}The {{.InitiativeName}} initiative was submitted for review{{with .SubmitterName}} by {{.}}{{with $.SubmitterEmail}} ({{.}}){{end}}{{end}}.
+
+Review it and approve or decline it. The initiative owner will be notified of your decision.
+
+View initiative: {{.InitiativeURL}}
+Approve: {{.ApproveURL}}
+Decline: {{.DeclineURL}}
+{{template "footer" .}}

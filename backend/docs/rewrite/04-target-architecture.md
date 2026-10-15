@@ -39,7 +39,7 @@ deployed to Kubernetes.
      │  (donation email data)  │  GET /v1/entities/{id}      │
      │                         └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
-     │                         │  Mandrill (email)           │
+     │                         │  lfx-v2-email-service (NATS)│
      │                         └─────────────────────────────┘
      │                         ┌─────────────────────────────┐
      │                         │  GitHub API                 │
@@ -218,7 +218,7 @@ internal/
 
 services/
 ├── stripe/           # Stripe SDK wrapper
-├── email/            # Mandrill wrapper + EMAIL_DRY_RUN support
+├── email/            # lfx-v2-email-service client + in-repo templates
 ├── github/           # GitHub API wrapper
 ├── ledger/           # Ledger API HTTP client (read-only)
 ├── reimbursement/    # Reimbursement API HTTP client
@@ -232,7 +232,7 @@ db/
 
 When `EMAIL_DRY_RUN=true`:
 - Email service logs the full email payload (to, subject, template, vars) at INFO level
-- Does not call Mandrill API
+- Does not call the email service
 - Returns success to caller (no error surface)
 - Use when testing with production data to prevent accidental sends
 

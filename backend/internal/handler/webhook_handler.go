@@ -530,7 +530,7 @@ func extractStringOrIDField(raw json.RawMessage) string {
 }
 
 // donationTypeLabel maps a stored frequency metadata value to a human-readable
-// label for the Mandrill template TYPE field.
+// label for the donation email Type field.
 // Old subscriptions created before frequency was stored in metadata default to
 // "Recurring" rather than an incorrect specific frequency.
 func donationTypeLabel(frequency string) string {
@@ -549,7 +549,7 @@ func donationTypeLabel(frequency string) string {
 }
 
 // paymentLabel converts a payment_method metadata value to a human-readable
-// label for Mandrill template PAYMENT fields.
+// label for donation email Payment fields.
 // Old charges/subscriptions created before this field was stored default to
 // "Credit Card" since only card payments were supported at that time.
 func paymentLabel(method string) string {

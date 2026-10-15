@@ -1,0 +1,7 @@
+{{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
+{{- /* SPDX-License-Identifier: MIT */ -}}
+{{- /* Legacy: admin-donation-notification-ledger */ -}}
+{{template "header" .}}<p><strong>{{.InitiativeName}}</strong> has received a new donation.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px;">
+{{template "row" "Initiative"}}{{.InitiativeName}}{{template "row_end"}}{{template "row" "Amount"}}{{.Amount}}{{template "row_end"}}{{template "row" "Type"}}{{.DonationType}}{{template "row_end"}}{{with .Category}}{{template "row" "Category"}}{{.}}{{template "row_end"}}{{end}}{{template "row" "Donor"}}{{.DonorName}}{{with .DonorEmail}} ({{.}}){{end}}{{template "row_end"}}{{with .OrgName}}{{template "row" "Organization"}}{{.}}{{template "row_end"}}{{end}}{{template "row" "Payment"}}{{.Payment}}{{template "row_end"}}</table>
+{{template "button" .InitiativeURL}}View Initiative{{template "button_end"}}{{template "footer" .}}

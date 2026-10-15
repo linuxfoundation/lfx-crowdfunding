@@ -32,7 +32,7 @@ graph TB
         LEDGER["Ledger Service"]
         RS["Reimbursement Service"]
         MENTORSHIP["Mentorship Service"]
-        MANDRILL[Mandrill]
+        EMAIL["Email Service"]
         GITHUB[GitHub API]
         SS["LFX Self Serve"]
     end
@@ -48,7 +48,7 @@ graph TB
     RS --> API
     API --> MENTORSHIP
     MENTORSHIP --> API
-    API -- "transactional email" --> MANDRILL
+    API -- "transactional email (NATS)" --> EMAIL
     API -- "repo stats" --> GITHUB
     SS -- "user token (access:me)" --> API
 ```
@@ -460,7 +460,7 @@ Self Serve calls only `access:me` user endpoints:
 | Ledger Service | CF → Ledger (read-only) | Balance, per-goal subtotals, transaction history |
 | Reimbursement Service | Bidirectional | Expense policy, beneficiary lifecycle |
 | Mentorship Service | Snowflake → CF | Program sync via `mentorship-sync` CronJob (Snowflake pull); no direct HTTP calls |
-| Mandrill | CF → Mandrill | Transactional email |
+| lfx-v2-email-service | CF → email-service (NATS request/reply) | Transactional email; templates are rendered in CF |
 | GitHub | CF → GitHub | Repo stats; OAuth for project creation |
 
 ---

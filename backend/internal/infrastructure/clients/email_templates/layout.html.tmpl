@@ -1,0 +1,36 @@
+{{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
+{{- /* SPDX-License-Identifier: MIT */ -}}
+{{- /* Layout follows the legacy Mandrill templates (and lfx-v2-mentorship): white card, centred greeting, pill button, dark footer. */ -}}
+{{define "header"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background-color:#fafafa;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fafafa;">
+<tr><td align="center" valign="top">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
+<tr><td align="center" style="background-color:#ffffff;padding:25px 18px;font-family:Helvetica,Arial,sans-serif;font-size:24px;font-weight:bold;color:#0068fa;">LFX Crowdfunding</td></tr>
+<tr><td valign="top" style="background-color:#ffffff;padding:9px 18px 18px;font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:150%;color:#757575;">
+<h3 style="margin:0 0 18px;text-align:center;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;font-size:22px;font-weight:bold;line-height:150%;color:#444444;">Hi {{.RecipientName}}!</h3>
+{{end}}
+{{- /* Call as {{template "button" .URL}}Label{{template "button_end"}}. */ -}}
+{{define "button"}}<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:9px auto 18px;border-collapse:separate;border-radius:50px;background-color:#0068FA;">
+<tr><td align="center" valign="middle" style="padding:15px;font-family:Arial,sans-serif;font-size:14px;"><a href="{{.}}" target="_blank" style="font-weight:bold;line-height:100%;text-align:center;text-decoration:none;color:#FFFFFF;">{{end}}
+{{define "button_end"}}</a></td></tr>
+</table>
+{{end}}
+{{- /* Call as {{template "row" "Label"}}{{.Value}}{{template "row_end"}}. */ -}}
+{{define "row"}}<tr><td style="padding:4px 12px 4px 0;font-weight:bold;color:#444444;white-space:nowrap;vertical-align:top;">{{.}}</td><td style="padding:4px 0;">{{end}}
+{{define "row_end"}}</td></tr>
+{{end}}
+{{define "footer"}}<p style="margin:18px 0 0;">Thank you,<br>The LF Engineering Team</p>
+</td></tr>
+<tr><td align="center" style="background-color:#333333;padding:20px 18px;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:150%;color:#FFFFFF;">Copyright &copy; {{.Year}} The Linux Foundation&reg;. All rights reserved. The Linux Foundation has registered trademarks and uses trademarks. For a list of trademarks of The Linux Foundation, please see our <a href="https://www.linuxfoundation.org/legal/trademark-usage" target="_blank" style="color:#FFFFFF;">Trademark Usage</a> page. Linux is a registered trademark of Linus Torvalds.</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+{{end}}

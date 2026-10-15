@@ -1,0 +1,14 @@
+{{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
+{{- /* SPDX-License-Identifier: MIT */ -}}
+{{template "header" .}}Thank you for your donation to {{.InitiativeName}}.
+
+Initiative: {{.InitiativeName}}
+Amount: {{.Amount}}
+Type: {{.DonationType}}
+{{with .Category}}Category: {{.}}
+{{end}}Donor: {{.DonorName}}{{with .DonorEmail}} ({{.}}){{end}}
+{{with .OrgName}}Organization: {{.}}
+{{end}}Payment: {{.Payment}}
+
+View initiative: {{.InitiativeURL}}
+{{template "footer" .}}
