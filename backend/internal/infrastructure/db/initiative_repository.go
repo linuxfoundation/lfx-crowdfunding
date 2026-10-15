@@ -976,6 +976,36 @@ func (r *InitiativeRepository) UpdateStripeProductID(ctx context.Context, id, pr
 	return nil
 }
 
+// UpdateAttribution patches only the attribution columns and updated_by, and
+// only while the initiative is submitted. The status check is in the WHERE
+// clause so an approval that lands after the caller's read can't be
+// overwritten or followed by a re-attribution (lfx-crowdfunding#369 review).
+func (r *InitiativeRepository) UpdateAttribution(ctx context.Context, id string, a models.Attribution, updatedBy string) error {
+	ctx, span := initiativeTracer.Start(ctx, "db.initiatives.UpdateAttribution")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.initiative_id", id))
+
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE initiatives SET
+		    attributed_to_type     = $2,
+		    attributed_to_uid      = $3,
+		    attributed_to_name     = $4,
+		    attributed_to_logo_url = $5,
+		    updated_by             = $6
+		WHERE id = $1 AND lower(status) = 'submitted'`,
+		id, attributionType(a), nullableString(a.EntityUID),
+		nullableString(a.Name), nullableString(a.LogoURL), nullableString(updatedBy),
+	)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("update attribution: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: attribution can only be changed while the initiative is submitted", domain.ErrInvalidInput)
+	}
+	return nil
+}
+
 // ── private helpers ──────────────────────────────────────────────────────────
 
 func (r *InitiativeRepository) listGoals(ctx context.Context, initiativeID string) ([]models.Goal, error) {

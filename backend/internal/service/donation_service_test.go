@@ -55,6 +55,9 @@ func (r *summaryInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []strin
 func (r *summaryInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error {
 	return nil
 }
+func (r *summaryInitiativeRepo) UpdateAttribution(_ context.Context, _ string, _ models.Attribution, _ string) error {
+	return nil
+}
 func (r *summaryInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }

@@ -155,6 +155,7 @@ backend/
 | `GET` | `/crowdfunding/initiatives/{id}/manage` | `access:me` + writer | Get a managed initiative (creator or writer on the attributed entity) in any status, with contacts; `/me/initiatives/{id}` is a deprecated alias |
 | `GET` | `/crowdfunding/initiatives/{id}/manage/transactions` | `access:me` + writer | Transactions of a managed initiative in any status; `/me/initiatives/{id}/transactions` is a deprecated alias |
 | `PATCH` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Update initiative (creator or writer on the attributed entity); `/me/initiatives/{id}` is a deprecated alias |
+| `PUT` | `/crowdfunding/initiatives/{id}/attribution` | `access:me` + owner | Change attribution: creator only, only while `submitted`, and the creator must be affiliated with the target. `PATCH` rejects `attribution` |
 | `DELETE` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Delete initiative; `/me/initiatives/{id}` is a deprecated alias |
 | `POST` | `/crowdfunding/initiatives/{id}/announcements` | `access:me` + writer | Create announcement; `/me/initiatives/{id}/announcements` is a deprecated alias |
 | `PUT` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Update announcement; `/me/...` is a deprecated alias |

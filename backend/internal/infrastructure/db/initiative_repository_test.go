@@ -459,6 +459,63 @@ func TestInitiativeRepository_AttributionDisplay_RoundTrip(t *testing.T) {
 	}
 }
 
+// UpdateAttribution's submitted-only guard lives in its WHERE clause, so only a
+// real row catches a dropped guard or misordered args (lfx-crowdfunding#369 review).
+func TestInitiativeRepository_UpdateAttribution_SubmittedOnly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "attribution-route-owner")
+	repo := NewInitiativeRepository(testPool)
+	created := seedInitiative(t, ctx, owner.ID, "Route Fund", "route-fund")
+
+	setStatus := func(s models.InitiativeStatus) {
+		t.Helper()
+		if _, err := testPool.Exec(ctx, `UPDATE crowdfunding.initiatives SET status = $2 WHERE id = $1`, created.ID, s); err != nil {
+			t.Fatalf("set status %s: %v", s, err)
+		}
+	}
+	getAttribution := func() models.Attribution {
+		t.Helper()
+		got, err := repo.GetByID(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		return got.Attribution
+	}
+
+	setStatus(models.StatusSubmitted)
+	attr := models.Attribution{
+		Type: models.AttributionOrganization, EntityUID: "0012M00002qnukOQAQ",
+		Name: "Acme", LogoURL: "https://example.com/acme.png",
+	}
+	if err := repo.UpdateAttribution(ctx, created.ID, attr, "attribution-editor"); err != nil {
+		t.Fatalf("UpdateAttribution() on submitted error = %v", err)
+	}
+	if got := getAttribution(); got != attr {
+		t.Errorf("attribution = %+v, want %+v", got, attr)
+	}
+	var updatedBy *string
+	if err := testPool.QueryRow(ctx, `SELECT updated_by FROM crowdfunding.initiatives WHERE id = $1`, created.ID).Scan(&updatedBy); err != nil {
+		t.Fatalf("select updated_by: %v", err)
+	}
+	if updatedBy == nil || *updatedBy != "attribution-editor" {
+		t.Errorf("updated_by = %v, want attribution-editor", updatedBy)
+	}
+
+	setStatus(models.StatusPublished)
+	other := models.Attribution{Type: models.AttributionProject, EntityUID: uuid.New().String(), Name: "Other"}
+	if err := repo.UpdateAttribution(ctx, created.ID, other, "attribution-editor"); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("UpdateAttribution() on published error = %v, want ErrInvalidInput", err)
+	}
+	if got := getAttribution(); got != attr {
+		t.Errorf("attribution after rejected update = %+v, want unchanged %+v", got, attr)
+	}
+}
+
 func TestInitiativeRepository_Update_EmptyUpdatedByPreservesLastEditor(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DB integration test")

@@ -2,7 +2,7 @@
 title: Create an Initiative
 description: How to create a fundraising initiative for your open source project or event on LFX Crowdfunding.
 tags: [initiatives, create, fundraising, project, event]
-last_updated: 2026-09-02
+last_updated: 2026-10-13
 display_order: 2
 intercom_collection: LFX Crowdfunding
 ---
@@ -69,7 +69,7 @@ Choose who this initiative is being created on behalf of:
 
 If you choose an organization or project, pick it from the list; you can't type in an entity by hand. The organization list shows organizations where you've been granted a role in LFX Self Serve. The project list shows projects and foundations where you've been granted access directly. If you have none of that kind yet, that option is disabled with a short explanation. To be added, ask an existing admin of that organization or project to grant you a role in LFX Self Serve. Access that comes only through a team or a parent foundation doesn't appear in the list, so to attribute the initiative to that entity, ask its admin to grant you a role on it directly.
 
-An initiative attributed to an organization or project shows that entity's name and logo under its title on the public detail page. The name and logo are saved when you attribute the initiative, so if the entity is later renamed or changes its logo, the label keeps the old values until the initiative is attributed again. Personal initiatives show no label.
+An initiative attributed to an organization or project shows that entity's name and logo under its title on the public detail page. The name and logo are saved when you attribute the initiative, so if the entity is later renamed or changes its logo, the label keeps the old values. You can change the attribution only while the initiative is still submitted for review; after it's published, the attribution is fixed. Personal initiatives show no label.
 
 ### Compliance and terms
 

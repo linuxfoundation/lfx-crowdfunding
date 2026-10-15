@@ -107,7 +107,9 @@ they are *affiliated* with — they need not be a `writer` on it (PM decision, 2
 weaker of the two gates: someone affiliated with, but not a writer on, an org can publish a page
 carrying that org's name and logo without a writer signing off first. The org's writers cannot
 correct or remove it themselves — detaching to `personal` is authorized by the owner/creator only
-(doc 12, "Decided," attribution-change authorization: creator-only, for any change). Only the
+(doc 12, "Decided," attribution-change authorization: creator-only, for any change). The creator
+can only do that while the initiative is `submitted` (§2.2); once published, nobody can change the
+attribution through the API. Only the
 creator can undo a false attribution once the gateway milestone ships the access rule that grants entity writers management in the first place
 (§3.4, §3.5, §5 — deferred from M2, which no longer exists as a separate milestone). Two
 consequences follow directly (see §5): the public attribution label cannot ship in a standalone
@@ -150,7 +152,7 @@ it's accepted anyway.
 
 **Eligibility is enforced server-side, not by the picker (decided, lfx-crowdfunding#259).**
 Constraining the dropdown is UX only — a caller can POST a create/update request with any entity
-UID directly. On create, and on update when the attribution actually changes, the service
+UID directly. On create, and on every `PUT /initiatives/{id}/attribution` (§2.2), the service
 therefore requires the caller to be able to **view** the
 target `b2b_org` or `project`: a full FGA `auditor` check (`auditor_guard` on a `project`, so global auditors and writers pass, as at
 Heimdall; plain `auditor` on a `b2b_org`),
@@ -162,12 +164,22 @@ code does not branch on personas. Viewing is
 enough to *attribute*; *managing* the initiative afterwards still needs `writer` (§2.2), the same
 split Self Serve makes between its lens view and edit gates. `auditor` is enough to
 attribute (decided 2026-10-08, lfx-crowdfunding#259). A miss is a 403, an
-fga-sync outage a 503, and `personal` or an unchanged attribution makes no call. With no resolver
+fga-sync outage a 503, and `personal` makes no call. With no resolver
 wired (`FGA_NATS_URL` unset) the check fails closed (403) for organization and project targets.
 This is an FGA grant, so it supersedes the earlier self-attested/existence-only framing above:
-attribution is now authorized from FGA, not from involvement data the caller supplies. It is still a backend-brokered decision, which the architecture team
-prefers at the gateway (§3.5); it moves to a Heimdall rule once attribution targets can be named in
-the URL.
+attribution is now authorized from FGA, not from involvement data the caller supplies.
+
+**On re-attribution the target check also runs at the gateway (lfx-crowdfunding#342).** The
+architecture team prefers gateway checks (§3.5). Heimdall can't take the target from the URL, but
+step `if` conditions can read `Request.Body()`, so the `initiative-attribution-write` rule checks
+`auditor` on `b2b_org:{entity_uid}` or `auditor_guard` on `project:{entity_uid}` straight from the
+body. A `deny_all` guard runs first and admits only `personal` (no `entity_uid`), an 18-char SFID
+or a lowercase UUID: Heimdall renders templates with `text/template` (no escaping), so
+`entity_uid` must be validated before it reaches the FGA payload, and a body matching neither type
+condition would otherwise skip both checks. Requiring canonical IDs keeps the gateway and the
+service checking the same object. The service check stays as defense in depth. Every call on the
+route is a change, so neither layer compares the old and new targets. Create keeps the
+service-only check.
 
 ### 2.2 Access decision
 
@@ -233,12 +245,20 @@ Design rules:
   Under the flat rule any current writer could reattribute the initiative to another entity they
   write — or to `personal` — silently revoking the original entity's writers and moving (or
   erasing) the public claim of representation. Creator-only also means that if the creator leaves
-  the entity, the initiative stays with them: nobody else can move it away. A writer resubmitting
-  the unchanged attribution is not a change; any other change by a non-creator gets a 403. This
+  the entity, the initiative stays with them: nobody else can move it away. This
   supersedes the earlier "authorize on both the current and target entity" proposal: no `writer`
-  check on the current or target entity is needed. A changed organization/project target still
+  check on the current or target entity is needed. An organization/project target still
   runs the affiliation check (§2.1: FGA `auditor`). Tracking *which* writer made a given change is a separate
   concern, out of scope here (open question 6).
+- **Attribution changes have their own route (lfx-crowdfunding#342).** Creator-only is a different
+  guard from the `writer` that `PATCH` checks, and the platform rule is that a field needing a
+  different guard gets its own path. So `PUT /initiatives/{id}/attribution` (Heimdall
+  `openfga_check owner`, plus the service-side creator check) is the only way to change it, and
+  `PATCH` rejects any `attribution` in its body with a 400, even an unchanged one. The manage read
+  returns `is_owner` so clients can offer the action only to the creator.
+- **Only while `submitted` (decided 2026-10-12).** A published initiative is never re-attributed:
+  the public claim of representation is fixed once the page is live. Any other status (`pending`,
+  `published`, `declined`, `hidden`) gets a 400, including for the creator.
 
 ---
 

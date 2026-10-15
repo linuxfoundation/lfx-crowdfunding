@@ -253,6 +253,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Get("/initiatives/{id}/manage", initiativeH.GetForUser)
 			r.Get("/initiatives/{id}/manage/transactions", initiativeH.GetTransactionsForUser)
 			r.Patch("/initiatives/{id}", initiativeH.Update)
+			// Creator-only (Heimdall: owner), unlike the rest of this group.
+			r.Put("/initiatives/{id}/attribution", initiativeH.UpdateAttribution)
 			r.Delete("/initiatives/{id}", initiativeH.Delete)
 			r.Post("/initiatives/{id}/announcements", announcementH.Create)
 			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)

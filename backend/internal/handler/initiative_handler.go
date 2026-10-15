@@ -302,6 +302,30 @@ func (h *InitiativeHandler) Update(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, updated)
 }
 
+// UpdateAttribution handles PUT /crowdfunding/initiatives/{id}/attribution —
+// requires JWT. The body is the new attribution. Creator-only, while submitted.
+func (h *InitiativeHandler) UpdateAttribution(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	var input models.Attribution
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		Error(w, domain.ErrInvalidInput)
+		return
+	}
+
+	updated, err := h.svc.UpdateAttribution(r.Context(), id, principal.Username, input)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, updated)
+}
+
 // GetTransactions handles GET /crowdfunding/initiatives/{id}/transactions
 // Accepts ?type=donations|expenses&limit=N&offset=N.
 // Resolves the initiative by slug or UUID, verifies it is published, then calls Ledger.
