@@ -212,8 +212,8 @@ sequenceDiagram
     User->>SSBFF: XHR /api/crowdfunding/... + OIDC session cookie
     SSBFF->>GW: /crowdfunding/…<br/>Authorization: Bearer {LFX v2 user access token}
     GW->>GW: validate token · openfga_check for the route
-    GW->>API: forward with Heimdall-minted JWT<br/>(aud: lfx-crowdfunding-backend, sub: LF username)
-    API->>API: validate Heimdall JWT · Principal.Username ← sub
+    GW->>API: forward with Heimdall-minted JWT<br/>(aud: lfx-crowdfunding-backend, principal: LF username)
+    API->>API: validate Heimdall JWT · Principal.Username ← principal claim
     API->>GW: 200 response
     GW->>SSBFF: 200 response
     SSBFF->>User: response

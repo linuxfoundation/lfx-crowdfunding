@@ -24,9 +24,9 @@ User action in SS that needs CF data
   └─ SS BFF proxies to {CROWDFUNDING_API_BASE_URL}/crowdfunding/...   (lfx-api.<domain>)
        Authorization: Bearer {LFX v2 user access token}
   └─ Heimdall validates the token, runs the route's openfga_check, and forwards
-       a Heimdall-minted JWT (aud = lfx-crowdfunding-backend, sub = LF username) to CF
+       a Heimdall-minted JWT (aud = lfx-crowdfunding-backend, principal = LF username) to CF
   └─ CF accepts the Heimdall-issued token (dual-accept, LFXV2-3351) and keys
-       Principal.Username on its subject
+       Principal.Username on the `principal` claim
 ```
 
 > **History.** Before CF moved behind Heimdall, SS ran a silent second `authorization_code` flow
