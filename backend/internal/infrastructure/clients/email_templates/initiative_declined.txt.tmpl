@@ -1,8 +1,10 @@
 {{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
 {{- /* SPDX-License-Identifier: MIT */ -}}
-{{template "header" .}}Regrettably, {{.InitiativeName}} has not been approved on LFX Crowdfunding.
+Hi {{.RecipientName}}
 
-Please contact our support team with any questions.
+Regrettably, {{.InitiativeName}} has not been approved to participate in LFX Crowdfunding.
 
-View initiative: {{.InitiativeURL}}
-{{template "footer" .}}
+Please contact our support team with any questions: https://jira.linuxfoundation.org/servicedesk/customer/portal/4/group/31
+
+View submission: {{.InitiativeURL}}
+{{template "signoff"}}{{template "footer" .}}

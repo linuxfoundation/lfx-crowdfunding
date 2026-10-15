@@ -1,33 +1,41 @@
 {{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
 {{- /* SPDX-License-Identifier: MIT */ -}}
-{{- /* Layout follows the legacy Mandrill templates (and lfx-v2-mentorship): white card, centred greeting, pill button, dark footer. */ -}}
+{{- /* Layout copied from the legacy Mandrill templates (fetched via templates/info). */ -}}
 {{define "header"}}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<style type="text/css">
+body{margin:0;padding:0;}
+img{border:0;height:auto;line-height:100%;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;}
+table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}
+a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;}
+@media only screen and (max-width:620px){.lfx-cell{padding:24px 20px!important;}.lfx-h1{font-size:22px!important;}}
+</style>
 </head>
-<body style="margin:0;padding:0;background-color:#fafafa;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fafafa;">
-<tr><td align="center" valign="top">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
-<tr><td align="center" style="background-color:#ffffff;padding:25px 18px;font-family:Helvetica,Arial,sans-serif;font-size:24px;font-weight:bold;color:#0068fa;">LFX Crowdfunding</td></tr>
-<tr><td valign="top" style="background-color:#ffffff;padding:9px 18px 18px;font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:150%;color:#757575;">
-<h3 style="margin:0 0 18px;text-align:center;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;font-size:22px;font-weight:bold;line-height:150%;color:#444444;">Hi {{.RecipientName}}!</h3>
+<body style="margin:0;padding:0;background-color:#ffffff;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#ffffff;">
+<tr><td align="center" valign="top" style="padding:24px 12px;">
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;background-color:#ffffff;">
+<tr><td class="lfx-cell" style="padding:32px 40px;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;color:#111827;">
+{{- /* ponytail: the legacy templates' logo URL; Vite fingerprints it by content, so it changes only if frontend logo.png changes. */}}
+<div style="margin-bottom:24px;"><img src="https://crowdfunding.linuxfoundation.org/_nuxt/logo.D539I7bA.png" alt="LFX Crowdfunding" height="28" style="height:28px;width:auto;display:block;"></div>
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 32px 0;height:1px;line-height:1px;">
 {{end}}
 {{- /* Call as {{template "button" .URL}}Label{{template "button_end"}}. */ -}}
-{{define "button"}}<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:9px auto 18px;border-collapse:separate;border-radius:50px;background-color:#0068FA;">
-<tr><td align="center" valign="middle" style="padding:15px;font-family:Arial,sans-serif;font-size:14px;"><a href="{{.}}" target="_blank" style="font-weight:bold;line-height:100%;text-align:center;text-decoration:none;color:#FFFFFF;">{{end}}
+{{define "button"}}<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin:0 0 12px 0;">
+<tr><td align="center" bgcolor="#009AFF" style="border-radius:999px;"><a href="{{.}}" target="_blank" style="display:inline-block;background-color:#009AFF;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:9px 18px;border:1px solid #009AFF;border-radius:999px;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">{{end}}
 {{define "button_end"}}</a></td></tr>
 </table>
+<p style="margin:0 0 28px 0;"></p>
 {{end}}
-{{- /* Call as {{template "row" "Label"}}{{.Value}}{{template "row_end"}}. */ -}}
-{{define "row"}}<tr><td style="padding:4px 12px 4px 0;font-weight:bold;color:#444444;white-space:nowrap;vertical-align:top;">{{.}}</td><td style="padding:4px 0;">{{end}}
-{{define "row_end"}}</td></tr>
+{{define "signoff"}}<p style="font-size:15px;color:#374151;margin:0 0 32px 0;line-height:1.7;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">Thank you,<br><strong style="color:#111827;">The LF Engineering Team</strong></p>
 {{end}}
-{{define "footer"}}<p style="margin:18px 0 0;">Thank you,<br>The LF Engineering Team</p>
+{{define "footer"}}<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;height:1px;line-height:1px;">
+<p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:0;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">Copyright &copy; {{.Year}} The Linux Foundation &reg;. All rights reserved. The Linux Foundation has registered trademarks and uses trademarks. For a list of trademarks of The Linux Foundation, please see our <a href="https://www.linuxfoundation.org/trademark-usage" style="color:#9ca3af;text-decoration:underline;">Trademark Usage</a> page. Linux is a registered trademark of Linus Torvalds.</p>
 </td></tr>
-<tr><td align="center" style="background-color:#333333;padding:20px 18px;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:150%;color:#FFFFFF;">Copyright &copy; {{.Year}} The Linux Foundation&reg;. All rights reserved. The Linux Foundation has registered trademarks and uses trademarks. For a list of trademarks of The Linux Foundation, please see our <a href="https://www.linuxfoundation.org/legal/trademark-usage" target="_blank" style="color:#FFFFFF;">Trademark Usage</a> page. Linux is a registered trademark of Linus Torvalds.</td></tr>
 </table>
 </td></tr>
 </table>

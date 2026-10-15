@@ -1,10 +1,12 @@
 {{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
 {{- /* SPDX-License-Identifier: MIT */ -}}
-{{template "header" .}}Congratulations!
+Hi {{.RecipientName}}!
 
-{{.InitiativeName}} has been approved on LFX Crowdfunding and is now live.
+Congratulations!
 
-Don't forget to share the news with your social networks and community!
+{{.InitiativeName}} has been approved to participate in LFX Crowdfunding.
+
+You can manage your initiative by selecting View initiative below, and don't forget to share the news with your social networks and community!
 
 View initiative: {{.InitiativeURL}}
-{{template "footer" .}}
+{{template "signoff"}}{{template "footer" .}}

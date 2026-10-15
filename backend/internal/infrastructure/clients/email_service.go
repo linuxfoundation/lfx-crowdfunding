@@ -104,7 +104,7 @@ func (s *emailService) InitiativeURL(slug string) string {
 
 // SendProjectApprovedEmail notifies the initiative owner that their initiative was approved.
 func (s *emailService) SendProjectApprovedEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL string) error {
-	return s.sendEmail(ctx, toEmail, initiativeName+" has been approved on LFX Crowdfunding", templateInitiativeApproved, emailTemplateData{
+	return s.sendEmail(ctx, toEmail, "Your submission for LFX Crowdfunding has been approved.", templateInitiativeApproved, emailTemplateData{
 		RecipientName:  toName,
 		InitiativeName: initiativeName,
 		InitiativeURL:  initiativeURL,
@@ -113,7 +113,7 @@ func (s *emailService) SendProjectApprovedEmail(ctx context.Context, toEmail, to
 
 // SendProjectDeclinedEmail notifies the initiative owner that their initiative was declined.
 func (s *emailService) SendProjectDeclinedEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL string) error {
-	return s.sendEmail(ctx, toEmail, initiativeName+" was not approved on LFX Crowdfunding", templateInitiativeDeclined, emailTemplateData{
+	return s.sendEmail(ctx, toEmail, "Your submission to LFX Crowdfunding was rejected.", templateInitiativeDeclined, emailTemplateData{
 		RecipientName:  toName,
 		InitiativeName: initiativeName,
 		InitiativeURL:  initiativeURL,
@@ -122,7 +122,7 @@ func (s *emailService) SendProjectDeclinedEmail(ctx context.Context, toEmail, to
 
 // SendDonationConfirmationEmail sends a donation receipt to the donor.
 func (s *emailService) SendDonationConfirmationEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType string) error {
-	return s.sendEmail(ctx, toEmail, "Your donation to "+initiativeName+" has been received", templateDonationReceipt, emailTemplateData{
+	return s.sendEmail(ctx, toEmail, "Your donation to "+initiativeName+" has been submitted.", templateDonationReceipt, emailTemplateData{
 		RecipientName:  toName,
 		InitiativeName: initiativeName,
 		InitiativeURL:  initiativeURL,
@@ -141,7 +141,7 @@ func (s *emailService) SendDonationAdminNotificationEmail(ctx context.Context, o
 	if ownerEmail == "" {
 		return nil // owner email not available; skip silently
 	}
-	return s.sendEmail(ctx, ownerEmail, "A donation to "+initiativeName+" has been received", templateDonationReceived, emailTemplateData{
+	return s.sendEmail(ctx, ownerEmail, "A donation was submitted to "+initiativeName+".", templateDonationReceived, emailTemplateData{
 		RecipientName:  ownerName,
 		InitiativeName: initiativeName,
 		InitiativeURL:  initiativeURL,

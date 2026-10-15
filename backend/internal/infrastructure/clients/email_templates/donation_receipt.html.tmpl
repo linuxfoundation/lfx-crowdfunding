@@ -1,7 +1,14 @@
 {{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
 {{- /* SPDX-License-Identifier: MIT */ -}}
 {{- /* Legacy: fundspring-donation-ledger */ -}}
-{{template "header" .}}<p>Thank you for your donation to <strong>{{.InitiativeName}}</strong>.</p>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px;">
-{{template "row" "Initiative"}}{{.InitiativeName}}{{template "row_end"}}{{template "row" "Amount"}}{{.Amount}}{{template "row_end"}}{{template "row" "Type"}}{{.DonationType}}{{template "row_end"}}{{with .Category}}{{template "row" "Category"}}{{.}}{{template "row_end"}}{{end}}{{template "row" "Donor"}}{{.DonorName}}{{with .DonorEmail}} ({{.}}){{end}}{{template "row_end"}}{{with .OrgName}}{{template "row" "Organization"}}{{.}}{{template "row_end"}}{{end}}{{template "row" "Payment"}}{{.Payment}}{{template "row_end"}}</table>
-{{template "button" .InitiativeURL}}View Initiative{{template "button_end"}}{{template "footer" .}}
+{{template "header" .}}<h1 class="lfx-h1" style="font-size:28px;font-weight:700;color:#111827;margin:0 0 20px 0;line-height:1.25;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">{{.InitiativeName}} Donation</h1>
+<p style="font-size:16px;color:#374151;line-height:1.6;margin:0 0 16px 0;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">Your donation to {{.InitiativeName}} has been submitted. You can view the details of your donation below.</p>
+<p style="font-size:15px;color:#374151;margin:0 0 24px 0;line-height:1.9;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">
+{{.DonationType}}: <strong style="color:#111827;">{{.InitiativeName}}</strong><br>
+{{with .Category}}Category: {{.}}<br>{{end}}
+Donor: {{.DonorName}} &lt;{{.DonorEmail}}&gt;<br>
+{{with .OrgName}}Organization: {{.}}<br>{{end}}
+Payment Type: {{.Payment}}<br>
+Amount: <strong style="color:#111827;">{{.Amount}}</strong>
+</p>
+{{template "button" .InitiativeURL}}View donation{{template "button_end"}}{{template "footer" .}}
