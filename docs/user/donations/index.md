@@ -2,7 +2,7 @@
 title: Donations
 description: Learn how to donate to open source initiatives and manage your giving history on LFX Crowdfunding.
 tags: [donations, giving, payments, recurring]
-last_updated: 2026-06-17
+last_updated: 2026-10-14
 display_order: 3
 intercom_collection: LFX Crowdfunding
 ---
@@ -38,6 +38,8 @@ All donations are made to the Linux Foundation, a 501(c)(6) non-profit organisat
 ## Payment security
 
 Payments are processed by [Stripe](https://stripe.com). LFX Crowdfunding never stores your full card details.
+
+Donations can only be paid by credit card. Paying by invoice is not supported.
 
 ## After completing
 
