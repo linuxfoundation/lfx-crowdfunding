@@ -509,7 +509,7 @@ The `expensify-sync` cron job (SyncExpensifyHandler) pushes project/entity metad
 
 ### EMAIL_DRY_RUN mode
 
-Add `EMAIL_DRY_RUN=true` environment variable. When set, email service logs the would-be email payload instead of calling Mandrill. Used when testing with production data to prevent accidental emails.
+Add `EMAIL_DRY_RUN=true` environment variable. When set, email service logs the would-be email payload instead of sending it. Used when testing with production data to prevent accidental emails.
 
 ### LFX v2 platform stack — standalone for initial release
 
@@ -677,7 +677,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `JWT_AUDIENCE` | Expected `aud` claim | New — `https://crowdfunding-api.{env}.lfx.dev`; see `09` |
 | `STRIPE_SECRET_KEY` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
 | `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /crowdfunding/stripe/webhook` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
-| `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
+| *(removed)* `MANDRILL_API_KEY` | Email moved off Mandrill to lfx-v2-email-service over `FGA_NATS_URL` (lfx-crowdfunding#289); CF holds no email-provider credentials | Use `EMAIL_REVIEW_INBOX` and `EMAIL_FROM_DISPLAY_NAME` |
 | `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
 | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |
 | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret | Same as LFF |
@@ -691,7 +691,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse name | Follow LFX platform pattern |
 | `SNOWFLAKE_ROLE` | Snowflake role for CF queries | New — to be provisioned by DevOps |
 | `LEDGER_API_URL` | Base URL of the Ledger HTTP API | Replaces LFF `TRANSACTIONS_API_URL` |
-| `EMAIL_DRY_RUN` | Set to `true` to suppress Mandrill calls (logs instead) | Non-secret config; used for testing with production data |
+| `EMAIL_DRY_RUN` | Set to `true` to suppress email sends (logs instead) | Non-secret config; used for testing with production data |
 | `CF_NOTIFICATION_SOURCE_EMAIL` | From address for outgoing emails | Replaces LFF `NOTIFICATION_SOURCE_EMAIL` |
 | `CF_ADMIN_EMAIL` | Admin contact email (used in approval flows) | Replaces LFF `ADMIN_EMAIL` |
 

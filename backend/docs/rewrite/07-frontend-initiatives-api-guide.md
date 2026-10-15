@@ -134,7 +134,7 @@ Authorization: Bearer <token>
 1. A UUID is generated for the initiative.
 2. A Stripe Product is created (for donation processing).
 3. The initiative is saved to the database with status `submitted`.
-4. An email is sent to the reviewer inbox (configured via `MANDRILL_NOTIFICATION_EMAIL`) with approve/decline deep-links.
+4. An email is sent to the reviewer inbox (configured via `EMAIL_REVIEW_INBOX`) with approve/decline deep-links.
 5. The full initiative object is returned.
 
 > **Note:** Email delivery failure is **non-fatal**. The initiative is still created and `201` is still returned even if the email could not be sent.
@@ -575,14 +575,14 @@ When an initiative is created (`POST /crowdfunding/me/initiatives`):
 
 1. Status is **always** set to `submitted` by the API — you cannot override this.
 2. The API fetches the owner's profile (name + email) from the database.
-3. A **"Submitted for Review" email** is sent to the reviewer inbox (`MANDRILL_NOTIFICATION_EMAIL`) containing:
+3. A **"Submitted for Review" email** is sent to the reviewer inbox (`EMAIL_REVIEW_INBOX`) containing:
    - The submitter's name and email
    - The initiative name
    - A **View** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}`
    - An **Approve** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}/process-approval/approve`
    - A **Decline** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}/process-approval/decline`
 
-> Email failure is **non-fatal** — the API still returns `201` even if Mandrill is unreachable or not configured.
+> Email failure is **non-fatal** — the API still returns `201` even if the email service is unreachable or not configured.
 
 ---
 
@@ -591,7 +591,7 @@ When an initiative is created (`POST /crowdfunding/me/initiatives`):
 This is the complete sequence from submission to a live initiative:
 
 ```
-                                                      Mandrill
+                                                   lfx-v2-email-service
   Submitter                Backend API              Email Service           Reviewer Inbox
      │                         │                         │                       │
      │  POST /crowdfunding/me/initiatives   │                         │                       │
@@ -622,11 +622,13 @@ This is the complete sequence from submission to a live initiative:
 
 ### Email templates used
 
-| Event | Mandrill template slug | Recipient |
-|-------|----------------------|-----------|
-| New submission | `communitybridge-review-mentorship-submission` | Reviewer inbox |
-| Approved | `admin-mentorship-submission-approved` | Initiative owner |
-| Declined | `admin-mentorship-submission-rejected` | Initiative owner |
+Templates live in `backend/internal/infrastructure/clients/email_templates/` and are sent through lfx-v2-email-service.
+
+| Event | Template | Recipient |
+|-------|----------|-----------|
+| New submission | `initiative_review` | Reviewer inbox |
+| Approved | `initiative_approved` | Initiative owner |
+| Declined | `initiative_declined` | Initiative owner |
 
 ---
 

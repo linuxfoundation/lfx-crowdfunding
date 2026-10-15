@@ -28,7 +28,7 @@ type EmailService interface {
 	// toEmail/toName are the donor's contact details.
 	// initiativeName is the display name of the funded initiative.
 	// amountFormatted is a pre-formatted currency string, e.g. "$50.00".
-	// category, orgName, payment, donationType populate additional Mandrill template fields.
+	// category, orgName, payment, donationType populate additional template fields.
 	SendDonationConfirmationEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType string) error
 
 	// SendDonationAdminNotificationEmail notifies the initiative owner that a new
@@ -37,7 +37,7 @@ type EmailService interface {
 	// ownerName is the owner's display name for the greeting (FNAME field).
 	// donorName and donorEmail identify the donor for the email body.
 	// initiativeName and amountFormatted describe the transaction.
-	// category, orgName, payment, donationType populate additional Mandrill template fields.
+	// category, orgName, payment, donationType populate additional template fields.
 	SendDonationAdminNotificationEmail(ctx context.Context, ownerEmail, ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType string) error
 
 	// InitiativeURL composes a full frontend deep-link for an initiative slug.
