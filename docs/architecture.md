@@ -152,14 +152,14 @@ backend/
 | `PATCH` | `/crowdfunding/me` | `access:me` | Profile sync (login trigger) |
 | `GET` | `/crowdfunding/me/initiatives` | `access:me` | Caller's own initiatives |
 | `POST` | `/crowdfunding/me/initiatives` | `access:me` | Create initiative |
-| `GET` | `/crowdfunding/initiatives/{id}/manage` | `access:me` + writer | Get a managed initiative (creator or writer on the attributed entity) in any status, with contacts; `/me/initiatives/{id}` is a deprecated alias |
-| `GET` | `/crowdfunding/initiatives/{id}/manage/transactions` | `access:me` + writer | Transactions of a managed initiative in any status; `/me/initiatives/{id}/transactions` is a deprecated alias |
-| `PATCH` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Update initiative (creator or writer on the attributed entity); `/me/initiatives/{id}` is a deprecated alias |
+| `GET` | `/crowdfunding/initiatives/{id}/manage` | `access:me` + writer | Get a managed initiative (creator or writer on the attributed entity) in any status, with contacts |
+| `GET` | `/crowdfunding/initiatives/{id}/manage/transactions` | `access:me` + writer | Transactions of a managed initiative in any status |
+| `PATCH` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Update initiative (creator or writer on the attributed entity) |
 | `PUT` | `/crowdfunding/initiatives/{id}/attribution` | `access:me` + owner | Change attribution: creator only, only while `submitted`, and the creator must be affiliated with the target. `PATCH` rejects `attribution` |
-| `DELETE` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Delete initiative; `/me/initiatives/{id}` is a deprecated alias |
-| `POST` | `/crowdfunding/initiatives/{id}/announcements` | `access:me` + writer | Create announcement; `/me/initiatives/{id}/announcements` is a deprecated alias |
-| `PUT` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Update announcement; `/me/...` is a deprecated alias |
-| `DELETE` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Delete announcement; `/me/...` is a deprecated alias |
+| `DELETE` | `/crowdfunding/initiatives/{id}` | `access:me` + writer | Delete initiative |
+| `POST` | `/crowdfunding/initiatives/{id}/announcements` | `access:me` + writer | Create announcement |
+| `PUT` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Update announcement |
+| `DELETE` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Delete announcement |
 | `GET` | `/crowdfunding/organizations/{uid}/initiatives` | `access:me` + writer on `b2b_org` | All initiatives (any status) attributed to that organization (Org lens) |
 | `GET` | `/crowdfunding/projects/{uid}/initiatives` | `access:me` + `writer_guard` on `project` | All initiatives (any status) attributed to that project (Project lens) |
 | `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donations (one-time and recurring), read from the Ledger like `/me/transactions?type=donations` |

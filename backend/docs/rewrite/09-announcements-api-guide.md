@@ -11,9 +11,9 @@
 2. [Authentication](#2-authentication)
 3. [Data model](#3-data-model)
 4. [List announcements — GET /crowdfunding/initiatives/{id}/announcements](#4-list-announcements)
-5. [Create an announcement — POST /crowdfunding/me/initiatives/{id}/announcements](#5-create-an-announcement)
-6. [Update an announcement — PUT /crowdfunding/me/initiatives/{id}/announcements/{announcementId}](#6-update-an-announcement)
-7. [Delete an announcement — DELETE /crowdfunding/me/initiatives/{id}/announcements/{announcementId}](#7-delete-an-announcement)
+5. [Create an announcement — POST /crowdfunding/initiatives/{id}/announcements](#5-create-an-announcement)
+6. [Update an announcement — PUT /crowdfunding/initiatives/{id}/announcements/{announcementId}](#6-update-an-announcement)
+7. [Delete an announcement — DELETE /crowdfunding/initiatives/{id}/announcements/{announcementId}](#7-delete-an-announcement)
 8. [Pagination](#8-pagination)
 9. [Validation rules](#9-validation-rules)
 10. [Error reference](#10-error-reference)
@@ -27,9 +27,9 @@
 | Action | Method | Path | Auth? | Who can call |
 |--------|--------|------|-------|--------------|
 | List announcements | `GET` | `/crowdfunding/initiatives/{id}/announcements` | No | Anyone (public) |
-| **Create announcement** | `POST` | `/crowdfunding/me/initiatives/{id}/announcements` | **Yes** | Initiative owner |
-| **Update announcement** | `PUT` | `/crowdfunding/me/initiatives/{id}/announcements/{announcementId}` | **Yes** | Initiative owner |
-| **Delete announcement** | `DELETE` | `/crowdfunding/me/initiatives/{id}/announcements/{announcementId}` | **Yes** | Initiative owner |
+| **Create announcement** | `POST` | `/crowdfunding/initiatives/{id}/announcements` | **Yes** | Initiative owner |
+| **Update announcement** | `PUT` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | **Yes** | Initiative owner |
+| **Delete announcement** | `DELETE` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | **Yes** | Initiative owner |
 
 `{id}` — the initiative UUID  
 `{announcementId}` — the announcement UUID  
@@ -121,7 +121,7 @@ Results are ordered **newest first** (`created_on` descending).
 ## 5. Create an announcement
 
 ```
-POST /crowdfunding/me/initiatives/{id}/announcements
+POST /crowdfunding/initiatives/{id}/announcements
 ```
 
 **Auth:** JWT required — caller must own the initiative  
@@ -169,7 +169,7 @@ POST /crowdfunding/me/initiatives/{id}/announcements
 ## 6. Update an announcement
 
 ```
-PUT /crowdfunding/me/initiatives/{id}/announcements/{announcementId}
+PUT /crowdfunding/initiatives/{id}/announcements/{announcementId}
 ```
 
 **Auth:** JWT required — caller must own the initiative  
@@ -206,7 +206,7 @@ Returns the updated announcement in the same shape as Create.
 ## 7. Delete an announcement
 
 ```
-DELETE /crowdfunding/me/initiatives/{id}/announcements/{announcementId}
+DELETE /crowdfunding/initiatives/{id}/announcements/{announcementId}
 ```
 
 **Auth:** JWT required — caller must own the initiative  
@@ -303,7 +303,7 @@ export default defineEventHandler(async (event) => {
   if (method === 'POST') {
     const session = await requireUserSession(event)
     const body = await readBody(event)
-    return proxyRequest(event, `/crowdfunding/me/initiatives/${initiativeId}/announcements`, {
+    return proxyRequest(event, `/crowdfunding/initiatives/${initiativeId}/announcements`, {
       method: 'POST',
       body,
       headers: { Authorization: `Bearer ${session.token}` },
@@ -323,7 +323,7 @@ export default defineEventHandler(async (event) => {
   const method = getMethod(event)
   const session = await requireUserSession(event)
 
-  const upstreamPath = `/crowdfunding/me/initiatives/${initiativeId}/announcements/${announcementId}`
+  const upstreamPath = `/crowdfunding/initiatives/${initiativeId}/announcements/${announcementId}`
 
   if (method === 'PUT') {
     const body = await readBody(event)

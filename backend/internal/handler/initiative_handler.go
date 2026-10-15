@@ -163,7 +163,7 @@ func (h *InitiativeHandler) ListByAttribution(t models.AttributionType) http.Han
 // retrieve initiatives in any status (e.g. "submitted") for review purposes.
 // Beneficiaries, contributors, mentors and contacts are never included: they
 // hold third-party contact details (emails, phone numbers) and this response
-// is publicly cacheable. Owners read them via GET /crowdfunding/me/initiatives/{id}.
+// is publicly cacheable. Managers read them via GET /crowdfunding/initiatives/{id}/manage.
 func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var (
@@ -214,8 +214,8 @@ func (h *InitiativeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// GetForUser handles GET /crowdfunding/initiatives/{id}/manage (and its deprecated
-// alias GET /crowdfunding/me/initiatives/{id}) — requires JWT with access:me scope.
+// GetForUser handles GET /crowdfunding/initiatives/{id}/manage — requires JWT
+// with access:me scope.
 // Accepts a slug or UUID. Returns the initiative in any status, with contacts, to
 // callers who can manage it (creator or a writer on its attributed entity), so they
 // can open drafts the public detail endpoint hides. Others get 404 (not 403) to
@@ -515,9 +515,8 @@ func (h *InitiativeHandler) ListMyDonations(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// GetTransactionsForUser handles GET /crowdfunding/initiatives/{id}/manage/transactions (and its
-// deprecated alias /crowdfunding/me/initiatives/{id}/transactions) — requires
-// JWT with access:me scope. Returns transactions for the caller's own initiative in
+// GetTransactionsForUser handles GET /crowdfunding/initiatives/{id}/manage/transactions —
+// requires JWT with access:me scope. Returns transactions for the caller's own initiative in
 // any status, so owners can view their non-published initiative's transactions (the
 // public endpoint resolves published-only).
 func (h *InitiativeHandler) GetTransactionsForUser(w http.ResponseWriter, r *http.Request) {

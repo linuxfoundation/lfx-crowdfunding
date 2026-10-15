@@ -202,7 +202,7 @@ The column is named `jobspring_project_id` (preserving the DynamoDB field name `
 
 Current system: fully editable — no restrictions on any field. This is a latent bug; Mentorship sync overwrites CF edits silently.
 
-New system: field ownership split enforced at the API layer (`PATCH /crowdfunding/me/initiatives/:id` rejects Mentorship-owned fields when `initiative_type = mentorship`).
+New system: field ownership split enforced at the API layer (`PATCH /crowdfunding/initiatives/:id` rejects Mentorship-owned fields when `initiative_type = mentorship`).
 
 | Field group | Owner | Editable via CF UI |
 |---|---|---|
