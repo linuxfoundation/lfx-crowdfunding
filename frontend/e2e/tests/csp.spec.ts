@@ -3,10 +3,11 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
-// Regression for the CSP nonce XSS (lfx-self-serve-ops#491). The slug is reflected into
-// <meta property="og:url">, where unhead leaves `<` raw. Regex-inserting nonce="…" after
-// every `<script` broke out of that attribute and turned the <img onerror> into a real
-// element. Runs against the production build (csp project): no CSP is sent in dev.
+// Regression for the CSP nonce XSS (lfx-self-serve-ops#491). The slug used to be reflected
+// raw into <meta property="og:url">; since #382 an unknown slug renders the 404 page with
+// an encoded og:url, so the raw-attribute case is covered by csp-nonce.server.test.ts.
+// This checks the payload still doesn't run and every SSR script carries the header nonce.
+// Runs against the production build (csp project): no CSP is sent in dev.
 const XSS = '<img src=x onerror=window.__xss=1>';
 const PAYLOAD_PATH = `/initiatives/${encodeURIComponent(`x <script y=>${XSS}`)}`;
 
@@ -29,9 +30,6 @@ test.describe('CSP nonce', () => {
     const response = await page.goto(PAYLOAD_PATH);
     expect(response).not.toBeNull();
     const html = await response!.text();
-
-    // Guard: without the payload in the HTML this test proves nothing.
-    expect(html).toContain(XSS);
 
     await page.waitForLoadState('load');
     expect(
