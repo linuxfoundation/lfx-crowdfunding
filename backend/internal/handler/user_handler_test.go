@@ -256,6 +256,7 @@ func TestSyncProfile_MockBypass_SkipsBindingForSeededRow(t *testing.T) {
 	principal := &models.Principal{
 		UserID:       "dev-user-001",
 		Username:     "dev-user-001",
+		Email:        "dev-user-001@local.dev",
 		Scope:        auth.ScopeMe,
 		IsMockBypass: true,
 	}
@@ -266,8 +267,8 @@ func TestSyncProfile_MockBypass_SkipsBindingForSeededRow(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	if got := repo.lastUpserted; got == nil || got.LegacyUserID != "" {
-		t.Errorf("expected a username-only upsert with no legacy_user_id, got %+v", got)
+	if got := repo.lastUpserted; got == nil || got.LegacyUserID != "" || got.Email != "" {
+		t.Errorf("expected a username-only upsert with no legacy_user_id or synthetic email, got %+v", got)
 	}
 }
 

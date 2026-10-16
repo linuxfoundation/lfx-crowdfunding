@@ -141,7 +141,12 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 // what makes the unauthorized-by-username auth-service subjects safe here.
 // No username attribute in the warnings: the request/trace ID identifies the call.
 func (h *UserHandler) heimdallProfile(ctx context.Context, principal *models.Principal) *models.User {
-	user := &models.User{Username: principal.Username, Email: principal.Email}
+	user := &models.User{Username: principal.Username}
+	// The mock-bypass email is synthetic (<username>@local.dev); storing it
+	// would overwrite seeded dev addresses.
+	if principal.IsHeimdallIssued {
+		user.Email = principal.Email
+	}
 	if h.profileLookup == nil {
 		return user
 	}
