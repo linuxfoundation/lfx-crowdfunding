@@ -17,6 +17,9 @@ The PM has answered the two open product questions: anyone can publicly credit a
 stated by the donor (§5.1 item 1), and donors can type an org by hand (§5.1 item 2). PM also
 wants a donations list page on the Self Serve Organization lens (§5.1 item 3). The PM
 didn't ask to take work history back to architecture. Formal sign-off (§5.3) is still pending.
+Option D's `b2b_org` half depends on platform work designed in LFXV2-2400 (Q1/Q2), which was
+discarded in September 2026 as not requested by product. The PM's lens page is that product
+request (§5.2 item 3).
 
 **TL;DR.** Today "donate as an organization" picks from a private, per-user list of free-text
 orgs that nothing else in LFX knows about. PM's preferred source for the org list is the user's
@@ -217,7 +220,7 @@ an org by hand (§5.1 item 2).
 | Coverage | Any org a user has added; many | **Only Accounts with a membership Asset** (`account_repo.go:25-46`) | All Accounts | Any org (Clearbit or typed) |
 | Canonical / joins to SS org lens | Via Snowflake mapping only | **Yes** | Yes | Only when the `b2b_org` reference is set |
 | User ↔ org link | **Yes** (that's what work history is) | Only roles: writer/auditor/key contact | No | No |
-| Search API | CDP exact name/domain lookups; no fuzzy search | `GET /query/resources?type=b2b_org&name=`, non-public: results filtered to orgs where the caller has `auditor`; CF has no credential today | Member service removed its SOQL search; no LFX API exposes it | query-service org search, `b2b_org` + Clearbit with `b2b_org` first (planned, LFXV2-2400) |
+| Search API | CDP exact name/domain lookups; no fuzzy search | `GET /query/resources?type=b2b_org&name=`, non-public: results filtered to orgs where the caller has `auditor`; CF has no credential today | Member service removed its SOQL search; no LFX API exposes it | query-service org search, `b2b_org` + Clearbit with `b2b_org` first (designed in LFXV2-2400 Q1/Q2; ticket discarded, not scheduled) |
 | Create new | Self-serve find-or-create, no review | **No.** `POST /b2b_orgs` only registers an *existing* SF Account, restricted to org-admin clients | Out of scope from checkout | Nothing created; the record is just a name and domain |
 | CF access today | None (needs a v2 API behind Heimdall; direct CDP access ruled out, §4.2) | None for listing | None | Clearbit suggest only; `b2b_org` search not yet open to donors |
 
@@ -257,9 +260,10 @@ and architecture sign-off.
   (`organization: {id, name, website}`, lfx-v2-committee-service
   `cmd/committee-api/design/type.go`, `OrganizationInfoAttributes`). There are no foreign keys
   to CDP or anything else. Committee members stopped storing CDP org IDs (LFXV2-2647).
-- **Picker.** The same org lookup committees use: the query-service org search, which per
-  LFXV2-2400 combines `b2b_org` and Clearbit, with `b2b_org` results first and duplicates
-  removed by domain. If the donor picks a `b2b_org` result, the reference is filled in.
+- **Picker.** The same org lookup committees use: the query-service org search, which as
+  designed in LFXV2-2400 (Q2) would combine `b2b_org` and Clearbit, with `b2b_org` results
+  first and duplicates removed by domain. That search isn't built and the ticket was discarded
+  (§5.2 item 3). If the donor picks a `b2b_org` result, the reference is filled in.
   Otherwise the donation stores only the name and domain. CF calls query-service directly. It
   doesn't copy Self Serve's committee picker, which still creates orgs in CDP.
 - **Free text.** If search doesn't find the org, the donor types a name and domain by hand.
@@ -354,9 +358,14 @@ admins (§4, option B). This applies to every option.
    the change from the CF org row ID.
 3. **Search dependency.** Today `/query/orgs/suggest` is Clearbit only, and `b2b_org` search
    only returns orgs where the caller is an `auditor`. Donors can only find member companies
-   once query-service ships the combined search (LFXV2-2400) and `b2b_org` names and domains
-   are visible to all logged-in users. Until then, CF gets Clearbit results with no `b2b_org`
-   reference.
+   once query-service ships the combined search and `b2b_org` names and domains are visible to
+   all logged-in users. Until then, CF gets Clearbit results with no `b2b_org` reference. Both
+   pieces were designed in LFXV2-2400 (Q1: public `b2b_org` field subset; Q2: combined search),
+   which architecture agreed to, but the ticket was discarded on 2026-09-03 as not requested by
+   product. The PM's lens page (§5.1 item 3) is the product request that would revive them.
+   The alternative is matching by domain when the donation is saved, using member-service
+   `ResolveByDomain` (LFXV2-2650, Backlog). Eric argued against domain lookup in LFXV2-2400
+   (Q3B, Q4).
 4. **Adopting older records.** Whether and when CF subscribes to org created and updated events
    to attach `b2b_org` references by domain (§4.1). Not needed for the first version, unless
    PM wants the lens page to cover older donations (§5.1 item 5).
@@ -389,8 +398,11 @@ admins (§4, option B). This applies to every option.
 - lfx-v2-committee-service:
   - `cmd/committee-api/design/type.go` (`OrganizationInfoAttributes`)
   - `gen/http/openapi3.yaml` (add committee member payload, `organization`)
-- Jira: LFXV2-2400 (org search: `b2b_org` + Clearbit, `b2b_org` first) and LFXV2-2647 (stop
-  storing CDP org IDs on committee members).
+- Jira:
+  - LFXV2-2400: committee-member org ID divergence. Its Q1–Q3 are the public `b2b_org` subset,
+    combined `b2b_org` + Clearbit search and sync-from-`b2b_org` design. Discarded 2026-09-03.
+  - LFXV2-2647: stop storing CDP org IDs on committee members.
+  - LFXV2-2650: member-service `ResolveByDomain` (Backlog).
 - lfx-self-serve:
   - `apps/lfx-one/src/server/services/cdp.service.ts`
   - `apps/lfx-one/src/server/services/organization.service.ts`
