@@ -15,65 +15,26 @@ document only adds the SS-specific integration details.
 
 ## 1. How SS authenticates to CF
 
-SS obtains a **user-issued access token scoped to the CF audience** and forwards it to CF. There is
-no M2M token and no identity header — all SS→CF calls are me-style endpoints (`/crowdfunding/me/*`), and the
-access token carries the acting user's identity via the LF SSO username — a custom claim (per
-Design Rule 3 in [`09`](../../../docs/authentication-architecture.md#design-rules)).
+SS forwards the **user's own LFX v2 access token** (`req.bearerToken`, the token from its primary
+LFX One login) to CF through the platform API gateway, the same way every other SS module calls
+LFX v2 services. There is no second token, no M2M token and no identity header.
 
 ```
 User action in SS that needs CF data
-  └─ SS BFF obtains a CF-audience access token (cached in session, or acquired
-       via a silent second auth-code flow on first navigation — see §1)
-  └─ SS BFF proxies to CF /crowdfunding/me/*
-       Authorization: Bearer {CF-audience user access token}
+  └─ SS BFF proxies to {CROWDFUNDING_API_BASE_URL}/crowdfunding/...   (lfx-api.<domain>)
+       Authorization: Bearer {LFX v2 user access token}
+  └─ Heimdall validates the token, applies the route's authorizer (allow_all for
+       self-scoped /crowdfunding/me/* routes, openfga_check for manager routes on
+       an initiative or entity), and forwards
+       a Heimdall-minted JWT (aud = lfx-crowdfunding-backend, principal = LF username) to CF
+  └─ CF accepts the Heimdall-issued token (dual-accept, LFXV2-3351) and keys
+       Principal.Username on the `principal` claim
 ```
 
-The token forwarded to CF must have the CF audience and `access:me` scope, or CF will reject the
-call. SS needs no M2M client credentials — the token is still user-issued.
-
-### How SS obtains the CF-audience token
-
-SS is a multi-audience BFF: its primary login audience is the LFX V2 cluster, which it needs for
-committees, meetings, and other LFX v2 services. It cannot log in with the CF audience as its
-primary audience without breaking those services.
-
-SS runs a **silent second `authorization_code` flow** for the CF audience. This happens on the
-first top-level navigation to a `/crowdfunding/*` page when no valid CF token is in the session:
-
-```
-1. SS BFF redirects browser to Auth0 /authorize
-     client_id={LFX One client ID}
-     audience={CF audience}   e.g. https://crowdfunding-api.staging.lfx.dev
-     scope=openid profile access:me
-     state={random nonce}     ← CSRF protection; validated in step 2
-     prompt=none              ← silent: no UI if Auth0 session exists
-     redirect_uri={PCC_BASE_URL}/crowdfunding/callback   ← absolute URL, must match Auth0 config
-
-2. Auth0 returns auth code + state to {PCC_BASE_URL}/crowdfunding/callback
-     SS BFF validates returned state matches the nonce from step 1
-
-3. SS BFF POSTs to Auth0 /oauth/token
-     grant_type=authorization_code
-     client_id + client_secret
-     code + redirect_uri
-
-4. Auth0 returns a CF-audience access token (access:me scope, username claim)
-
-5. SS stores token in server session (5-minute expiry buffer);
-   subsequent XHRs to /api/crowdfunding/* read it from session
-```
-
-The redirect is silent (`prompt=none`) when the user already has an Auth0 session — no second login
-or consent screen is shown. If Auth0 returns `consent_required` or `interaction_required`, the
-callback retries without `prompt=none` so the user sees the one-time CF audience consent screen.
-Subsequent navigations are silent because consent is remembered.
-
-**Why not a refresh-token exchange?** The refresh-token exchange approach
-(`grant_type=refresh_token` + `audience=CF`) does not work with Auth0: Auth0 ignores the requested
-audience on a refresh grant and returns the primary LFX V2 cluster token, which CF rejects with 401
-(audience mismatch, confirmed by decoding the returned token). The second auth-code flow was
-validated with the LFX platform team and is the confirmed approach. No Auth0 client grant is
-required for this flow — `allow_all` on the CF resource server covers `authorization_code` flows.
+> **History.** Before CF moved behind Heimdall, SS ran a silent second `authorization_code` flow
+> to mint a CF-audience token (`/crowdfunding/callback`, `CROWDFUNDING_API_AUDIENCE`,
+> `CROWDFUNDING_REDIRECT_URI`). lfx-self-serve#3158 removed that flow; the leftover config was
+> cleaned up in lfx-self-serve#3161.
 
 ---
 
@@ -83,52 +44,27 @@ Key components in `lfx-self-serve`:
 
 | File | Purpose |
 |---|---|
-| `server/services/crowdfunding-auth.service.ts` | Builds the Auth0 `/authorize` URL for the CF audience, exchanges the auth code for a token at `/oauth/token`, validates the token `sub`, stores in session |
-| `server/controllers/crowdfunding.controller.ts` | Handles `/crowdfunding/callback`; retries without `prompt=none` on `consent_required`/`interaction_required`; returns `?error=login_required` without re-triggering the silent redirect |
-| `server/middleware/auth.middleware.ts` | `extractCrowdfundingToken` reads the cached CF token from session onto `req.crowdfundingToken` on every authenticated request |
-| `server/services/crowdfunding.service.ts` | All `/api/crowdfunding/*` proxy calls forward `req.crowdfundingToken` as `Authorization: Bearer` to CF `/crowdfunding/me/*` |
+| `server/middleware/auth.middleware.ts` | `/api/crowdfunding/*` falls under the `/api` row (`auth: required`, `tokenRequired: true`) and gets `req.bearerToken` like every other route |
+| `server/services/crowdfunding.service.ts` | `cfFetch` / `cfFetchNullable` forward `req.bearerToken` as `Authorization: Bearer` to CF |
 
 **Environment variables (lfx-v2-argocd `values/*/lfx-self-serve.yaml`):**
 
 | Env var | Purpose |
 |---|---|
-| `CROWDFUNDING_API_BASE_URL` | CF API base URL |
-| `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the auth-code flow |
-| `CROWDFUNDING_REDIRECT_URI` | Auth0 callback URL (defaults to `{PCC_BASE_URL}/crowdfunding/callback`) |
+| `CROWDFUNDING_API_BASE_URL` | Platform API gateway base URL that fronts CF (`https://lfx-api.<domain>`) |
 
-SS reuses the existing `PCC_AUTH0_CLIENT_ID` / `PCC_AUTH0_CLIENT_SECRET` / `PCC_AUTH0_ISSUER_BASE_URL`
-(the LFX One app client). No dedicated CF client credentials are needed. No auth0-terraform grant is
-required — `authorization_code` flows work under Auth0's `allow_all` user policy on the CF resource
-server without an explicit client grant.
-
-SS needs no client-ID allowlist entry and no identity header — the user-issued access token carries
-identity, and the `access:me` scope is the gate.
+No dedicated CF client credentials, Auth0 client grant or extra Auth0 callback are needed.
 
 ---
 
 ## 3. Impersonation
 
-Admin impersonation works transparently with this model because SS swaps the **token**, not an
-identity header. CF never needs to know impersonation is happening — it sees a normal `access:me`
-user-issued access token.
+Under Admin Mode, `req.bearerToken` is the **impersonated user's** token, so CF calls run as the
+effective user with no CF-side special handling, consistent with the other SS modules.
 
-The token SS forwards to CF must always represent the **effective user**:
-
-- **Normal:** the logged-in user's own CF-audience access token (from the second auth-code flow).
-- **Impersonating:** a CF-audience token minted for the **target user** and used as the bearer
-  while impersonation is active.
-
-**Requirement:** the CF integration must forward this effective-user token and must **not** use the
-admin's own CF token. Because the forwarded token already represents the effective user, CF's owner
-check and `Principal.Username` resolve correctly with no CF-side special handling.
-
-> Write access under impersonation is a product-level decision, gated on the SS side.
-
-> **Known gap (tracked separately).** The current second auth-code flow authenticates the
-> **logged-in admin** — the resulting CF token is scoped to the admin's identity, not the
-> impersonated user. CF calls during impersonation therefore use the admin's identity. The fix
-> requires running the second auth-code flow (or a token exchange) for the impersonated user's
-> identity — tracked as a separate work item.
+Mutating crowdfunding routes in SS (payment method, subscription cancel, presigned URL, initiative
+PATCH, announcements) are guarded with `blockDuringImpersonation` and return 403
+`IMPERSONATION_READ_ONLY`. Reads are allowed.
 
 ---
 
@@ -137,9 +73,9 @@ check and `Principal.Username` resolve correctly with no CF-side special handlin
 - **Identity migration (OQ-23).** New CF treats the LF SSO username as the canonical user
   identifier; CF handlers key on `Principal.Username`, not the Auth0 `sub`. See
   [`09`](../../../docs/authentication-architecture.md) for how the username claim is sourced.
-- **Heimdall.** CF sits outside the platform API gateway, so SS calls CF directly. The
-  token-forwarding pattern here does not block a future move behind Heimdall. See the Known
-  Deviations section in [`09`](../../../docs/authentication-architecture.md#known-deviations--future-direction).
+- **Heimdall.** SS reaches CF through the platform API gateway (Heimdall), which is what lets it
+  forward its primary LFX v2 token. See the chart's `heimdall` values and
+  [`12`](./12-fga-authorization-model.md) for the FGA checks Heimdall runs.
 
 ---
 

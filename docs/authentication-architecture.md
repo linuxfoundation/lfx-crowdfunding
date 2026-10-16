@@ -37,7 +37,7 @@ These rules, set at the architecture review, constrain every decision in this do
 | **CF Nuxt BFF** | Trusted server | Holds tokens in HTTP-only cookies; proxies requests to CF API |
 | **CF Go API** (`initiatives-api`) | Trusted server | Validates JWTs; the protected resource server |
 | **Auth0** | Identity provider | Issues all tokens; hosts JWKS endpoint. Tenant: `linuxfoundation-{dev,staging}.auth0.com` (dev/staging), `sso.linuxfoundation.org` (prod) |
-| **LFX Self Serve Express BFF** | Trusted server | Proxies user-issued access tokens on behalf of the logged-in user |
+| **LFX Self Serve Express BFF** | Trusted server | Forwards the user's LFX v2 access token to CF through the platform API gateway (Heimdall) |
 | **Reimbursement Service** | Trusted server | M2M caller; uses `access:manage` scope for privileged routes |
 
 **Key principle:** the access token is never exposed to client-side JavaScript. In CF it is stored
@@ -67,7 +67,7 @@ graph TD
     Browser -->|"request + session cookie"| CFBFF
     CFBFF -->|"Bearer user-issued access token\n(access:me scope)"| CFAPI
 
-    SSBFF -->|"Bearer user-issued access token\n(access:me scope)"| CFAPI
+    SSBFF -->|"Bearer LFX v2 user token\nvia Heimdall (lfx-api)"| CFAPI
 
     Reimburse -->|"client_credentials grant\nM2M_CLIENT_ID/SECRET\naudience: CF API audience\naccess:manage scope"| Auth0
     Auth0 -->|"M2M access token\n(access:manage scope, cached ~24h)"| Reimburse
@@ -135,8 +135,8 @@ sequenceDiagram
 ```
 
 The `access:me` scope **must** be in the authorization request — otherwise the resulting access
-token will not carry it and the CF API will reject every protected call with 403. Both the CF
-frontend client and the Self Serve client must request `access:me` on the CF audience.
+token will not carry it and the CF API will reject every protected call with 403. (Self Serve does
+not request a CF-audience token; it goes through Heimdall — see Flow 2.)
 
 ### 1.2 Callback & Token Storage
 
@@ -191,61 +191,40 @@ receives 401 (forcing a new login).
 
 ---
 
-## Flow 2 — Self Serve → CF API (User Token)
+## Flow 2 — Self Serve → CF API (User Token via Heimdall)
 
-Self Serve forwards a **user-issued access token scoped to the CF audience** to the CF API. There
-is no M2M credential and no identity header — the token carries the user's identity via the
-`https://sso.linuxfoundation.org/claims/username` claim, same as the CF frontend.
+Self Serve forwards the **user's own LFX v2 access token** (`req.bearerToken`, from its primary LFX
+One login) to CF through the platform API gateway at `lfx-api.<domain>`, like every other SS module.
+There is no second Auth0 token, no M2M credential and no identity header. Heimdall validates the
+token, applies the route's configured authorization, and forwards a Heimdall-minted JWT to CF,
+which CF accepts alongside Auth0 tokens (dual-accept, LFXV2-3351). Self-scoped `/crowdfunding/me/*`
+routes use `allow_all` and rely on CF scoping the query to the caller's principal; manager routes on
+an initiative or entity use `openfga_check` (see [`12`](../backend/docs/rewrite/12-fga-authorization-model.md)).
 
-Because SS's primary login audience is the LFX V2 cluster (not CF), SS runs a **silent second
-`authorization_code` flow** for the CF audience. This happens on the first top-level navigation to
-a `/crowdfunding/*` page; the resulting token is cached in the server session. The redirect uses
-`prompt=none` so it is invisible to the user when an Auth0 session already exists.
-
-> **Why not a refresh-token exchange?** Auth0 ignores the `audience` parameter on a
-> `grant_type=refresh_token` request and returns the primary LFX V2 cluster token, which CF
-> rejects with 401. The second auth-code flow is the confirmed approach (validated with the LFX
-> platform team, lfx-self-serve PR #901). No auth0-terraform client grant is required — Auth0's
-> `allow_all` policy covers `authorization_code` flows without an explicit grant.
-
-All SS→CF calls are me-style endpoints: `/crowdfunding/me/donations`, `/crowdfunding/me/subscriptions`,
-`/crowdfunding/me/payment-account`, etc. Impersonation is handled entirely on the Self Serve side — CF
-always sees a normal `access:me` user token.
+Impersonation is handled entirely on the Self Serve side: under Admin Mode `req.bearerToken` is the
+impersonated user's token, and SS blocks mutating crowdfunding routes during impersonation.
 
 ```mermaid
 sequenceDiagram
     actor User as Browser
     participant SSBFF as Self Serve Express BFF
+    participant GW as Heimdall (lfx-api)
     participant API as CF Go API
-    participant Auth0
 
-    Note over User,SSBFF: First /crowdfunding/* page load — no CF token in session
-    User->>SSBFF: GET /crowdfunding/... + OIDC session cookie
-    SSBFF->>User: Redirect → Auth0 /authorize<br/>audience: {CF audience}<br/>scope: openid profile access:me<br/>state={nonce}, redirect_uri={absolute callback URL}<br/>prompt=none (silent)
-    User->>Auth0: follow redirect (existing Auth0 session — no UI shown)
-    Auth0->>User: auth code + state → /crowdfunding/callback
-    User->>SSBFF: GET /crowdfunding/callback?code=…&state=…
-    SSBFF->>SSBFF: validate state matches stored nonce (CSRF check)
-    SSBFF->>Auth0: POST /oauth/token<br/>grant_type: authorization_code<br/>code + redirect_uri + client_id/secret
-    Auth0->>SSBFF: CF-audience access token (access:me scope, username claim)
-    SSBFF->>SSBFF: cache token in session (5 min expiry buffer)
-    SSBFF->>User: redirect back to original page
-
-    Note over User,SSBFF: Subsequent XHRs — CF token already in session
     User->>SSBFF: XHR /api/crowdfunding/... + OIDC session cookie
-    SSBFF->>API: GET /crowdfunding/me/…<br/>Authorization: Bearer {CF-audience access token}
-    API->>Auth0: fetch JWKS (cached)
-    API->>API: validate JWT: RS256 · issuer · audience · expiry
-    API->>API: check access:me scope present
-    API->>API: Principal.Username ← username JWT claim
-    API->>SSBFF: 200 response
+    SSBFF->>GW: /crowdfunding/…<br/>Authorization: Bearer {LFX v2 user access token}
+    GW->>GW: validate token · route authorizer<br/>(allow_all or openfga_check)
+    GW->>API: forward with Heimdall-minted JWT<br/>(aud: lfx-crowdfunding-backend, principal: LF username)
+    API->>API: validate Heimdall JWT · Principal.Username ← principal claim
+    API->>GW: 200 response
+    GW->>SSBFF: 200 response
     SSBFF->>User: response
 ```
 
-> **Scope note.** The SS authorization request uses `openid profile access:me` — no `email` or
-> `offline_access`. `email` is omitted because CF fetches profile data from Auth0 `/userinfo` at
-> login sync (not from the token). `offline_access` is omitted because SS does not use a refresh
-> token for CF — token renewal re-runs the silent auth-code flow instead.
+> **History.** SS previously ran a silent second `authorization_code` flow for the CF audience
+> (`/crowdfunding/callback`, `CROWDFUNDING_API_AUDIENCE`, `CROWDFUNDING_REDIRECT_URI`). It was
+> removed in lfx-self-serve#3158 once CF moved behind Heimdall; leftover config was cleaned up in
+> lfx-self-serve#3161.
 
 ---
 
@@ -414,10 +393,8 @@ need **no** client grant — `access:me` is consented when the user logs in inte
 **CF frontend (Nuxt BFF)** — no client grant. Logs in with the CF audience as its primary
 `audience` parameter and forwards `req.bearerToken` directly to CF.
 
-**Self Serve** — no client grant needed. SS uses a silent second `authorization_code` flow for the
-CF audience (see Flow 2). Auth0's `allow_all` policy covers `authorization_code` flows without an
-explicit client grant, so no terraform change is required. The resulting token is user-scoped —
-it carries the user's identity (`access:me` scope, username claim).
+**Self Serve** — no client grant and no extra callback. SS forwards its primary LFX v2 token
+through Heimdall (see Flow 2).
 
 **Reimbursement Service** — the only M2M client grant, for `access:manage` access:
 
@@ -464,16 +441,11 @@ rather than the LFX secrets-distribution pipeline.
 
 ### LFX Self Serve (Express BFF)
 
-No M2M credentials needed for CF. The token forwarded is a user-issued access token obtained via
-a silent second `authorization_code` flow for the CF audience — not a service credential.
-The LFX One app client (`PCC_AUTH0_CLIENT_ID` / `PCC_AUTH0_CLIENT_SECRET`) is reused; no
-dedicated CF client credentials are needed.
+No CF-specific credentials. SS forwards the user's LFX v2 token (`req.bearerToken`) through Heimdall.
 
 | Env var | Purpose | Example value (staging) |
 |---|---|---|
-| `CROWDFUNDING_API_BASE_URL` | CF API base URL | `https://crowdfunding-api.staging.lfx.dev` |
-| `CROWDFUNDING_API_AUDIENCE` | CF resource server identifier — used as `audience` in the auth-code flow | `https://crowdfunding-api.staging.lfx.dev` |
-| `CROWDFUNDING_REDIRECT_URI` | Auth0 callback URL for the second auth-code flow — defaults to `{PCC_BASE_URL}/crowdfunding/callback` if unset | not set in ArgoCD (default used) |
+| `CROWDFUNDING_API_BASE_URL` | Platform API gateway base URL that fronts CF | `https://lfx-api.staging.v2.cluster.linuxfound.info` |
 
 ### Reimbursement Service
 
