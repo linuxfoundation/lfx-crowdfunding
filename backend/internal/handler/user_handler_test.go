@@ -148,32 +148,42 @@ func TestSyncProfile_Success(t *testing.T) {
 	}
 }
 
-// testMetadataLookup is a configurable UserMetadataLookup stub.
-type testMetadataLookup struct {
-	md  *clients.UserMetadata
-	err error
+// testProfileLookup is a configurable ProfileLookup stub.
+type testProfileLookup struct {
+	md          *clients.UserMetadata
+	mdErr       error
+	email       string
+	emailErr    error
+	emailCalled bool
 }
 
-func (l *testMetadataLookup) UserMetadata(_ context.Context, _ string) (*clients.UserMetadata, error) {
-	return l.md, l.err
+func (l *testProfileLookup) UserMetadata(_ context.Context, _ string) (*clients.UserMetadata, error) {
+	return l.md, l.mdErr
 }
 
+func (l *testProfileLookup) PrimaryEmail(_ context.Context, _ string) (string, error) {
+	l.emailCalled = true
+	return l.email, l.emailErr
+}
+
+// heimdallSyncPrincipal matches what the gateway sends on /me: the rule skips
+// the OIDC contextualizer, so the Heimdall token carries no email.
 func heimdallSyncPrincipal() *models.Principal {
 	return &models.Principal{
 		UserID:           "auth0|jdoe",
 		Username:         "jdoe",
-		Email:            "jdoe@example.com",
 		Scope:            auth.ScopeMe,
 		IsHeimdallIssued: true,
 	}
 }
 
-func TestSyncProfile_HeimdallIssued_UpsertsTokenEmailAndAuthServiceName(t *testing.T) {
+func TestSyncProfile_HeimdallIssued_FillsProfileFromAuthService(t *testing.T) {
 	repo := &testUserRepo{}
 	fetcher := &testUserInfoFetcher{err: errors.New("must not be called")}
-	lookup := &testMetadataLookup{md: &clients.UserMetadata{
-		Name: "John Doe", GivenName: "John", FamilyName: "Doe", Picture: "https://example.com/pic.jpg",
-	}}
+	lookup := &testProfileLookup{
+		email: "jdoe@example.com",
+		md:    &clients.UserMetadata{Name: "John Doe", GivenName: "John", FamilyName: "Doe", Picture: "https://example.com/pic.jpg"},
+	}
 	h := NewUserHandler(repo, fetcher, lookup, slog.Default())
 
 	w := httptest.NewRecorder()
@@ -191,10 +201,31 @@ func TestSyncProfile_HeimdallIssued_UpsertsTokenEmailAndAuthServiceName(t *testi
 	}
 }
 
-func TestSyncProfile_HeimdallIssued_LookupFailureStillSyncsEmail(t *testing.T) {
-	for name, lookup := range map[string]UserMetadataLookup{
-		"lookup error": &testMetadataLookup{err: errors.New("nats timeout")},
-		"no lookup":    nil,
+func TestSyncProfile_HeimdallIssued_PrefersTokenEmail(t *testing.T) {
+	repo := &testUserRepo{}
+	lookup := &testProfileLookup{email: "other@example.com", md: &clients.UserMetadata{}}
+	h := NewUserHandler(repo, &testUserInfoFetcher{err: errors.New("must not be called")}, lookup, slog.Default())
+
+	principal := heimdallSyncPrincipal()
+	principal.Email = "token@example.com"
+	w := httptest.NewRecorder()
+	h.SyncProfile(w, newSyncProfileRequest(principal))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if lookup.emailCalled {
+		t.Error("PrimaryEmail called although the token carried an email")
+	}
+	if got := repo.lastUpserted; got == nil || got.Email != "token@example.com" {
+		t.Errorf("upserted = %+v, want token email", got)
+	}
+}
+
+func TestSyncProfile_HeimdallIssued_LookupFailureStillSyncs(t *testing.T) {
+	for name, lookup := range map[string]ProfileLookup{
+		"lookup errors": &testProfileLookup{emailErr: errors.New("nats timeout"), mdErr: errors.New("nats timeout")},
+		"no lookup":     nil,
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo := &testUserRepo{}
@@ -206,7 +237,7 @@ func TestSyncProfile_HeimdallIssued_LookupFailureStillSyncsEmail(t *testing.T) {
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200", w.Code)
 			}
-			want := models.User{Username: "jdoe", Email: "jdoe@example.com"}
+			want := models.User{Username: "jdoe"}
 			if got := repo.lastUpserted; got == nil || *got != want {
 				t.Errorf("upserted = %+v, want %+v", got, want)
 			}

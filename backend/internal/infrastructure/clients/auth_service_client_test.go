@@ -5,6 +5,7 @@ package clients
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -54,5 +55,33 @@ func TestAuthServiceClientUserMetadata_Errors(t *testing.T) {
 				t.Fatal("want error")
 			}
 		})
+	}
+}
+
+func TestAuthServiceClientPrimaryEmail(t *testing.T) {
+	stub := &authRequesterStub{reply: []byte(`{"success":true,"data":{"primary_email":"jdoe@example.com","alternate_emails":[]}}`)}
+
+	email, err := NewAuthServiceClient(stub).PrimaryEmail(context.Background(), "jdoe")
+	if err != nil {
+		t.Fatalf("PrimaryEmail: %v", err)
+	}
+	if email != "jdoe@example.com" {
+		t.Fatalf("email = %q", email)
+	}
+	var req struct {
+		User struct {
+			AuthToken string `json:"auth_token"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal([]byte(stub.data), &req); err != nil || stub.subject != userEmailsReadSubject || req.User.AuthToken != "jdoe" {
+		t.Fatalf("request = %q %q (%v)", stub.subject, stub.data, err)
+	}
+}
+
+func TestAuthServiceClientPrimaryEmail_Empty(t *testing.T) {
+	stub := &authRequesterStub{reply: []byte(`{"success":true,"data":{"primary_email":""}}`)}
+
+	if _, err := NewAuthServiceClient(stub).PrimaryEmail(context.Background(), "jdoe"); err == nil {
+		t.Fatal("want error for empty primary_email")
 	}
 }

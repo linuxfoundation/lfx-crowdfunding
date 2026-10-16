@@ -190,13 +190,14 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			return nil, fmt.Errorf("userinfo client: %w", err)
 		}
 	}
-	// Heimdall tokens carry no name claim, so login sync reads it from
-	// auth-service on the same NATS connection (lfx-crowdfunding#387).
-	var metadataLookup handler.UserMetadataLookup
+	// Heimdall tokens on /me carry no name (and usually no email), so login
+	// sync reads them from auth-service on the same NATS connection
+	// (lfx-crowdfunding#387).
+	var profileLookup handler.ProfileLookup
 	if fgaConn != nil {
-		metadataLookup = clients.NewAuthServiceClient(fgaConn)
+		profileLookup = clients.NewAuthServiceClient(fgaConn)
 	}
-	userH := handler.NewUserHandler(userRepo, userInfoFetcher, metadataLookup, logger)
+	userH := handler.NewUserHandler(userRepo, userInfoFetcher, profileLookup, logger)
 
 	// Router
 	r := chi.NewRouter()

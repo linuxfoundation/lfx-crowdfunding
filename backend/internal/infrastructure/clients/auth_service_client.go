@@ -17,9 +17,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// userMetadataReadSubject is lfx-v2-auth-service's profile lookup. It takes a
-// bare username (or sub, or token) as the payload, not JSON.
-const userMetadataReadSubject = "lfx.auth-service.user_metadata.read"
+// lfx-v2-auth-service profile subjects. Both accept a bare username as the
+// user identifier; user_metadata.read takes it as the raw payload.
+const (
+	userMetadataReadSubject = "lfx.auth-service.user_metadata.read"
+	userEmailsReadSubject   = "lfx.auth-service.user_emails.read"
+)
 
 // authServiceTimeout bounds one lookup. It runs inline in the login sync, so a
 // stalled auth-service must not hold the request for long.
@@ -52,46 +55,74 @@ func NewAuthServiceClient(conn AuthServiceRequester) *AuthServiceClient {
 
 // UserMetadata returns the profile auth-service holds for username.
 func (c *AuthServiceClient) UserMetadata(ctx context.Context, username string) (*UserMetadata, error) {
-	ctx, span := authServiceTracer.Start(ctx, "nats.request "+userMetadataReadSubject,
+	var md UserMetadata
+	if err := c.request(ctx, userMetadataReadSubject, []byte(username), &md); err != nil {
+		return nil, err
+	}
+	return &md, nil
+}
+
+// PrimaryEmail returns the primary email auth-service holds for username.
+// Only call it for the authenticated user's own username: auth-service does not
+// authorize username lookups itself.
+func (c *AuthServiceClient) PrimaryEmail(ctx context.Context, username string) (string, error) {
+	payload, err := json.Marshal(map[string]any{"user": map[string]string{"auth_token": username}})
+	if err != nil {
+		return "", fmt.Errorf("marshal user_emails request: %w", err)
+	}
+	var data struct {
+		PrimaryEmail string `json:"primary_email"`
+	}
+	if err := c.request(ctx, userEmailsReadSubject, payload, &data); err != nil {
+		return "", err
+	}
+	if data.PrimaryEmail == "" {
+		return "", errors.New("auth-service user_emails: no primary_email")
+	}
+	return data.PrimaryEmail, nil
+}
+
+// request sends payload to subject and decodes the reply's data into out.
+func (c *AuthServiceClient) request(ctx context.Context, subject string, payload []byte, out any) (err error) {
+	ctx, span := authServiceTracer.Start(ctx, "nats.request "+subject,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("messaging.system", "nats"),
-			attribute.String("messaging.destination.name", userMetadataReadSubject),
+			attribute.String("messaging.destination.name", subject),
 		),
 	)
-	defer span.End()
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+	}()
 
-	md, err := c.request(ctx, username)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, err
-	}
-	return md, nil
-}
-
-func (c *AuthServiceClient) request(ctx context.Context, username string) (*UserMetadata, error) {
 	ctx, cancel := context.WithTimeout(ctx, authServiceTimeout)
 	defer cancel()
 
-	reply, err := c.conn.RequestWithContext(ctx, userMetadataReadSubject, []byte(username))
+	reply, err := c.conn.RequestWithContext(ctx, subject, payload)
 	if err != nil {
-		return nil, fmt.Errorf("auth-service user_metadata request: %w", err)
+		return fmt.Errorf("auth-service %s request: %w", subject, err)
 	}
 
 	var resp struct {
-		Success bool          `json:"success"`
-		Error   string        `json:"error"`
-		Data    *UserMetadata `json:"data"`
+		Success bool            `json:"success"`
+		Error   string          `json:"error"`
+		Data    json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(reply.Data, &resp); err != nil {
-		return nil, fmt.Errorf("decode auth-service user_metadata reply: %w", err)
+		return fmt.Errorf("decode auth-service %s reply: %w", subject, err)
 	}
 	if !resp.Success {
-		return nil, fmt.Errorf("auth-service user_metadata: %s", resp.Error)
+		return fmt.Errorf("auth-service %s: %s", subject, resp.Error)
 	}
-	if resp.Data == nil {
-		return nil, errors.New("auth-service user_metadata: no data")
+	if len(resp.Data) == 0 || string(resp.Data) == "null" {
+		return fmt.Errorf("auth-service %s: no data", subject)
 	}
-	return resp.Data, nil
+	if err := json.Unmarshal(resp.Data, out); err != nil {
+		return fmt.Errorf("decode auth-service %s data: %w", subject, err)
+	}
+	return nil
 }
