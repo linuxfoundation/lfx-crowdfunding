@@ -142,8 +142,8 @@ func (h *UserHandler) heimdallProfile(ctx context.Context, principal *models.Pri
 	}
 	md, err := h.metadataLookup.UserMetadata(ctx, principal.Username)
 	if err != nil {
-		h.logger.WarnContext(ctx, "auth-service profile lookup failed; syncing without name",
-			"username", principal.Username, "error", err)
+		// No username attribute: the request/trace ID identifies the call.
+		h.logger.WarnContext(ctx, "auth-service profile lookup failed; syncing without name", "error", err)
 		return user
 	}
 	user.Name = md.Name
