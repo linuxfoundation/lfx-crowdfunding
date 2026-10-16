@@ -23,7 +23,9 @@ LFX v2 services. There is no second token, no M2M token and no identity header.
 User action in SS that needs CF data
   └─ SS BFF proxies to {CROWDFUNDING_API_BASE_URL}/crowdfunding/...   (lfx-api.<domain>)
        Authorization: Bearer {LFX v2 user access token}
-  └─ Heimdall validates the token, runs the route's openfga_check, and forwards
+  └─ Heimdall validates the token, applies the route's authorizer (allow_all for
+       self-scoped /crowdfunding/me/* routes, openfga_check for manager routes on
+       an initiative or entity), and forwards
        a Heimdall-minted JWT (aud = lfx-crowdfunding-backend, principal = LF username) to CF
   └─ CF accepts the Heimdall-issued token (dual-accept, LFXV2-3351) and keys
        Principal.Username on the `principal` claim

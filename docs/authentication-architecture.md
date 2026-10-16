@@ -196,8 +196,10 @@ receives 401 (forcing a new login).
 Self Serve forwards the **user's own LFX v2 access token** (`req.bearerToken`, from its primary LFX
 One login) to CF through the platform API gateway at `lfx-api.<domain>`, like every other SS module.
 There is no second Auth0 token, no M2M credential and no identity header. Heimdall validates the
-token, runs the route's OpenFGA check, and forwards a Heimdall-minted JWT to CF, which CF accepts
-alongside Auth0 tokens (dual-accept, LFXV2-3351).
+token, applies the route's configured authorization, and forwards a Heimdall-minted JWT to CF,
+which CF accepts alongside Auth0 tokens (dual-accept, LFXV2-3351). Self-scoped `/crowdfunding/me/*`
+routes use `allow_all` and rely on CF scoping the query to the caller's principal; manager routes on
+an initiative or entity use `openfga_check` (see [`12`](../backend/docs/rewrite/12-fga-authorization-model.md)).
 
 Impersonation is handled entirely on the Self Serve side: under Admin Mode `req.bearerToken` is the
 impersonated user's token, and SS blocks mutating crowdfunding routes during impersonation.
@@ -211,7 +213,7 @@ sequenceDiagram
 
     User->>SSBFF: XHR /api/crowdfunding/... + OIDC session cookie
     SSBFF->>GW: /crowdfunding/…<br/>Authorization: Bearer {LFX v2 user access token}
-    GW->>GW: validate token · openfga_check for the route
+    GW->>GW: validate token · route authorizer<br/>(allow_all or openfga_check)
     GW->>API: forward with Heimdall-minted JWT<br/>(aud: lfx-crowdfunding-backend, principal: LF username)
     API->>API: validate Heimdall JWT · Principal.Username ← principal claim
     API->>GW: 200 response
