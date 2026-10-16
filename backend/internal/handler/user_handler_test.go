@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 )
 
 // ── stubs ─────────────────────────────────────────────────────────────────────
@@ -94,7 +96,7 @@ func TestSyncProfile_Success(t *testing.T) {
 		FamilyName: "Doe",
 		Picture:    "https://example.com/pic.jpg",
 	}}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	principal := &models.Principal{
 		UserID:   "auth0|abc123",
@@ -146,33 +148,69 @@ func TestSyncProfile_Success(t *testing.T) {
 	}
 }
 
-func TestSyncProfile_HeimdallIssued_SkipsUserInfoAndUpsertsUsernameOnly(t *testing.T) {
-	want := &models.User{ID: "uuid-1", Username: "jdoe"}
-	repo := &testUserRepo{upsertResult: want}
-	fetcher := &testUserInfoFetcher{err: errors.New("must not be called")}
-	h := NewUserHandler(repo, fetcher)
+// testMetadataLookup is a configurable UserMetadataLookup stub.
+type testMetadataLookup struct {
+	md  *clients.UserMetadata
+	err error
+}
 
-	principal := &models.Principal{
+func (l *testMetadataLookup) UserMetadata(_ context.Context, _ string) (*clients.UserMetadata, error) {
+	return l.md, l.err
+}
+
+func heimdallSyncPrincipal() *models.Principal {
+	return &models.Principal{
+		UserID:           "auth0|jdoe",
 		Username:         "jdoe",
+		Email:            "jdoe@example.com",
 		Scope:            auth.ScopeMe,
 		IsHeimdallIssued: true,
 	}
+}
+
+func TestSyncProfile_HeimdallIssued_UpsertsTokenEmailAndAuthServiceName(t *testing.T) {
+	repo := &testUserRepo{}
+	fetcher := &testUserInfoFetcher{err: errors.New("must not be called")}
+	lookup := &testMetadataLookup{md: &clients.UserMetadata{
+		Name: "John Doe", GivenName: "John", FamilyName: "Doe", Picture: "https://example.com/pic.jpg",
+	}}
+	h := NewUserHandler(repo, fetcher, lookup, slog.Default())
 
 	w := httptest.NewRecorder()
-	h.SyncProfile(w, newSyncProfileRequest(principal))
+	h.SyncProfile(w, newSyncProfileRequest(heimdallSyncPrincipal()))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	got := repo.lastUpserted
-	if got == nil {
-		t.Fatal("Upsert was not called")
+	want := models.User{
+		Username: "jdoe", Email: "jdoe@example.com",
+		Name: "John Doe", GivenName: "John", FamilyName: "Doe", AvatarURL: "https://example.com/pic.jpg",
 	}
-	if got.Username != "jdoe" {
-		t.Errorf("Username = %q, want %q", got.Username, "jdoe")
+	if got := repo.lastUpserted; got == nil || *got != want {
+		t.Errorf("upserted = %+v, want %+v", got, want)
 	}
-	if got.Email != "" || got.Name != "" || got.GivenName != "" || got.FamilyName != "" || got.AvatarURL != "" || got.LegacyUserID != "" {
-		t.Errorf("expected only Username to be set, got %+v", got)
+}
+
+func TestSyncProfile_HeimdallIssued_LookupFailureStillSyncsEmail(t *testing.T) {
+	for name, lookup := range map[string]UserMetadataLookup{
+		"lookup error": &testMetadataLookup{err: errors.New("nats timeout")},
+		"no lookup":    nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := &testUserRepo{}
+			h := NewUserHandler(repo, &testUserInfoFetcher{err: errors.New("must not be called")}, lookup, slog.Default())
+
+			w := httptest.NewRecorder()
+			h.SyncProfile(w, newSyncProfileRequest(heimdallSyncPrincipal()))
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", w.Code)
+			}
+			want := models.User{Username: "jdoe", Email: "jdoe@example.com"}
+			if got := repo.lastUpserted; got == nil || *got != want {
+				t.Errorf("upserted = %+v, want %+v", got, want)
+			}
+		})
 	}
 }
 
@@ -182,7 +220,7 @@ func TestSyncProfile_MockBypass_SkipsBindingForSeededRow(t *testing.T) {
 	seeded := &models.User{ID: "uuid-1", Username: "dev-user-001", LegacyUserID: "auth0|dev-user-001"}
 	repo := &testUserRepo{upsertResult: seeded}
 	fetcher := &testUserInfoFetcher{err: errors.New("must not be called")}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	principal := &models.Principal{
 		UserID:       "dev-user-001",
@@ -204,7 +242,7 @@ func TestSyncProfile_MockBypass_SkipsBindingForSeededRow(t *testing.T) {
 
 func TestSyncProfile_NoPrincipal_Returns401(t *testing.T) {
 	repo := &testUserRepo{}
-	h := NewUserHandler(repo, &testUserInfoFetcher{})
+	h := NewUserHandler(repo, &testUserInfoFetcher{}, nil, slog.Default())
 
 	w := httptest.NewRecorder()
 	h.SyncProfile(w, newSyncProfileRequest(nil))
@@ -219,7 +257,7 @@ func TestSyncProfile_NoPrincipal_Returns401(t *testing.T) {
 
 func TestSyncProfile_EmptyUsername_Returns401(t *testing.T) {
 	repo := &testUserRepo{}
-	h := NewUserHandler(repo, &testUserInfoFetcher{})
+	h := NewUserHandler(repo, &testUserInfoFetcher{}, nil, slog.Default())
 
 	// A principal with no username (e.g. non-SSO token) must be rejected.
 	principal := &models.Principal{UserID: "auth0|abc"}
@@ -239,7 +277,7 @@ func TestSyncProfile_UserInfoUnknownError_Returns500(t *testing.T) {
 	repo := &testUserRepo{}
 	// A generic (non-sentinel) error from the fetcher should surface as 500.
 	fetcher := &testUserInfoFetcher{err: errors.New("unexpected decode failure")}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	principal := &models.Principal{
 		UserID:   "auth0|abc",
@@ -263,7 +301,7 @@ func TestSyncProfile_UserInfoTokenRejected_Returns401(t *testing.T) {
 	// client knows to re-authenticate rather than retrying.
 	repo := &testUserRepo{}
 	fetcher := &testUserInfoFetcher{err: fmt.Errorf("%w: HTTP 401", auth.ErrUserInfoTokenRejected)}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	principal := &models.Principal{UserID: "auth0|abc", Username: "jdoe", Scope: auth.ScopeMe}
 
@@ -279,7 +317,7 @@ func TestSyncProfile_UserInfoUnavailable_Returns503(t *testing.T) {
 	// Auth0 UserInfo returned 5xx or was unreachable — handler must return 503.
 	repo := &testUserRepo{}
 	fetcher := &testUserInfoFetcher{err: fmt.Errorf("%w: HTTP 503", auth.ErrUserInfoUnavailable)}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	principal := &models.Principal{UserID: "auth0|abc", Username: "jdoe", Scope: auth.ScopeMe}
 
@@ -299,7 +337,7 @@ func TestSyncProfile_SubMismatch_Returns401(t *testing.T) {
 		Username: "otheruser",
 		Email:    "other@example.com",
 	}}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	principal := &models.Principal{
 		UserID:   "auth0|abc123",
@@ -327,7 +365,7 @@ func TestSyncProfile_EmptySub_Returns401(t *testing.T) {
 		Username: "jdoe",
 		Email:    "jdoe@example.com",
 	}}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	principal := &models.Principal{UserID: "auth0|abc123", Username: "jdoe", Scope: auth.ScopeMe}
 
@@ -344,7 +382,7 @@ func TestSyncProfile_EmptySub_Returns401(t *testing.T) {
 
 func TestSyncProfile_MissingAuthHeader_Returns401(t *testing.T) {
 	repo := &testUserRepo{}
-	h := NewUserHandler(repo, &testUserInfoFetcher{})
+	h := NewUserHandler(repo, &testUserInfoFetcher{}, nil, slog.Default())
 
 	// Principal is present but the Authorization header was stripped (e.g. by
 	// a proxy that only forwards the principal context, not the raw token).
@@ -367,7 +405,7 @@ func TestSyncProfile_MissingAuthHeader_Returns401(t *testing.T) {
 func TestSyncProfile_RepoError_Returns500(t *testing.T) {
 	repo := &testUserRepo{upsertErr: errors.New("db unavailable")}
 	fetcher := &testUserInfoFetcher{info: &auth.UserInfo{Sub: "auth0|abc", Username: "jdoe", Email: "jdoe@example.com"}}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	principal := &models.Principal{
 		UserID:   "auth0|abc",
@@ -388,7 +426,7 @@ func TestSyncProfile_RepoError_Returns500(t *testing.T) {
 func TestSyncProfile_RowBoundToOtherIdentity_Returns403(t *testing.T) {
 	repo := &testUserRepo{upsertResult: &models.User{ID: "uuid-1", Username: "456789", LegacyUserID: "github|456789"}}
 	fetcher := &testUserInfoFetcher{info: &auth.UserInfo{Sub: "auth0|attacker", Username: "456789"}}
-	h := NewUserHandler(repo, fetcher)
+	h := NewUserHandler(repo, fetcher, nil, slog.Default())
 
 	w := httptest.NewRecorder()
 	h.SyncProfile(w, newSyncProfileRequest(&models.Principal{UserID: "auth0|attacker", Username: "456789", Scope: auth.ScopeMe}))

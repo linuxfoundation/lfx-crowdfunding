@@ -4,24 +4,34 @@
 package handler
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/auth"
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 )
+
+// UserMetadataLookup reads a user's profile by username (auth-service over NATS).
+type UserMetadataLookup interface {
+	UserMetadata(ctx context.Context, username string) (*clients.UserMetadata, error)
+}
 
 // UserHandler holds Chi handlers for the /crowdfunding/me resource.
 type UserHandler struct {
 	userRepo        domain.UserRepository
 	userInfoFetcher auth.UserInfoFetcher
+	metadataLookup  UserMetadataLookup // nil when FGA_NATS_URL is unset
+	logger          *slog.Logger
 }
 
-// NewUserHandler creates a UserHandler.
-func NewUserHandler(userRepo domain.UserRepository, fetcher auth.UserInfoFetcher) *UserHandler {
-	return &UserHandler{userRepo: userRepo, userInfoFetcher: fetcher}
+// NewUserHandler creates a UserHandler. lookup may be nil.
+func NewUserHandler(userRepo domain.UserRepository, fetcher auth.UserInfoFetcher, lookup UserMetadataLookup, logger *slog.Logger) *UserHandler {
+	return &UserHandler{userRepo: userRepo, userInfoFetcher: fetcher, metadataLookup: lookup, logger: logger}
 }
 
 // SyncProfile handles PATCH /crowdfunding/me.
@@ -35,9 +45,10 @@ func NewUserHandler(userRepo domain.UserRepository, fetcher auth.UserInfoFetcher
 // Heimdall-issued tokens (LFXV2-3351) are minted by Heimdall's create_jwt
 // finalizer and replace the original Auth0 access token before it reaches this
 // service, so Auth0 rejects them if forwarded to UserInfo. For those, skip the
-// UserInfo call and upsert only the identity fields we already trust from the
-// validated token; Upsert preserves any previously-synced profile fields
-// (email/name/avatar) instead of blanking them out. The local mock-bypass
+// UserInfo call: take the email from the validated token (Heimdall only mints
+// it when verified) and the name/avatar from auth-service, best-effort (#387).
+// Upsert preserves any previously-synced profile field the sync leaves empty
+// instead of blanking it out. The local mock-bypass
 // principal takes the same path: its UserID is the bare username, not an Auth0
 // sub, so it must not be bound as a legacy_user_id.
 func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +59,7 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if principal.IsHeimdallIssued || principal.IsMockBypass {
-		result, err := h.userRepo.Upsert(r.Context(), &models.User{Username: principal.Username})
+		result, err := h.userRepo.Upsert(r.Context(), h.heimdallProfile(r.Context(), principal))
 		if err != nil {
 			Error(w, err)
 			return
@@ -120,4 +131,24 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSON(w, http.StatusOK, result)
+}
+
+// heimdallProfile builds the user for a Heimdall or mock-bypass principal. A
+// failed auth-service lookup only costs the name fields; it never fails the sync.
+func (h *UserHandler) heimdallProfile(ctx context.Context, principal *models.Principal) *models.User {
+	user := &models.User{Username: principal.Username, Email: principal.Email}
+	if h.metadataLookup == nil {
+		return user
+	}
+	md, err := h.metadataLookup.UserMetadata(ctx, principal.Username)
+	if err != nil {
+		h.logger.WarnContext(ctx, "auth-service profile lookup failed; syncing without name",
+			"username", principal.Username, "error", err)
+		return user
+	}
+	user.Name = md.Name
+	user.GivenName = md.GivenName
+	user.FamilyName = md.FamilyName
+	user.AvatarURL = md.Picture
+	return user
 }
