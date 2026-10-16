@@ -351,10 +351,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// Versioning, when needed, is a `v` query parameter (see
 	// lfx-v2-helm/docs/entity-design.md and e.g. /query/resources?v=1).
 	r.Route("/crowdfunding", apiRoutes)
-	// TODO(v1-namespace): interim /v1 prefix kept while existing consumers migrate to /crowdfunding/*.
-	// Remove once the CF frontend, Self-Serve, and the registered Stripe
-	// webhook URL are all switched over (see docs/rewrite/02-decisions.md).
-	r.Route("/v1", apiRoutes)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{

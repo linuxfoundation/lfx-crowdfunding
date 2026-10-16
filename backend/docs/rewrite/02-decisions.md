@@ -133,7 +133,7 @@ Ledger-derived financial data is stored in the `initiative_ledger_stats` table (
 
 The `initiative_stats` table that existed in an earlier schema version has been removed entirely. `initiative_ledger_stats` is its replacement — see the `initiative_stats` removal entry in this document.
 
-The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
+The Stripe webhook handler (`POST /crowdfunding/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
 **Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
 
@@ -251,7 +251,7 @@ Rationale — this is the established LFX v2 gateway convention:
 - Path namespacing is load-bearing for authorization: Heimdall rule sets and the gateway `HTTPRoute` match on the path prefix, and the default rule is deny-all. A service-owned prefix keeps CF's rules scoped to CF.
 - Health endpoints (`/livez`, `/readyz`) stay at the bare root — the k8s convention across all v2 services — and are deliberately not exposed through the gateway.
 
-Transition: the router dual-mounts the same handlers under `/crowdfunding/*` (canonical) and `/v1/*` (interim) for one release, so the CF frontend, Self Serve, and the registered Stripe webhook URL can migrate without a breakage window. The interim mount is tagged `TODO(v1-namespace)` per the cleanup convention below.
+Transition: the router dual-mounted the same handlers under `/crowdfunding/*` (canonical) and `/v1/*` (interim), so the CF frontend, Self Serve, the Reimbursement Service, and the registered Stripe webhook URL could migrate without a breakage window. Once every consumer had moved and Datadog showed no `/v1/*` traffic, the interim mount was removed ([#291](https://github.com/linuxfoundation/lfx-crowdfunding/issues/291)).
 
 ### URLs
 
@@ -283,14 +283,13 @@ Tags go on the first line of the relevant handler, function, or block — not on
 | `TODO(ledger-k8s)` | Ledger Service migrated to Kubernetes and updated to call `/crowdfunding/initiatives/{id}` | `GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}` legacy shim handlers and their middleware |
 | `TODO(rs-k8s)` | Reimbursement Service migrated to Kubernetes | Internal RS-facing HTTP endpoints, any RS-specific auth middleware, OpenSearch queue writes |
 | `TODO(post-cutover)` | Old LFF Lambda stack decommissioned | DynamoDB string ID → UUID resolution fallback in any endpoint that accepts legacy IDs; `source_dynamo_table` column and any code that reads it |
-| `TODO(v1-namespace)` | CF frontend, Self Serve, and the Stripe webhook URL all call `/crowdfunding/*` | The interim `r.Route("/v1", apiRoutes)` mount in `cmd/initiatives-api/server.go` |
 
 Add new labels to this table when new temporary code is introduced. Each label must have a named trigger (a concrete event, not "someday") and a named owner or Jira epic if one exists.
 
 ### Finding all cleanup points
 
 ```bash
-grep -rn 'TODO(' cmd/ internal/ | grep -E 'TODO\((ledger-k8s|rs-k8s|post-cutover|v1-namespace)\)'
+grep -rn 'TODO(' cmd/ internal/ | grep -E 'TODO\((ledger-k8s|rs-k8s|post-cutover)\)'
 ```
 
 Run this after each follow-on milestone to find what can now be deleted.
