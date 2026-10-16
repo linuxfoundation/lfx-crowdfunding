@@ -104,7 +104,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full system diagram a
 | Ledger Service | CF → Ledger (read-only) | Balance and transaction data |
 | Ledger Service | Ledger → CF | Donation email callbacks (`GET /v1/projects/{id}`) |
 | Reimbursement Service | Bidirectional | Expense policy management, beneficiary lifecycle |
-| Mandrill | CF → Mandrill | Transactional email (approvals, rejections, invoices) |
+| lfx-v2-email-service | CF → email-service (NATS) | Transactional email (review, approval, decline, donation receipts); templates live in `backend/internal/infrastructure/clients/email_templates/` |
 | GitHub | CF → GitHub | Repo stats, OAuth for project creation |
 | Snowflake | Snowflake → CF | Mentorship program sync (inbound CronJob) |
 | Snowflake | CF → Snowflake | Fivetran CF→Snowflake sync for LFX Self Serve |

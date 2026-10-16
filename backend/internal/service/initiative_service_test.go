@@ -1161,7 +1161,7 @@ func TestCreate_ForReviewEmail_EmailErrorIsNonFatal(t *testing.T) {
 	userRepo := &mockUserRepository{
 		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
-	emailSvc := &mockEmailService{err: errors.New("mandrill down")}
+	emailSvc := &mockEmailService{err: errors.New("email service down")}
 
 	svc := newCreateSvcWithEmail(repo, userRepo, emailSvc)
 	_, err := svc.Create(
@@ -1367,7 +1367,7 @@ func TestProcessApproval_EmailErrorIsNonFatal(t *testing.T) {
 	userRepo := &mockUserRepository{
 		user: &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "owner-1", Email: "owner@example.com", Name: "Alice"},
 	}
-	emailSvc := &mockEmailService{err: errors.New("mandrill down")}
+	emailSvc := &mockEmailService{err: errors.New("email service down")}
 
 	svc := newProcessApprovalSvcWithEmail(repo, userRepo, emailSvc)
 	_, err := svc.ProcessApproval(context.Background(), "init-1", models.ApprovalActionApprove)
