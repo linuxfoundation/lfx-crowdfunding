@@ -3,15 +3,17 @@
 
 import type { BackendInitiative } from '../../../types/initiatives.types';
 import type { BackendAnnouncementList } from '../../../types/announcements.types';
+import { useBackendFetch } from '../../../utils/backend-fetch';
 import type { AnnouncementList } from '#shared/types/announcement.types';
 
 export default defineEventHandler(async (event): Promise<AnnouncementList> => {
   const slug = getRouterParam(event, 'slug');
   const { limit, offset } = getQuery(event);
-  const { apiBaseUrl } = useRuntimeConfig();
 
-  const initiative = await $fetch<BackendInitiative>(
-    `${apiBaseUrl}/crowdfunding/initiatives/${slug}`,
+  // Authenticated lookup so approvers and owners can resolve non-published initiatives.
+  const initiative = await useBackendFetch<BackendInitiative>(
+    event,
+    `/crowdfunding/initiatives/${slug}`,
   ).catch(() => {
     throw createError({ statusCode: 404, statusMessage: 'Initiative not found' });
   });
@@ -21,8 +23,9 @@ export default defineEventHandler(async (event): Promise<AnnouncementList> => {
   if (offset) params.set('offset', String(offset));
   const qs = params.toString() ? `?${params}` : '';
 
-  const raw = await $fetch<BackendAnnouncementList>(
-    `${apiBaseUrl}/crowdfunding/initiatives/${initiative.id}/announcements${qs}`,
+  const raw = await useBackendFetch<BackendAnnouncementList>(
+    event,
+    `/crowdfunding/initiatives/${initiative.id}/announcements${qs}`,
   );
 
   return {

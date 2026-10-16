@@ -215,7 +215,7 @@ export const formatDate = (date: string, format: string = 'short'): string => {
     return '';
   }
   if (format === 'short') {
-    return dateTime.toLocaleString(DateTime.DATE_SHORT);
+    return dateTime.setLocale('en-US').toLocaleString(DateTime.DATE_SHORT);
   }
   return dateTime.toFormat(format);
 };

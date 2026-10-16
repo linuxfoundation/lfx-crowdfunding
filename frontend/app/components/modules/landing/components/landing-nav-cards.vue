@@ -51,7 +51,7 @@ const { data: stats } = useStatisticsOverview();
 const statisticsTagline = computed(() => {
   if (!stats.value) return navCards.find((c) => c.id === 'statistics')?.tagline ?? '';
   const raised = `$${(stats.value.totalRaisedCents / 100 / 1_000_000).toFixed(1)}M`;
-  const supporters = stats.value.supporterCount.toLocaleString();
+  const supporters = stats.value.supporterCount.toLocaleString('en-US');
   return `${raised} funds raised by ${supporters} supporters`;
 });
 </script>

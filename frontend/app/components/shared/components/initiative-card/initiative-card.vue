@@ -144,7 +144,7 @@ const formatAmountAbbrev = (cents: number): string => {
   const dollars = cents / 100;
   if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
   if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(0)}K`;
-  return `$${dollars.toLocaleString()}`;
+  return `$${dollars.toLocaleString('en-US')}`;
 };
 
 const amountRaisedFormatted = computed(() =>
@@ -157,7 +157,7 @@ const percentFundedLabel = computed(() => `${progressPercent.value}% funded`);
 
 const supportersLabel = computed(() => {
   const count = props.initiative.initiativeStats?.supporters ?? 0;
-  return `${count.toLocaleString()} supporters`;
+  return `${count.toLocaleString('en-US')} supporters`;
 });
 </script>
 

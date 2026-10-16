@@ -7,9 +7,11 @@ import { onServerPrefetch, toValue } from 'vue';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
 
 export function useInitiative(slug: MaybeRef<string>) {
+  // Forwards the session cookie during SSR so approvers can load non-published initiatives.
+  const requestFetch = useRequestFetch();
   const query = useQuery<InitiativeDetail>({
     queryKey: ['initiative', slug] as const,
-    queryFn: () => $fetch<InitiativeDetail>(`/api/initiatives/${toValue(slug)}`),
+    queryFn: () => requestFetch<InitiativeDetail>(`/api/initiatives/${toValue(slug)}`),
     enabled: computed(() => !!toValue(slug)),
   });
 
