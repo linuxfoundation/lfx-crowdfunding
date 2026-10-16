@@ -71,6 +71,17 @@ export default [
       'prettier/prettier': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
       'no-debugger': 'error',
+      // SSR renders in the server's locale, hydration in the browser's: '2,885' vs '2.885'
+      // is a hydration mismatch. Always pass a locale.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'CallExpression[arguments.length=0][callee.property.name=/^toLocale(String|DateString|TimeString)$/]',
+          message:
+            "Pass a locale (e.g. 'en-US'); the browser default differs from the server's and breaks hydration.",
+        },
+      ],
 
       'vue/no-unused-components': 'error',
       'vue/first-attribute-linebreak': 'off',

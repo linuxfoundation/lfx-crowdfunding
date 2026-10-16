@@ -225,7 +225,8 @@ const continueLabel = computed(() => {
 const amountSummary = computed(() => {
   if (!hasSelection.value) return null;
   const dollars = amountForm.value.amountCents / 100;
-  const formatted = dollars >= 1_000 ? `$${(dollars / 1_000).toLocaleString()}K` : `$${dollars.toLocaleString()}`;
+  const formatted =
+    dollars >= 1_000 ? `$${(dollars / 1_000).toLocaleString('en-US')}K` : `$${dollars.toLocaleString('en-US')}`;
   const suffix = amountForm.value.donationType === 'monthly' ? '/mo' : '';
   const base = amountForm.value.tierName
     ? `${formatted}${suffix} (${amountForm.value.tierName})`
