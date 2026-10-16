@@ -14,4 +14,8 @@ spec:
     address: "{{ .Values.heimdall.url }}"
     authResponseHeaders:
       - Authorization
+    # initiative-attribution-write reads the body (Request.Body()); without
+    # this Heimdall gets headers only and its deny_all guard denies every
+    # request (lfx-crowdfunding#383).
+    forwardBody: true
 {{- end }}

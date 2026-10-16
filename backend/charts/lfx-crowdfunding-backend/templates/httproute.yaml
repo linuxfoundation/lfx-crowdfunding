@@ -32,9 +32,9 @@ spec:
     #
     # The Stripe webhook (/crowdfunding/stripe/webhook) needs no special
     # handling: Traefik always forwards the original body to the backend
-    # regardless of the auth middleware, and no forwardBody is needed since
-    # the RuleSet doesn't inspect the body (anonymous_authenticator +
-    # allow_all).
+    # regardless of the auth middleware. The middleware's forwardBody (needed
+    # by initiative-attribution-write) only copies it to Heimdall too, so the
+    # bytes the Stripe signature covers are unchanged.
     - matches:
         - path:
             type: PathPrefix
