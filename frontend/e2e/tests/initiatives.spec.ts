@@ -26,3 +26,26 @@ test.describe('Initiatives list', () => {
     expect(hasCards + hasEmpty).toBeGreaterThan(0);
   });
 });
+
+test.describe('Initiative detail', () => {
+  // Non-published and unknown slugs both 404 for anonymous users. The server used to render an
+  // empty page that the client hydrated as a spinner, logging a hydration mismatch.
+  test('unknown slug renders a 404 without a hydration mismatch', async ({ page }) => {
+    const hydrationErrors: string[] = [];
+    page.on('console', (msg) => {
+      if (/hydration/i.test(msg.text())) hydrationErrors.push(msg.text());
+    });
+
+    const response = await page.goto('/initiatives/e2e-does-not-exist');
+    // Pages hydrate async inside <Suspense>; Nuxt clears isHydrating once that finishes.
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#__nuxt') as {
+        __vue_app__?: { config: { globalProperties: { $nuxt?: { isHydrating?: boolean } } } };
+      } | null;
+      return el?.__vue_app__?.config.globalProperties.$nuxt?.isHydrating === false;
+    });
+
+    expect(response?.status()).toBe(404);
+    expect(hydrationErrors).toEqual([]);
+  });
+});

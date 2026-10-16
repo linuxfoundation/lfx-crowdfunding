@@ -81,8 +81,8 @@ const emit = defineEmits<{
 
 const formatTierAmount = (cents: number): string => {
   const dollars = cents / 100;
-  if (dollars >= 1_000) return `${(dollars / 1_000).toLocaleString()}K`;
-  return dollars.toLocaleString();
+  if (dollars >= 1_000) return `${(dollars / 1_000).toLocaleString('en-US')}K`;
+  return dollars.toLocaleString('en-US');
 };
 </script>
 

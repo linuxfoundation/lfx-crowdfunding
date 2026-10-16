@@ -190,7 +190,7 @@ const showCardForm = computed(() => !card.value || useDifferentCard.value);
 
 const formattedAmount = computed(() => {
   const dollars = props.amountCents / 100;
-  return dollars >= 1_000 ? `$${(dollars / 1_000).toLocaleString()}K` : `$${dollars.toLocaleString()}`;
+  return dollars >= 1_000 ? `$${(dollars / 1_000).toLocaleString('en-US')}K` : `$${dollars.toLocaleString('en-US')}`;
 });
 
 // Stripe element style — matches LfxInput: text-sm text-neutral-900, placeholder text-neutral-400

@@ -11,10 +11,11 @@ export function useInitiativeTransactions(
   type: 'donations' | 'expenses' = 'donations',
   limit = 5,
 ) {
+  const requestFetch = useRequestFetch();
   const query = useInfiniteQuery<TransactionList>({
     queryKey: ['initiative-transactions', slug, type, limit] as const,
     queryFn: ({ pageParam }) =>
-      $fetch<TransactionList>(`/api/initiatives/${toValue(slug)}/transactions`, {
+      requestFetch<TransactionList>(`/api/initiatives/${toValue(slug)}/transactions`, {
         params: { type, limit, offset: pageParam },
       }),
     initialPageParam: 0,
