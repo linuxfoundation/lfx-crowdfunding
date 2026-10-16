@@ -69,6 +69,9 @@ const SOURCES: Record<string, string[]> = {
     'https://uploads.intercomcdn.com',
     'https://uploads.intercomusercontent.com',
     'https://transcend-cdn.com',
+    // Transcend consent telemetry (EU and US regions).
+    'https://telemetry.transcend.io',
+    'https://telemetry.us.transcend.io',
   ],
   'frame-src': [
     'https://js.stripe.com',

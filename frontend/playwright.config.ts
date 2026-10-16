@@ -32,7 +32,8 @@ export default defineConfig({
     // Production build for the csp project: the CSP plugins skip in dev (Vite needs
     // inline scripts), so a CSP test against `pnpm dev` would pass even with the bug back.
     {
-      command: 'pnpm build && PORT=3001 node --env-file-if-exists=.env .output/server/index.mjs',
+      command:
+        'NUXT_BUILD_DIR=node_modules/.cache/nuxt-csp pnpm build && PORT=3001 node --env-file-if-exists=.env .output/server/index.mjs',
       url: 'http://localhost:3001/api/health',
       timeout: 300_000,
       reuseExistingServer: !process.env.CI,

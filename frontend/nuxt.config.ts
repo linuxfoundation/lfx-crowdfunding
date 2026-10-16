@@ -15,6 +15,8 @@ import vite from './setup/vite';
 export default defineNuxtConfig({
   app: { head },
   compatibilityDate: '2025-01-01',
+  // Lets the e2e csp build use its own dir while pnpm dev holds .nuxt (playwright.config.ts).
+  buildDir: process.env.NUXT_BUILD_DIR,
   devtools: { enabled: true },
   experimental: { typedPages: true },
   modules,
