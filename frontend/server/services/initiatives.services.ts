@@ -36,11 +36,22 @@ export const mapToInitiativeBase = (b: BackendInitiative): InitiativeBase => {
   };
 };
 
+export const isGitHubUrl = (url?: string): boolean => {
+  try {
+    return ['github.com', 'www.github.com'].includes(new URL(url ?? '').hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
 export const mapToInitiativeDetail = (b: BackendInitiative): InitiativeDetail => {
   const currentBalanceCents = b.balance?.available_cents ?? b.financials?.available_balance_cents;
-  const githubURL = (b.custom_websites ?? []).find((w) =>
-    ['repository', 'github'].includes((w.name ?? '').toLowerCase()),
-  )?.url;
+  // Migrated legacy projects keep their repo on the development goal's repo_link instead of a
+  // custom website. Many of those links are wikis, placeholders or spam, so only GitHub hosts count.
+  const githubURL =
+    (b.custom_websites ?? []).find((w) =>
+      ['repository', 'github'].includes((w.name ?? '').toLowerCase()),
+    )?.url ?? (b.goals ?? []).find((g) => isGitHubUrl(g.repo_link))?.repo_link;
 
   return {
     ...mapToInitiativeBase(b),
