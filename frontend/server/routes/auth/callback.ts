@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { discovery, authorizationCodeGrant, ClientSecretPost } from 'openid-client';
-import { decodeJwt } from 'jose';
 import { H3Error } from 'h3';
 import { getSafeRedirectUrl } from '../../utils/redirect';
-import type { DecodedIdToken } from '~~/types/auth/auth-jwt.types';
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
@@ -85,44 +83,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 500, statusMessage: 'No access token received from Auth0' });
     }
 
-    const idTokenClaims = decodeJwt(tokenResponse.id_token) as DecodedIdToken;
-    const expiresIn = tokenResponse.expires_in || 86400;
-
-    // Store the Auth0 access token — forwarded by the BFF as Authorization: Bearer to the Go backend.
-    setAuthCookie(event, 'auth_oidc_token', tokenResponse.access_token, expiresIn);
-
-    // Store display-only profile claims for the /api/auth/user endpoint.
-    // IMPORTANT: the value is base64 JSON of unverified id-token claims, encrypted at rest by
-    // setAuthCookie — treat as display-only. Never use it for identity decisions or
-    // authorization; use auth_oidc_token (forwarded as Authorization: Bearer to the Go
-    // backend) for that.
-    const userProfile = {
-      sub: idTokenClaims.sub,
-      name: idTokenClaims.name,
-      email: idTokenClaims.email,
-      picture: idTokenClaims.picture,
-      email_verified: idTokenClaims.email_verified,
-      updated_at: idTokenClaims.updated_at,
-      username: idTokenClaims['https://sso.linuxfoundation.org/claims/username'] as
-        | string
-        | undefined,
-      intercomJwt: idTokenClaims['http://lfx.dev/claims/intercom'] as string | undefined,
-    };
-    setAuthCookie(
-      event,
-      'auth_user_profile',
-      Buffer.from(JSON.stringify(userProfile)).toString('base64'),
-      expiresIn,
-    );
-
-    if (tokenResponse.refresh_token) {
-      setAuthCookie(
-        event,
-        'auth_refresh_token',
-        tokenResponse.refresh_token,
-        60 * 60 * 24 * 30, // 30 days
-      );
-    }
+    setSessionCookies(event, tokenResponse, buildUserProfile(tokenResponse.id_token));
 
     await sendRedirect(event, buildSuccessRedirect(redirectTo));
   } catch (error) {
