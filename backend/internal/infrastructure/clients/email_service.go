@@ -102,13 +102,22 @@ func (s *emailService) InitiativeURL(slug string) string {
 	return fmt.Sprintf("%s/initiatives/%s", s.frontendBase, url.PathEscape(slug))
 }
 
-// SendProjectApprovedEmail notifies the initiative owner that their initiative was approved.
+// SendProjectApprovedEmail notifies the initiative owner that their initiative was approved,
+// and copies the same email to the reviewer inboxes as the approvers' confirmation (legacy
+// Mandrill behaviour). Every recipient is attempted; failures are joined.
 func (s *emailService) SendProjectApprovedEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL string) error {
-	return s.sendEmail(ctx, toEmail, "Your submission for LFX Crowdfunding has been approved.", templateInitiativeApproved, emailTemplateData{
+	data := emailTemplateData{
 		RecipientName:  toName,
 		InitiativeName: initiativeName,
 		InitiativeURL:  initiativeURL,
-	})
+	}
+	var errs []error
+	for _, recipient := range append([]string{toEmail}, s.notificationEmails...) {
+		if err := s.sendEmail(ctx, recipient, "Your submission for LFX Crowdfunding has been approved.", templateInitiativeApproved, data); err != nil {
+			errs = append(errs, fmt.Errorf("send approved email to %s: %w", recipient, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // SendProjectDeclinedEmail notifies the initiative owner that their initiative was declined.

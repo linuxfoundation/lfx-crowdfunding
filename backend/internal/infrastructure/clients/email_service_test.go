@@ -107,6 +107,38 @@ func TestSendProjectForReviewEmail_ErrorAbortsEarly(t *testing.T) {
 	}
 }
 
+func TestSendProjectApprovedEmail_CopiesReviewInboxes(t *testing.T) {
+	sendErr := errors.New("send failed")
+	m := &mockSender{errs: []error{nil, sendErr, nil}}
+	svc := newSvc(m, []string{"a@example.com", "b@example.com"})
+
+	err := svc.SendProjectApprovedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url")
+	if !errors.Is(err, sendErr) {
+		t.Fatalf("expected sendErr, got %v", err)
+	}
+	want := []string{"owner@example.com", "a@example.com", "b@example.com"}
+	if len(m.calls) != len(want) {
+		t.Fatalf("expected %d Send calls (failure must not abort), got %d", len(want), len(m.calls))
+	}
+	for i, to := range want {
+		if m.calls[i].To != to {
+			t.Errorf("call %d: expected %q, got %q", i, to, m.calls[i].To)
+		}
+	}
+}
+
+func TestSendProjectApprovedEmail_NoInboxes(t *testing.T) {
+	m := &mockSender{}
+	svc := newSvc(m, nil)
+
+	if err := svc.SendProjectApprovedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(m.calls) != 1 || m.calls[0].To != "owner@example.com" {
+		t.Fatalf("expected only the owner email, got %+v", m.calls)
+	}
+}
+
 func TestSendEmail_NotConfigured(t *testing.T) {
 	svc := NewEmailService(nil, "https://example.com", nil)
 
@@ -142,8 +174,9 @@ func TestTemplates_RenderAndEscape(t *testing.T) {
 			t.Fatalf("send %d: %v", i, err)
 		}
 	}
-	if len(m.calls) != len(sends) {
-		t.Fatalf("expected %d sends, got %d", len(sends), len(m.calls))
+	// +1: the approved email is also copied to the reviewer inbox.
+	if len(m.calls) != len(sends)+1 {
+		t.Fatalf("expected %d sends, got %d", len(sends)+1, len(m.calls))
 	}
 	for i, msg := range m.calls {
 		if msg.Subject == "" || msg.HTML == "" || msg.Text == "" {
