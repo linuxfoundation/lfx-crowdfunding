@@ -6,6 +6,7 @@ export interface BackendGoal {
   name: string;
   goal_amount_cents: number;
   description?: string;
+  repo_link?: string;
   donated_cents?: number;
   spent_cents?: number;
 }
