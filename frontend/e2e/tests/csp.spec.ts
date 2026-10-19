@@ -55,6 +55,20 @@ test.describe('CSP nonce', () => {
     expect(scriptNonces).toEqual(scriptNonces.map(() => nonce));
   });
 
+  // The SSR nonce made unhead miss un-keyed src scripts on hydration and inject them
+  // again (airgap.js threw "already initialized"). Each external script must load once.
+  test('hydration does not re-inject head scripts', async ({ page }) => {
+    await blockTranscend(page);
+    await page.goto('/');
+    await page.waitForLoadState('load');
+
+    const srcs = await page.evaluate(() =>
+      [...document.querySelectorAll('script[src]')].map((script) => script.getAttribute('src')),
+    );
+    expect(srcs.length).toBeGreaterThan(0);
+    expect(srcs).toEqual([...new Set(srcs)]);
+  });
+
   test('each response gets a fresh nonce', async ({ request }) => {
     const nonces = await Promise.all(
       [1, 2].map(async () => {
