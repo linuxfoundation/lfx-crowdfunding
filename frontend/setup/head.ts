@@ -40,16 +40,24 @@ export default {
       href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto+Slab:wght@300;400;600&display=swap',
     },
   ],
+  // External scripts need a `key`: the SSR nonce (csp-nonce.server.ts) breaks unhead's
+  // prop-hash match on hydration, so un-keyed src scripts get injected a second time.
   script: [
     // Transcend cookie consent manager (replaces Osano — lfx-self-serve-ops#517)
     {
+      key: 'transcend-airgap',
       src: 'https://transcend-cdn.com/cm/f484e2d0-ad2e-43a9-9d64-d07f6fa20966/airgap.js',
       'data-cfasync': 'false',
       'data-prompt': 'auto',
     },
-    { src: 'https://kit.fontawesome.com/0c49a28643.js', crossorigin: 'anonymous', async: true },
+    {
+      key: 'fontawesome',
+      src: 'https://kit.fontawesome.com/0c49a28643.js',
+      crossorigin: 'anonymous',
+      async: true,
+    },
     // Privacy-friendly analytics by Plausible
-    { src: 'https://plausible.io/js/pa-Z7youDetgVMZFqKWkN7xd.js', async: true },
+    { key: 'plausible', src: 'https://plausible.io/js/pa-Z7youDetgVMZFqKWkN7xd.js', async: true },
     {
       innerHTML:
         'window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()',
