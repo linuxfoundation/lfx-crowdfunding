@@ -3,6 +3,7 @@
 
 import { defineEventHandler, createError, getRequestURL } from 'h3';
 import { getAuthCookie } from '../utils/auth-cookies';
+import { refreshSession } from '../utils/auth-refresh';
 import type { ProtectedRoute } from '../types/auth.types';
 
 // Compiled once at module load — not inside the match functions — to avoid
@@ -34,11 +35,19 @@ export default defineEventHandler((event) => {
 
   if (!isProtected) return;
 
-  const token = getAuthCookie(event, 'auth_oidc_token');
-  if (!token) {
-    throw createError({ statusCode: 401, statusMessage: 'Authentication required' });
-  }
   // Token format/expiry validation is intentionally delegated to the Go backend,
   // which performs full RS256 JWT validation on every request. This layer only
   // ensures a token cookie is present so the backend sees an Authorization header.
+  if (getAuthCookie(event, 'auth_oidc_token')) return;
+
+  const unauthorized = () =>
+    createError({ statusCode: 401, statusMessage: 'Authentication required' });
+  if (!getAuthCookie(event, 'auth_refresh_token')) throw unauthorized();
+
+  // The access token cookie expires after ~1h while the refresh token lives 30 days. Refresh
+  // here so a submit from a long-open page (donate, start a fundraiser) doesn't 401; the new
+  // token is visible to useBackendFetch later in this same request.
+  return refreshSession(event).then((profile) => {
+    if (!profile) throw unauthorized();
+  });
 });
