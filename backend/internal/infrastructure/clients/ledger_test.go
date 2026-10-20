@@ -92,3 +92,15 @@ func TestLedgerGetUserBalance_UpstreamError(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUpstreamUnavailable", err)
 	}
 }
+
+func TestLedgerGetUserBalance_TransportError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.Close()
+
+	client := NewLedgerClient(LedgerConfig{BaseURL: srv.URL, APIKey: "test", Timeout: 2 * time.Second})
+	if _, err := client.GetUserBalance(context.Background(), "auth0|abc"); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Fatalf("err = %v, want ErrUpstreamUnavailable", err)
+	}
+}

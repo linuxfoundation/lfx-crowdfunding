@@ -578,6 +578,8 @@ func (c *ledgerHTTPClient) PostTransaction(ctx context.Context, txn LedgerTransa
 }
 
 // LedgerUserBalance is the per-user aggregate returned by GET /balance/user/{userID}.
+// It sums credit rows with a positive amount, the same filter as GET /transactions?txnType=credit
+// that /me/donations lists, so refunds and debits are not netted out of TotalCreditCents.
 type LedgerUserBalance struct {
 	TotalCreditCents  int64 `json:"totalCredit"`
 	ProjectsSupported int64 `json:"projectsSupported"`
@@ -598,7 +600,8 @@ func (c *ledgerHTTPClient) GetUserBalance(ctx context.Context, userID string) (*
 	})
 	if err != nil {
 		span.RecordError(err)
-		return nil, fmt.Errorf("ledger user balance: %w", err)
+		// Transport errors (timeout, DNS, refused) bypass the status callback, so tag them here.
+		return nil, fmt.Errorf("ledger user balance: %w: %w", domain.ErrUpstreamUnavailable, err)
 	}
 	return &resp, nil
 }
