@@ -119,6 +119,9 @@ func (c *intLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clien
 func (c *intLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
 	return nil, nil
 }
+func (c *intLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {
+	return &clients.LedgerUserBalance{}, nil
+}
 func (c *intLedgerClient) PostTransaction(ctx context.Context, txn clients.LedgerTransaction) error {
 	if c.onPostTransaction != nil {
 		return c.onPostTransaction(ctx, txn)

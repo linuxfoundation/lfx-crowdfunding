@@ -515,6 +515,24 @@ func (h *InitiativeHandler) ListMyDonations(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// GetMyDonationStats handles GET /crowdfunding/me/donations/stats — requires JWT.
+// Returns the caller's total donated and initiatives supported, so Self Serve doesn't
+// have to page through every donation to add them up.
+func (h *InitiativeHandler) GetMyDonationStats(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.UserID == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	stats, err := h.svc.GetMyDonationStats(r.Context(), h.svc.LedgerUserID(r.Context(), principal.Username, principal.UserID))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	writePrivateCachedJSON(w, r, stats)
+}
+
 // GetTransactionsForUser handles GET /crowdfunding/initiatives/{id}/manage/transactions —
 // requires JWT with access:me scope. Returns transactions for the caller's own initiative in
 // any status, so owners can view their non-published initiative's transactions (the

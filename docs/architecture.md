@@ -163,6 +163,7 @@ backend/
 | `GET` | `/crowdfunding/organizations/{uid}/initiatives` | `access:me` + writer on `b2b_org` | All initiatives (any status) attributed to that organization (Org lens) |
 | `GET` | `/crowdfunding/projects/{uid}/initiatives` | `access:me` + `writer_guard` on `project` | All initiatives (any status) attributed to that project (Project lens) |
 | `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donations (one-time and recurring), read from the Ledger like `/me/transactions?type=donations` |
+| `GET` | `/crowdfunding/me/donations/stats` | `access:me` | Caller's `total_donated_cents` and `initiatives_supported`, aggregated by the Ledger (`/balance/user/{userID}`) |
 | `GET` | `/crowdfunding/me/subscriptions` | `access:me` | Caller's active subscriptions |
 | `DELETE` | `/crowdfunding/me/subscriptions/{id}` | `access:me` + owner | Cancel subscription |
 | `GET` | `/crowdfunding/me/payment-account` | `access:me` | Saved payment method |
@@ -444,6 +445,7 @@ Self Serve calls only `access:me` user endpoints:
 |---|---|
 | `PATCH /crowdfunding/me` | Profile sync on first login |
 | `GET /crowdfunding/me/donations` | "My Donations" widget |
+| `GET /crowdfunding/me/donations/stats` | "Total Donated" and "Initiatives Supported" on My Donations |
 | `GET /crowdfunding/me/initiatives` | "My Initiatives" widget |
 | `GET /crowdfunding/me/subscriptions` | Active subscriptions |
 
