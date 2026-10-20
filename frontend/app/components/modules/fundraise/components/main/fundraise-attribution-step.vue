@@ -18,12 +18,16 @@ SPDX-License-Identifier: MIT
           class="flex flex-col gap-5 p-5"
           :class="[
             modelValue.kind === option.value ? 'bg-accent-50' : 'bg-white hover:bg-neutral-50',
-            isDisabled(option.value) && !isLoading ? 'opacity-60 hover:bg-white' : '',
+            isDisabled(option.value) && !isLoading ? 'hover:bg-white' : '',
           ]"
         >
+          <!-- Dim only the radio row; the escape-hatch hint below must stay readable. -->
           <div
             class="flex gap-3"
-            :class="isDisabled(option.value) ? 'cursor-not-allowed' : 'cursor-pointer'"
+            :class="[
+              isDisabled(option.value) ? 'cursor-not-allowed' : 'cursor-pointer',
+              isDisabled(option.value) && !isLoading ? 'opacity-60' : '',
+            ]"
             @click="selectKind(option.value)"
           >
             <lfx-radio
@@ -108,20 +112,23 @@ SPDX-License-Identifier: MIT
               <!-- A load failure isn't missing access, so don't point at an admin. -->
               <p
                 v-if="status !== 'error'"
-                class="text-xs text-neutral-500 leading-4 flex items-center gap-1"
+                class="text-xs text-neutral-600 leading-4 flex items-start gap-1"
               >
                 <lfx-icon
                   name="circle-info"
                   :size="12"
+                  class="mt-0.5 shrink-0"
                 />
-                {{ option.escapeHatchLabel }}
-                <a
-                  :href="selfServeUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-accent-500 hover:text-accent-600"
-                  >LFX Self Serve</a
-                >.
+                <span>
+                  {{ option.escapeHatchLabel }}
+                  <a
+                    :href="selfServeUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-accent-500 hover:text-accent-600"
+                    >LFX Self Serve</a
+                  >.
+                </span>
               </p>
             </div>
           </div>
