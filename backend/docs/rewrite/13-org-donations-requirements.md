@@ -269,6 +269,17 @@ and architecture sign-off.
 - **Free text.** If search doesn't find the org, the donor types a name and domain by hand.
   PM confirmed this (§5.1 item 2); it replaces the earlier designer decision to send donors to
   Self Serve.
+- **Domain.** The server validates and normalizes every domain, from the picker or typed by
+  hand, before storing it: parse a URL down to its hostname, lowercase it, strip a trailing dot
+  and a leading `www.`, and reject anything that isn't a hostname. `https://Acme.com/path`,
+  `acme.com` and `acme.com.` all become `acme.com`. Dedup, `b2b_org` matching and adoption of
+  older records (below) all compare this canonical form.
+- **Recurring donations.** Option D covers monthly subscriptions too, since checkout sends the
+  same org choice down the subscription path. `SubscriptionService.Create` drops `ownedOrg()`
+  and stores the same name, domain and optional `b2b_org` SFID on the subscription and in the
+  Stripe subscription metadata. Every renewal's Ledger transaction carries that snapshot. It
+  isn't re-checked at renewal: with no affiliation check (§5.1 item 1) there's nothing to
+  re-check.
 - **Org lens.** PM wants a donations list page on the Organization lens (§5.1 item 3). Donations
   with a `b2b_org` reference show on that org's page. Name and domain only donations can't,
   since the lens only exists for `b2b_org` orgs (see the constraint in §4.3). So the page is
@@ -284,8 +295,12 @@ and architecture sign-off.
   accepted this: the donor's stated org is shown as is (§5.1 item 1). It's the same hole #349
   closed for today's per-user orgs, now accepted on purpose.
 - **Ledger.** Today Ledger gets the CF org row ID. With option D it would get the `b2b_org`
-  SFID when there is one, plus the name and domain. Needs agreement with ledger-service
-  (§5.2 item 2).
+  SFID when there is one, plus the name and domain. Unmatched orgs (Clearbit or typed) have no
+  SFID, and today a blank `organizationID` marks the donation as individual
+  (`internal/infrastructure/clients/ledger.go:254`), with org totals keyed by that ID. So Ledger
+  needs an explicit org discriminator, or a stable fallback key such as the normalized domain,
+  and the historical CF org UUIDs must keep resolving so existing totals don't split. Needs
+  agreement with ledger-service (§5.2 item 2).
 
 ### 4.2 Not recommended: option A (CDP work history)
 
@@ -355,7 +370,8 @@ admins (§4, option B). This applies to every option.
    architecture sign-off.
 2. **What CF and Ledger store** for an org donation: name, domain and optional `b2b_org` SFID,
    either on the donation or on shared CF rows that donors can't edit. Ledger needs to agree to
-   the change from the CF org row ID.
+   the change from the CF org row ID, including how it marks an unmatched org donation (no
+   SFID) as an org donation and how historical CF org UUIDs keep their totals (§4.1, Ledger).
 3. **Search dependency.** Today `/query/orgs/suggest` is Clearbit only, and `b2b_org` search
    only returns orgs where the caller is an `auditor`. Donors can only find member companies
    once query-service ships the combined search and `b2b_org` names and domains are visible to
@@ -374,7 +390,10 @@ admins (§4, option B). This applies to every option.
    (`GET /crowdfunding/organizations/{uid}/initiatives`, #333; doc 11 §5.1): a filtered query on
    the donation's `b2b_org` SFID, guarded in Heimdall with `openfga_check` on `b2b_org:{uid}`.
    Open: `auditor` (matches the lens read gate, §4.3) or `writer` (what the initiatives list
-   uses). Self Serve builds the page (cross-team).
+   uses). The response is per caller, so like the initiatives list it sets
+   `Cache-Control: private, no-store` and `Vary: Authorization`
+   (`backend/internal/handler/initiative_handler.go:154-155`). Self Serve builds the page
+   (cross-team).
 
 ### 5.3 Sign-off
 
