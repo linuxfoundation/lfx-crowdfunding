@@ -5,18 +5,19 @@
 
 ---
 
-**Status:** Investigation / draft requirements, October 2026. Not yet signed off by PM or
-architecture. Tracked in
+**Status:** Draft requirements, October 2026. Architecture signed off on option D; PM
+sign-off pending. Tracked in
 [lfx-crowdfunding#366](https://github.com/linuxfoundation/lfx-crowdfunding/issues/366) (epic
 [#365](https://github.com/linuxfoundation/lfx-crowdfunding/issues/365); background in
 [#261](https://github.com/linuxfoundation/lfx-crowdfunding/issues/261)). Implementation follows
 in [#367](https://github.com/linuxfoundation/lfx-crowdfunding/issues/367).
 
-**Where we are (October 2026).** Architecture recommends option D and against option A (§4).
-The PM has answered the two open product questions: anyone can publicly credit an org, as
+**Where we are (October 2026).** Architecture (Eric Searcy) signed off on option D (§4.1).
+The org claim lives on each donation, and the per-user CF org record is to be deprecated
+(§5.2 items 1 and 2). The PM has answered the two open product questions: anyone can publicly credit an org, as
 stated by the donor (§5.1 item 1), and donors can type an org by hand (§5.1 item 2). PM also
 wants a donations list page on the Self Serve Organization lens (§5.1 item 3). The PM
-didn't ask to take work history back to architecture. Formal sign-off (§5.3) is still pending.
+didn't ask to take work history back to architecture. PM sign-off (§5.3) is still pending.
 Option D's `b2b_org` half depends on platform work designed in LFXV2-2400 (Q1/Q2), which was
 discarded in September 2026 as not requested by product. The PM's lens page is that product
 request (§5.2 item 3).
@@ -27,7 +28,7 @@ Self Serve **Work history & Affiliations**. That data lives in **CDP (crowd.dev)
 **CDP organization UUIDs**, not Salesforce Account IDs / `b2b_org` UIDs. The alternatives are
 `b2b_org` (member service; covers only Salesforce Accounts with a membership) and raw Salesforce
 Accounts. Each source trades off coverage against being canonical.
-**Architecture recommends against CDP.** Their recommended shape is **option D**, the
+**Architecture recommends against CDP.** Their signed-off shape is **option D**, the
 committee-member pattern: each org donation stores a name and domain, plus a `b2b_org` reference
 when the org is a member company, with no CDP IDs (§4.1). Option A (CDP work history) isn't
 formally rejected, but direct CDP access is ruled out, which makes it costly (§4.2). PM has
@@ -248,18 +249,24 @@ Clearbit (`/query/orgs/suggest`, an external third-party company-data API) isn't
 source of record. It returns no stable ID, so it can't be the record of truth. In option D it
 supplies names and domains for orgs that aren't member companies.
 
-### 4.1 Recommended: option D (committee-member pattern)
+### 4.1 Chosen: option D (committee-member pattern)
 
-Proposed by Eric Searcy in architecture review, and matches the committee service. Pending PM
-and architecture sign-off.
+Proposed by Eric Searcy in architecture review, and matches the committee service. Architecture
+signed off (Eric Searcy, October 2026); PM sign-off pending.
 
-**Draft shape** (for discussion):
+**Shape:**
 
 - **Data.** An org donation carries an `organization` attribute: required **name** and
   **domain**, plus an optional **`b2b_org` SFID**. This mirrors committee members
   (`organization: {id, name, website}`, lfx-v2-committee-service
   `cmd/committee-api/design/type.go`, `OrganizationInfoAttributes`). There are no foreign keys
   to CDP or anything else. Committee members stopped storing CDP org IDs (LFXV2-2647).
+- **The donation owns the org claim.** Name, domain and optional SFID are a snapshot stored on
+  each donation (and subscription), not a foreign key to a CF `organizations` row. The
+  FK-connected "crowdfunding org" is to be deprecated. In Eric's words, it "just creates a
+  siloed pool of ungoverned data". The donation is governed data, so it holds the claim, unless
+  the claim resolves to a `b2b_org`. That record is governed by its own org admins. New
+  donations stop writing `organization_id`; existing rows are covered by §5.1 item 4.
 - **Picker.** The same org lookup committees use: the query-service org search, which as
   designed in LFXV2-2400 (Q2) would combine `b2b_org` and Clearbit, with `b2b_org` results
   first and duplicates removed by domain. That search isn't built and the ticket was discarded
@@ -353,11 +360,13 @@ admins (§4, option B). This applies to every option.
    field is standard. This replaces the earlier designer decision to send donors to Self Serve
    work history (option A).
 3. **Display.** *Where org donations appear.* **Decided (PM, October 2026): the SS Organization
-   lens gets a donations list page.** Still open: emails, and
-   whether a donor can edit an org's name and logo after donating (today they can, which
-   rewrites history).
-4. **Existing data.** Convert the existing per-user orgs (606 from v1 plus those created since),
-   including the 16 featured companies, to name and domain records? Many have no domain today.
+   lens gets a donations list page.** Still open: emails. Editing an org's name and logo after
+   donating (today it rewrites history) goes away for new donations, since the org claim is a
+   snapshot on the donation (§4.1). Whether a donor can correct that snapshot is still open.
+4. **Existing data.** With the per-user org record deprecated (§4.1), copy each historical
+   donation's org into a snapshot on the donation from its current `organizations` row (606
+   from v1 plus those created since, including the 16 featured companies)? Many have no domain
+   today, so the snapshot would be name only.
 5. **Lens page coverage.** Only donations with a `b2b_org` reference can show on the lens page
    (§4.1). Is it acceptable to ship the page while it misses name and domain only donations, or
    must `b2b_org` search (§5.2 item 3) or domain matching (§5.2 item 4) ship with it?
@@ -366,12 +375,12 @@ admins (§4, option B). This applies to every option.
 
 ### 5.2 Architecture
 
-1. **Source of truth:** option D (§4.1), proposed in architecture review. Needs formal
-   architecture sign-off.
-2. **What CF and Ledger store** for an org donation: name, domain and optional `b2b_org` SFID,
-   either on the donation or on shared CF rows that donors can't edit. Ledger needs to agree to
-   the change from the CF org row ID, including how it marks an unmatched org donation (no
-   SFID) as an org donation and how historical CF org UUIDs keep their totals (§4.1, Ledger).
+1. **Source of truth. Decided (Eric Searcy, October 2026): option D** (§4.1).
+2. **What CF stores. Decided (Eric Searcy, October 2026): on the donation.** Each donation stores
+   name, domain and optional `b2b_org` SFID itself. Shared CF org rows aren't used, and the
+   FK-connected CF org is to be deprecated (§4.1). Still open with ledger-service: the change
+   from the CF org row ID, including how Ledger marks an unmatched org donation (no SFID) as an
+   org donation, and how historical CF org UUIDs keep their totals (§4.1, Ledger).
 3. **Search dependency.** Today `/query/orgs/suggest` is Clearbit only, and `b2b_org` search
    only returns orgs where the caller is an `auditor`. Donors can only find member companies
    once query-service ships the combined search and `b2b_org` names and domains are visible to
@@ -398,9 +407,9 @@ admins (§4, option B). This applies to every option.
 ### 5.3 Sign-off
 
 - [ ] Requirements agreed (§5.1)
-- [ ] Option D confirmed (§5.2)
+- [x] Option D confirmed (§5.2)
 - [ ] PM sign-off
-- [ ] Architecture sign-off
+- [x] Architecture sign-off (Eric Searcy, October 2026)
 
 ---
 
@@ -411,7 +420,8 @@ admins (§4, option B). This applies to every option.
   credential). §5.1 (superseded note) describes the per-entity lens lists from #333 that the
   lens donations API follows.
 - Architecture feedback on this doc (October 2026):
-  - Eric Searcy: treat donation orgs like committee-member orgs (§4.1).
+  - Eric Searcy: treat donation orgs like committee-member orgs (§4.1). Later signed off on
+    option D, with the org claim owned by the donation and the FK-connected CF org deprecated.
   - Luis Mori Guerra: Self Serve's committee picker still writes to CDP; `b2b_org` search isn't
     open to donors yet; name and domain alone reopen #349.
 - lfx-v2-committee-service:
