@@ -63,7 +63,17 @@ describe('auth cookies', () => {
     expect(opts).not.toHaveProperty('domain');
 
     mockGetCookie.mockReturnValue(stored);
-    expect(getAuthCookie(event, 'auth_oidc_token')).toBe('secret-token');
+    // A fresh event so the read goes through the request cookie, not this request's overlay.
+    expect(getAuthCookie({} as H3Event, 'auth_oidc_token')).toBe('secret-token');
+  });
+
+  it('getAuthCookie sees values set or cleared earlier in the same request', () => {
+    const req = {} as H3Event;
+    mockGetCookie.mockReturnValue(encryptValue('stale'));
+    setAuthCookie(req, 'auth_oidc_token', 'fresh', 60);
+    expect(getAuthCookie(req, 'auth_oidc_token')).toBe('fresh');
+    clearAuthCookies(req);
+    expect(getAuthCookie(req, 'auth_oidc_token')).toBeUndefined();
   });
 
   it('clearAuthCookies expires host-only cookies only when no legacy domain is set', () => {

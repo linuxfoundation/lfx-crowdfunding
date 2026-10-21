@@ -25,9 +25,11 @@ vi.mock('h3', async (importOriginal) => {
 
 // Decryption is covered in auth-cookies.test.ts; here the cookie value is already plaintext.
 vi.mock('../utils/auth-cookies', () => ({ getAuthCookie: vi.fn() }));
+vi.mock('../utils/auth-refresh', () => ({ refreshSession: vi.fn() }));
 
 import * as h3 from 'h3';
 import { getAuthCookie } from '../utils/auth-cookies';
+import { refreshSession } from '../utils/auth-refresh';
 import requireAuth from './require-auth';
 
 const mockGetRequestURL = vi.mocked(h3.getRequestURL);
@@ -169,4 +171,31 @@ describe('require-auth middleware', () => {
       expect(mockCreateError).not.toHaveBeenCalled();
     });
   });
+
+  // The submits a long-open page makes: start a fundraiser, upload its logo, donate.
+  describe.each(['/api/fundraise', '/api/presigned-url', '/api/initiatives/abc/donations'])(
+    'POST %s with an expired access token and a live refresh token',
+    (path) => {
+      const run = requireAuth as (e: unknown) => Promise<void>;
+      const makeStaleEvent = () => {
+        mockGetRequestURL.mockReturnValue(new URL(`http://localhost${path}`));
+        mockGetCookie.mockImplementation((_e, name) =>
+          name === 'auth_refresh_token' ? 'rt' : undefined,
+        );
+        return { method: 'POST' } as unknown as h3.H3Event;
+      };
+
+      it('refreshes the session and lets the request through', async () => {
+        vi.mocked(refreshSession).mockResolvedValue({ sub: 'auth0|1' });
+        const event = makeStaleEvent();
+        await expect(run(event)).resolves.toBeUndefined();
+        expect(refreshSession).toHaveBeenCalledWith(event);
+      });
+
+      it('throws 401 when the refresh fails', async () => {
+        vi.mocked(refreshSession).mockResolvedValue(null);
+        await expect(run(makeStaleEvent())).rejects.toMatchObject({ statusCode: 401 });
+      });
+    },
+  );
 });

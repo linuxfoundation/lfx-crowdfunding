@@ -31,6 +31,8 @@ const SOURCES: Record<string, string[]> = {
     'https://fonts.googleapis.com',
     'https://ka-f.fontawesome.com',
     'https://ka-p.fontawesome.com',
+    // Transcend consent banner stylesheet (cm.css, loaded by airgap.js).
+    'https://transcend-cdn.com',
   ],
   'font-src': [
     "'self'",
@@ -72,6 +74,11 @@ const SOURCES: Record<string, string[]> = {
     // Transcend consent telemetry (EU and US regions).
     'https://telemetry.transcend.io',
     'https://telemetry.us.transcend.io',
+    // Presigned S3 logo uploads; bucket per env is S3_UPLOAD_BUCKET in lfx-v2-argocd values.
+    // ponytail: hardcoded hosts, derive from runtime config if buckets/regions change.
+    'https://lfx-crowdfunding-uploads-dev.s3.us-west-2.amazonaws.com',
+    'https://lfx-crowdfunding-uploads-staging.s3.us-west-2.amazonaws.com',
+    'https://lfx-crowdfunding-uploads-prod.s3.us-west-2.amazonaws.com',
   ],
   'frame-src': [
     'https://js.stripe.com',
