@@ -37,7 +37,7 @@ test.describe('CSP nonce', () => {
     ).toBeUndefined();
     expect(dialogs).toBe(0);
 
-    const nonce = nonceOf(response!.headers()['content-security-policy-report-only']);
+    const nonce = nonceOf(response!.headers()['content-security-policy']);
     expect(nonce).toBeTruthy();
 
     // Parse the raw HTML, not the live DOM: browsers hide the nonce after load, and
@@ -73,7 +73,7 @@ test.describe('CSP nonce', () => {
     const nonces = await Promise.all(
       [1, 2].map(async () => {
         const response = await request.get('/initiatives/e2e-test-initiative');
-        return nonceOf(response.headers()['content-security-policy-report-only']);
+        return nonceOf(response.headers()['content-security-policy']);
       }),
     );
     expect(nonces[0]).toBeTruthy();

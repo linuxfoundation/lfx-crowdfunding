@@ -5,7 +5,7 @@ import { setResponseHeader, type H3Event } from 'h3';
 import { defineNitroPlugin, useRuntimeConfig } from 'nitropack/runtime';
 import { buildCspPolicy, datadogCspReportUri } from '../utils/csp';
 
-// Sends the full CSP (lfx-self-serve-ops#491) report-only while it soaks. The nonce is
+// Enforces the full CSP (lfx-self-serve-ops#491) on rendered pages. The nonce is
 // generated and stamped on scripts by app/plugins/csp-nonce.server.ts. A nonce per
 // response means rendered HTML must never be cached or prerendered — switch to hashes
 // first if that's ever needed.
@@ -22,7 +22,7 @@ export const setCspHeader = (event: H3Event) => {
         datadogRumVersion as string,
       )
     : undefined;
-  setResponseHeader(event, 'Content-Security-Policy-Report-Only', buildCspPolicy(nonce, reportUri));
+  setResponseHeader(event, 'Content-Security-Policy', buildCspPolicy(nonce, reportUri));
 };
 
 export default defineNitroPlugin((nitroApp) => {
