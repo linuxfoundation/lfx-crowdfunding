@@ -5,8 +5,8 @@
 
 ---
 
-**Status:** Draft requirements, October 2026. Architecture signed off on option D; PM
-sign-off pending. Tracked in
+**Status:** Requirements, October 2026. Signed off by PM and by architecture (option D).
+Tracked in
 [lfx-crowdfunding#366](https://github.com/linuxfoundation/lfx-crowdfunding/issues/366) (epic
 [#365](https://github.com/linuxfoundation/lfx-crowdfunding/issues/365); background in
 [#261](https://github.com/linuxfoundation/lfx-crowdfunding/issues/261)). Implementation follows
@@ -17,7 +17,7 @@ The org claim lives on each donation, and the per-user CF org record is to be de
 (§5.2 items 1 and 2). The PM has answered the two open product questions: anyone can publicly credit an org, as
 stated by the donor (§5.1 item 1), and donors can type an org by hand (§5.1 item 2). PM also
 wants a donations list page on the Self Serve Organization lens (§5.1 item 3). The PM
-didn't ask to take work history back to architecture. PM sign-off (§5.3) is still pending.
+didn't ask to take work history back to architecture. PM has signed off (§5.3).
 Option D's `b2b_org` half depends on platform work designed in LFXV2-2400 (Q1/Q2), which was
 discarded in September 2026 as not requested by product. The PM's lens page is that product
 request (§5.2 item 3).
@@ -252,7 +252,7 @@ supplies names and domains for orgs that aren't member companies.
 ### 4.1 Chosen: option D (committee-member pattern)
 
 Proposed by Eric Searcy in architecture review, and matches the committee service. Architecture
-signed off (Eric Searcy, October 2026); PM sign-off pending.
+and PM signed off (October 2026).
 
 **Shape:**
 
@@ -408,7 +408,7 @@ admins (§4, option B). This applies to every option.
 
 - [ ] Requirements agreed (§5.1)
 - [x] Option D confirmed (§5.2)
-- [ ] PM sign-off
+- [x] PM sign-off (October 2026)
 - [x] Architecture sign-off (Eric Searcy, October 2026)
 
 ---
