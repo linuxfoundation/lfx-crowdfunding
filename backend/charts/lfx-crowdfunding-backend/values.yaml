@@ -116,6 +116,10 @@ config:
   # to disable; no access checks are made on any request path yet (M2).
   FGA_NATS_URL: ""
   FGA_ACCESS_CHECK_TIMEOUT: "5s"
+  # LFX v2 API gateway base URL, for the anonymous query-service lookup that
+  # only lets public, non-formation projects be attribution targets
+  # (lfx-crowdfunding#336). Leave empty and project attribution is rejected.
+  LFX_API_BASE_URL: ""
 
 # ── Heimdall API gateway onboarding (LFXV2-3352, draft — not yet cut over) ───
 # Disabled by default so this chart is a no-op until lfx-v2-argocd flips it.

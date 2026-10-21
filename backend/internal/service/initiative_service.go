@@ -53,6 +53,7 @@ type InitiativeService struct {
 	reimbursement clients.ReimbursementClient // nil when RS integration is disabled
 	fgaPublisher  *fga.Publisher              // nil when FGA_NATS_URL is unset
 	affiliation   fga.EntityAffiliationChecker
+	projectLookup projectLookup                 // nil when LFX_API_BASE_URL is unset
 	roleResolver  fga.EntityRoleResolver        // nil when FGA_NATS_URL is unset
 	subRepo       domain.SubscriptionRepository // nil in tests that don't exercise cancellation
 	logger        *slog.Logger
@@ -71,13 +72,38 @@ func (s *InitiativeService) SetEntityRoleResolver(r fga.EntityRoleResolver) {
 	s.affiliation, _ = r.(fga.EntityAffiliationChecker)
 }
 
+// projectLookup answers whether a project may be attributed to at all
+// (public and past formation, lfx-crowdfunding#336); see clients.ProjectLookup.
+type projectLookup interface {
+	IsAttributable(ctx context.Context, uid string) (bool, error)
+}
+
+// SetProjectLookup wires the project eligibility lookup in after
+// construction. Left nil, project attribution fails closed.
+func (s *InitiativeService) SetProjectLookup(p projectLookup) {
+	s.projectLookup = p
+}
+
 // checkAffiliated enforces that the caller may attribute to a non-personal
-// target: FGA auditor on it (teams and parent/child count; 403 otherwise,
-// 503 on outage). With no checker wired
-// (FGA_NATS_URL unset) it fails closed with 403.
+// target: a project must be public and past formation, for everyone including
+// staff (Doc 11 §2.1), and the caller needs FGA auditor on the target (teams
+// and parent/child count). 403 otherwise, 503 on outage. With no checker or
+// lookup wired (FGA_NATS_URL / LFX_API_BASE_URL unset) it fails closed with 403.
 func (s *InitiativeService) checkAffiliated(ctx context.Context, username string, a models.Attribution) error {
 	if a.Type != models.AttributionOrganization && a.Type != models.AttributionProject {
 		return nil
+	}
+	if a.Type == models.AttributionProject {
+		if s.projectLookup == nil {
+			return fmt.Errorf("%w: cannot verify that project", domain.ErrForbidden)
+		}
+		ok, err := s.projectLookup.IsAttributable(ctx, a.EntityUID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%w: that project is not public or is still in formation", domain.ErrForbidden)
+		}
 	}
 	if s.affiliation == nil {
 		// Fail closed: without a resolver we cannot verify affiliation.

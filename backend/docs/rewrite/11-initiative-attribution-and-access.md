@@ -123,6 +123,12 @@ eligibility is: server-side, on the entity lookup at submit time, not by the pic
 happens to make the project picker's anonymous query-service lookup (§3.3) correct by
 construction — a private project would never need to appear there.
 
+*Implemented (lfx-crowdfunding#336):* `checkAffiliated` runs the same anonymous lookup server-side
+before the FGA auditor check: `GET {LFX_API_BASE_URL}/query/resources?v=1&type=project&filters=uid:<uid>`.
+No result (private or nonexistent), `public: false`, or a `Prospect` / `Formation - *` stage is a
+403 for everyone, including staff, whose ROOT `auditor` grant would otherwise pass. A lookup outage is a
+503. If `LFX_API_BASE_URL` is unset, project attribution fails closed.
+
 **Known gap: the org picker is narrower than the affiliation gate (§3.3).** The org candidate
 source is the query service's `filter_grants=direct` filter for `object_type=b2b_org` — it returns
 any *direct* tuple on the org (writer, auditor, or owner alike), so it is closer to the affiliation

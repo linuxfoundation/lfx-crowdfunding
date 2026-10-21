@@ -28,6 +28,10 @@ type Config struct {
 	Approval      ApprovalConfig
 	Reimbursement ReimbursementConfig
 	FGA           FGAConfig
+	// LFXAPIBaseURL is the LFX v2 API gateway, used for the anonymous project
+	// eligibility lookup (lfx-crowdfunding#336). Optional — when unset,
+	// project attribution fails closed. Set via LFX_API_BASE_URL.
+	LFXAPIBaseURL string
 }
 
 // ServerConfig holds HTTP server settings.
@@ -360,6 +364,7 @@ func LoadConfig() (*Config, error) {
 			NATSURL: getEnv("FGA_NATS_URL", ""),
 			Timeout: fgaTimeout,
 		},
+		LFXAPIBaseURL: getEnv("LFX_API_BASE_URL", ""),
 	}, nil
 }
 

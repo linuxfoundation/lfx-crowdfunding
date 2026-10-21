@@ -2436,12 +2436,68 @@ func (a *affiliationFake) IsAffiliated(context.Context, models.AttributionType, 
 	return a.ok, a.err
 }
 
+type projectLookupFake struct {
+	ok    bool
+	err   error
+	calls int
+}
+
+func (p *projectLookupFake) IsAttributable(context.Context, string) (bool, error) {
+	p.calls++
+	return p.ok, p.err
+}
+
+// lfx-crowdfunding#336: a private, formation-stage or nonexistent project is
+// never attributable, even for a caller who passes the affiliation check
+// (staff hold auditor on every project through ROOT).
+func TestAttribution_RequiresAttributableProject(t *testing.T) {
+	ctx := context.Background()
+	proj := models.Attribution{Type: models.AttributionProject, EntityUID: "7cad5a8d-19d0-41a4-81a6-043453daf9ee"}
+	svc := func(l *projectLookupFake) *InitiativeService {
+		s := newUpdateSvc(submittedInit(models.Attribution{Type: models.AttributionPersonal}))
+		s.SetEntityRoleResolver(&affiliationFake{ok: true})
+		if l != nil {
+			s.SetProjectLookup(l)
+		}
+		return s
+	}
+
+	if _, err := svc(&projectLookupFake{ok: false}).UpdateAttribution(ctx, "init-1", "owner-1", proj); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("ineligible project: expected ErrForbidden, got %v", err)
+	}
+	if _, err := svc(&projectLookupFake{err: domain.ErrUpstreamUnavailable}).UpdateAttribution(ctx, "init-1", "owner-1", proj); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Fatalf("lookup outage: expected ErrUpstreamUnavailable, got %v", err)
+	}
+	if _, err := svc(nil).UpdateAttribution(ctx, "init-1", "owner-1", proj); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("no lookup: expected ErrForbidden, got %v", err)
+	}
+	if _, err := svc(&projectLookupFake{ok: true}).UpdateAttribution(ctx, "init-1", "owner-1", proj); err != nil {
+		t.Fatalf("eligible project: unexpected error %v", err)
+	}
+
+	// Organizations don't consult the project lookup.
+	org := &projectLookupFake{ok: false}
+	orgAttr := models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000AcmeAAAA"}
+	if _, err := svc(org).UpdateAttribution(ctx, "init-1", "owner-1", orgAttr); err != nil || org.calls != 0 {
+		t.Fatalf("org: got err %v, %d lookups; want nil, 0", err, org.calls)
+	}
+
+	// Create enforces it too.
+	c := newCreateSvc(&mockInitiativeRepo{})
+	c.SetEntityRoleResolver(&affiliationFake{ok: true})
+	c.SetProjectLookup(&projectLookupFake{ok: false})
+	if _, err := c.Create(ctx, "owner-1", models.InitiativeCreateInput{Name: "N", InitiativeType: "project", Attribution: &proj}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("ineligible create: expected ErrForbidden, got %v", err)
+	}
+}
+
 func TestAttribution_RequiresAffiliation(t *testing.T) {
 	uid := "7cad5a8d-19d0-41a4-81a6-043453daf9ee"
 	proj := models.Attribution{Type: models.AttributionProject, EntityUID: uid}
 	svc := func(f *affiliationFake) *InitiativeService {
 		s := newUpdateSvc(submittedInit(models.Attribution{Type: models.AttributionPersonal}))
 		s.SetEntityRoleResolver(f)
+		s.SetProjectLookup(&projectLookupFake{ok: true})
 		return s
 	}
 
@@ -2471,6 +2527,7 @@ func TestAttribution_RequiresAffiliation(t *testing.T) {
 	// Create enforces it too.
 	c := newCreateSvc(&mockInitiativeRepo{})
 	c.SetEntityRoleResolver(&affiliationFake{ok: false})
+	c.SetProjectLookup(&projectLookupFake{ok: true})
 	_, err = c.Create(context.Background(), "owner-1", models.InitiativeCreateInput{Name: "N", InitiativeType: "project", Attribution: &proj})
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("unaffiliated create: expected ErrForbidden, got %v", err)
