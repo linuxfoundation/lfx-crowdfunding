@@ -35,7 +35,7 @@ export default defineNuxtConfig({
   routeRules: {
     // Baseline CSP (lfx-self-serve-ops#491): stops owner HTML that slips past
     // the sanitizer from posting forms off-site, and blocks framing.
-    // The full nonce-based policy is sent report-only by server/plugins/csp.ts until it's enforced.
+    // Rendered pages get the full nonce-based policy from server/plugins/csp.ts instead.
     '/**': {
       headers: {
         'Content-Security-Policy':

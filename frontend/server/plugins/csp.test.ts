@@ -23,9 +23,9 @@ describe('setCspHeader', () => {
     for (const k of Object.keys(publicConfig)) delete publicConfig[k];
   });
 
-  it('sends the report-only policy with the nonce from the request', () => {
+  it('sends the enforced policy with the nonce from the request', () => {
     setCspHeader(event('abc'));
-    expect(setResponseHeader.mock.lastCall?.[1]).toBe('Content-Security-Policy-Report-Only');
+    expect(setResponseHeader.mock.lastCall?.[1]).toBe('Content-Security-Policy');
     expect(setResponseHeader.mock.lastCall?.[2]).toContain("script-src 'nonce-abc'");
   });
 
