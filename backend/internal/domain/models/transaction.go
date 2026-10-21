@@ -57,3 +57,9 @@ type CategorizedTransactions struct {
 	Limit                    int           `json:"limit"`
 	Offset                   int           `json:"offset"`
 }
+
+// DonationStats is the caller's donation aggregate returned by GET /crowdfunding/me/donations/stats.
+type DonationStats struct {
+	TotalDonatedCents    int64 `json:"total_donated_cents"`
+	InitiativesSupported int64 `json:"initiatives_supported"`
+}

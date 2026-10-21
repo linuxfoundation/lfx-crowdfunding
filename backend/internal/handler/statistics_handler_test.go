@@ -65,6 +65,9 @@ func (c *statsLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]cli
 func (c *statsLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
 	return nil, nil
 }
+func (c *statsLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {
+	return &clients.LedgerUserBalance{}, nil
+}
 func (c *statsLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
 	return nil
 }

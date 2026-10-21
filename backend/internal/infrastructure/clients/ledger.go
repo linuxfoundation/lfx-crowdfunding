@@ -79,6 +79,10 @@ type LedgerClient interface {
 	// for a fixed set of organisations, ordered by amount descending.
 	GetOrgDonations(ctx context.Context) ([]LedgerOrgDonation, error)
 
+	// GetUserBalance returns the total a user has donated and the number of
+	// distinct projects they have donated to.
+	GetUserBalance(ctx context.Context, userID string) (*LedgerUserBalance, error)
+
 	// PostTransaction records a completed charge in the Ledger service.
 	// Passing version="v2" instructs the Ledger service to skip its own email
 	// notifications because this service handles them.
@@ -571,4 +575,33 @@ func (c *ledgerHTTPClient) PostTransaction(ctx context.Context, txn LedgerTransa
 		return fmt.Errorf("ledger post transaction: %w", err)
 	}
 	return nil
+}
+
+// LedgerUserBalance is the per-user aggregate returned by GET /balance/user/{userID}.
+// It sums credit rows with a positive amount, the same filter as GET /transactions?txnType=credit
+// that /me/donations lists, so refunds and debits are not netted out of TotalCreditCents.
+type LedgerUserBalance struct {
+	TotalCreditCents  int64 `json:"totalCredit"`
+	ProjectsSupported int64 `json:"projectsSupported"`
+}
+
+// GetUserBalance fetches a user's donation totals from GET /balance/user/{userID}.
+// userID is the Ledger user_id (legacy Auth0 subject, e.g. auth0|abc).
+func (c *ledgerHTTPClient) GetUserBalance(ctx context.Context, userID string) (*LedgerUserBalance, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetUserBalance")
+	defer span.End()
+
+	endpoint := fmt.Sprintf("%s/balance/user/%s", c.baseURL, url.PathEscape(userID))
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
+
+	var resp LedgerUserBalance
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger GET /balance/user returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		// Transport errors (timeout, DNS, refused) bypass the status callback, so tag them here.
+		return nil, fmt.Errorf("ledger user balance: %w: %w", domain.ErrUpstreamUnavailable, err)
+	}
+	return &resp, nil
 }
