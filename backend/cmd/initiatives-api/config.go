@@ -22,7 +22,7 @@ type Config struct {
 	S3            S3Config
 	Stripe        StripeConfig
 	Ledger        LedgerConfig
-	Mandrill      MandrillConfig
+	Email         EmailConfig
 	OTel          OTelConfig
 	Local         LocalConfig
 	Approval      ApprovalConfig
@@ -162,14 +162,12 @@ type FGAConfig struct {
 	Timeout time.Duration
 }
 
-// MandrillConfig holds Mandrill transactional email settings.
-type MandrillConfig struct {
-	APIKey             string
-	FromEmail          string
-	FromName           string
+// EmailConfig holds transactional email settings. Mail is sent through
+// lfx-v2-email-service over the FGA_NATS_URL connection.
+type EmailConfig struct {
+	FromDisplayName    string   // sender name shown in the inbox; the address is the platform default
 	FrontendBase       string   // base URL for initiative deep-links in emails
 	NotificationEmails []string // inboxes that receive new-submission alerts
-	Timeout            time.Duration
 }
 
 // LoadConfig reads all configuration from environment variables.
@@ -344,13 +342,10 @@ func LoadConfig() (*Config, error) {
 		Approval: ApprovalConfig{
 			AllowedApprovers: parseCommaList(getEnv("ALLOWED_APPROVERS", "")),
 		},
-		Mandrill: MandrillConfig{
-			APIKey:             getEnv("MANDRILL_API_KEY", ""),
-			FromEmail:          getEnv("MANDRILL_FROM_EMAIL", "noreply@lfx.linuxfoundation.org"),
-			FromName:           getEnv("MANDRILL_FROM_NAME", "LFX Crowdfunding"),
+		Email: EmailConfig{
+			FromDisplayName:    getEnv("EMAIL_FROM_DISPLAY_NAME", "LFX Crowdfunding"),
 			FrontendBase:       frontendBaseURL,
-			NotificationEmails: parseCommaList(getEnv("MANDRILL_NOTIFICATION_EMAIL", "")),
-			Timeout:            10 * time.Second,
+			NotificationEmails: parseCommaList(getEnv("EMAIL_REVIEW_INBOX", "")),
 		},
 		Reimbursement: ReimbursementConfig{
 			APIURL:                getEnv("REIMBURSEMENTS_API_URL", ""),

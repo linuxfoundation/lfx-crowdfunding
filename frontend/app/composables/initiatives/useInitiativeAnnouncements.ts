@@ -7,9 +7,11 @@ import { onServerPrefetch, toValue } from 'vue';
 import type { AnnouncementList } from '#shared/types/announcement.types';
 
 export function useInitiativeAnnouncements(slug: MaybeRef<string>) {
+  const requestFetch = useRequestFetch();
   const query = useQuery<AnnouncementList>({
     queryKey: ['initiative-announcements', slug] as const,
-    queryFn: () => $fetch<AnnouncementList>(`/api/initiatives/${toValue(slug)}/announcements`),
+    queryFn: () =>
+      requestFetch<AnnouncementList>(`/api/initiatives/${toValue(slug)}/announcements`),
     enabled: computed(() => !!toValue(slug)),
   });
 

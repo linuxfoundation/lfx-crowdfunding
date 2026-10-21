@@ -30,5 +30,5 @@ export function formatAmountCents(cents: number): string {
     const hundredthsK = Math.round(cents / 1_000);
     return `$${(hundredthsK / 100).toFixed(2).replace(/\.?0+$/, '')}K`;
   }
-  return `$${(cents / 100).toLocaleString()}`;
+  return `$${(cents / 100).toLocaleString('en-US')}`;
 }

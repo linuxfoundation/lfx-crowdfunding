@@ -2,7 +2,7 @@
 title: Making a Donation
 description: How to make a one-time or monthly donation to an open source initiative on LFX Crowdfunding.
 tags: [donations, one-time, monthly, payment, stripe]
-last_updated: 2026-06-17
+last_updated: 2026-10-14
 display_order: 1
 intercom_collection: LFX Crowdfunding
 ---
@@ -31,6 +31,8 @@ If the initiative offers [sponsorship tiers](../../initiatives/sponsorship-tiers
 ## Step 2 — Payment
 
 ![Donation payment step](/images/docs/donation-step-payment.png)
+
+Credit card is the only accepted payment method. Paying by invoice is not supported.
 
 Enter your card details:
 

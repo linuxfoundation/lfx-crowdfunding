@@ -107,7 +107,9 @@ they are *affiliated* with — they need not be a `writer` on it (PM decision, 2
 weaker of the two gates: someone affiliated with, but not a writer on, an org can publish a page
 carrying that org's name and logo without a writer signing off first. The org's writers cannot
 correct or remove it themselves — detaching to `personal` is authorized by the owner/creator only
-(doc 12, "Decided," attribution-change authorization: creator-only, for any change). Only the
+(doc 12, "Decided," attribution-change authorization: creator-only, for any change). The creator
+can only do that while the initiative is `submitted` (§2.2); once published, nobody can change the
+attribution through the API. Only the
 creator can undo a false attribution once the gateway milestone ships the access rule that grants entity writers management in the first place
 (§3.4, §3.5, §5 — deferred from M2, which no longer exists as a separate milestone). Two
 consequences follow directly (see §5): the public attribution label cannot ship in a standalone
@@ -144,12 +146,13 @@ it's accepted anyway.
 > authoritative check (no authoritative affiliation source exists — involvement is best-effort and
 > self-attested), so attribution is a **self-attested claim**; the server validates that the entity
 > exists and is the right type, and the false-claim risk is mitigated by label suppression + writer
-> policing, not by an affiliation lookup. Confirmation of this framing with the architect is
-> tracked in open question 4.
+> policing, not by an affiliation lookup. **Superseded (2026-10-08, lfx-crowdfunding#259):** the
+> self-attested/existence-only framing in this note is replaced by the required FGA `auditor` check
+> below; the note is kept for the reasoning it records.
 
 **Eligibility is enforced server-side, not by the picker (decided, lfx-crowdfunding#259).**
 Constraining the dropdown is UX only — a caller can POST a create/update request with any entity
-UID directly. On create, and on update when the attribution actually changes, the service
+UID directly. On create, and on every `PUT /initiatives/{id}/attribution` (§2.2), the service
 therefore requires the caller to be able to **view** the
 target `b2b_org` or `project`: a full FGA `auditor` check (`auditor_guard` on a `project`, so global auditors and writers pass, as at
 Heimdall; plain `auditor` on a `b2b_org`),
@@ -159,14 +162,24 @@ inherited-access reasoning in §3.3. There is no app-side `lf-staff` clause: sta
 root project and on every `b2b_org` through the model, so they pass the plain check, and application
 code does not branch on personas. Viewing is
 enough to *attribute*; *managing* the initiative afterwards still needs `writer` (§2.2), the same
-split Self Serve makes between its lens view and edit gates. Whether `auditor` should suffice for
-attributing is not yet confirmed with the architecture team (open question 4). A miss is a 403, an
-fga-sync outage a 503, and `personal` or an unchanged attribution makes no call. With no resolver
+split Self Serve makes between its lens view and edit gates. `auditor` is enough to
+attribute (decided 2026-10-08, lfx-crowdfunding#259). A miss is a 403, an
+fga-sync outage a 503, and `personal` makes no call. With no resolver
 wired (`FGA_NATS_URL` unset) the check fails closed (403) for organization and project targets.
 This is an FGA grant, so it supersedes the earlier self-attested/existence-only framing above:
-attribution is now authorized from FGA, not from involvement data the caller supplies. It is still a backend-brokered decision, which the architecture team
-prefers at the gateway (§3.5); it moves to a Heimdall rule once attribution targets can be named in
-the URL.
+attribution is now authorized from FGA, not from involvement data the caller supplies.
+
+**On re-attribution the target check also runs at the gateway (lfx-crowdfunding#342).** The
+architecture team prefers gateway checks (§3.5). Heimdall can't take the target from the URL, but
+step `if` conditions can read `Request.Body()`, so the `initiative-attribution-write` rule checks
+`auditor` on `b2b_org:{entity_uid}` or `auditor_guard` on `project:{entity_uid}` straight from the
+body. A `deny_all` guard runs first and admits only `personal` (no `entity_uid`), an 18-char SFID
+or a lowercase UUID: Heimdall renders templates with `text/template` (no escaping), so
+`entity_uid` must be validated before it reaches the FGA payload, and a body matching neither type
+condition would otherwise skip both checks. Requiring canonical IDs keeps the gateway and the
+service checking the same object. The service check stays as defense in depth. Every call on the
+route is a change, so neither layer compares the old and new targets. Create keeps the
+service-only check.
 
 ### 2.2 Access decision
 
@@ -214,6 +227,16 @@ Design rules:
   (consistent with today's read concealment). A *resolver error* (NATS/OpenFGA unavailable) also
   denies, but returns **503** — never a false 404 — so the outage is visible and clients can
   retry.
+- **Manage access follows the platform's full `writer` relation, including inherited access
+  (current direction, 2026-10-08, lfx-crowdfunding#259; open to change if PM or the architecture
+  team decide otherwise).** For an organization, `b2b_org#writer` cascades both ways (`writer from
+  parent` and `writer from child`) and includes `global_org_admin`, so writers on a parent *or* a
+  subsidiary org, and global org admins, can manage an initiative attributed to that org. For a
+  project, `writer_guard` includes writers inherited from parent projects and global project
+  writers. This is what the service resolver and the gateway's `crowdfunding_initiative#writer`
+  check already evaluate, so no code or model change is needed. Restricting management to direct
+  writers only would need a new direct-writer relation in the platform model plus a resolver
+  change.
 - **CF stores no roles.** No membership tables, no role columns — CF stores one entity reference
   and asks the platform the membership question at request time.
 - **Changing attribution is not the flat manage capability — it is creator-only
@@ -222,12 +245,20 @@ Design rules:
   Under the flat rule any current writer could reattribute the initiative to another entity they
   write — or to `personal` — silently revoking the original entity's writers and moving (or
   erasing) the public claim of representation. Creator-only also means that if the creator leaves
-  the entity, the initiative stays with them: nobody else can move it away. A writer resubmitting
-  the unchanged attribution is not a change; any other change by a non-creator gets a 403. This
+  the entity, the initiative stays with them: nobody else can move it away. This
   supersedes the earlier "authorize on both the current and target entity" proposal: no `writer`
-  check on the current or target entity is needed. A changed organization/project target still
+  check on the current or target entity is needed. An organization/project target still
   runs the affiliation check (§2.1: FGA `auditor`). Tracking *which* writer made a given change is a separate
   concern, out of scope here (open question 6).
+- **Attribution changes have their own route (lfx-crowdfunding#342).** Creator-only is a different
+  guard from the `writer` that `PATCH` checks, and the platform rule is that a field needing a
+  different guard gets its own path. So `PUT /initiatives/{id}/attribution` (Heimdall
+  `openfga_check owner`, plus the service-side creator check) is the only way to change it, and
+  `PATCH` rejects any `attribution` in its body with a 400, even an unchanged one. The manage read
+  returns `is_owner` so clients can offer the action only to the creator.
+- **Only while `submitted` (decided 2026-10-12).** A published initiative is never re-attributed:
+  the public claim of representation is fixed once the page is live. Any other status (`pending`,
+  `published`, `declined`, `hidden`) gets a 400, including for the creator.
 
 ---
 
@@ -341,7 +372,7 @@ sequenceDiagram
     participant DB as Postgres
     participant FS as fga-sync (NATS)
 
-    U->>API: PATCH /crowdfunding/me/initiatives/{id}
+    U->>API: PATCH /crowdfunding/initiatives/{id}
     API->>DB: load initiative (owner_id, attribution)
     alt caller is creator
         API-->>U: 200 OK
@@ -627,7 +658,7 @@ can move ahead of M1 and the gateway milestone alike.
 | # | Scope | Delivers |
 |---|---|---|
 | M1 | **Attribution foundation, `personal` + `project` only (`organization` deferred, §3.5)** — schema (`attributed_to` type + entity UID, plus nullable benefit-project field per resolved OQ1; schema keeps the `organization` enum value so no migration is needed later), form step with affiliation pickers (projects: persona-service candidates + anonymous query-service names/logos + type-ahead, §3.3; ~~orgs: query-service `filter_grants=direct`, one call for uids and names/logos, §3.3 — needs a credential, open question 7~~ **org picker dropped from M1 scope — no FGA-brokered candidate source is being built, §3.5**), **server-side entity validation** (existence/type, not authorization — §2.1; includes the new private/formation-project exclusion), details-page source label **suppressed until the gateway milestone** (§5 coupling). No access changes. | Most of LFXV2-2537 (org half and access deferred) |
-| Gateway milestone | **Everything the write gate touches, for both attribution types, folded into one delivery (§3.4, §3.5, §6 open question 8)** — the idiomatic `crowdfunding_initiative` FGA type (§3.4: tuple emission, backfill, Heimdall `openfga_check` rules), `organization` attribution and its credentialed picker (§3.5, dropped from M1), writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages (authorization-aware — entity writers also see unpublished initiatives), and the access-aware `ListForUser` query plan (§5.1). These were already converging on the same milestone from two directions (org attribution via §3.5, the write gate via §3.4's target state) — this folds the last piece (project's write gate) in alongside them. | Multi-person management, `organization` attribution |
+| Gateway milestone | **Everything the write gate touches, for both attribution types, folded into one delivery (§3.4, §3.5, §6 open question 8)** — the idiomatic `crowdfunding_initiative` FGA type (§3.4: tuple emission, backfill, Heimdall `openfga_check` rules), `organization` attribution and its credentialed picker (§3.5, dropped from M1), writers manage attributed initiatives, frontend "can manage" signal, SS lens "Initiatives" pages (authorization-aware — entity writers also see unpublished initiatives), and the access-aware `ListForUser` query plan (§5.1; superseded by per-entity lists, see §5.1). These were already converging on the same milestone from two directions (org attribution via §3.5, the write gate via §3.4's target state) — this folds the last piece (project's write gate) in alongside them. | Multi-person management, `organization` attribution |
 | M3 | **Org donations cleanup** — `b2b_org` link + partial unique index + upsert, canonical-org picker, dedup | Reconciled org donors |
 
 **The gateway milestone must migrate every owner-gated path, not just editing.** Today `owner_id`
@@ -638,7 +669,9 @@ entity writers get inconsistent partial access — e.g. they could edit an initi
 in their list or manage its announcements. The "one flat capability" rule requires all of these to
 move together.
 
-**`ListForUser` needs an access-aware query plan (gateway-milestone prerequisite) — see §5.1.** The
+**`ListForUser` needs an access-aware query plan (gateway-milestone prerequisite) — see §5.1.**
+_(Superseded 2026-10: `ListForUser` stays owned-only and the lens pages use per-entity lists; see
+the note at the top of §5.1.)_ The
 single-entity boolean resolver works for per-initiative gates (edit, read, delete) but not for
 *discovery*. Today `ListForUser` filters `WHERE i.owner_id = $1`, counts, then paginates
 ([initiative_repository.go:230,261,308](../../internal/infrastructure/db/initiative_repository.go)).
@@ -646,6 +679,25 @@ Extending that to "initiatives I can manage" is not a point check applied per-ro
 below.
 
 ### 5.1 The `ListForUser` query plan
+
+> **Superseded (2026-10, lfx-crowdfunding#259).** None of the plan below was built. Per the
+> 2026-10-04 decision, attributed initiatives are surfaced through the Organization and Project
+> lenses, and `GET /me/initiatives` stays **owned-only** (`WHERE owner_id = $1`, no FGA calls).
+> What shipped instead:
+>
+> - **Per-entity lists** (#333): `GET /crowdfunding/organizations/{uid}/initiatives` and
+>   `GET /crowdfunding/projects/{uid}/initiatives` return every initiative (any status) attributed
+>   to that one entity. Heimdall guards each with `openfga_check` (`writer` on `b2b_org:{uid}`,
+>   `writer_guard` on `project:{uid}`); a denial is a 403 and an FGA outage a 502. Each is a plain
+>   filtered query on the existing `List` (`attributed_to_type`/`attributed_to_uid`), so there is no
+>   candidate enumeration, no batch check, no merged `owner_id OR attributed_to IN (…)` branch and no
+>   per-user cache, and totals and pagination are correct by construction.
+> - **Manager reads** (#340): `GET /crowdfunding/initiatives/{id}/manage` returns one initiative in
+>   any status, and `GET /crowdfunding/initiatives/{id}/manage/transactions` returns that
+>   initiative's transactions, both to callers who pass the gateway's `openfga_check writer` on
+>   `crowdfunding_initiative:{id}`.
+>
+> The text below is kept as the record of the design that was considered.
 
 The list must return every initiative the caller owns **or** is a writer on the attributed entity
 of, correctly paginated. Two naive approaches both fail:
@@ -730,6 +782,12 @@ validated, just not shown publicly until the people who can police it have the t
 M1 into one release with that milestone was the rejected alternative; suppression keeps M1
 independently shippable.
 
+_(Lifted 2026-10: the label is live now that #259 has shipped writer management. #346 shows the
+entity's name and logo under the title on the details page. CF stores them on the initiative
+(`attributed_to_name`, `attributed_to_logo_url`) at attribution time by design, because `b2b_org`
+is non-public in the query service and anonymous viewers can't resolve it live. A rename or logo
+change shows only after re-attribution.)_
+
 **Consequence, stated plainly rather than glossed: this is now a longer wait than originally
 scoped.** The gateway milestone folds in the entire write gate for both attribution types (§5
 table above), not just the org half — so M1's captured-but-suppressed attribution stays invisible
@@ -766,7 +824,7 @@ maintainer story is the strongest).
    §3.5). With the write gate itself deferred to the gateway milestone (§3.4, §3.5, open question
    8), there is no near-term consumer for this resolver work either.
 4. **Candidate enumeration — largely resolved (2026-08); org picker source superseded again, gate
-   framing remains open.** The shared "enumerate a user's entities" dependency dissolved once the
+   framing superseded (2026-10-08, §2.1).** The shared "enumerate a user's entities" dependency dissolved once the
    platform ruled FGA enumeration out (ListObjects is an anti-pattern; fga-sync PR #57 being closed
    — see §5.1):
    - ~~**Gateway-milestone writable-set**~~ **Resolved:** CF-local candidates (distinct attributed
@@ -807,7 +865,10 @@ maintainer story is the strongest).
      </details>
    - ~~**New, still open: project name/logo half**~~ **Resolved** by the same v2 query-service
      answer above — it was the missing half, not a separate dependency.
-   - ~~**Gate framing.**~~ **Resolved (PM, 2026-08).** Attribution stays a self-attested claim — no
+   - ~~**Gate framing.**~~ **Superseded (2026-10-08, lfx-crowdfunding#259):** attribution now
+     requires an FGA `auditor` check on the target `project`/`b2b_org` (§2.1, "Eligibility is
+     enforced server-side"), not a self-attested claim. The 2026-08 resolution below is kept for
+     history. **Resolved (PM, 2026-08).** Attribution stays a self-attested claim — no
      access derived from it, entity existence validated server-side, public label suppressed until
      gateway-milestone writer policing (§2.1 ruling note). Both sub-parts raised by architecture review: (i)
      excluding private/formation projects (§2.1) is confirmed sufficient — no further framing

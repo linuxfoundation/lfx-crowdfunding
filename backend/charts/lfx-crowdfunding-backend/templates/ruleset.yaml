@@ -249,18 +249,14 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Reads on a specific owned initiative. The first two are deprecated aliases
-    # of initiative-manage-read, kept allow_all (service-side canManage only)
-    # until lfx-self-serve moves to /manage and they are removed. my-transactions
-    # is the caller's own donor history, open to any authenticated donor.
+    # The caller's own donor history on an initiative, open to any
+    # authenticated donor.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-read"
       allow_encoded_slashes: "off"
       match:
         methods:
           - GET
         routes:
-          - path: /crowdfunding/me/initiatives/:id
-          - path: /crowdfunding/me/initiatives/:id/transactions
           - path: /crowdfunding/me/initiatives/:id/my-transactions
       execute:
         - authenticator: oidc
@@ -311,9 +307,7 @@ spec:
     # Mutations on a specific initiative — UUID-only in practice (no
     # frontend or self-serve caller sends a slug here), so this is the route
     # that gets a real per-object openfga_check once openfga.enabled.
-    # /crowdfunding/initiatives/:id is the canonical path (initiative-scoped, writer-
-    # guarded); /crowdfunding/me/initiatives/:id is a deprecated alias until Self
-    # Serve migrates. A denial is a 403 here; the service-side check still 404s.
+    # A denial is a 403 here; the service-side check still 404s.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-write"
       allow_encoded_slashes: "off"
       match:
@@ -321,7 +315,6 @@ spec:
           - PATCH
           - DELETE
         routes:
-          - path: /crowdfunding/me/initiatives/:id
           - path: /crowdfunding/initiatives/:id
       execute:
         - authenticator: oidc
@@ -334,6 +327,67 @@ spec:
             values:
               relation: writer
               object: "crowdfunding_initiative:{{ "{{- .Request.URL.Captures.id -}}" }}"
+        {{- else }}
+        - authorizer: allow_all
+        {{- end }}
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
+    # Re-attribution (lfx-crowdfunding#342): creator-only, so owner rather than
+    # writer, and the creator must be affiliated with the target in the body
+    # (auditor on a b2b_org, auditor_guard on a project; same objects as the
+    # service's checkAffiliated, which still runs). personal needs no
+    # affiliation. The service also limits this to submitted initiatives.
+    #
+    # The deny_all guard must come before the body-based checks. Heimdall
+    # renders templates with text/template (no escaping), so entity_uid is
+    # validated before it reaches the FGA payload, and a body matching neither
+    # type condition would otherwise skip both checks. It accepts only the
+    # canonical forms the service stores (18-char SFID, lowercase UUID), so
+    # the gateway and the service check the same object. The type() and has()
+    # checks keep a malformed body (array, missing or non-string field) a 403
+    # rather than a CEL runtime error (500).
+    - id: "rule:lfx:lfx-crowdfunding-backend:initiative-attribution-write"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - PUT
+        routes:
+          - path: /crowdfunding/initiatives/:id/attribution
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        {{- if .Values.openfga.enabled }}
+        - authorizer: json_content_type
+        - authorizer: deny_all
+          if: >-
+            !(type(Request.Body()) == map && has(Request.Body().type) && (
+              (Request.Body().type == "personal" && (!has(Request.Body().entity_uid) || Request.Body().entity_uid == "")) ||
+              (Request.Body().type == "organization" && has(Request.Body().entity_uid) && type(Request.Body().entity_uid) == string && Request.Body().entity_uid.matches("^[a-zA-Z0-9]{18}$")) ||
+              (Request.Body().type == "project" && has(Request.Body().entity_uid) && type(Request.Body().entity_uid) == string && Request.Body().entity_uid.matches("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"))
+            ))
+        - authorizer: openfga_check
+          config:
+            values:
+              relation: owner
+              object: "crowdfunding_initiative:{{ "{{- .Request.URL.Captures.id -}}" }}"
+        - authorizer: openfga_check
+          if: 'Request.Body().type == "organization"'
+          config:
+            values:
+              relation: auditor
+              object: "b2b_org:{{ "{{- .Request.Body.entity_uid -}}" }}"
+        - authorizer: openfga_check
+          if: 'Request.Body().type == "project"'
+          config:
+            values:
+              relation: auditor_guard
+              object: "project:{{ "{{- .Request.Body.entity_uid -}}" }}"
         {{- else }}
         - authorizer: allow_all
         {{- end }}
@@ -395,14 +449,13 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Announcement create — POST /crowdfunding/me/initiatives/:id/announcements.
+    # Announcement create — POST /crowdfunding/initiatives/:id/announcements.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-announcement-create"
       allow_encoded_slashes: "off"
       match:
         methods:
           - POST
         routes:
-          - path: /crowdfunding/me/initiatives/:id/announcements
           - path: /crowdfunding/initiatives/:id/announcements
       execute:
         - authenticator: oidc
@@ -433,7 +486,6 @@ spec:
           - PUT
           - DELETE
         routes:
-          - path: /crowdfunding/me/initiatives/:id/announcements/:announcementId
           - path: /crowdfunding/initiatives/:id/announcements/:announcementId
       execute:
         - authenticator: oidc

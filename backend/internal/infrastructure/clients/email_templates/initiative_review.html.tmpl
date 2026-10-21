@@ -1,0 +1,18 @@
+{{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
+{{- /* SPDX-License-Identifier: MIT */ -}}
+{{- /* Legacy: communitybridge-review-mentorship-submission */ -}}
+{{template "header" .}}<h1 class="lfx-h1" style="font-size:28px;font-weight:700;color:#111827;margin:0 0 20px 0;line-height:1.25;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">{{.InitiativeName}}</h1>
+<p style="font-size:16px;color:#6b7280;margin:0 0 20px 0;line-height:1.5;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">Submitted For Review</p>
+<p style="font-size:16px;color:#374151;line-height:1.6;margin:0 0 16px 0;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">The above submission was submitted by {{.SubmitterName}} ({{.SubmitterEmail}}) and requires your review.</p>
+<p style="font-size:16px;color:#374151;line-height:1.6;margin:0 0 16px 0;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">Finalize your review by clicking one of the actions below &mdash; the submitter will be notified of your decision.</p>
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin:0 0 12px 0;">
+<tr>
+<td align="center" bgcolor="#009AFF" style="border-radius:999px;"><a href="{{.InitiativeURL}}" target="_blank" style="display:inline-block;background-color:#009AFF;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:9px 18px;border:1px solid #009AFF;border-radius:999px;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">View Submission</a></td>
+<td style="width:8px;line-height:1px;font-size:1px;">&nbsp;</td>
+<td align="center" bgcolor="#ffffff" style="border-radius:999px;"><a href="{{.ApproveURL}}" target="_blank" style="display:inline-block;background-color:#ffffff;color:#16A34A;text-decoration:none;font-size:14px;font-weight:600;padding:9px 18px;border:1px solid #16A34A;border-radius:999px;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">Approve</a></td>
+<td style="width:8px;line-height:1px;font-size:1px;">&nbsp;</td>
+<td align="center" bgcolor="#ffffff" style="border-radius:999px;"><a href="{{.DeclineURL}}" target="_blank" style="display:inline-block;background-color:#ffffff;color:#DC2626;text-decoration:none;font-size:14px;font-weight:600;padding:9px 18px;border:1px solid #DC2626;border-radius:999px;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">Reject</a></td>
+</tr>
+</table>
+<p style="margin:0 0 28px 0;"></p>
+{{template "footer" .}}

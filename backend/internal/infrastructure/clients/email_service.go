@@ -5,41 +5,96 @@
 package clients
 
 import (
+	"bytes"
 	"context"
+	"embed"
 	"errors"
 	"fmt"
+	htmltemplate "html/template"
 	"net/url"
 	"strings"
+	texttemplate "text/template"
+	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 )
 
-type emailService struct {
-	mandrill           MandrillClient
-	frontendBase       string   // e.g. "https://crowdfunding.lfx.linuxfoundation.org"
-	notificationEmails []string // reviewer inboxes for new-submission alerts
+//go:embed email_templates/*.tmpl
+var emailTemplateFS embed.FS
+
+var (
+	htmlEmailTemplates = htmltemplate.Must(htmltemplate.ParseFS(emailTemplateFS, "email_templates/*.html.tmpl"))
+	textEmailTemplates = texttemplate.Must(texttemplate.ParseFS(emailTemplateFS, "email_templates/*.txt.tmpl"))
+)
+
+const (
+	templateInitiativeReview   = "initiative_review"
+	templateInitiativeApproved = "initiative_approved"
+	templateInitiativeDeclined = "initiative_declined"
+	templateDonationReceipt    = "donation_receipt"
+	templateDonationReceived   = "donation_received"
+)
+
+// reviewerGreeting addresses the staff review inboxes.
+const reviewerGreeting = "LFX Crowdfunding team"
+
+// ErrEmailNotConfigured is returned when no email sender is wired (FGA_NATS_URL unset).
+// Callers log it at WARN and continue.
+var ErrEmailNotConfigured = errors.New("email: sender not configured")
+
+// ErrNoNotificationRecipients is returned when EMAIL_REVIEW_INBOX is empty or unset,
+// so callers can log a warning rather than silently dropping the review alert.
+var ErrNoNotificationRecipients = errors.New("email: no notification recipients configured")
+
+// emailTemplateData is the union of fields the notification templates read.
+type emailTemplateData struct {
+	RecipientName  string
+	InitiativeName string
+	InitiativeURL  string
+	ApproveURL     string
+	DeclineURL     string
+	SubmitterName  string
+	SubmitterEmail string
+	DonorName      string
+	DonorEmail     string
+	Amount         string
+	Category       string
+	OrgName        string
+	Payment        string
+	DonationType   string
+	Year           int
 }
 
-// NewEmailService returns a domain.EmailService backed by Mandrill.
-func NewEmailService(mandrill MandrillClient, frontendBase string, notificationEmails []string) domain.EmailService {
+type emailService struct {
+	sender             EmailSender // nil when email is not configured
+	frontendBase       string      // e.g. "https://crowdfunding.lfx.linuxfoundation.org"
+	notificationEmails []string    // reviewer inboxes for new-submission alerts
+}
+
+// NewEmailService returns a domain.EmailService that renders in-repo templates
+// and sends them through sender. A nil sender makes every send return ErrEmailNotConfigured.
+func NewEmailService(sender EmailSender, frontendBase string, notificationEmails []string) domain.EmailService {
 	return &emailService{
-		mandrill:           mandrill,
+		sender:             sender,
 		frontendBase:       strings.TrimRight(frontendBase, "/"),
 		notificationEmails: notificationEmails,
 	}
 }
 
-// emailRequest is the internal send descriptor used by sendEmail.
-type emailRequest struct {
-	Recipient          string
-	RecipientName      string
-	TemplateName       MandrillTemplateName
-	TemplateParameters map[string]string
-}
-
-// sendEmail is the single generic send method that all specific email methods delegate to.
-func (s *emailService) sendEmail(ctx context.Context, req emailRequest) error {
-	return s.mandrill.SendTemplate(ctx, req.TemplateName, req.Recipient, req.RecipientName, req.TemplateParameters)
+// sendEmail renders the named template pair and sends it to one recipient.
+func (s *emailService) sendEmail(ctx context.Context, to, subject, name string, data emailTemplateData) error {
+	if s.sender == nil {
+		return ErrEmailNotConfigured
+	}
+	data.Year = time.Now().UTC().Year()
+	var html, text bytes.Buffer
+	if err := htmlEmailTemplates.ExecuteTemplate(&html, name+".html.tmpl", data); err != nil {
+		return fmt.Errorf("render %s html: %w", name, err)
+	}
+	if err := textEmailTemplates.ExecuteTemplate(&text, name+".txt.tmpl", data); err != nil {
+		return fmt.Errorf("render %s text: %w", name, err)
+	}
+	return s.sender.Send(ctx, EmailMessage{To: to, Subject: subject, HTML: html.String(), Text: text.String()})
 }
 
 // InitiativeURL composes a full frontend deep-link for an initiative slug.
@@ -47,51 +102,46 @@ func (s *emailService) InitiativeURL(slug string) string {
 	return fmt.Sprintf("%s/initiatives/%s", s.frontendBase, url.PathEscape(slug))
 }
 
-// SendProjectApprovedEmail notifies the initiative owner that their initiative was approved.
+// SendProjectApprovedEmail notifies the initiative owner that their initiative was approved,
+// and copies the same email to the reviewer inboxes as the approvers' confirmation (legacy
+// Mandrill behaviour). Every recipient is attempted; failures are joined.
 func (s *emailService) SendProjectApprovedEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL string) error {
-	return s.sendEmail(ctx, emailRequest{
-		Recipient:     toEmail,
-		RecipientName: toName,
-		TemplateName:  MandrillTemplateApproved,
-		TemplateParameters: map[string]string{
-			"FNAME":            toName,
-			"PROJECT_NAME":     initiativeName,
-			"VIEW_PROJECT_URL": initiativeURL,
-		},
-	})
+	data := emailTemplateData{
+		RecipientName:  toName,
+		InitiativeName: initiativeName,
+		InitiativeURL:  initiativeURL,
+	}
+	var errs []error
+	for _, recipient := range append([]string{toEmail}, s.notificationEmails...) {
+		if err := s.sendEmail(ctx, recipient, "Your submission for LFX Crowdfunding has been approved.", templateInitiativeApproved, data); err != nil {
+			errs = append(errs, fmt.Errorf("send approved email to %s: %w", recipient, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // SendProjectDeclinedEmail notifies the initiative owner that their initiative was declined.
 func (s *emailService) SendProjectDeclinedEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL string) error {
-	return s.sendEmail(ctx, emailRequest{
-		Recipient:     toEmail,
-		RecipientName: toName,
-		TemplateName:  MandrillTemplateDeclined,
-		TemplateParameters: map[string]string{
-			"FNAME":        toName,
-			"PROJECT_NAME": initiativeName,
-			"VIEW_URL":     initiativeURL,
-		},
+	return s.sendEmail(ctx, toEmail, "Your submission to LFX Crowdfunding was rejected.", templateInitiativeDeclined, emailTemplateData{
+		RecipientName:  toName,
+		InitiativeName: initiativeName,
+		InitiativeURL:  initiativeURL,
 	})
 }
 
 // SendDonationConfirmationEmail sends a donation receipt to the donor.
 func (s *emailService) SendDonationConfirmationEmail(ctx context.Context, toEmail, toName, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType string) error {
-	return s.sendEmail(ctx, emailRequest{
-		Recipient:     toEmail,
-		RecipientName: toName,
-		TemplateName:  MandrillTemplateDonationConfirmation,
-		TemplateParameters: map[string]string{
-			"AMOUNT":            amountFormatted,
-			"CATEGORY_NAME":     category,
-			"DONOR_EMAIL":       toEmail,
-			"DONOR_NAME":        toName,
-			"ORGANIZATION_NAME": orgName,
-			"PAYMENT":           payment,
-			"PROJECT_NAME":      initiativeName,
-			"TYPE":              donationType,
-			"VIEW_PROJECT_URL":  initiativeURL,
-		},
+	return s.sendEmail(ctx, toEmail, "Your donation to "+initiativeName+" has been submitted.", templateDonationReceipt, emailTemplateData{
+		RecipientName:  toName,
+		InitiativeName: initiativeName,
+		InitiativeURL:  initiativeURL,
+		DonorName:      toName,
+		DonorEmail:     toEmail,
+		Amount:         amountFormatted,
+		Category:       category,
+		OrgName:        orgName,
+		Payment:        payment,
+		DonationType:   donationType,
 	})
 }
 
@@ -100,49 +150,36 @@ func (s *emailService) SendDonationAdminNotificationEmail(ctx context.Context, o
 	if ownerEmail == "" {
 		return nil // owner email not available; skip silently
 	}
-	return s.sendEmail(ctx, emailRequest{
-		Recipient:     ownerEmail,
-		RecipientName: ownerName,
-		TemplateName:  MandrillTemplateDonationAdminNotification,
-		TemplateParameters: map[string]string{
-			"AMOUNT":            amountFormatted,
-			"CATEGORY_NAME":     category,
-			"DONOR_EMAIL":       donorEmail,
-			"DONOR_NAME":        donorName,
-			"FNAME":             ownerName,
-			"ORGANIZATION_NAME": orgName,
-			"PAYMENT":           payment,
-			"PROJECT_NAME":      initiativeName,
-			"TYPE":              donationType,
-			"VIEW_PROJECT_URL":  initiativeURL,
-		},
+	return s.sendEmail(ctx, ownerEmail, "A donation was submitted to "+initiativeName+".", templateDonationReceived, emailTemplateData{
+		RecipientName:  ownerName,
+		InitiativeName: initiativeName,
+		InitiativeURL:  initiativeURL,
+		DonorName:      donorName,
+		DonorEmail:     donorEmail,
+		Amount:         amountFormatted,
+		Category:       category,
+		OrgName:        orgName,
+		Payment:        payment,
+		DonationType:   donationType,
 	})
 }
-
-// ErrNoNotificationRecipients is returned when MANDRILL_NOTIFICATION_EMAIL is empty or unset,
-// so callers can log a warning rather than silently dropping the review alert.
-var ErrNoNotificationRecipients = errors.New("email: no notification recipients configured")
 
 // SendProjectForReviewEmail notifies all reviewer inboxes that a new initiative has been submitted.
 func (s *emailService) SendProjectForReviewEmail(ctx context.Context, ownerName, ownerEmail, initiativeName, initiativeURL, approveURL, declineURL string) error {
 	if len(s.notificationEmails) == 0 {
 		return ErrNoNotificationRecipients
 	}
-	params := map[string]string{
-		"SUBMISSION_NAME": initiativeName,
-		"SUBMITTER_NAME":  ownerName,
-		"SUBMITTER_EMAIL": ownerEmail,
-		"VIEW_URL":        initiativeURL,
-		"APPROVE_URL":     approveURL,
-		"REJECT_URL":      declineURL,
+	data := emailTemplateData{
+		RecipientName:  reviewerGreeting,
+		InitiativeName: initiativeName,
+		InitiativeURL:  initiativeURL,
+		ApproveURL:     approveURL,
+		DeclineURL:     declineURL,
+		SubmitterName:  ownerName,
+		SubmitterEmail: ownerEmail,
 	}
 	for _, recipient := range s.notificationEmails {
-		if err := s.sendEmail(ctx, emailRequest{
-			Recipient:          recipient,
-			RecipientName:      "LFX Crowdfunding Reviewers",
-			TemplateName:       MandrillTemplateSubmittedForReview,
-			TemplateParameters: params,
-		}); err != nil {
+		if err := s.sendEmail(ctx, recipient, "LFX Crowdfunding Project application is pending your review", templateInitiativeReview, data); err != nil {
 			return err
 		}
 	}

@@ -67,6 +67,9 @@ func (r *apprInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) 
 	return nil, nil
 }
 func (r *apprInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (r *apprInitiativeRepo) UpdateAttribution(_ context.Context, _ string, _ models.Attribution, _ string) error {
+	return nil
+}
 func (r *apprInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }

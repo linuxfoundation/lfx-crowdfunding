@@ -131,6 +131,9 @@ func (r *subscriptionInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []
 func (r *subscriptionInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error {
 	return nil
 }
+func (r *subscriptionInitiativeRepo) UpdateAttribution(_ context.Context, _ string, _ models.Attribution, _ string) error {
+	return nil
+}
 func (r *subscriptionInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models.OwnerInfo, error) {
 	return models.OwnerInfo{}, nil
 }

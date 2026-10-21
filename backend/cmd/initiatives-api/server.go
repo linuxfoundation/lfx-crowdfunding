@@ -77,15 +77,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		return nil, fmt.Errorf("s3 client: %w", err)
 	}
 
-	// Mandrill email client
-	mandrillClient := clients.NewMandrillClient(clients.MandrillConfig{
-		APIKey:    cfg.Mandrill.APIKey,
-		FromEmail: cfg.Mandrill.FromEmail,
-		FromName:  cfg.Mandrill.FromName,
-		Timeout:   cfg.Mandrill.Timeout,
-	})
-	emailSvc := clients.NewEmailService(mandrillClient, cfg.Mandrill.FrontendBase, cfg.Mandrill.NotificationEmails)
-
 	// Reimbursement Service client — nil when REIMBURSEMENTS_API_URL is unset
 	// (integration disabled; no sync calls are made).
 	// Fail fast when URL is set but KEY is missing — the service would otherwise
@@ -96,7 +87,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	reimbursementClient := clients.NewReimbursementClient(clients.ReimbursementConfig{
 		APIURL:                cfg.Reimbursement.APIURL,
 		APIKey:                cfg.Reimbursement.APIKey,
-		FrontendBase:          cfg.Mandrill.FrontendBase,
+		FrontendBase:          cfg.Email.FrontendBase,
 		Timeout:               cfg.Reimbursement.Timeout,
 		Auth0TokenURL:         cfg.Reimbursement.Auth0TokenURL,
 		Auth0ClientID:         cfg.Reimbursement.Auth0ClientID,
@@ -109,8 +100,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 	// fga-sync NATS connection — optional; nil when FGA_NATS_URL is unset.
 	// Shared by fga.NewNATSResolver (access-check request/reply for entity-writer
-	// point checks, lfx-v2-crowdfunding#259) and fga.NewPublisher (crowdfunding_initiative
-	// tuple emission, lfx-crowdfunding#277) below.
+	// point checks, lfx-v2-crowdfunding#259), fga.NewPublisher (crowdfunding_initiative
+	// tuple emission, lfx-crowdfunding#277), and the lfx-v2-email-service client
+	// (lfx-crowdfunding#289) below.
 	//
 	// RetryOnFailedConnect: a transient fga-sync/NATS outage must not fail API
 	// startup — Connect enters background reconnect instead of erroring.
@@ -123,8 +115,16 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			return nil, fmt.Errorf("fga-sync nats connect: %w", err)
 		}
 	} else {
-		logger.Warn("FGA_NATS_URL is not set — fga-sync access checks are disabled")
+		logger.Warn("FGA_NATS_URL is not set — fga-sync access checks and email notifications are disabled")
 	}
+
+	// Email goes through lfx-v2-email-service on the same connection; a nil
+	// sender makes every send return ErrEmailNotConfigured.
+	var emailSender clients.EmailSender
+	if fgaConn != nil {
+		emailSender = clients.NewEmailClient(fgaConn, cfg.Email.FromDisplayName)
+	}
+	emailSvc := clients.NewEmailService(emailSender, cfg.Email.FrontendBase, cfg.Email.NotificationEmails)
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
@@ -190,7 +190,14 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			return nil, fmt.Errorf("userinfo client: %w", err)
 		}
 	}
-	userH := handler.NewUserHandler(userRepo, userInfoFetcher)
+	// Heimdall tokens on /me carry no name (and usually no email), so login
+	// sync reads them from auth-service on the same NATS connection
+	// (lfx-crowdfunding#387).
+	var profileLookup handler.ProfileLookup
+	if fgaConn != nil {
+		profileLookup = clients.NewAuthServiceClient(fgaConn)
+	}
+	userH := handler.NewUserHandler(userRepo, userInfoFetcher, profileLookup, logger)
 
 	// Router
 	r := chi.NewRouter()
@@ -253,6 +260,8 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Get("/initiatives/{id}/manage", initiativeH.GetForUser)
 			r.Get("/initiatives/{id}/manage/transactions", initiativeH.GetTransactionsForUser)
 			r.Patch("/initiatives/{id}", initiativeH.Update)
+			// Creator-only (Heimdall: owner), unlike the rest of this group.
+			r.Put("/initiatives/{id}/attribution", initiativeH.UpdateAttribution)
 			r.Delete("/initiatives/{id}", initiativeH.Delete)
 			r.Post("/initiatives/{id}/announcements", announcementH.Create)
 			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
@@ -305,15 +314,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			// Logo uploads (used during initiative creation by the owning user).
 			r.Post("/presigned-url", uploadH.CreatePresignedURL)
 
-			// Owner-checked initiative read + mutations. The detail read returns the
-			// caller's own initiative in any status (the public detail endpoint hides
-			// non-published initiatives from non-approvers).
-			r.Get("/initiatives/{id}", initiativeH.GetForUser)
-			r.Get("/initiatives/{id}/transactions", initiativeH.GetTransactionsForUser)
+			// Caller's own donor history on an initiative, and initiative create
+			// (the owner is always the caller). Manager reads and writes live
+			// outside /me under /initiatives/{id} (lfx-crowdfunding#341).
 			r.Get("/initiatives/{id}/my-transactions", initiativeH.GetMyTransactions)
 			r.Post("/initiatives", initiativeH.Create)
-			r.Patch("/initiatives/{id}", initiativeH.Update)
-			r.Delete("/initiatives/{id}", initiativeH.Delete)
 
 			// Donations and subscriptions on a specific initiative (caller is the donor).
 			r.Get("/initiatives/{id}/donations", donationH.List)
@@ -321,11 +326,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Get("/initiatives/{id}/subscriptions", subscriptionH.List)
 			r.Post("/initiatives/{id}/subscriptions", subscriptionH.Create)
 			r.Delete("/subscriptions/{id}", subscriptionH.Cancel)
-
-			// Announcements on a specific initiative (caller must be the initiative owner).
-			r.Post("/initiatives/{id}/announcements", announcementH.Create)
-			r.Put("/initiatives/{id}/announcements/{announcementId}", announcementH.Update)
-			r.Delete("/initiatives/{id}/announcements/{announcementId}", announcementH.Delete)
 		})
 
 		// Approval route — caller is an approver (allowlist check), not the resource owner.
@@ -358,10 +358,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	// Versioning, when needed, is a `v` query parameter (see
 	// lfx-v2-helm/docs/entity-design.md and e.g. /query/resources?v=1).
 	r.Route("/crowdfunding", apiRoutes)
-	// TODO(v1-namespace): interim /v1 prefix kept while existing consumers migrate to /crowdfunding/*.
-	// Remove once the CF frontend, Self-Serve, and the registered Stripe
-	// webhook URL are all switched over (see docs/rewrite/02-decisions.md).
-	r.Route("/v1", apiRoutes)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{

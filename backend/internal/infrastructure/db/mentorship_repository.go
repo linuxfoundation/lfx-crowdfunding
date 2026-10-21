@@ -5,10 +5,13 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
@@ -22,12 +25,17 @@ const (
 
 // MentorshipRepositoryImpl implements domain.MentorshipRepository against CF Postgres.
 type MentorshipRepositoryImpl struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger *slog.Logger
 }
 
 // NewMentorshipRepository returns a MentorshipRepositoryImpl backed by pool.
-func NewMentorshipRepository(pool *pgxpool.Pool) *MentorshipRepositoryImpl {
-	return &MentorshipRepositoryImpl{pool: pool}
+// logger receives operational warnings; nil falls back to slog.Default().
+func NewMentorshipRepository(pool *pgxpool.Pool, logger *slog.Logger) *MentorshipRepositoryImpl {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &MentorshipRepositoryImpl{pool: pool, logger: logger}
 }
 
 // UpsertProgram inserts or updates the mentorship initiative row identified by
@@ -40,16 +48,13 @@ func (r *MentorshipRepositoryImpl) UpsertProgram(ctx context.Context, p models.M
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// 1. Resolve owner: upsert a stub user row by LF username, then fetch the UUID.
-	// Use COALESCE(NULLIF(...,''), col) so empty strings don't overwrite existing values.
+	// 1. Resolve owner: create a stub user row by LF username if none exists, then fetch the UUID.
+	// Existing users are never modified — Snowflake owner data must not overwrite
+	// profile fields (email, names, avatar) of a real CF user.
 	const insertOwner = `
 INSERT INTO users (username, email, given_name, family_name, avatar_url, created_on, updated_on)
 VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), NOW(), NOW())
-ON CONFLICT (username) DO UPDATE SET
-	email       = COALESCE(NULLIF(EXCLUDED.email, ''), users.email),
-	given_name  = COALESCE(NULLIF(EXCLUDED.given_name, ''), users.given_name),
-	family_name = COALESCE(NULLIF(EXCLUDED.family_name, ''), users.family_name),
-	avatar_url  = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), users.avatar_url)`
+ON CONFLICT (username) DO NOTHING`
 	const selectOwner = `SELECT id FROM users WHERE username = $1`
 
 	if _, err := tx.Exec(ctx, insertOwner, p.OwnerLFUsername, p.OwnerEmail, p.OwnerFirstName, p.OwnerLastName, p.OwnerAvatarURL); err != nil {
@@ -63,6 +68,13 @@ ON CONFLICT (username) DO UPDATE SET
 	// 2. Upsert initiative row with all Snowflake-sourced fields.
 	// PROGRAM_ID is used directly as initiatives.id (PK) and jobspring_project_id,
 	// so ON CONFLICT (id) is always valid and needs no separate unique index.
+	// The conflict update is restricted to mentorship rows: a PROGRAM_ID colliding
+	// with any other initiative type updates nothing and returns no row.
+	// Jobspring does not enforce unique program slugs, so a new program whose
+	// slug is already held by another initiative gets the same "-<id8>" suffix
+	// migration 011 applied, instead of failing the unique index and never syncing.
+	// If that is taken too it falls back to "-<full id>", and finally to NULL
+	// (still reachable by UUID), so the fallback itself can never collide.
 	const upsertInitiative = `
 INSERT INTO initiatives (
 	id,
@@ -84,7 +96,15 @@ INSERT INTO initiatives (
 	$4,
 	$5,
 	$6,
-	$7,
+	CASE
+		WHEN NOT EXISTS (SELECT 1 FROM initiatives WHERE slug = $7 AND id <> $1::uuid)
+			THEN $7
+		WHEN NOT EXISTS (SELECT 1 FROM initiatives WHERE slug = $7 || '-' || left($1::text, 8) AND id <> $1::uuid)
+			THEN $7 || '-' || left($1::text, 8)
+		WHEN NOT EXISTS (SELECT 1 FROM initiatives WHERE slug = $7 || '-' || $1::text AND id <> $1::uuid)
+			THEN $7 || '-' || $1::text
+		ELSE NULL
+	END,
 	$8,
 	NOW(),
 	NOW()
@@ -99,9 +119,12 @@ ON CONFLICT (id) DO UPDATE SET
 	description = EXCLUDED.description,
 	industry    = EXCLUDED.industry,
 	updated_on  = NOW()
-RETURNING id`
+WHERE initiatives.initiative_type = $2
+RETURNING id, slug, (xmax = 0) AS inserted`
 
 	var id string
+	var storedSlug *string
+	var inserted bool
 	if err := tx.QueryRow(ctx, upsertInitiative,
 		p.JobspringProjectID,
 		initiativeTypeMentorship,
@@ -111,9 +134,14 @@ RETURNING id`
 		nullableMentorshipString(p.Description),
 		nullableMentorshipString(p.Slug),
 		nullableMentorshipString(p.Industry),
-	).Scan(&id); err != nil {
+	).Scan(&id, &storedSlug, &inserted); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("upsert mentorship program %q: id belongs to a non-mentorship initiative, skipped", p.JobspringProjectID)
+		}
 		return "", fmt.Errorf("upsert mentorship program %q: %w", p.JobspringProjectID, err)
 	}
+	// Logged after commit so the warning only reflects persisted state.
+	slugSuffixed := inserted && p.Slug != "" && (storedSlug == nil || *storedSlug != p.Slug)
 
 	// 3. Ensure the fixed "mentee" funding goal row exists (idempotent).
 	const insertMenteeGoal = `
@@ -188,6 +216,17 @@ ON CONFLICT (initiative_id, name) DO NOTHING`
 
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit program tx for %q: %w", p.JobspringProjectID, err)
+	}
+	if slugSuffixed {
+		stored := ""
+		if storedSlug != nil {
+			stored = *storedSlug
+		}
+		r.logger.WarnContext(ctx, "mentorship program slug already taken, stored with fallback slug",
+			"jobspring_project_id", p.JobspringProjectID,
+			"program_slug", p.Slug,
+			"stored_slug", stored,
+		)
 	}
 	return id, nil
 }

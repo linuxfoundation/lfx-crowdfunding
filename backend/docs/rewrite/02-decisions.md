@@ -133,7 +133,7 @@ Ledger-derived financial data is stored in the `initiative_ledger_stats` table (
 
 The `initiative_stats` table that existed in an earlier schema version has been removed entirely. `initiative_ledger_stats` is its replacement — see the `initiative_stats` removal entry in this document.
 
-The Stripe webhook handler (`POST /v1/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
+The Stripe webhook handler (`POST /crowdfunding/hooks/stripe`) does **not** call the Ledger API — it handles only `customer.subscription.deleted`. Calling Ledger from the webhook would require a 5-second delay to avoid a race condition with Ledger's own webhook handler.
 
 **Stripe webhook auth:** HMAC-SHA256 via `webhook.ConstructEvent(body, sig, endpointSecret)`, `STRIPE_WEBHOOK_SECRET` env var. Must not be protected by Auth0 JWT middleware — Stripe cannot send a Bearer token.
 
@@ -202,7 +202,7 @@ The column is named `jobspring_project_id` (preserving the DynamoDB field name `
 
 Current system: fully editable — no restrictions on any field. This is a latent bug; Mentorship sync overwrites CF edits silently.
 
-New system: field ownership split enforced at the API layer (`PATCH /crowdfunding/me/initiatives/:id` rejects Mentorship-owned fields when `initiative_type = mentorship`).
+New system: field ownership split enforced at the API layer (`PATCH /crowdfunding/initiatives/:id` rejects Mentorship-owned fields when `initiative_type = mentorship`).
 
 | Field group | Owner | Editable via CF UI |
 |---|---|---|
@@ -251,7 +251,7 @@ Rationale — this is the established LFX v2 gateway convention:
 - Path namespacing is load-bearing for authorization: Heimdall rule sets and the gateway `HTTPRoute` match on the path prefix, and the default rule is deny-all. A service-owned prefix keeps CF's rules scoped to CF.
 - Health endpoints (`/livez`, `/readyz`) stay at the bare root — the k8s convention across all v2 services — and are deliberately not exposed through the gateway.
 
-Transition: the router dual-mounts the same handlers under `/crowdfunding/*` (canonical) and `/v1/*` (interim) for one release, so the CF frontend, Self Serve, and the registered Stripe webhook URL can migrate without a breakage window. The interim mount is tagged `TODO(v1-namespace)` per the cleanup convention below.
+Transition: the router dual-mounted the same handlers under `/crowdfunding/*` (canonical) and `/v1/*` (interim), so the CF frontend, Self Serve, the Reimbursement Service, and the registered Stripe webhook URL could migrate without a breakage window. Once every consumer had moved and Datadog showed no `/v1/*` traffic, the interim mount was removed ([#291](https://github.com/linuxfoundation/lfx-crowdfunding/issues/291)).
 
 ### URLs
 
@@ -283,14 +283,13 @@ Tags go on the first line of the relevant handler, function, or block — not on
 | `TODO(ledger-k8s)` | Ledger Service migrated to Kubernetes and updated to call `/crowdfunding/initiatives/{id}` | `GET /v1/projects/{id}`, `GET /v1/entities/{id}`, `GET /v1/organizations/{id}` legacy shim handlers and their middleware |
 | `TODO(rs-k8s)` | Reimbursement Service migrated to Kubernetes | Internal RS-facing HTTP endpoints, any RS-specific auth middleware, OpenSearch queue writes |
 | `TODO(post-cutover)` | Old LFF Lambda stack decommissioned | DynamoDB string ID → UUID resolution fallback in any endpoint that accepts legacy IDs; `source_dynamo_table` column and any code that reads it |
-| `TODO(v1-namespace)` | CF frontend, Self Serve, and the Stripe webhook URL all call `/crowdfunding/*` | The interim `r.Route("/v1", apiRoutes)` mount in `cmd/initiatives-api/server.go` |
 
 Add new labels to this table when new temporary code is introduced. Each label must have a named trigger (a concrete event, not "someday") and a named owner or Jira epic if one exists.
 
 ### Finding all cleanup points
 
 ```bash
-grep -rn 'TODO(' cmd/ internal/ | grep -E 'TODO\((ledger-k8s|rs-k8s|post-cutover|v1-namespace)\)'
+grep -rn 'TODO(' cmd/ internal/ | grep -E 'TODO\((ledger-k8s|rs-k8s|post-cutover)\)'
 ```
 
 Run this after each follow-on milestone to find what can now be deleted.
@@ -509,7 +508,7 @@ The `expensify-sync` cron job (SyncExpensifyHandler) pushes project/entity metad
 
 ### EMAIL_DRY_RUN mode
 
-Add `EMAIL_DRY_RUN=true` environment variable. When set, email service logs the would-be email payload instead of calling Mandrill. Used when testing with production data to prevent accidental emails.
+Add `EMAIL_DRY_RUN=true` environment variable. When set, email service logs the would-be email payload instead of sending it. Used when testing with production data to prevent accidental emails.
 
 ### LFX v2 platform stack — standalone for initial release
 
@@ -677,7 +676,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `JWT_AUDIENCE` | Expected `aud` claim | New — `https://crowdfunding-api.{env}.lfx.dev`; see `09` |
 | `STRIPE_SECRET_KEY` | Stripe secret API key | Same key as LFF `STRIPE_CLIENT_SECRET` |
 | `STRIPE_WEBHOOK_SECRET` | Per-endpoint signing secret for `POST /crowdfunding/stripe/webhook` | Same key as LFF; registered in Stripe dashboard against the CF webhook URL |
-| `MANDRILL_API_KEY` | Transactional email via Mandrill/Mailchimp | Same key as LFF `MANDRILL_API_KEY` |
+| *(removed)* `MANDRILL_API_KEY` | Email moved off Mandrill to lfx-v2-email-service over `FGA_NATS_URL` (lfx-crowdfunding#289); CF holds no email-provider credentials | Use `EMAIL_REVIEW_INBOX` and `EMAIL_FROM_DISPLAY_NAME` |
 | `GITHUB_TOKEN` | GitHub API token for GitHub stats (repo metadata, stars, etc.) | Same token as LFF |
 | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID (GitHub Connect for project owners) | Same as LFF |
 | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret | Same as LFF |
@@ -691,7 +690,7 @@ AWS Secrets Manager path convention (following LFX pattern): `/cloudops/managed-
 | `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse name | Follow LFX platform pattern |
 | `SNOWFLAKE_ROLE` | Snowflake role for CF queries | New — to be provisioned by DevOps |
 | `LEDGER_API_URL` | Base URL of the Ledger HTTP API | Replaces LFF `TRANSACTIONS_API_URL` |
-| `EMAIL_DRY_RUN` | Set to `true` to suppress Mandrill calls (logs instead) | Non-secret config; used for testing with production data |
+| `EMAIL_DRY_RUN` | Set to `true` to suppress email sends (logs instead) | Non-secret config; used for testing with production data |
 | `CF_NOTIFICATION_SOURCE_EMAIL` | From address for outgoing emails | Replaces LFF `NOTIFICATION_SOURCE_EMAIL` |
 | `CF_ADMIN_EMAIL` | Admin contact email (used in approval flows) | Replaces LFF `ADMIN_EMAIL` |
 

@@ -1,8 +1,8 @@
 ---
 title: Donations FAQ
 description: Answers to frequently asked questions about making and managing donations on LFX Crowdfunding.
-tags: [donations, faq, payment, recurring, cancel, refund]
-last_updated: 2026-06-29
+tags: [donations, faq, payment, recurring, cancel, refund, credit card, invoice]
+last_updated: 2026-10-14
 display_order: 3
 intercom_collection: LFX Crowdfunding
 ---
@@ -12,6 +12,10 @@ Answers to the most common questions about donating on LFX Crowdfunding.
 ## Is there a minimum donation amount?
 
 There is no enforced minimum for one-time donations. Monthly recurring donations must be at least $1 per month.
+
+## What payment methods are accepted?
+
+Donations can only be paid by credit card, processed securely through Stripe. Paying by invoice is not supported, and neither are bank transfers or other payment methods. See [Payment Account](../../payment-account/) to manage your saved card.
 
 ## Do I need an account to donate?
 

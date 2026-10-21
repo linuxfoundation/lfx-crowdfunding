@@ -15,11 +15,19 @@ const slug = computed(() => route.params.slug as string);
 const config = useRuntimeConfig();
 
 // Server-side fetch for SEO meta — the child component uses Vue Query for UI rendering.
-const { data: initiative } = await useAsyncData<InitiativeDetail>(
+// useRequestFetch forwards the session cookie during SSR so approvers can load non-published initiatives.
+const requestFetch = useRequestFetch();
+const { data: initiative, error } = await useAsyncData<InitiativeDetail>(
   `initiative-seo-${slug.value}`,
-  () => $fetch<InitiativeDetail>(`/api/initiatives/${slug.value}`),
+  () => requestFetch<InitiativeDetail>(`/api/initiatives/${slug.value}`),
   { lazy: false },
 );
+
+// Render the error page on the server too. Vue Query doesn't dehydrate failed queries, so
+// leaving this to the child would SSR an empty page that hydrates as a spinner (mismatch).
+if (error.value) {
+  throw createError({ statusCode: error.value.statusCode ?? 500, fatal: true });
+}
 
 const title = computed(() => initiative.value?.name ?? slug.value);
 const description = computed(() => {

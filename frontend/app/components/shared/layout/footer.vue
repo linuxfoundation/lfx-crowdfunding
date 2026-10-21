@@ -84,11 +84,11 @@ SPDX-License-Identifier: MIT
       <!-- Divider -->
       <div class="my-8 h-px bg-white/10" />
 
-      <!-- LFX footer web component (copyright, cookie prefs, legal links) -->
+      <!-- LFX footer web component (copyright, legal links). No cookie-tracking:
+           it loads Osano; consent is Transcend now (setup/head.ts + "Cookie settings" link). -->
       <ClientOnly>
         <lfx-footer
           ref="lfxFooterRef"
-          cookie-tracking
           class="lfx-footer-wc !p-0 !text-left"
         />
       </ClientOnly>

@@ -25,6 +25,7 @@ export const lfxFooterMenu: FooterMenuSection[] = [
       { name: 'About', link: AppRoute.About },
       { name: 'Documentation', link: AppRoute.Docs },
       { name: 'Contact support', intercom: true },
+      { name: 'Cookie settings', action: () => window.transcend?.showConsentManager?.() },
     ],
   },
   {

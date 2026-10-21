@@ -92,6 +92,9 @@ func (r *listInitiativeRepo) ListPublished(ctx context.Context) ([]models.Initia
 func (r *listInitiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error {
 	return nil
 }
+func (r *listInitiativeRepo) UpdateAttribution(_ context.Context, _ string, _ models.Attribution, _ string) error {
+	return nil
+}
 
 func newReadSvc(repo domain.InitiativeRepository, userRepo domain.UserRepository) *InitiativeService {
 	return NewInitiativeService(repo, userRepo, &mockLedgerClient{}, &mockStripeClient{}, &mockEmailService{}, nil, slog.Default())
@@ -346,6 +349,29 @@ func TestGetForUser_BySlug_Owned(t *testing.T) {
 	}
 	if init.Name != "Draft" {
 		t.Errorf("name = %q, want Draft", init.Name)
+	}
+	if !init.IsOwner {
+		t.Error("IsOwner = false, want true for the creator")
+	}
+}
+
+// A writer on the attributed entity can read it but is not the owner.
+func TestGetForUser_WriterIsNotOwner(t *testing.T) {
+	repo := &listInitiativeRepo{
+		onGetBySlug: func(_ context.Context, _ string) (*models.Initiative, error) {
+			return &models.Initiative{ID: "init-1", OwnerID: "someone-else",
+				Attribution: models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB"}}, nil
+		},
+	}
+	svc := newReadSvc(repo, &mockUserRepository{user: &models.User{ID: "writer-uuid", Username: "bob"}})
+	svc.SetEntityRoleResolver(&fakeResolver{ok: true})
+
+	init, err := svc.GetForUser(context.Background(), "draft-slug", "bob")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if init.IsOwner {
+		t.Error("IsOwner = true, want false for a writer")
 	}
 }
 

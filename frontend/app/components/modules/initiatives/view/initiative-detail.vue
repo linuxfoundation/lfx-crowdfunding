@@ -24,6 +24,46 @@ SPDX-License-Identifier: MIT
         :class="{ 'pt-18': isScrolled }"
       >
         <div class="container">
+          <!-- Only approvers can load a non-published initiative, so only they see this. -->
+          <div
+            v-if="isPendingReview"
+            class="flex items-center gap-3 mb-8 p-4 rounded-lg border border-warning-200 bg-warning-50 text-warning-800"
+            role="status"
+          >
+            <lfx-icon
+              name="hourglass-half"
+              type="regular"
+              :size="20"
+              class="shrink-0 text-warning-600"
+            />
+            <p class="text-sm flex-1">
+              <strong>Pending approval.</strong> This initiative has been submitted and is not yet published. Only
+              approvers can see it.
+            </p>
+            <!-- Both screens ask for confirmation, so these links never approve or decline on their own. -->
+            <NuxtLink
+              :to="`/initiatives/${data.slug}/process-approval/approve`"
+              class="shrink-0"
+            >
+              <lfx-button
+                label="Approve"
+                type="primary"
+                size="small"
+                icon="circle-check"
+              />
+            </NuxtLink>
+            <NuxtLink
+              :to="`/initiatives/${data.slug}/process-approval/decline`"
+              class="shrink-0"
+            >
+              <lfx-button
+                label="Decline"
+                type="danger"
+                size="small"
+                icon="circle-xmark"
+              />
+            </NuxtLink>
+          </div>
           <div class="flex lg:gap-8 gap-20 items-start lg:flex-row flex-col">
             <!-- Left column -->
             <div class="flex-1 min-w-0 flex flex-col gap-8 w-full">
@@ -87,10 +127,13 @@ import InitiativeDetailSponsors from '../components/details-overview/initiative-
 import InitiativeDetailFinancials from '../components/details-financials/initiative-detail-financials.vue';
 import InitiativeDetailAbout from '../components/details-about/initiative-detail-about.vue';
 import InitiativeDetailAnnouncements from '../components/details-announcements/initiative-detail-announcements.vue';
+import { PENDING_REVIEW_STATUSES } from '../config/initiative-status.config';
 import { useInitiative } from '~/composables/initiatives/useInitiative';
 import { useInitiativeTransactions } from '~/composables/initiatives/useInitiativeTransactions';
 import RecentDonations from '~/components/shared/components/donations/recent-donations.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
+import LfxIcon from '~/components/uikit/icon/icon.vue';
+import LfxButton from '~/components/uikit/button/button.vue';
 import useScroll from '~/utils/scroll';
 import { formatShortDate } from '~/utils/date';
 import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/types/initiative-detail.types';
@@ -98,6 +141,8 @@ import type { RecentDonation, DonationRecord, ExpenseRecord } from '#shared/type
 const props = defineProps<{ initiativeSlug: string }>();
 
 const { data, isLoading, error } = useInitiative(computed(() => props.initiativeSlug));
+
+const isPendingReview = computed(() => PENDING_REVIEW_STATUSES.includes(data.value?.status?.toLowerCase() ?? ''));
 
 watch(
   error,

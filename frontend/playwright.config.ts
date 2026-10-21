@@ -20,18 +20,37 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
     trace: 'on-first-retry',
   },
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:3000/api/health',
-    timeout: 180_000,
-    reuseExistingServer: !process.env.CI,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  webServer: [
+    {
+      command: 'pnpm dev',
+      url: 'http://localhost:3000/api/health',
+      timeout: 180_000,
+      reuseExistingServer: !process.env.CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    // Production build for the csp project: the CSP plugins skip in dev (Vite needs
+    // inline scripts), so a CSP test against `pnpm dev` would pass even with the bug back.
+    {
+      command:
+        'NUXT_BUILD_DIR=node_modules/.cache/nuxt-csp pnpm build && PORT=3001 node --env-file-if-exists=.env .output/server/index.mjs',
+      url: 'http://localhost:3001/api/health',
+      timeout: 300_000,
+      reuseExistingServer: !process.env.CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  ],
   projects: [
     {
       name: 'chromium',
+      testIgnore: /csp\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'csp',
+      testMatch: /csp\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://localhost:3001' },
     },
   ],
 });

@@ -94,6 +94,10 @@ func (r *initiativeRepo) Delete(_ context.Context, id string) error {
 	return r.deleteErr
 }
 func (r *initiativeRepo) UpdateStripeProductID(_ context.Context, _, _ string) error { return nil }
+func (r *initiativeRepo) UpdateAttribution(_ context.Context, _ string, a models.Attribution, _ string) error {
+	r.initiative.Attribution = a
+	return nil
+}
 func (r *initiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
@@ -598,6 +602,84 @@ func TestUpdate_Success_Returns200(t *testing.T) {
 	}
 }
 
+func TestUpdate_WithAttribution_Returns400(t *testing.T) {
+	initiativeID := "66666666-6666-6666-6666-666666666666"
+	repo := &initiativeRepo{initiative: &models.Initiative{ID: initiativeID, OwnerID: "owner-uuid", Status: models.StatusSubmitted}}
+	h := newInitiativeHandler(repo, &initiativeUserRepo{user: &models.User{ID: "owner-uuid", Username: "owner"}})
+
+	req := httptest.NewRequest(http.MethodPatch, "/crowdfunding/initiatives/"+initiativeID,
+		strings.NewReader(`{"name":"N","attribution":{"type":"personal"}}`))
+	req = withURLParam(req, "id", initiativeID)
+	req = withPrincipal(req, &models.Principal{Username: "owner"})
+	w := httptest.NewRecorder()
+	h.Update(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if repo.lastUpdated != nil {
+		t.Error("repo.Update called, want no write")
+	}
+}
+
+// ── UpdateAttribution ─────────────────────────────────────────────────────────
+
+func TestUpdateAttribution_NoPrincipal_Returns401(t *testing.T) {
+	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
+
+	req := httptest.NewRequest(http.MethodPut, "/crowdfunding/initiatives/some-id/attribution",
+		strings.NewReader(`{"type":"personal"}`))
+	req = withURLParam(req, "id", "some-id")
+	w := httptest.NewRecorder()
+	h.UpdateAttribution(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestUpdateAttribution_MalformedBody_Returns400(t *testing.T) {
+	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
+
+	req := httptest.NewRequest(http.MethodPut, "/crowdfunding/initiatives/some-id/attribution",
+		strings.NewReader(`{"type":`))
+	req = withURLParam(req, "id", "some-id")
+	req = withPrincipal(req, &models.Principal{Username: "owner"})
+	w := httptest.NewRecorder()
+	h.UpdateAttribution(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateAttribution_Creator_Returns200(t *testing.T) {
+	initiativeID := "66666666-6666-6666-6666-666666666666"
+	repo := &initiativeRepo{initiative: &models.Initiative{
+		ID: initiativeID, OwnerID: "owner-uuid", Status: models.StatusSubmitted,
+		Attribution: models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB"},
+	}}
+	h := newInitiativeHandler(repo, &initiativeUserRepo{user: &models.User{ID: "owner-uuid", Username: "owner"}})
+
+	req := httptest.NewRequest(http.MethodPut, "/crowdfunding/initiatives/"+initiativeID+"/attribution",
+		strings.NewReader(`{"type":"personal"}`))
+	req = withURLParam(req, "id", initiativeID)
+	req = withPrincipal(req, &models.Principal{Username: "owner"})
+	w := httptest.NewRecorder()
+	h.UpdateAttribution(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var got models.Initiative
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Attribution.Type != models.AttributionPersonal {
+		t.Errorf("attribution type = %q, want personal", got.Attribution.Type)
+	}
+}
+
 // ── GetTransactions ───────────────────────────────────────────────────────────
 
 func TestGetTransactions_Published_Returns200(t *testing.T) {
@@ -767,7 +849,7 @@ func TestGetTransactions_NotPublished_Returns404(t *testing.T) {
 func TestGetTransactionsForUser_NoPrincipal_Returns401(t *testing.T) {
 	h := newInitiativeHandler(&initiativeRepo{}, &initiativeUserRepo{})
 
-	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/some-id/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/some-id/manage/transactions", nil)
 	req = withURLParam(req, "id", "some-id")
 	w := httptest.NewRecorder()
 	h.GetTransactionsForUser(w, req)
@@ -792,7 +874,7 @@ func TestGetTransactionsForUser_NotOwner_Returns404(t *testing.T) {
 	}
 	h := newInitiativeHandler(repo, userRepo)
 
-	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/manage/transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: "other"})
 	w := httptest.NewRecorder()
@@ -825,7 +907,7 @@ func TestGetTransactionsForUser_Owner_Returns200(t *testing.T) {
 	svc := service.NewInitiativeService(repo, userRepo, ledger, &apprStripeClient{}, &apprEmailService{}, nil, slog.Default())
 	h := NewInitiativeHandler(svc, nil, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/me/initiatives/"+initiativeID+"/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/crowdfunding/initiatives/"+initiativeID+"/manage/transactions", nil)
 	req = withURLParam(req, "id", initiativeID)
 	req = withPrincipal(req, &models.Principal{Username: "owner"})
 	w := httptest.NewRecorder()

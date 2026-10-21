@@ -114,6 +114,9 @@ func (m *mockInitiativeRepoForAnn) ListPublished(_ context.Context) ([]models.In
 func (m *mockInitiativeRepoForAnn) UpdateStripeProductID(_ context.Context, _, _ string) error {
 	return nil
 }
+func (m *mockInitiativeRepoForAnn) UpdateAttribution(_ context.Context, _ string, _ models.Attribution, _ string) error {
+	return nil
+}
 
 // mockUserRepoForAnn is a minimal mock satisfying domain.UserRepository.
 type mockUserRepoForAnn struct {

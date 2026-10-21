@@ -18,7 +18,7 @@
    - 5.4 security_audit
    - 5.5 general_fund / other
    - 5.6 ostif
-6. [Updating an initiative — PATCH /crowdfunding/me/initiatives/{id}](#6-updating-an-initiative)
+6. [Updating an initiative — PATCH /crowdfunding/initiatives/{id}](#6-updating-an-initiative)
 7. [Child-table replace semantics (IMPORTANT)](#7-child-table-replace-semantics)
 8. [Status lifecycle and the approval workflow](#8-status-lifecycle-and-the-approval-workflow)
 9. [The email approval flow — step by step](#9-the-email-approval-flow)
@@ -35,14 +35,14 @@
 | List initiatives (public) | `GET` | `/crowdfunding/initiatives` | No |
 | Get one initiative (public) | `GET` | `/crowdfunding/initiatives/{slug-or-uuid}` | No |
 | **Create initiative** | `POST` | `/crowdfunding/me/initiatives` | **Yes** (user JWT) |
-| **Update initiative** | `PATCH` | `/crowdfunding/me/initiatives/{uuid}` | **Yes** (owner JWT) |
-| Delete initiative | `DELETE` | `/crowdfunding/me/initiatives/{uuid}` | **Yes** (owner JWT) |
+| **Update initiative** | `PATCH` | `/crowdfunding/initiatives/{uuid}` | **Yes** (writer JWT) |
+| Delete initiative | `DELETE` | `/crowdfunding/initiatives/{uuid}` | **Yes** (writer JWT) |
 | **Approve / decline** | `POST` | `/crowdfunding/initiatives/{uuid}/process-approval/{action}` | **Yes** (approver JWT) |
 
 Base URL (production): `https://api-gw.platform.linuxfoundation.org`  
 Public reads are under `/crowdfunding/initiatives`; authenticated writes are under `/crowdfunding/me/initiatives`.
 
-The public list returns only `published` initiatives (`status` and `owner_id` query parameters are ignored). The public detail omits `beneficiaries`, `contributors`, `mentors` and `contacts`, which hold third-party contact details; owners read them from `GET /crowdfunding/me/initiatives/{slug-or-uuid}`.
+The public list returns only `published` initiatives (`status` and `owner_id` query parameters are ignored). The public detail omits `beneficiaries`, `contributors`, `mentors` and `contacts`, which hold third-party contact details; managers read them from `GET /crowdfunding/initiatives/{slug-or-uuid}/manage`.
 
 ---
 
@@ -134,7 +134,7 @@ Authorization: Bearer <token>
 1. A UUID is generated for the initiative.
 2. A Stripe Product is created (for donation processing).
 3. The initiative is saved to the database with status `submitted`.
-4. An email is sent to the reviewer inbox (configured via `MANDRILL_NOTIFICATION_EMAIL`) with approve/decline deep-links.
+4. An email is sent to the reviewer inbox (configured via `EMAIL_REVIEW_INBOX`) with approve/decline deep-links.
 5. The full initiative object is returned.
 
 > **Note:** Email delivery failure is **non-fatal**. The initiative is still created and `201` is still returned even if the email could not be sent.
@@ -450,7 +450,7 @@ OSTIF initiatives have an `ostif_detail` block and a `contacts` array. These rep
 ### Endpoint
 
 ```
-PATCH /crowdfunding/me/initiatives/{uuid}
+PATCH /crowdfunding/initiatives/{uuid}
 Content-Type: application/json
 Authorization: Bearer <token>
 ```
@@ -562,7 +562,7 @@ if (goalsChanged) {
   }));
 }
 
-await $fetch(`/crowdfunding/me/initiatives/${id}`, { method: 'PATCH', body: patch });
+await $fetch(`/crowdfunding/initiatives/${id}`, { method: 'PATCH', body: patch });
 ```
 
 ---
@@ -575,14 +575,14 @@ When an initiative is created (`POST /crowdfunding/me/initiatives`):
 
 1. Status is **always** set to `submitted` by the API — you cannot override this.
 2. The API fetches the owner's profile (name + email) from the database.
-3. A **"Submitted for Review" email** is sent to the reviewer inbox (`MANDRILL_NOTIFICATION_EMAIL`) containing:
+3. A **"Submitted for Review" email** is sent to the reviewer inbox (`EMAIL_REVIEW_INBOX`) containing:
    - The submitter's name and email
    - The initiative name
    - A **View** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}`
    - An **Approve** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}/process-approval/approve`
    - A **Decline** link: `https://crowdfunding.linuxfoundation.org/initiatives/{slug}/process-approval/decline`
 
-> Email failure is **non-fatal** — the API still returns `201` even if Mandrill is unreachable or not configured.
+> Email failure is **non-fatal** — the API still returns `201` even if the email service is unreachable or not configured.
 
 ---
 
@@ -591,7 +591,7 @@ When an initiative is created (`POST /crowdfunding/me/initiatives`):
 This is the complete sequence from submission to a live initiative:
 
 ```
-                                                      Mandrill
+                                                   lfx-v2-email-service
   Submitter                Backend API              Email Service           Reviewer Inbox
      │                         │                         │                       │
      │  POST /crowdfunding/me/initiatives   │                         │                       │
@@ -622,11 +622,13 @@ This is the complete sequence from submission to a live initiative:
 
 ### Email templates used
 
-| Event | Mandrill template slug | Recipient |
-|-------|----------------------|-----------|
-| New submission | `communitybridge-review-mentorship-submission` | Reviewer inbox |
-| Approved | `admin-mentorship-submission-approved` | Initiative owner |
-| Declined | `admin-mentorship-submission-rejected` | Initiative owner |
+Templates live in `backend/internal/infrastructure/clients/email_templates/` and are sent through lfx-v2-email-service.
+
+| Event | Template | Recipient |
+|-------|----------|-----------|
+| New submission | `initiative_review` | Reviewer inbox |
+| Approved | `initiative_approved` | Initiative owner |
+| Declined | `initiative_declined` | Initiative owner |
 
 ---
 
@@ -924,7 +926,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1Ni...  (reviewer's token)
 ### Step 3 — Owner updates the logo after approval (PATCH)
 
 ```http
-PATCH /crowdfunding/me/initiatives/b4a1e2c3-dead-beef-1234-56789abcdef0
+PATCH /crowdfunding/initiatives/b4a1e2c3-dead-beef-1234-56789abcdef0
 Authorization: Bearer eyJhbGciOiJSUzI1Ni...  (owner's token)
 Content-Type: application/json
 

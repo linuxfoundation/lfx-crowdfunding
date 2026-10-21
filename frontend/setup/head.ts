@@ -34,23 +34,30 @@ export default {
     { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
     { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous' },
     { rel: 'dns-prefetch', href: 'https://kit.fontawesome.com' },
-    {
-      rel: 'preload',
-      as: 'style',
-      href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto+Slab:wght@300;400;600&display=swap',
-      onload: "this.onload=null;this.rel='stylesheet'",
-    },
+    // Plain stylesheet: inline onload handlers can't carry a CSP nonce (lfx-self-serve-ops#491).
     {
       rel: 'stylesheet',
       href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto+Slab:wght@300;400;600&display=swap',
-      media: 'print',
-      onload: "this.media='all'",
     },
   ],
+  // External scripts need a `key`: the SSR nonce (csp-nonce.server.ts) breaks unhead's
+  // prop-hash match on hydration, so un-keyed src scripts get injected a second time.
   script: [
-    { src: 'https://kit.fontawesome.com/0c49a28643.js', crossorigin: 'anonymous', async: true },
+    // Transcend cookie consent manager (replaces Osano — lfx-self-serve-ops#517)
+    {
+      key: 'transcend-airgap',
+      src: 'https://transcend-cdn.com/cm/f484e2d0-ad2e-43a9-9d64-d07f6fa20966/airgap.js',
+      'data-cfasync': 'false',
+      'data-prompt': 'auto',
+    },
+    {
+      key: 'fontawesome',
+      src: 'https://kit.fontawesome.com/0c49a28643.js',
+      crossorigin: 'anonymous',
+      async: true,
+    },
     // Privacy-friendly analytics by Plausible
-    { src: 'https://plausible.io/js/pa-Z7youDetgVMZFqKWkN7xd.js', async: true },
+    { key: 'plausible', src: 'https://plausible.io/js/pa-Z7youDetgVMZFqKWkN7xd.js', async: true },
     {
       innerHTML:
         'window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()',

@@ -69,11 +69,21 @@ export function authCookieOptions(maxAge: number) {
   };
 }
 
+// Values set or cleared during this request. The request's Cookie header still holds the old
+// values, so without this a read after a mid-request refresh would see the expired token.
+function freshCookies(event: H3Event): Record<string, string> {
+  event.context ??= {};
+  return (event.context.authCookies ??= {});
+}
+
 export function setAuthCookie(event: H3Event, name: string, value: string, maxAge: number) {
   setCookie(event, name, encryptValue(value), authCookieOptions(maxAge));
+  freshCookies(event)[name] = value;
 }
 
 export function getAuthCookie(event: H3Event, name: string): string | undefined {
+  const fresh = event.context?.authCookies?.[name];
+  if (fresh !== undefined) return fresh || undefined; // '' = cleared this request
   return decryptValue(getCookie(event, name));
 }
 
@@ -83,6 +93,7 @@ export function clearAuthCookies(event: H3Event) {
   const legacyDomain = useRuntimeConfig().auth0CookieDomain as string | undefined;
   for (const name of AUTH_COOKIE_NAMES) {
     setCookie(event, name, '', opts);
+    freshCookies(event)[name] = '';
     if (legacyDomain) setCookie(event, name, '', { ...opts, domain: legacyDomain });
   }
 }

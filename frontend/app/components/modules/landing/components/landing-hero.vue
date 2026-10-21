@@ -120,7 +120,7 @@ const progressPercent = computed(() => {
 
 const supporterCount = computed(() => {
   const count = stats.value?.supporterCount ?? 0;
-  return count > 0 ? `${count.toLocaleString()}+` : '1,800+';
+  return count > 0 ? `${count.toLocaleString('en-US')}+` : '1,800+';
 });
 
 const supporterAvatars = [

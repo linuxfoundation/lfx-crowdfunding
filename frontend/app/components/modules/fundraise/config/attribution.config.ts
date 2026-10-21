@@ -14,22 +14,20 @@ export const ATTRIBUTION_OPTIONS: AttributionOption[] = [
     label: 'Organization',
     description: 'For a fundraiser sponsored by an organization you work for.',
     entityLabel: 'Select organization',
-    emptyMessage: "You aren't affiliated with any organization yet.",
-    escapeHatchLabel: "Can't find your organization? Manage",
+    emptyMessage: "You don't have a role in any organization yet.",
+    escapeHatchLabel:
+      'Only organizations where you have a role in LFX are listed. Ask an admin of your organization to add you in',
   },
   {
     value: 'project',
     label: 'Project/Foundation',
     description: 'For a fundraiser sponsored by a project or foundation you participate in.',
     entityLabel: 'Select Project/Foundation',
-    emptyMessage: "You aren't affiliated with any project or foundation yet.",
-    escapeHatchLabel: "Can't find your Project or Foundation? Manage",
+    emptyMessage: "You don't have a role in any project or foundation yet.",
+    escapeHatchLabel:
+      "Only projects and foundations you've been granted access to in LFX are listed. Ask a project admin to add you in",
   },
 ];
-
-// Self Serve path for the "Work History & Affiliations" escape hatch, appended to
-// runtimeConfig.public.selfServeUrl. Best-guess pending confirmation — see PR description.
-export const AFFILIATIONS_MANAGEMENT_PATH = '/profile/work-history';
 
 export const createDefaultAttribution = (): AttributionData => ({
   kind: 'personal',

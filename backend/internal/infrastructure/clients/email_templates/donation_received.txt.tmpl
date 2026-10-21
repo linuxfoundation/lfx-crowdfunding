@@ -1,0 +1,15 @@
+{{- /* Copyright The Linux Foundation and each contributor to LFX. */ -}}
+{{- /* SPDX-License-Identifier: MIT */ -}}
+Hi {{.RecipientName}}!
+
+Great news! Your initiative has just received a donation! Make sure you thank your donor and share the news about the donation with your community and on social media. Here are the donation details:
+
+{{.DonationType}}: {{.InitiativeName}}
+{{with .Category}}Category: {{.}}
+{{end}}Donor: {{.DonorName}} <{{.DonorEmail}}>
+{{with .OrgName}}Organization: {{.}}
+{{end}}Payment Type: {{.Payment}}
+Amount: {{.Amount}}
+
+View donation: {{.InitiativeURL}}
+{{template "signoff"}}{{template "footer" .}}

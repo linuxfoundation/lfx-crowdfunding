@@ -18,12 +18,16 @@ SPDX-License-Identifier: MIT
           class="flex flex-col gap-5 p-5"
           :class="[
             modelValue.kind === option.value ? 'bg-accent-50' : 'bg-white hover:bg-neutral-50',
-            isDisabled(option.value) && !isLoading ? 'opacity-60 hover:bg-white' : '',
+            isDisabled(option.value) && !isLoading ? 'hover:bg-white' : '',
           ]"
         >
+          <!-- Dim only the radio row; the escape-hatch hint below must stay readable. -->
           <div
             class="flex gap-3"
-            :class="isDisabled(option.value) ? 'cursor-not-allowed' : 'cursor-pointer'"
+            :class="[
+              isDisabled(option.value) ? 'cursor-not-allowed' : 'cursor-pointer',
+              isDisabled(option.value) && !isLoading ? 'opacity-60' : '',
+            ]"
             @click="selectKind(option.value)"
           >
             <lfx-radio
@@ -105,19 +109,26 @@ SPDX-License-Identifier: MIT
                 </lfx-dropdown-item>
               </lfx-select>
 
-              <p class="text-xs text-neutral-500 leading-4 flex items-center gap-1">
+              <!-- A load failure isn't missing access, so don't point at an admin. -->
+              <p
+                v-if="status !== 'error'"
+                class="text-xs text-neutral-600 leading-4 flex items-start gap-1"
+              >
                 <lfx-icon
                   name="circle-info"
                   :size="12"
+                  class="mt-0.5 shrink-0"
                 />
-                {{ option.escapeHatchLabel }}
-                <a
-                  :href="affiliationsManagementUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-accent-500 hover:text-accent-600"
-                  >Work History &amp; Affiliations</a
-                >.
+                <span>
+                  {{ option.escapeHatchLabel }}
+                  <a
+                    :href="selfServeUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-accent-500 hover:text-accent-600"
+                    >LFX Self Serve</a
+                  >.
+                </span>
               </p>
             </div>
           </div>
@@ -134,7 +145,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { ATTRIBUTION_OPTIONS, AFFILIATIONS_MANAGEMENT_PATH } from '../../config/attribution.config';
+import { ATTRIBUTION_OPTIONS } from '../../config/attribution.config';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
@@ -178,11 +189,13 @@ const isLoading = computed(() => status.value === 'idle' || status.value === 'pe
 
 // A failed fetch gets its own message so it doesn't read as "not affiliated".
 const disabledMessage = (option: AttributionOption): string | undefined =>
-  status.value === 'error' ? "We couldn't load your affiliations — refresh and try again." : option.emptyMessage;
+  status.value === 'error'
+    ? "We couldn't load your organizations and projects — refresh and try again."
+    : option.emptyMessage;
 
-const affiliationsManagementUrl = computed(
-  () => `${useRuntimeConfig().public.selfServeUrl}${AFFILIATIONS_MANAGEMENT_PATH}`,
-);
+const {
+  public: { selfServeUrl },
+} = useRuntimeConfig();
 
 const selectKind = (kind: AttributionKind) => {
   if (isDisabled(kind)) return;
