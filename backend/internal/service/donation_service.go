@@ -361,9 +361,9 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	return created, nil
 }
 
-// orgClaim validates the org a donor gives on behalf of and normalizes its domain.
-// nil means an individual donation and returns a zero OrgClaim. Domain is
-// optional until the org picker sends one (#409).
+// orgClaim validates the org a donor gives on behalf of: a 1-255 character name
+// and a domain, which is normalized. nil means an individual donation and returns
+// a zero OrgClaim.
 func orgClaim(in *models.OrgClaim) (models.OrgClaim, error) {
 	if in == nil {
 		return models.OrgClaim{}, nil
@@ -372,28 +372,25 @@ func orgClaim(in *models.OrgClaim) (models.OrgClaim, error) {
 	if name == "" || utf8.RuneCountInString(name) > 255 || strings.ContainsFunc(name, unicode.IsControl) {
 		return models.OrgClaim{}, fmt.Errorf("%w: organization.name must be 1-255 characters with no control characters", domain.ErrInvalidInput)
 	}
-	org := models.OrgClaim{Name: name}
-	if strings.TrimSpace(in.Domain) != "" {
-		d, err := domain.NormalizeDomain(in.Domain)
-		if err != nil {
-			return models.OrgClaim{}, err
-		}
-		org.Domain = d
+	d, err := domain.NormalizeDomain(in.Domain)
+	if err != nil {
+		return models.OrgClaim{}, err
 	}
-	return org, nil
+	return models.OrgClaim{Name: name, Domain: d}, nil
 }
 
 // resolveOrgClaim is orgClaim plus the legacy organization_id input: when no
 // claim is sent, a caller-owned org ID resolves to a name-only claim, so a BFF
-// and backend on different versions keep the org attribution. The FK is not stored.
-// ponytail: mixed-version deploy bridge; drop with OrganizationID once #409 ships.
+// and backend on different versions keep the org attribution. Legacy orgs have
+// no domain, so this claim skips orgClaim's domain requirement. The FK is not stored.
+// ponytail: mixed-version deploy bridge; drop with OrganizationID once this BFF is everywhere.
 func resolveOrgClaim(ctx context.Context, repo domain.InitiativeRepository, in *models.OrgClaim, legacyID, userID string) (models.OrgClaim, error) {
 	if in == nil && legacyID != "" {
 		_, name, err := ownedOrg(ctx, repo, legacyID, userID)
 		if err != nil {
 			return models.OrgClaim{}, err
 		}
-		in = &models.OrgClaim{Name: name}
+		return models.OrgClaim{Name: name}, nil
 	}
 	return orgClaim(in)
 }

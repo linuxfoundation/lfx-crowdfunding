@@ -35,3 +35,14 @@ export interface OrgSettingsDoc {
   writers?: OrgSettingsMember[];
   auditors?: OrgSettingsMember[];
 }
+
+// `GET /query/orgs/suggest`: organization typeahead, backed by Clearbit. Its `logo` field is
+// left out: Clearbit returns null for it now (#409).
+export interface OrgSuggestionWire {
+  name: string;
+  domain: string;
+}
+
+export interface OrgSuggestResponse {
+  suggestions: OrgSuggestionWire[];
+}

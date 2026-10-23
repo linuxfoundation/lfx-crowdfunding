@@ -3,20 +3,7 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <div class="flex flex-col gap-3">
-    <donate-add-org-modal
-      v-model="showAddOrgModal"
-      :organization="editingOrg ?? undefined"
-      @created="onOrgCreated"
-      @updated="showAddOrgModal = false"
-    />
-
-    <donate-delete-org-modal
-      v-model="showDeleteModal"
-      :organization="deletingOrg"
-      @deleted="onOrgDeleted"
-    />
-
+  <div class="flex flex-col gap-3 mb-4">
     <p class="text-xs font-medium text-neutral-900">I'm donating as</p>
 
     <div class="border border-neutral-200 rounded-xl w-full">
@@ -41,97 +28,155 @@ SPDX-License-Identifier: MIT
         />
       </div>
 
-      <!-- Skeleton rows while loading -->
-      <template v-if="loading">
-        <div class="h-px bg-neutral-200" />
-        <div class="flex gap-3 items-center p-6 w-full">
-          <lfx-skeleton
-            width="40px"
-            height="40px"
-          />
-          <div class="flex flex-col gap-1.5 flex-1">
-            <lfx-skeleton
-              width="140px"
-              height="14px"
-            />
-            <lfx-skeleton
-              width="90px"
-              height="12px"
-            />
-          </div>
-        </div>
-      </template>
+      <div class="h-px bg-neutral-200" />
 
-      <!-- Organization rows -->
-      <template
-        v-for="org in organizations"
-        :key="org.id"
-      >
-        <div class="h-px bg-neutral-200" />
+      <!-- Organization row: shows the picked org once there is one -->
+      <div class="flex flex-col gap-4 p-6 w-full">
         <div
-          class="flex gap-3 items-center p-6 w-full cursor-pointer"
-          @click="selectedKey = org.id"
+          class="flex gap-3 items-center w-full cursor-pointer"
+          @click="selectedKey = 'organization'"
         >
           <lfx-avatar
-            :src="org.avatarUrl || undefined"
             type="organization"
             size="normal"
           />
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-neutral-900 truncate">{{ org.name }}</p>
-            <p class="text-xs text-neutral-600">Organization</p>
+            <p class="text-sm font-semibold text-neutral-900 truncate">
+              {{ form.organization?.name ?? 'An organization' }}
+            </p>
+            <p class="text-xs text-neutral-600 truncate">
+              {{ form.organization?.domain ?? 'Donate on behalf of a company or organization' }}
+            </p>
           </div>
-          <div class="flex gap-4 items-center shrink-0">
-            <div class="flex gap-4">
-              <lfx-icon-button
-                icon="pen"
-                type="outline"
-                size="medium"
-                aria-label="Edit organization"
-                @click.stop="openEditModal(org)"
+          <lfx-radio
+            v-model="selectedKey"
+            value="organization"
+            name="donor-type"
+          />
+        </div>
+
+        <template v-if="form.donorType === 'organization'">
+          <!-- Search (Clearbit) -->
+          <div
+            v-if="!manualEntry"
+            class="flex flex-col gap-2"
+          >
+            <lfx-select
+              :model-value="form.organization?.domain ?? ''"
+              :placeholder="form.organization ? 'Search for a different organization' : 'Search organizations'"
+              @update:model-value="pickSuggestion"
+            >
+              <lfx-dropdown-search
+                v-model="query"
+                placeholder="Company name"
+                autofocus
               />
-              <lfx-icon-button
-                icon="trash-can"
-                type="outline"
-                size="medium"
-                aria-label="Delete organization"
-                @click.stop="openDeleteModal(org)"
-              />
-            </div>
-            <lfx-radio
-              v-model="selectedKey"
-              :value="org.id"
-              name="donor-type"
+              <div
+                v-if="!enabled"
+                class="px-3 py-2 text-xs text-neutral-500"
+              >
+                Type at least {{ ORG_SEARCH_MIN_CHARS }} characters
+              </div>
+              <div
+                v-else-if="isFetching && !suggestions?.length"
+                class="flex justify-center px-3 py-2"
+              >
+                <lfx-spinner />
+              </div>
+              <div
+                v-else-if="isError"
+                class="px-3 py-2 text-xs text-neutral-500"
+              >
+                Search isn't available right now. Enter the organization manually.
+              </div>
+              <div
+                v-else-if="!suggestions?.length"
+                class="px-3 py-2 text-xs text-neutral-500"
+              >
+                No organizations found
+              </div>
+              <lfx-dropdown-item
+                v-for="org in suggestions"
+                :key="org.domain"
+                :value="org.domain"
+                :label="org.name"
+              >
+                <span class="flex items-center gap-2 min-w-0">
+                  <lfx-avatar
+                    type="organization"
+                    size="xsmall"
+                  />
+                  <span class="truncate">{{ org.name }}</span>
+                  <span class="text-xs text-neutral-500 truncate">{{ org.domain }}</span>
+                </span>
+              </lfx-dropdown-item>
+            </lfx-select>
+            <lfx-link-button
+              label="Can't find it? Enter it manually"
+              variant="accent"
+              class="self-start"
+              @click="startManualEntry"
             />
           </div>
-        </div>
-      </template>
-    </div>
 
-    <lfx-link-button
-      icon="plus"
-      label="Add organization"
-      variant="accent"
-      class="self-start mb-4"
-      @click="
-        editingOrg = null;
-        showAddOrgModal = true;
-      "
-    />
+          <!-- Typed by hand -->
+          <div
+            v-else
+            class="flex flex-col gap-3"
+          >
+            <lfx-field
+              label="Organization name"
+              required
+            >
+              <lfx-input
+                v-model="manualName"
+                placeholder="Acme Inc."
+              />
+            </lfx-field>
+            <lfx-field
+              label="Website"
+              required
+            >
+              <lfx-input
+                v-model="manualWebsite"
+                placeholder="acme.com"
+                :invalid="websiteInvalid"
+              />
+              <lfx-field-message
+                v-if="websiteInvalid"
+                type="error"
+              >
+                Enter the organization's website, e.g. acme.com
+              </lfx-field-message>
+            </lfx-field>
+            <lfx-link-button
+              label="Search instead"
+              variant="accent"
+              class="self-start"
+              @click="stopManualEntry"
+            />
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch, computed, onMounted } from 'vue';
-import DonateAddOrgModal from './donate-add-org-modal.vue';
-import DonateDeleteOrgModal from './donate-delete-org-modal.vue';
+import { reactive, ref, watch, computed } from 'vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
+import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
+import LfxDropdownSearch from '~/components/uikit/dropdown/dropdown-search.vue';
+import LfxField from '~/components/uikit/field/field.vue';
+import LfxFieldMessage from '~/components/uikit/field/field-message.vue';
+import LfxInput from '~/components/uikit/input/input.vue';
 import LfxLinkButton from '~/components/uikit/link-button/link-button.vue';
-import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxRadio from '~/components/uikit/radio/radio.vue';
-import LfxSkeleton from '~/components/uikit/skeleton/skeleton.vue';
+import LfxSelect from '~/components/uikit/select/select.vue';
+import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
+import { useOrgSuggest } from '~/composables/useOrgSuggest';
+import { ORG_SEARCH_MIN_CHARS, ORG_WEBSITE_PATTERN } from '~/components/modules/donate/config/org-search.config';
 import type { DonateContactForm } from '#shared/types/donate.types';
-import type { Organization } from '#shared/types/organization.types';
 
 const props = defineProps<{
   modelValue: DonateContactForm;
@@ -142,30 +187,19 @@ const emit = defineEmits<{
 }>();
 
 const { user } = useAuth();
-const { organizations, loading, fetchOrganizations } = useOrganizations();
 
 const form = reactive<DonateContactForm>({ ...props.modelValue });
-const showAddOrgModal = ref(false);
-const editingOrg = ref<Organization | null>(null);
-const showDeleteModal = ref(false);
-const deletingOrg = ref<Organization | null>(null);
 
-const openEditModal = (org: Organization) => {
-  editingOrg.value = org;
-  showAddOrgModal.value = true;
-};
+const query = ref('');
+const { data: suggestions, isFetching, isError, enabled } = useOrgSuggest(query);
 
-const openDeleteModal = (org: Organization) => {
-  deletingOrg.value = org;
-  showDeleteModal.value = true;
-};
+const manualEntry = ref(false);
+const manualName = ref('');
+const manualWebsite = ref('');
 
-const onOrgDeleted = (id: string) => {
-  if (form.organizationId === id) {
-    form.donorType = 'individual';
-    form.organizationId = null;
-  }
-};
+const websiteInvalid = computed(
+  () => manualWebsite.value.trim() !== '' && !ORG_WEBSITE_PATTERN.test(manualWebsite.value.trim()),
+);
 
 watch(
   () => props.modelValue,
@@ -176,26 +210,35 @@ watch(
 watch(form, (val) => emit('update:modelValue', { ...val }), { deep: true });
 
 const selectedKey = computed({
-  get: () => (form.donorType === 'individual' ? 'individual' : (form.organizationId ?? 'individual')),
+  get: () => form.donorType,
   set: (val: string | number | boolean) => {
-    if (val === 'individual') {
-      form.donorType = 'individual';
-      form.organizationId = null;
-    } else {
-      form.donorType = 'organization';
-      form.organizationId = val as string;
-    }
+    form.donorType = val === 'organization' ? 'organization' : 'individual';
   },
 });
 
-const onOrgCreated = (org: Organization) => {
-  form.donorType = 'organization';
-  form.organizationId = org.id;
+const pickSuggestion = (domain: string) => {
+  const org = suggestions.value?.find((s) => s.domain === domain);
+  if (org) form.organization = { ...org };
 };
 
-onMounted(() => {
-  fetchOrganizations();
+watch([manualName, manualWebsite], ([name, website]) => {
+  if (!manualEntry.value) return;
+  const n = name.trim();
+  const w = website.trim();
+  form.organization = n && ORG_WEBSITE_PATTERN.test(w) ? { name: n, domain: w } : null;
 });
+
+const startManualEntry = () => {
+  manualEntry.value = true;
+  manualName.value = query.value.trim();
+  manualWebsite.value = '';
+  form.organization = null;
+};
+
+const stopManualEntry = () => {
+  manualEntry.value = false;
+  form.organization = null;
+};
 </script>
 
 <script lang="ts">

@@ -145,6 +145,18 @@ describe('require-auth middleware', () => {
     });
   });
 
+  describe('GET /api/orgs/suggest', () => {
+    it('throws 401 when no token is present', () => {
+      const event = makeEvent('GET', '/api/orgs/suggest');
+      expect(() => (requireAuth as (e: unknown) => void)(event)).toThrow();
+    });
+
+    it('passes through when a valid token is present', () => {
+      const event = makeEvent('GET', '/api/orgs/suggest', 'eyJtoken');
+      expect(() => (requireAuth as (e: unknown) => void)(event)).not.toThrow();
+    });
+  });
+
   describe('POST /api/expense-email/:action/:reportId', () => {
     it('throws 401 when no token is present', () => {
       const event = makeEvent('POST', '/api/expense-email/approve/R-001');
