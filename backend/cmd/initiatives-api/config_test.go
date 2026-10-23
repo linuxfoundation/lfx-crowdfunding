@@ -71,3 +71,20 @@ func TestLoadConfig_WhitespaceBypassPrincipalIsIgnored(t *testing.T) {
 		t.Fatalf("DisabledMockLocalPrincipal = %q, want empty string", cfg.Local.DisabledMockLocalPrincipal)
 	}
 }
+
+func TestLoadConfig_HeimdallAudienceAndIssuerRequired(t *testing.T) {
+	for _, name := range []string{"HEIMDALL_JWT_AUDIENCE", "HEIMDALL_JWT_ISSUER"} {
+		t.Run(name, func(t *testing.T) {
+			setRequiredEnv(t)
+			t.Setenv(name, "")
+
+			_, err := LoadConfig()
+			if err == nil {
+				t.Fatalf("expected error when %s is empty", name)
+			}
+			if !strings.Contains(err.Error(), "HEIMDALL_JWT_AUDIENCE and HEIMDALL_JWT_ISSUER are required") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
