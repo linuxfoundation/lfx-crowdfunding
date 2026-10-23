@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Full Content-Security-Policy for the crowdfunding frontend (lfx-self-serve-ops#491).
-// Sent report-only for now; the enforced baseline lives in nuxt.config routeRules.
+// Enforced on rendered pages; nuxt.config routeRules sends a baseline for everything else.
 // Adding a third-party script, API or iframe host? Add it here too, or the browser
-// reports (and once enforced, blocks) it.
+// blocks it.
 const SOURCES: Record<string, string[]> = {
   'default-src': ["'self'"],
   // Fallback host list for browsers without 'strict-dynamic'; CSP3 browsers ignore it

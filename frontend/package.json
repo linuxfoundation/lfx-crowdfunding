@@ -48,7 +48,7 @@
     "luxon": "^3.7.2",
     "marked": "^18.0.5",
     "minisearch": "^7.2.0",
-    "nuxt": "^4.5.2",
+    "nuxt": "^4.6.2",
     "ofetch": "^1.5.1",
     "openid-client": "^6.8.1",
     "pinia": "^3.0.4",

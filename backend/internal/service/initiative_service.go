@@ -1295,6 +1295,20 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 	return out, nil
 }
 
+// GetMyDonationStats returns the caller's donation total and the number of initiatives
+// they have donated to, aggregated by the Ledger over the same credit rows that
+// GET /crowdfunding/me/donations lists.
+func (s *InitiativeService) GetMyDonationStats(ctx context.Context, userID string) (*models.DonationStats, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.GetMyDonationStats")
+	defer span.End()
+
+	b, err := s.ledger.GetUserBalance(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return &models.DonationStats{TotalDonatedCents: b.TotalCreditCents, InitiativesSupported: b.ProjectsSupported}, nil
+}
+
 // GetAllMyTransactions fetches all transactions for the authenticated user across
 // every initiative by omitting the projectID filter on the Ledger API.
 // initiative_name is enriched per-item from the CF DB using the projectID returned

@@ -144,6 +144,9 @@ func (m *mockLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clie
 func (m *mockLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
 	return nil, nil
 }
+func (m *mockLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {
+	return &clients.LedgerUserBalance{}, nil
+}
 func (m *mockLedgerClient) PostTransaction(_ context.Context, _ clients.LedgerTransaction) error {
 	return nil
 }

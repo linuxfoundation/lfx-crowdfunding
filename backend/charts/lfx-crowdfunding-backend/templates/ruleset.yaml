@@ -176,6 +176,7 @@ spec:
           - path: /crowdfunding/me/
           - path: /crowdfunding/me/donations
           - path: /crowdfunding/me/donations/csv
+          - path: /crowdfunding/me/donations/stats
           - path: /crowdfunding/me/transactions
           - path: /crowdfunding/me/subscriptions
           - path: /crowdfunding/me/subscriptions/:*
