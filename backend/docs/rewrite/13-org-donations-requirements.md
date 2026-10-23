@@ -10,7 +10,7 @@ Tracked in
 [lfx-crowdfunding#366](https://github.com/linuxfoundation/lfx-crowdfunding/issues/366) (epic
 [#365](https://github.com/linuxfoundation/lfx-crowdfunding/issues/365); background in
 [#261](https://github.com/linuxfoundation/lfx-crowdfunding/issues/261)). Implementation follows
-in [#367](https://github.com/linuxfoundation/lfx-crowdfunding/issues/367).
+in the #365 sub-issues (#403, #405–#410).
 
 **Where we are (October 2026).** Architecture (Eric Searcy) signed off on option D (§4.1).
 The org claim lives on each donation, and the per-user CF org record is to be deprecated
@@ -19,8 +19,9 @@ the donor; donors can type an org by hand; the org can't be changed after donati
 don't mention it; existing org donations are migrated (§5.1 items 1–4). PM also wants a
 donations list page on the Self Serve Organization lens. Option D's `b2b_org` half, which that
 page needs, depends on platform work designed in LFXV2-2400 (Q1/Q2) and discarded in September
-2026 as not requested by product (§5.2 item 3). The lens page and the `b2b_org` work are proposed
-for a separate epic, pending PM (§5.1 items 5 and 6, §5.2 items 3–5). The Ledger change has a
+2026 as not requested by product (§5.2 item 3). The lens page and the `b2b_org` work moved to
+a separate epic, [#402](https://github.com/linuxfoundation/lfx-crowdfunding/issues/402)
+(§5.1 items 5 and 6, §5.2 items 3–5); #365 ships the name and domain half. The Ledger change has a
 draft proposal for ledger-service (§4.1, Ledger).
 
 **TL;DR.** Today "donate as an organization" picks from a private, per-user list of free-text
@@ -392,10 +393,10 @@ admins (§4, option B). This applies to every option.
    `org_name`. So the migration writes the snapshot onto each `subscriptions` row and updates
    each Stripe subscription's metadata (name, domain, SFID). CF org rows can't be retired until
    that's done, and Ledger keeps resolving the legacy `org_id` (§4.1, Ledger) until then.
-5. **Lens page coverage. Proposed: defer** with the `b2b_org` work to a separate epic, pending
-   PM. Only donations with a `b2b_org` reference can show on the lens page (§4.1), and none
+5. **Lens page coverage. Decided (October 2026): deferred** with the `b2b_org` work to a
+   separate epic, #402. Only donations with a `b2b_org` reference can show on the lens page (§4.1), and none
    can get one until `b2b_org` search (§5.2 item 3) or domain matching (§5.2 item 4) ships.
-6. **Lens page content. Proposed: defer** with item 5. What the page shows per donation:
+6. **Lens page content. Decided (October 2026): deferred** with item 5 to #402. What the page shows per donation:
    initiative, amount, date, and which donor details (name, email). Anonymous donations need a
    rule too.
 
@@ -408,7 +409,7 @@ admins (§4, option B). This applies to every option.
    from the CF org row ID, including how Ledger marks an unmatched org donation (no SFID) as an
    org donation, and how historical CF org UUIDs keep their totals. A draft proposal is in §4.1
    (Ledger).
-3. **Search dependency. Proposed: defer** to the separate `b2b_org` epic (§5.1 item 5). Today
+3. **Search dependency. Decided (October 2026): deferred** to the separate `b2b_org` epic, #402 (§5.1 item 5). Today
    `/query/orgs/suggest` is Clearbit only, and `b2b_org` search
    only returns orgs where the caller is an `auditor`. Donors can only find member companies
    once query-service ships the combined search and `b2b_org` names and domains are visible to
@@ -427,11 +428,16 @@ admins (§4, option B). This applies to every option.
    donations. Eric
    argued against a real-time domain *fallback* and against domain alignment for non-`b2b_org`
    records (LFXV2-2400 Q3B, Q4), not against this write-time lookup. CF would need access to
-   the subject. Asking Eric and Luis which route donations should take, and who picks it up.
-4. **Adopting older records. Proposed: defer** with item 3. Whether and when CF subscribes to
+   the subject. Eric confirmed (October 2026) that the route is an engineering decision for CF,
+   not an architecture one, and that the Q1 field list comes from product need: name, domain,
+   website and logo, kept minimal. **Decided (October 2026): match by
+   domain when the donation is saved**, sending an empty name so only primary domain, domain
+   alias or Account website can match (no name-only matches). It's deployed in member-service
+   v0.10.26. Q1+Q2 is an optional follow-up. Tracked in #402 (#411–#415).
+4. **Adopting older records. Decided (October 2026): deferred** with item 3. Whether and when CF subscribes to
    org created and updated events to attach `b2b_org` references by domain (§4.1). Not needed
    for the first version.
-5. **Lens donations API. Proposed: defer** with item 3. Role decided (October 2026): `writer`,
+5. **Lens donations API. Decided (October 2026): deferred** with item 3. Role decided (October 2026): `writer`,
    the same as the initiative attribution lens list. CF exposes
    `GET /crowdfunding/organizations/{uid}/donations`,
    following the per-entity initiatives list that already ships for the lens
@@ -445,8 +451,8 @@ admins (§4, option B). This applies to every option.
 
 ### 5.3 Sign-off
 
-- [ ] Requirements agreed (§5.1): items 1–4 decided; items 5 and 6 wait on PM's call on the
-  separate `b2b_org` epic
+- [x] Requirements agreed (§5.1): items 1–4 decided; items 5 and 6 deferred to the separate
+  `b2b_org` epic, #402
 - [x] Option D confirmed (§5.2)
 - [x] PM sign-off (October 2026)
 - [x] Architecture sign-off (Eric Searcy, October 2026)
