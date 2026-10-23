@@ -16,10 +16,13 @@ const (
 
 // Subscription maps to the crowdfunding.subscriptions table.
 type Subscription struct {
-	ID                 string     `json:"id"`
-	UserID             string     `json:"-"`
-	InitiativeID       string     `json:"initiative_id"`
+	ID           string `json:"id"`
+	UserID       string `json:"-"`
+	InitiativeID string `json:"initiative_id"`
+	// OrganizationID is the legacy per-user org FK; new subscriptions store OrgName/OrgDomain instead.
 	OrganizationID     string     `json:"-"`
+	OrgName            string     `json:"-"`
+	OrgDomain          string     `json:"-"`
 	Category           string     `json:"category,omitempty"`
 	CurrentAmountCents int64      `json:"amount_cents"`
 	NextChargeDate     *time.Time `json:"next_charge_date,omitempty"`
@@ -43,9 +46,11 @@ type Subscription struct {
 
 // SubscriptionCreateInput is the request body for creating a subscription.
 type SubscriptionCreateInput struct {
-	AmountCents           int64  `json:"amount_cents"`
-	Frequency             string `json:"frequency"`
-	Category              string `json:"category,omitempty"`
+	AmountCents  int64     `json:"amount_cents"`
+	Frequency    string    `json:"frequency"`
+	Category     string    `json:"category,omitempty"`
+	Organization *OrgClaim `json:"organization,omitempty"`
+	// OrganizationID is the legacy per-user org ID, used only when Organization is absent. Remove after #409.
 	OrganizationID        string `json:"organization_id,omitempty"`
 	StripePaymentMethodID string `json:"stripe_payment_method_id"`
 	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.

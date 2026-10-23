@@ -786,9 +786,9 @@ func TestSubscriptionService_GetByIDForUser_RepoError_IsWrapped(t *testing.T) {
 	}
 }
 
-// --- organization ownership (#278) ---
+// --- org claim (#405) ---
 
-func TestSubscriptionService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T) {
+func TestSubscriptionService_Create_InvalidOrgRejectedBeforeStripe(t *testing.T) {
 	stripeCalled := false
 	stripe := &configStripeClient{
 		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
@@ -800,12 +800,49 @@ func TestSubscriptionService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", models.SubscriptionCreateInput{
 		AmountCents: 2000, Frequency: "monthly", StripePaymentMethodID: "pm_test", IdempotencyKey: "idem",
-		OrganizationID: "11111111-1111-1111-1111-111111111111",
+		Organization: &models.OrgClaim{Name: " "},
 	})
-	if !errors.Is(err, domain.ErrOrganizationNotFound) {
-		t.Fatalf("error = %v, want ErrOrganizationNotFound", err)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
 	if stripeCalled {
-		t.Error("Stripe must not be called for a foreign organization")
+		t.Error("Stripe must not be called for an invalid organization")
+	}
+}
+
+func TestSubscriptionService_Create_StoresOrgClaim(t *testing.T) {
+	var saved *models.Subscription
+	var gotReq models.StripeSubscriptionRequest
+	stripe := &configStripeClient{
+		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) { return "cus_1", nil },
+		onGetOrCreatePrice: func(_ context.Context, _, _ string, _ int64, _ string, _ string) (string, error) {
+			return "price_1", nil
+		},
+		onCreateSubscription: func(_ context.Context, req models.StripeSubscriptionRequest) (*models.StripeSubscriptionResult, error) {
+			gotReq = req
+			return &models.StripeSubscriptionResult{SubscriptionID: "sub_1", PriceID: "price_1", Status: "active"}, nil
+		},
+	}
+	subRepo := &testSubscriptionRepo{
+		onCreate: func(_ context.Context, s *models.Subscription) (*models.Subscription, error) {
+			saved = s
+			return s, nil
+		},
+	}
+	svc := newSubscriptionSvc(subRepo, acceptingInitiative(), &testUserRepo{}, stripe)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.SubscriptionCreateInput{
+		AmountCents: 2000, Frequency: "monthly", StripePaymentMethodID: "pm_test", IdempotencyKey: "idem",
+		Organization: &models.OrgClaim{Name: "Acme", Domain: "https://www.acme.com"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if saved.OrgName != "Acme" || saved.OrgDomain != "acme.com" || saved.OrganizationID != "" {
+		t.Errorf("stored org = %q, %q, id %q; want Acme, acme.com, empty id", saved.OrgName, saved.OrgDomain, saved.OrganizationID)
+	}
+	// OrganizationName also feeds the subscription item metadata Ledger reads on renewals.
+	if gotReq.OrganizationName != "Acme" || gotReq.OrganizationID != "" {
+		t.Errorf("Stripe org = %q, id %q; want Acme, empty id", gotReq.OrganizationName, gotReq.OrganizationID)
 	}
 }
