@@ -1085,8 +1085,8 @@ func TestDonationService_Create_StoresOrgClaim(t *testing.T) {
 		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) { return "cus_1", nil },
 		onCreatePaymentIntent: func(_ context.Context, req models.PaymentIntentRequest) (*models.PaymentIntent, error) {
 			stripeOrgName = req.OrganizationName
-			if req.OrganizationID != "" {
-				t.Errorf("PaymentIntent OrganizationID = %q, want empty", req.OrganizationID)
+			if req.OrganizationDomain != "acme.com" {
+				t.Errorf("PaymentIntent OrganizationDomain = %q, want acme.com", req.OrganizationDomain)
 			}
 			return &models.PaymentIntent{ID: "pi_1", Status: "succeeded"}, nil
 		},
