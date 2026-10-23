@@ -134,6 +134,12 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		roleResolver = fga.NewNATSResolver(fgaConn, cfg.FGA.Timeout)
 		initiativeSvc.SetEntityRoleResolver(roleResolver)
 	}
+	if cfg.LFXAPIBaseURL != "" {
+		// ponytail: fixed 5s timeout; make it configurable if the gateway needs tuning.
+		initiativeSvc.SetProjectLookup(clients.NewProjectLookup(cfg.LFXAPIBaseURL, 5*time.Second))
+	} else {
+		logger.Warn("LFX_API_BASE_URL is not set — project attribution is rejected (cannot verify the project is public)")
+	}
 	initiativeSvc.SetSubscriptionRepo(subscriptionRepo)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
