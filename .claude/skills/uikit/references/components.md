@@ -426,7 +426,7 @@ Programmatic toast notifications — check the component for the composable API.
 
 ## LfxDropdownSearch
 
-Search input styled for use inside a `LfxDropdown` panel.
+Search input styled for use inside a `LfxDropdown` panel. Pass `autofocus` to focus it when the dropdown opens, and `lazy` to debounce `update:modelValue` by 300ms.
 
 ```vue
 <lfx-dropdown v-model:visibility="open" width="280px">

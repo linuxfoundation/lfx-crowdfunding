@@ -13,6 +13,7 @@ SPDX-License-Identifier: MIT
       class="text-neutral-400"
     />
     <input
+      ref="input"
       v-model="model"
       type="text"
       class="!outline-none !shadow-none flex-grow text-sm text-neutral-900 leading-5"
@@ -41,11 +42,20 @@ const props = defineProps<{
   modelValue: string;
   placeholder?: string;
   lazy?: boolean;
+  // Focus the input when the dropdown opens (the panel mounts on open).
+  autofocus?: boolean;
 }>();
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>();
 
 const model = ref(props.modelValue);
+const input = ref<HTMLInputElement | null>(null);
+
+onMounted(() => {
+  // Deferred to a task, so it runs once the click that opened the dropdown has been
+  // handled and Popper has positioned the panel.
+  if (props.autofocus) setTimeout(() => input.value?.focus({ preventScroll: true }));
+});
 
 watch(
   () => props.modelValue,
