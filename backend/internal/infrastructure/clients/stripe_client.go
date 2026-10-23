@@ -479,14 +479,18 @@ func (c *stripeClientImpl) CreateSubscription(ctx context.Context, req models.St
 	defer span.End()
 
 	// Build subscription item metadata so the invoice line item carries initiative_id,
-	// org_id and category — the Ledger hook reads Lines.Data[0].Metadata for all
-	// three fields as its final fallback (covering new Stripe API versions where
+	// org_id, org_name and category — the Ledger hook reads Lines.Data[0].Metadata for
+	// these fields as its final fallback (covering new Stripe API versions where
 	// Plan is nil and Plan.Metadata is unavailable).
 	subItemMeta := map[string]string{
 		"initiative_id": req.InitiativeID,
 	}
 	if req.OrganizationID != "" {
 		subItemMeta["org_id"] = req.OrganizationID
+	}
+	// Option D orgs have no ID; Ledger marks the renewal as an org donation by name (#403).
+	if req.OrganizationName != "" {
+		subItemMeta["org_name"] = truncateMetadataValue(req.OrganizationName)
 	}
 	if req.Category != "" {
 		subItemMeta["category"] = truncateMetadataValue(req.Category)
