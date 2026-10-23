@@ -10,7 +10,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -267,7 +270,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	}
 
 	// The org is stored as the donor stated it; there is no affiliation check (doc 13 §5.1).
-	org, err := orgClaim(input.Organization)
+	org, err := resolveOrgClaim(ctx, s.initiativeRepo, input.Organization, input.OrganizationID, user.ID)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -365,8 +368,8 @@ func orgClaim(in *models.OrgClaim) (models.OrgClaim, error) {
 		return models.OrgClaim{}, nil
 	}
 	name := strings.TrimSpace(in.Name)
-	if name == "" || len(name) > 255 {
-		return models.OrgClaim{}, fmt.Errorf("%w: organization.name must be 1-255 characters", domain.ErrInvalidInput)
+	if name == "" || utf8.RuneCountInString(name) > 255 || strings.ContainsFunc(name, unicode.IsControl) {
+		return models.OrgClaim{}, fmt.Errorf("%w: organization.name must be 1-255 characters with no control characters", domain.ErrInvalidInput)
 	}
 	org := models.OrgClaim{Name: name}
 	if strings.TrimSpace(in.Domain) != "" {
@@ -377,4 +380,44 @@ func orgClaim(in *models.OrgClaim) (models.OrgClaim, error) {
 		org.Domain = d
 	}
 	return org, nil
+}
+
+// resolveOrgClaim is orgClaim plus the legacy organization_id input: when no
+// claim is sent, a caller-owned org ID resolves to a name-only claim, so a BFF
+// and backend on different versions keep the org attribution. The FK is not stored.
+// ponytail: mixed-version deploy bridge; drop with OrganizationID once #409 ships.
+func resolveOrgClaim(ctx context.Context, repo domain.InitiativeRepository, in *models.OrgClaim, legacyID, userID string) (models.OrgClaim, error) {
+	if in == nil && legacyID != "" {
+		_, name, err := ownedOrg(ctx, repo, legacyID, userID)
+		if err != nil {
+			return models.OrgClaim{}, err
+		}
+		in = &models.OrgClaim{Name: name}
+	}
+	return orgClaim(in)
+}
+
+// ownedOrg returns the canonical ID and name of orgID when it belongs to userID,
+// empty strings when orgID is empty, and ErrOrganizationNotFound when the org is
+// missing or owned by someone else (featured-company org IDs are public, so
+// ownership must be checked).
+func ownedOrg(ctx context.Context, repo domain.InitiativeRepository, orgID, userID string) (id, name string, err error) {
+	if orgID == "" {
+		return "", "", nil
+	}
+	parsed, err := uuid.Parse(orgID)
+	if err != nil {
+		return "", "", domain.ErrOrganizationNotFound
+	}
+	// Postgres returns UUIDs lowercase; canonicalize so uppercase input still matches.
+	id = parsed.String()
+	orgs, err := repo.GetOrganizationsByIDs(ctx, []string{id})
+	if err != nil {
+		return "", "", fmt.Errorf("resolve organization: %w", err)
+	}
+	org, ok := orgs[id]
+	if !ok || org.OwnerID != userID {
+		return "", "", domain.ErrOrganizationNotFound
+	}
+	return id, org.Name, nil
 }

@@ -57,6 +57,8 @@ type DonationCreateInput struct {
 	PONumber      string    `json:"po_number,omitempty"`
 	PaymentMethod string    `json:"payment_method,omitempty"`
 	Organization  *OrgClaim `json:"organization,omitempty"`
+	// OrganizationID is the legacy per-user org ID, used only when Organization is absent. Remove after #409.
+	OrganizationID string `json:"organization_id,omitempty"`
 	// StripePaymentMethodID is used to create a Stripe charge
 	StripePaymentMethodID string `json:"stripe_payment_method_id,omitempty"`
 	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.

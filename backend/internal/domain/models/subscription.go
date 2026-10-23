@@ -46,11 +46,13 @@ type Subscription struct {
 
 // SubscriptionCreateInput is the request body for creating a subscription.
 type SubscriptionCreateInput struct {
-	AmountCents           int64     `json:"amount_cents"`
-	Frequency             string    `json:"frequency"`
-	Category              string    `json:"category,omitempty"`
-	Organization          *OrgClaim `json:"organization,omitempty"`
-	StripePaymentMethodID string    `json:"stripe_payment_method_id"`
+	AmountCents  int64     `json:"amount_cents"`
+	Frequency    string    `json:"frequency"`
+	Category     string    `json:"category,omitempty"`
+	Organization *OrgClaim `json:"organization,omitempty"`
+	// OrganizationID is the legacy per-user org ID, used only when Organization is absent. Remove after #409.
+	OrganizationID        string `json:"organization_id,omitempty"`
+	StripePaymentMethodID string `json:"stripe_payment_method_id"`
 	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.
 	// Not decoded from the JSON body (json:"-").
 	IdempotencyKey string `json:"-"`

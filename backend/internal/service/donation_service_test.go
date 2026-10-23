@@ -988,6 +988,10 @@ func TestOrgClaim(t *testing.T) {
 		{"blank name", &models.OrgClaim{Name: "  ", Domain: "acme.com"}, models.OrgClaim{}, true},
 		{"name too long", &models.OrgClaim{Name: strings.Repeat("a", 256)}, models.OrgClaim{}, true},
 		{"bad domain", &models.OrgClaim{Name: "Acme", Domain: "not a domain"}, models.OrgClaim{}, true},
+		{"255 multibyte chars", &models.OrgClaim{Name: strings.Repeat("株", 255)}, models.OrgClaim{Name: strings.Repeat("株", 255)}, false},
+		{"256 multibyte chars", &models.OrgClaim{Name: strings.Repeat("株", 256)}, models.OrgClaim{}, true},
+		{"NUL in name", &models.OrgClaim{Name: "Acme\x00Corp"}, models.OrgClaim{}, true},
+		{"newline in name", &models.OrgClaim{Name: "Acme\nCorp"}, models.OrgClaim{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -996,6 +1000,75 @@ func TestOrgClaim(t *testing.T) {
 				t.Errorf("orgClaim() = %+v, %v; want %+v, err=%v", got, err, tt.want, tt.err)
 			}
 		})
+	}
+}
+
+// --- legacy organization_id fallback (mixed-version deploys) ---
+
+func TestResolveOrgClaim_LegacyOrgID(t *testing.T) {
+	const orgID = "11111111-1111-1111-1111-111111111111"
+	repo := &summaryInitiativeRepo{
+		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
+			return map[string]models.Organization{orgID: {ID: orgID, OwnerID: "owner", Name: "Acme"}}, nil
+		},
+	}
+	tests := []struct {
+		name    string
+		in      *models.OrgClaim
+		orgID   string
+		userID  string
+		want    models.OrgClaim
+		wantErr error
+	}{
+		{"individual", nil, "", "owner", models.OrgClaim{}, nil},
+		{"own org", nil, orgID, "owner", models.OrgClaim{Name: "Acme"}, nil},
+		{"own org uppercase", nil, strings.ToUpper(orgID), "owner", models.OrgClaim{Name: "Acme"}, nil},
+		{"foreign org", nil, orgID, "someone-else", models.OrgClaim{}, domain.ErrOrganizationNotFound},
+		{"not a uuid", nil, "not-a-uuid", "owner", models.OrgClaim{}, domain.ErrOrganizationNotFound},
+		{"claim wins over legacy id", &models.OrgClaim{Name: "Other"}, orgID, "someone-else", models.OrgClaim{Name: "Other"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveOrgClaim(context.Background(), repo, tt.in, tt.orgID, tt.userID)
+			if !errors.Is(err, tt.wantErr) || got != tt.want {
+				t.Errorf("resolveOrgClaim() = %+v, %v; want %+v, %v", got, err, tt.want, tt.wantErr)
+			}
+		})
+	}
+}
+
+// A lookup failure must fail closed with a real error, not be mistaken for "not found".
+func TestOwnedOrg_RepoErrorFailsClosed(t *testing.T) {
+	repoErr := errors.New("db down")
+	repo := &summaryInitiativeRepo{
+		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
+			return nil, repoErr
+		},
+	}
+	_, _, err := ownedOrg(context.Background(), repo, "11111111-1111-1111-1111-111111111111", "owner")
+	if !errors.Is(err, repoErr) || errors.Is(err, domain.ErrOrganizationNotFound) {
+		t.Errorf("error = %v, want wrapped %v and not ErrOrganizationNotFound", err, repoErr)
+	}
+}
+
+func TestDonationService_Create_ForeignLegacyOrgRejectedBeforeStripe(t *testing.T) {
+	stripeCalled := false
+	stripe := &configStripeClient{
+		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
+			stripeCalled = true
+			return "cus_1", nil
+		},
+	}
+	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), &testUserRepo{}, stripe)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem", OrganizationID: "11111111-1111-1111-1111-111111111111",
+	})
+	if !errors.Is(err, domain.ErrOrganizationNotFound) {
+		t.Fatalf("error = %v, want ErrOrganizationNotFound", err)
+	}
+	if stripeCalled {
+		t.Error("Stripe must not be called for a foreign organization")
 	}
 }
 

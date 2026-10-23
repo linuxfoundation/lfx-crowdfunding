@@ -3,7 +3,6 @@
 
 import { defineEventHandler, readBody, getHeader, createError } from 'h3';
 import { useBackendFetch } from '../../../utils/backend-fetch';
-import { resolveOrgClaim } from '../../../utils/org-claim';
 import type { BackendInitiative } from '../../../types/initiatives.types';
 import type { DonationResultWire } from '../../../types/payment.types';
 import type { DonationRequest, DonationResult } from '#shared/types/payment.types';
@@ -23,7 +22,6 @@ export default defineEventHandler(async (event): Promise<DonationResult> => {
   });
 
   const body = await readBody<DonationRequest>(event);
-  const orgClaim = await resolveOrgClaim(event, body.organizationId);
   const raw = await useBackendFetch<DonationResultWire>(
     event,
     `/crowdfunding/me/initiatives/${initiative.id}/donations`,
@@ -33,7 +31,7 @@ export default defineEventHandler(async (event): Promise<DonationResult> => {
         amount_cents: body.amountInCents,
         stripe_payment_method_id: body.stripePaymentMethodId,
         ...(body.category ? { category: body.category } : {}),
-        ...orgClaim,
+        ...(body.organizationId ? { organization_id: body.organizationId } : {}),
         ...(body.donationTier ? { donation_tier: body.donationTier } : {}),
       },
       headers: { 'Idempotency-Key': idempotencyKey },

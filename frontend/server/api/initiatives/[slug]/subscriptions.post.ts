@@ -3,7 +3,6 @@
 
 import { defineEventHandler, readBody, getHeader, createError } from 'h3';
 import { useBackendFetch } from '../../../utils/backend-fetch';
-import { resolveOrgClaim } from '../../../utils/org-claim';
 import type { BackendInitiative } from '../../../types/initiatives.types';
 import type { SubscriptionResultWire } from '../../../types/payment.types';
 import type { SubscriptionRequest, SubscriptionResult } from '#shared/types/payment.types';
@@ -23,7 +22,6 @@ export default defineEventHandler(async (event): Promise<SubscriptionResult> => 
   });
 
   const body = await readBody<SubscriptionRequest>(event);
-  const orgClaim = await resolveOrgClaim(event, body.organizationId);
   const raw = await useBackendFetch<SubscriptionResultWire>(
     event,
     `/crowdfunding/me/initiatives/${initiative.id}/subscriptions`,
@@ -34,7 +32,7 @@ export default defineEventHandler(async (event): Promise<SubscriptionResult> => 
         frequency: body.frequency,
         stripe_payment_method_id: body.stripePaymentMethodId,
         ...(body.category ? { category: body.category } : {}),
-        ...orgClaim,
+        ...(body.organizationId ? { organization_id: body.organizationId } : {}),
       },
       headers: { 'Idempotency-Key': idempotencyKey },
     },

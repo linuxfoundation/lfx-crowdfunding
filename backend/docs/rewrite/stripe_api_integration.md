@@ -160,9 +160,11 @@ account settings.
   "category": "general",
   "po_number": "PO-123",
   "payment_method": "card",
-  "organization_id": "org_xyz"
+  "organization": { "name": "Acme Corp", "domain": "acme.com" }
 }
 ```
+
+`organization` is optional (omit for an individual donation). `name` is 1–255 characters with no control characters; `domain` is optional and normalized to a lowercase hostname (`https://www.Acme.com/about` → `acme.com`). Invalid input returns `400` before Stripe is called. The legacy `organization_id` (a caller-owned org) is still accepted when `organization` is absent and is resolved to a name-only claim; it will be removed after #409.
 
 **Response `201 Created` — payment succeeded immediately:**
 ```json
@@ -223,9 +225,11 @@ response is sent.
   "frequency": "monthly",
   "stripe_payment_method_id": "pm_1ABC...",
   "category": "general",
-  "organization_id": "org_xyz"
+  "organization": { "name": "Acme Corp", "domain": "acme.com" }
 }
 ```
+
+`organization` is optional (omit for an individual donation). `name` is 1–255 characters with no control characters; `domain` is optional and normalized to a lowercase hostname (`https://www.Acme.com/about` → `acme.com`). Invalid input returns `400` before Stripe is called. The legacy `organization_id` (a caller-owned org) is still accepted when `organization` is absent and is resolved to a name-only claim; it will be removed after #409.
 
 `frequency` must be one of `"monthly"` (`"month"`), `"yearly"` (`"year"`, `"annual"`), `"weekly"` (`"week"`), or `"daily"` (`"day"`). Aliases are accepted; unsupported values return `400`.
 
