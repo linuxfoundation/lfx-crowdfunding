@@ -306,8 +306,8 @@ and PM signed off (October 2026).
   SFID when there is one, plus the name and domain. Unmatched orgs (Clearbit or typed) have no
   SFID, and today a blank `organizationID` marks the donation as individual
   (`internal/infrastructure/clients/ledger.go:254`), with org totals keyed by that ID. So Ledger
-  needs an explicit org discriminator, or a stable fallback key such as the normalized domain,
-  and the historical CF org UUIDs must keep resolving so existing totals don't split. Needs
+  needs an explicit org discriminator and one stable key to group org totals on, and the
+  historical CF org UUIDs must keep resolving until their rows are backfilled. Needs
   agreement with ledger-service (§5.2 item 2). Ledger stores `organization_id` as text, groups
   org totals on `organization_id IS NOT NULL` (ledger-service `cache/stats/stats.go`), and looks
   org names up by ID in the `lff-organizations` index. **Draft proposal** (October 2026, not yet
@@ -316,11 +316,15 @@ and PM signed off (October 2026).
      `organizationSFID`.
   2. A transaction is an org donation when `organizationName` is set, or `organizationID` for
      older rows.
-  3. Org totals and top orgs group by the first one present: `organizationSFID`, then
-     `organizationDomain`, then `organizationID`. Historical rows keep their CF UUID, so their
-     totals don't split.
+  3. Org totals and top orgs group on the normalized `organizationDomain`. Option D always
+     stores a domain, and picker and `b2b_org` results carry one, so `acme.com` with and without
+     an SFID lands in one bucket. The SFID is an attribute, not the key. Grouping on "the first
+     of SFID, domain or ID present" would split a company whenever some donations matched a
+     `b2b_org` and others didn't.
   4. Ledger shows `organizationName` as sent, instead of looking it up by ID.
-  5. CF backfills name and domain on past org donations (§5.1 item 4).
+  5. CF backfills name and domain on past org donations in Ledger (§5.1 item 4), so legacy rows
+     join their company's domain bucket. Rows with no domain found keep grouping on their CF
+     UUID. That leftover split is a known limitation, not something this proposal fixes.
 
 ### 4.2 Not recommended: option A (CDP work history)
 
@@ -381,7 +385,13 @@ admins (§4, option B). This applies to every option.
 4. **Existing data. Decided (PM, October 2026): migrate.** A migration copies each historical
    donation's org from its current `organizations` row onto the donation (606 from v1 plus
    those created since, including the 16 featured companies), filling in domains where
-   possible. Rows with no domain found keep a name-only snapshot.
+   possible. Rows with no domain found keep a name-only snapshot. Active org subscriptions are
+   migrated too: changing `SubscriptionService.Create` only affects new checkouts, and renewals
+   reach Ledger through ledger-service's `charge.succeeded`, which reads the Stripe subscription
+   metadata (`webhook_handler.go:393-398`). Today that metadata carries only `org_id` and
+   `org_name`. So the migration writes the snapshot onto each `subscriptions` row and updates
+   each Stripe subscription's metadata (name, domain, SFID). CF org rows can't be retired until
+   that's done, and Ledger keeps resolving the legacy `org_id` (§4.1, Ledger) until then.
 5. **Lens page coverage. Proposed: defer** with the `b2b_org` work to a separate epic, pending
    PM. Only donations with a `b2b_org` reference can show on the lens page (§4.1), and none
    can get one until `b2b_org` search (§5.2 item 3) or domain matching (§5.2 item 4) ships.
@@ -409,7 +419,12 @@ admins (§4, option B). This applies to every option.
    The alternative is matching by domain when the donation is saved. That's the route the
    committee fix took after Eric's review: member-service answers `lfx.member.b2b_org_lookup` over
    NATS for trusted services, so it needs no public `b2b_org` fields. The by-ID lookup shipped
-   (member-service #73); the by-domain variant is `ResolveByDomain` (LFXV2-2650, Backlog). Eric
+   (member-service #73). A website lookup is also on member-service main:
+   `lfx.member.b2b_org_lookup_by_website` (member-service #123, October 2026) takes
+   `{name, website}` and returns the SFID. It matches primary domain, then domain alias, then
+   website, then name, and refuses ambiguous domain matches. Still to confirm: whether it's
+   deployed, CF access to the subject, and whether a name-only match is acceptable for
+   donations. Eric
    argued against a real-time domain *fallback* and against domain alignment for non-`b2b_org`
    records (LFXV2-2400 Q3B, Q4), not against this write-time lookup. CF would need access to
    the subject. Asking Eric and Luis which route donations should take, and who picks it up.
@@ -456,7 +471,8 @@ admins (§4, option B). This applies to every option.
   - LFXV2-2400: committee-member org ID divergence. Its Q1–Q3 are the public `b2b_org` subset,
     combined `b2b_org` + Clearbit search and sync-from-`b2b_org` design. Discarded 2026-09-03.
   - LFXV2-2647: stop storing CDP org IDs on committee members.
-  - LFXV2-2650: member-service `ResolveByDomain` (Backlog).
+  - LFXV2-2650: member-service lookup by domain, implemented as
+    `lfx.member.b2b_org_lookup_by_website` (member-service #123).
 - lfx-self-serve:
   - `apps/lfx-one/src/server/services/cdp.service.ts`
   - `apps/lfx-one/src/server/services/organization.service.ts`
