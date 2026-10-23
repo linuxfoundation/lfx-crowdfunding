@@ -27,7 +27,7 @@ User action in SS that needs CF data
        self-scoped /crowdfunding/me/* routes, openfga_check for manager routes on
        an initiative or entity), and forwards
        a Heimdall-minted JWT (aud = lfx-crowdfunding-backend, principal = LF username) to CF
-  └─ CF accepts the Heimdall-issued token (dual-accept, LFXV2-3351) and keys
+  └─ CF accepts the Heimdall-issued token (the only kind it accepts, #311) and keys
        Principal.Username on the `principal` claim
 ```
 
