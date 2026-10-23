@@ -302,21 +302,22 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	}
 
 	pi, err := s.stripe.CreatePaymentIntent(ctx, models.PaymentIntentRequest{
-		InitiativeID:     initiativeID,
-		InitiativeSlug:   initiative.Slug,
-		InitiativeName:   initiative.Name,
-		UserID:           user.LegacyUserID,
-		DonorName:        user.Name,
-		DonorEmail:       user.Email,
-		OwnerEmail:       ownerEmail,
-		OwnerName:        ownerName,
-		CustomerID:       customerID,
-		AmountCents:      input.AmountCents,
-		PaymentMethodID:  input.StripePaymentMethodID,
-		Category:         input.Category,
-		OrganizationName: org.Name,
-		PaymentMethod:    input.PaymentMethod,
-		IdempotencyKey:   input.IdempotencyKey,
+		InitiativeID:       initiativeID,
+		InitiativeSlug:     initiative.Slug,
+		InitiativeName:     initiative.Name,
+		UserID:             user.LegacyUserID,
+		DonorName:          user.Name,
+		DonorEmail:         user.Email,
+		OwnerEmail:         ownerEmail,
+		OwnerName:          ownerName,
+		CustomerID:         customerID,
+		AmountCents:        input.AmountCents,
+		PaymentMethodID:    input.StripePaymentMethodID,
+		Category:           input.Category,
+		OrganizationName:   org.Name,
+		OrganizationDomain: org.Domain,
+		PaymentMethod:      input.PaymentMethod,
+		IdempotencyKey:     input.IdempotencyKey,
 	})
 	if err != nil {
 		span.RecordError(err)

@@ -209,18 +209,20 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		sourceTxnID = pi.ID
 	}
 	txn := clients.LedgerTransaction{
-		ProjectID:        initiativeID,
-		UserID:           userID,
-		OrganizationID:   pi.Metadata["org_id"],
-		OrganizationName: pi.Metadata["org_name"],
-		AccountEmail:     donorEmail,
-		SourceType:       domain.LedgerSourceTypeStripe,
-		SourceTxnID:      sourceTxnID,
-		SourceAccountID:  customerID,
-		TxnType:          ledgerTxnType,
-		TxnCategory:      pi.Metadata["category"],
-		Amount:           amount,
-		TxnDate:          pi.Created,
+		ProjectID: initiativeID,
+		UserID:    userID,
+		// org_id only appears on PaymentIntents created before the org claim (#405).
+		OrganizationID:     pi.Metadata["org_id"],
+		OrganizationName:   pi.Metadata["org_name"],
+		OrganizationDomain: pi.Metadata["org_domain"],
+		AccountEmail:       donorEmail,
+		SourceType:         domain.LedgerSourceTypeStripe,
+		SourceTxnID:        sourceTxnID,
+		SourceAccountID:    customerID,
+		TxnType:            ledgerTxnType,
+		TxnCategory:        pi.Metadata["category"],
+		Amount:             amount,
+		TxnDate:            pi.Created,
 	}
 	// Ledger post is best-effort: the DB is already marked succeeded, so returning
 	// an error would cause Stripe to retry — but the retry hits ErrAlreadyProcessed
