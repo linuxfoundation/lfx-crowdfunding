@@ -786,9 +786,9 @@ func TestSubscriptionService_GetByIDForUser_RepoError_IsWrapped(t *testing.T) {
 	}
 }
 
-// --- organization ownership (#278) ---
+// --- org claim (#405) ---
 
-func TestSubscriptionService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T) {
+func TestSubscriptionService_Create_InvalidOrgRejectedBeforeStripe(t *testing.T) {
 	stripeCalled := false
 	stripe := &configStripeClient{
 		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
@@ -800,12 +800,12 @@ func TestSubscriptionService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", models.SubscriptionCreateInput{
 		AmountCents: 2000, Frequency: "monthly", StripePaymentMethodID: "pm_test", IdempotencyKey: "idem",
-		OrganizationID: "11111111-1111-1111-1111-111111111111",
+		Organization: &models.OrgClaim{Name: " "},
 	})
-	if !errors.Is(err, domain.ErrOrganizationNotFound) {
-		t.Fatalf("error = %v, want ErrOrganizationNotFound", err)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
 	if stripeCalled {
-		t.Error("Stripe must not be called for a foreign organization")
+		t.Error("Stripe must not be called for an invalid organization")
 	}
 }

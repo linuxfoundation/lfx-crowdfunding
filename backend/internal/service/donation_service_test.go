@@ -973,52 +973,69 @@ func TestProjectDonationSummaries_PreservesDonationTier(t *testing.T) {
 	}
 }
 
-// --- organization ownership (#278) ---
+// --- org claim (#405) ---
 
-func TestOwnedOrg(t *testing.T) {
-	const orgID = "11111111-1111-1111-1111-111111111111"
-	repo := &summaryInitiativeRepo{
-		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
-			return map[string]models.Organization{orgID: {ID: orgID, OwnerID: "owner", Name: "Acme"}}, nil
-		},
-	}
+func TestOrgClaim(t *testing.T) {
 	tests := []struct {
-		name, orgID, userID, wantID, wantName string
-		wantErr                               error
+		name string
+		in   *models.OrgClaim
+		want models.OrgClaim
+		err  bool
 	}{
-		{"no org", "", "owner", "", "", nil},
-		{"own org", orgID, "owner", orgID, "Acme", nil},
-		{"own org uppercase", strings.ToUpper(orgID), "owner", orgID, "Acme", nil},
-		{"foreign org", orgID, "someone-else", "", "", domain.ErrOrganizationNotFound},
-		{"unknown org", "22222222-2222-2222-2222-222222222222", "owner", "", "", domain.ErrOrganizationNotFound},
-		{"not a uuid", "not-a-uuid", "owner", "", "", domain.ErrOrganizationNotFound},
+		{"individual", nil, models.OrgClaim{}, false},
+		{"name only", &models.OrgClaim{Name: "  Acme  "}, models.OrgClaim{Name: "Acme"}, false},
+		{"name and domain", &models.OrgClaim{Name: "Acme", Domain: "https://WWW.Acme.com/about"}, models.OrgClaim{Name: "Acme", Domain: "acme.com"}, false},
+		{"blank name", &models.OrgClaim{Name: "  ", Domain: "acme.com"}, models.OrgClaim{}, true},
+		{"name too long", &models.OrgClaim{Name: strings.Repeat("a", 256)}, models.OrgClaim{}, true},
+		{"bad domain", &models.OrgClaim{Name: "Acme", Domain: "not a domain"}, models.OrgClaim{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotID, gotName, err := ownedOrg(context.Background(), repo, tt.orgID, tt.userID)
-			if !errors.Is(err, tt.wantErr) || gotID != tt.wantID || gotName != tt.wantName {
-				t.Errorf("ownedOrg() = %q, %q, %v; want %q, %q, %v", gotID, gotName, err, tt.wantID, tt.wantName, tt.wantErr)
+			got, err := orgClaim(tt.in)
+			if tt.err != errors.Is(err, domain.ErrInvalidInput) || got != tt.want {
+				t.Errorf("orgClaim() = %+v, %v; want %+v, err=%v", got, err, tt.want, tt.err)
 			}
 		})
 	}
 }
 
-// A lookup failure must fail closed with a real error, not be mistaken for
-// "not found" or swallowed like the old best-effort name lookup.
-func TestOwnedOrg_RepoErrorFailsClosed(t *testing.T) {
-	repoErr := errors.New("db down")
-	repo := &summaryInitiativeRepo{
-		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
-			return nil, repoErr
+func TestDonationService_Create_StoresOrgClaim(t *testing.T) {
+	var saved *models.Donation
+	var stripeOrgName string
+	donRepo := &testDonationRepo{
+		onCreate: func(_ context.Context, d *models.Donation) (*models.Donation, error) {
+			saved = d
+			return d, nil
 		},
 	}
-	_, _, err := ownedOrg(context.Background(), repo, "11111111-1111-1111-1111-111111111111", "owner")
-	if !errors.Is(err, repoErr) || errors.Is(err, domain.ErrOrganizationNotFound) {
-		t.Errorf("error = %v, want wrapped %v and not ErrOrganizationNotFound", err, repoErr)
+	stripe := &configStripeClient{
+		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) { return "cus_1", nil },
+		onCreatePaymentIntent: func(_ context.Context, req models.PaymentIntentRequest) (*models.PaymentIntent, error) {
+			stripeOrgName = req.OrganizationName
+			if req.OrganizationID != "" {
+				t.Errorf("PaymentIntent OrganizationID = %q, want empty", req.OrganizationID)
+			}
+			return &models.PaymentIntent{ID: "pi_1", Status: "succeeded"}, nil
+		},
+	}
+	svc := newDonationSvc(donRepo, acceptingInitiative(), &testUserRepo{}, stripe)
+
+	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
+		AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem",
+		Organization: &models.OrgClaim{Name: "Acme", Domain: "Acme.com."},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if saved.OrgName != "Acme" || saved.OrgDomain != "acme.com" || saved.OrganizationID != "" {
+		t.Errorf("stored org = %q, %q, id %q; want Acme, acme.com, empty id", saved.OrgName, saved.OrgDomain, saved.OrganizationID)
+	}
+	if stripeOrgName != "Acme" {
+		t.Errorf("Stripe OrganizationName = %q, want Acme", stripeOrgName)
 	}
 }
 
-func TestDonationService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T) {
+func TestDonationService_Create_InvalidOrgRejectedBeforeStripe(t *testing.T) {
 	stripeCalled := false
 	stripe := &configStripeClient{
 		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
@@ -1029,13 +1046,22 @@ func TestDonationService_Create_ForeignOrgRejectedBeforeStripe(t *testing.T) {
 	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), &testUserRepo{}, stripe)
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
-		AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem", OrganizationID: "11111111-1111-1111-1111-111111111111",
+		AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem",
+		Organization: &models.OrgClaim{Name: "Acme", Domain: "acme"},
 	})
-	if !errors.Is(err, domain.ErrOrganizationNotFound) {
-		t.Fatalf("error = %v, want ErrOrganizationNotFound", err)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
 	if stripeCalled {
-		t.Error("Stripe must not be called for a foreign organization")
+		t.Error("Stripe must not be called for an invalid organization")
+	}
+}
+
+func TestProjectDonationSummaries_StoredOrgName(t *testing.T) {
+	donations := []models.Donation{{ID: "d1", UserID: "u1", OrgName: "Acme", OrgDomain: "acme.com"}}
+	got := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, donations)
+	if got[0].DonorType != donorTypeOrganization || got[0].DonorName != "Acme" {
+		t.Errorf("summary = %q / %q, want organization / Acme", got[0].DonorType, got[0].DonorName)
 	}
 }
 

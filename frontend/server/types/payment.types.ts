@@ -24,3 +24,9 @@ export interface SubscriptionResultWire {
   status: string;
   client_secret?: string;
 }
+
+/** Org claim sent to the backend on donation and subscription create (#405). */
+export interface OrgClaimWire {
+  name: string;
+  domain?: string;
+}

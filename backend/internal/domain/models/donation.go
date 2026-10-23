@@ -27,8 +27,11 @@ type Donation struct {
 	InitiativeID string `json:"initiative_id"`
 	// InitiativeName is populated by the user/initiative donation list queries via a
 	// join on initiatives; it is not a column on the donations table.
-	InitiativeName     string `json:"initiative_name,omitempty"`
+	InitiativeName string `json:"initiative_name,omitempty"`
+	// OrganizationID is the legacy per-user org FK; new donations store OrgName/OrgDomain instead.
 	OrganizationID     string `json:"-"`
+	OrgName            string `json:"-"`
+	OrgDomain          string `json:"-"`
 	Category           string `json:"category,omitempty"`
 	CurrentAmountCents int64  `json:"amount_cents"`
 	PONumber           string `json:"po_number,omitempty"`
@@ -49,11 +52,11 @@ type Donation struct {
 
 // DonationCreateInput is the request body for creating a donation.
 type DonationCreateInput struct {
-	AmountCents    int64  `json:"amount_cents"`
-	Category       string `json:"category,omitempty"`
-	PONumber       string `json:"po_number,omitempty"`
-	PaymentMethod  string `json:"payment_method,omitempty"`
-	OrganizationID string `json:"organization_id,omitempty"`
+	AmountCents   int64     `json:"amount_cents"`
+	Category      string    `json:"category,omitempty"`
+	PONumber      string    `json:"po_number,omitempty"`
+	PaymentMethod string    `json:"payment_method,omitempty"`
+	Organization  *OrgClaim `json:"organization,omitempty"`
 	// StripePaymentMethodID is used to create a Stripe charge
 	StripePaymentMethodID string `json:"stripe_payment_method_id,omitempty"`
 	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.

@@ -534,19 +534,21 @@ func (c *ledgerHTTPClient) GetAllBalances(ctx context.Context) ([]models.LedgerR
 // the Ledger POST /transactions endpoint. Field names match the Ledger service's
 // JSON schema exactly (camelCase).
 type LedgerTransaction struct {
-	ProjectID       string `json:"projectID"`
-	UserID          string `json:"userID"`
-	OrganizationID  string `json:"organizationID,omitempty"`
-	AccountEmail    string `json:"accountEmail"`
-	TxnComment      string `json:"txnComment,omitempty"`
-	SourceType      string `json:"sourceType"`
-	SourceTxnID     string `json:"sourceTxnID"`
-	SourceAccountID string `json:"sourceAccountID"`
-	TxnType         string `json:"txnType"`
-	TxnCategory     string `json:"txnCategory,omitempty"`
-	Fee             int    `json:"fee"`
-	Amount          int    `json:"amount"`
-	TxnDate         int64  `json:"txnDate"`
+	ProjectID      string `json:"projectID"`
+	UserID         string `json:"userID"`
+	OrganizationID string `json:"organizationID,omitempty"`
+	// OrganizationName marks an org donation in Ledger without a CF org ID (#403).
+	OrganizationName string `json:"organizationName,omitempty"`
+	AccountEmail     string `json:"accountEmail"`
+	TxnComment       string `json:"txnComment,omitempty"`
+	SourceType       string `json:"sourceType"`
+	SourceTxnID      string `json:"sourceTxnID"`
+	SourceAccountID  string `json:"sourceAccountID"`
+	TxnType          string `json:"txnType"`
+	TxnCategory      string `json:"txnCategory,omitempty"`
+	Fee              int    `json:"fee"`
+	Amount           int    `json:"amount"`
+	TxnDate          int64  `json:"txnDate"`
 }
 
 type ledgerPostTransactionsRequest struct {

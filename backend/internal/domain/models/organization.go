@@ -29,6 +29,14 @@ type OrganizationUpdateInput struct {
 	AvatarURL string `json:"avatar_url,omitempty"`
 }
 
+// OrgClaim is the organization a donor gives on behalf of, as the donor stated it.
+// It is stored on the donation or subscription itself, not as a reference to an
+// organizations row. Domain is normalized by the service before it is stored.
+type OrgClaim struct {
+	Name   string `json:"name"`
+	Domain string `json:"domain,omitempty"`
+}
+
 // User maps to the crowdfunding.users table.
 // users.id (UUID) is the FK target throughout the schema.
 // username is the LF SSO username used as the application-level identity input.

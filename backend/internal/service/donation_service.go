@@ -9,8 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
-	"github.com/google/uuid"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -111,7 +111,10 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 			DonationTier: d.DonationTier,
 			CreatedOn:    d.CreatedOn,
 		}
-		if d.OrganizationID != "" {
+		if d.OrgName != "" {
+			s.DonorType = donorTypeOrganization
+			s.DonorName = d.OrgName
+		} else if d.OrganizationID != "" {
 			s.DonorType = donorTypeOrganization
 			if org, ok := orgs[d.OrganizationID]; ok {
 				s.DonorName = org.Name
@@ -263,13 +266,12 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		return nil, fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before donating", domain.ErrProfileNotSynced)
 	}
 
-	// The donor may only attribute to an organization they own (#278).
-	orgID, orgName, err := ownedOrg(ctx, s.initiativeRepo, input.OrganizationID, user.ID)
+	// The org is stored as the donor stated it; there is no affiliation check (doc 13 §5.1).
+	org, err := orgClaim(input.Organization)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	input.OrganizationID = orgID
 	customerID := user.StripeCustomerID
 	if customerID == "" {
 		customerID, err = s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
@@ -309,8 +311,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		AmountCents:      input.AmountCents,
 		PaymentMethodID:  input.StripePaymentMethodID,
 		Category:         input.Category,
-		OrganizationID:   input.OrganizationID,
-		OrganizationName: orgName,
+		OrganizationName: org.Name,
 		PaymentMethod:    input.PaymentMethod,
 		IdempotencyKey:   input.IdempotencyKey,
 	})
@@ -322,7 +323,8 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	donation := &models.Donation{
 		UserID:             user.ID,
 		InitiativeID:       initiativeID,
-		OrganizationID:     input.OrganizationID,
+		OrgName:            org.Name,
+		OrgDomain:          org.Domain,
 		Category:           input.Category,
 		CurrentAmountCents: input.AmountCents,
 		PONumber:           input.PONumber,
@@ -355,28 +357,24 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	return created, nil
 }
 
-// ownedOrg returns the canonical ID and name of orgID when it belongs to userID,
-// empty strings when orgID is empty, and ErrOrganizationNotFound when the org is
-// missing or owned by someone else (featured-company org IDs are public, so
-// ownership must be checked).
-// ponytail: interim guard until org donations move to canonical b2b_org records (lfx-crowdfunding#261).
-func ownedOrg(ctx context.Context, repo domain.InitiativeRepository, orgID, userID string) (id, name string, err error) {
-	if orgID == "" {
-		return "", "", nil
+// orgClaim validates the org a donor gives on behalf of and normalizes its domain.
+// nil means an individual donation and returns a zero OrgClaim. Domain is
+// optional until the org picker sends one (#409).
+func orgClaim(in *models.OrgClaim) (models.OrgClaim, error) {
+	if in == nil {
+		return models.OrgClaim{}, nil
 	}
-	parsed, err := uuid.Parse(orgID)
-	if err != nil {
-		return "", "", domain.ErrOrganizationNotFound
+	name := strings.TrimSpace(in.Name)
+	if name == "" || len(name) > 255 {
+		return models.OrgClaim{}, fmt.Errorf("%w: organization.name must be 1-255 characters", domain.ErrInvalidInput)
 	}
-	// Postgres returns UUIDs lowercase; canonicalize so uppercase input still matches.
-	id = parsed.String()
-	orgs, err := repo.GetOrganizationsByIDs(ctx, []string{id})
-	if err != nil {
-		return "", "", fmt.Errorf("resolve organization: %w", err)
+	org := models.OrgClaim{Name: name}
+	if strings.TrimSpace(in.Domain) != "" {
+		d, err := domain.NormalizeDomain(in.Domain)
+		if err != nil {
+			return models.OrgClaim{}, err
+		}
+		org.Domain = d
 	}
-	org, ok := orgs[id]
-	if !ok || org.OwnerID != userID {
-		return "", "", domain.ErrOrganizationNotFound
-	}
-	return id, org.Name, nil
+	return org, nil
 }
