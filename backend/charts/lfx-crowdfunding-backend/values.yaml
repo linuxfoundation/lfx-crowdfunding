@@ -98,9 +98,10 @@ topologySpreadConstraints: []
 # ── Non-secret environment variables ────────────────────────────────────────
 # These are rendered into a ConfigMap and mounted via envFrom.
 config:
-  JWKS_URL: ""
-  JWT_AUDIENCE: ""
-  JWT_ISSUER: ""
+  # Heimdall JWT validation — the backend accepts only Heimdall-minted tokens.
+  HEIMDALL_JWKS_URL: ""
+  HEIMDALL_JWT_AUDIENCE: ""
+  HEIMDALL_JWT_ISSUER: ""
   LEDGER_BASE_URL: ""
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   OTEL_SERVICE_NAME: "lfx-crowdfunding-backend"
@@ -151,7 +152,7 @@ app:
   use_oidc_contextualizer: false
   # audience is the JWT aud claim Heimdall's create_jwt finalizer stamps onto
   # tokens forwarded to this service, and what HEIMDALL_JWT_AUDIENCE must
-  # match once dual-accept (LFXV2-3351) is live.
+  # match.
   audience: lfx-crowdfunding-backend
   # approversTeamName is the OpenFGA team object process-approval is checked
   # against (relation: member) once openfga.enabled is true. Name fixed by
