@@ -1,8 +1,8 @@
 ---
 title: Making a Donation
 description: How to make a one-time or monthly donation to an open source initiative on LFX Crowdfunding.
-tags: [donations, one-time, monthly, payment, stripe]
-last_updated: 2026-10-14
+tags: [donations, one-time, monthly, payment, stripe, organization]
+last_updated: 2026-10-23
 display_order: 1
 intercom_collection: LFX Crowdfunding
 ---
@@ -28,7 +28,31 @@ Optionally, you can allocate your donation to a specific funding goal (e.g. Deve
 
 If the initiative offers [sponsorship tiers](../../initiatives/sponsorship-tiers/), you'll see a set of tier cards (e.g. Platinum, Gold, Silver, Bronze) instead — select one to set your amount to that tier's goal, or choose a custom amount below the tiers.
 
-## Step 2 — Payment
+## Step 2 — Choose who you're donating as
+
+![Choosing who you're donating as](/images/docs/screenshots/donations/make-donation-donating-as.png)
+
+Under **I'm donating as**, pick one:
+
+- **Individual** — the donation is credited to you, with your name and avatar.
+- **An organization** — the donation is credited to a company or organization.
+
+To donate on behalf of an organization, select **An organization** and search for it by name. Results show each organization's name and website. Pick the right one; its name and website then appear in the organization row.
+
+If your organization isn't in the results, click **Can't find it? Enter it manually** and type:
+
+- **Organization name**, e.g. Acme Inc.
+- **Website**, e.g. acme.com
+
+Click **Search instead** to go back to the search.
+
+A few things to know:
+
+- The organization is shown publicly as you entered or selected it. There is no check that you work there.
+- You can't change the organization after the donation is made, and confirmation emails don't mention it.
+- For a monthly donation, every charge is credited to the organization you chose when you subscribed.
+
+## Step 3 — Payment
 
 ![Donation payment step](/images/docs/donation-step-payment.png)
 
@@ -48,7 +72,7 @@ Click **Donate** to process your payment. For cards that require additional veri
 
 ## Anonymous donations
 
-LFX Crowdfunding does not currently offer a donor-selectable anonymous option. Your name and avatar will be displayed publicly on the initiative's backer list. If your donor information is unavailable at the time of processing, your name will appear as **Anonymous** on the initiative page.
+LFX Crowdfunding does not currently offer a donor-selectable anonymous option. Your name and avatar, or the organization's name if you donated on behalf of one, will be displayed publicly on the initiative's backer list. If your donor information is unavailable at the time of processing, your name will appear as **Anonymous** on the initiative page.
 
 ## After donating
 
