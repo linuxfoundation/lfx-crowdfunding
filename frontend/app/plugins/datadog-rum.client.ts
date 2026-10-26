@@ -5,6 +5,7 @@
 // Skips init gracefully when credentials are not configured (e.g. local dev).
 import { datadogRum } from '@datadog/browser-rum';
 import { useRuntimeConfig } from 'nuxt/app';
+import { isInjectedEvalCspReport } from '~/utils/rum';
 
 export default defineNuxtPlugin(() => {
   const {
@@ -35,5 +36,7 @@ export default defineNuxtPlugin(() => {
     traceSampleRate: 100,
     // Trace requests to the BFF (/api/* calls only).
     allowedTracingUrls: [`${appUrl as string}/api`],
+    // The CSP report-uri still sends these to Datadog Logs.
+    beforeSend: (event) => !isInjectedEvalCspReport(event),
   });
 });
