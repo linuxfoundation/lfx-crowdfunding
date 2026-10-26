@@ -98,9 +98,6 @@ func (c *wbLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clients.
 func (c *wbLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
-func (c *wbLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
-	return nil, nil
-}
 func (c *wbLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {
 	return &clients.LedgerUserBalance{}, nil
 }

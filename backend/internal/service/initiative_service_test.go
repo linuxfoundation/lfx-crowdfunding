@@ -141,9 +141,6 @@ func (m *mockLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 func (m *mockLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
-func (m *mockLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
-	return nil, nil
-}
 func (m *mockLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {
 	return &clients.LedgerUserBalance{}, nil
 }
@@ -548,6 +545,27 @@ func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 	}
 	if txns[0].DonorLogoURL != "https://example.com/acme.png" {
 		t.Errorf("expected org logo, got %q", txns[0].DonorLogoURL)
+	}
+}
+
+func TestEnrichTransactionsFromDB_StatedOrgNameSkipsCFLookup(t *testing.T) {
+	repo := &mockRepoForEnrich{
+		orgs: map[string]models.Organization{
+			"org-1": {ID: "org-1", Name: "Stale CF Name", AvatarURL: "https://example.com/stale.png"},
+		},
+	}
+
+	txns := []models.Transaction{
+		{ID: "t1", LedgerUserID: "user-1", LedgerOrgID: "org-1", LedgerOrgName: "Acme Inc.", LedgerOrgDomain: "acme.com"},
+	}
+
+	enrichTransactionsFromDB(context.Background(), repo, txns)
+
+	if txns[0].DonorName != "Acme Inc." {
+		t.Errorf("expected stated org name, got %q", txns[0].DonorName)
+	}
+	if txns[0].DonorLogoURL != generatedAvatarURL("acme.com", "Acme Inc.") {
+		t.Errorf("expected generated avatar keyed by domain, got %q", txns[0].DonorLogoURL)
 	}
 }
 

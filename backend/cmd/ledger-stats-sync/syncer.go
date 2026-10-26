@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -233,7 +234,7 @@ func mapBalance(
 }
 
 // enrichSponsors replaces raw org/user ID slices with name + logo/avatar data
-// fetched from CF DB.  Entries whose IDs are not found in the DB are included
+// fetched from CF DB. Orgs Ledger keys by domain already carry their name.  Entries whose IDs are not found in the DB are included
 // with an empty Name so no sponsor data is silently dropped.
 func enrichSponsors(
 	raw models.LedgerRawSponsors,
@@ -245,9 +246,9 @@ func enrichSponsors(
 		if s.ID == "" {
 			continue
 		}
-		entry := models.LedgerSponsorOrg{ID: s.ID, Total: s.Total}
-		if org, ok := orgMap[s.ID]; ok {
-			entry.Name = org.Name
+		entry := models.LedgerSponsorOrg{ID: s.ID, Name: s.Name, Total: s.Total}
+		if org, ok := orgMap[s.ID]; ok { // legacy CF org UUID bucket
+			entry.Name = cmp.Or(entry.Name, org.Name)
 			entry.AvatarURL = org.AvatarURL
 		}
 		orgs = append(orgs, entry)

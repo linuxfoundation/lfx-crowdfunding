@@ -57,6 +57,34 @@ func TestLedgerGetTransactions_MapsProjectIDToLedgerProjectID(t *testing.T) {
 	}
 }
 
+func TestLedgerGetTransactions_NameOnlyOrgIsOrganizationDonor(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"transactions": [{
+			"txnID": "txn-1",
+			"userID": "auth0|user1",
+			"organizationName": "Acme Inc.",
+			"organizationDomain": "acme.com",
+			"txnType": "credit",
+			"amount": 100
+		}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewLedgerClient(LedgerConfig{BaseURL: srv.URL, APIKey: "test", Timeout: 2 * time.Second})
+	list, err := client.GetTransactions(context.Background(), TransactionFilter{ProjectID: "p", Limit: 10})
+	if err != nil {
+		t.Fatalf("GetTransactions error: %v", err)
+	}
+	got := list.Data[0]
+	if got.DonorType != "organization" || got.LedgerOrgName != "Acme Inc." || got.LedgerOrgDomain != "acme.com" {
+		t.Errorf("got DonorType=%q LedgerOrgName=%q LedgerOrgDomain=%q, want organization/Acme Inc./acme.com",
+			got.DonorType, got.LedgerOrgName, got.LedgerOrgDomain)
+	}
+}
+
 func TestLedgerGetUserBalance_EscapesUserIDAndDecodes(t *testing.T) {
 	t.Parallel()
 
