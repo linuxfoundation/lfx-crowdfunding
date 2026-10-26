@@ -17,7 +17,7 @@ SET search_path TO crowdfunding, public;
 --
 -- Local dev mock principal: set DISABLED_MOCK_LOCAL_PRINCIPAL=<username> in backend/.env
 -- (e.g. DISABLED_MOCK_LOCAL_PRINCIPAL=dev-user-001).  This also REQUIRES
--- ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true and an empty JWKS_URL (the two are mutually
+-- ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true and an empty HEIMDALL_JWKS_URL (the two are mutually
 -- exclusive) — otherwise the API fails to start.  The value must match a seeded
 -- username row or the create-initiative path will fail with ErrForbidden.
 -- ============================================
@@ -36,7 +36,7 @@ INSERT INTO users (id, username, legacy_user_id, email, given_name, family_name,
   ('a0000000-0000-0000-0000-000000000015', 'simk.ment.admin','auth0|simk.ment.admin','dev-simkadmin@example.com',      'Simrit', 'Admin',  'Simrit Admin',  'https://i.pravatar.cc/150?u=simkadmin'),
   ('a0000000-0000-0000-0000-000000000016', 'simk43',         'auth0|simk43',         'dev-simk43@example.com',         'Simrit', 'K',      'Simrit K',      'https://i.pravatar.cc/150?u=simk43'),
   -- Local mock principal — set DISABLED_MOCK_LOCAL_PRINCIPAL=local-dev-user (plus
-  -- ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true and empty JWKS_URL) in backend/.env
+  -- ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true and empty HEIMDALL_JWKS_URL) in backend/.env
   ('a0000000-0000-0000-0000-000000000099', 'local-dev-user', NULL,                   'local-dev-user@local.dev',       'Local',  'Dev',    'Local Dev User','https://i.pravatar.cc/150?u=localdev'),
   -- Ledger dev user — legacy_user_id matches the sponsor id in initiative_ledger_stats
   -- for initiative 5f478c13-… so ledger-stats-sync enrichment resolves a real name/avatar.
