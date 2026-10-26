@@ -78,7 +78,7 @@ Nuxt 4 BFF — server-side auth with HTTP-only session cookies (OAuth2 PKCE, Aut
 - `DATABASE_URL` — e.g. `postgres://crowdfunding:crowdfunding@localhost:5432/crowdfunding`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - `LEDGER_BASE_URL`, `LEDGER_API_KEY`
-- `JWKS_URL` — Auth0 JWKS (or use `DISABLED_MOCK_LOCAL_PRINCIPAL=true` to skip JWT validation locally)
+- `HEIMDALL_JWKS_URL`, `HEIMDALL_JWT_AUDIENCE`, `HEIMDALL_JWT_ISSUER` — the backend accepts only Heimdall-minted JWTs (or use `DISABLED_MOCK_LOCAL_PRINCIPAL` with `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true` to skip JWT validation locally)
 
 **Frontend** — create `frontend/.env` from `frontend/.env.example`:
 
