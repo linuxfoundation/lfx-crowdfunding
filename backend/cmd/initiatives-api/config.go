@@ -51,17 +51,12 @@ type DatabaseConfig struct {
 	ConnMaxLifetime time.Duration
 }
 
-// JWTConfig holds Auth0 / JWKS settings.
+// JWTConfig holds Heimdall JWKS settings; only Heimdall-minted tokens are accepted.
 type JWTConfig struct {
 	JWKSURL   string
 	Audience  string
 	Issuer    string
 	ClockSkew time.Duration
-	// Heimdall* enable dual-accept of Heimdall-shaped JWTs alongside Auth0
-	// (LFXV2-3351). All three must be set together, or all left empty.
-	HeimdallJWKSURL  string
-	HeimdallAudience string
-	HeimdallIssuer   string
 }
 
 // StripeConfig holds Stripe API settings.
@@ -180,7 +175,7 @@ func LoadConfig() (*Config, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
-	jwksURL := strings.TrimSpace(getEnv("JWKS_URL", ""))
+	jwksURL := strings.TrimSpace(getEnv("HEIMDALL_JWKS_URL", ""))
 	mockPrincipal := strings.TrimSpace(getEnv("DISABLED_MOCK_LOCAL_PRINCIPAL", ""))
 	allowMockBypass, err := getBoolEnv("ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS", false)
 	if err != nil {
@@ -190,24 +185,15 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("DISABLED_MOCK_LOCAL_PRINCIPAL requires ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS=true")
 	}
 	if jwksURL == "" && mockPrincipal == "" {
-		return nil, fmt.Errorf("JWKS_URL is required (or set DISABLED_MOCK_LOCAL_PRINCIPAL for local dev)")
+		return nil, fmt.Errorf("HEIMDALL_JWKS_URL is required (or set DISABLED_MOCK_LOCAL_PRINCIPAL for local dev)")
 	}
-	// JWT_AUDIENCE and JWT_ISSUER must be set explicitly — no fallback defaults
-	// to ensure misconfigured deployments fail obviously rather than silently
-	// validating tokens against a stale issuer.
-	jwtAudience, ok := os.LookupEnv("JWT_AUDIENCE")
-	if !ok || jwtAudience == "" {
-		return nil, fmt.Errorf("JWT_AUDIENCE is required")
+	// HEIMDALL_JWT_AUDIENCE and HEIMDALL_JWT_ISSUER have no fallback defaults
+	// so misconfigured deployments fail at startup rather than reject every token.
+	jwtAudience := strings.TrimSpace(getEnv("HEIMDALL_JWT_AUDIENCE", ""))
+	jwtIssuer := strings.TrimSpace(getEnv("HEIMDALL_JWT_ISSUER", ""))
+	if mockPrincipal == "" && (jwtAudience == "" || jwtIssuer == "") {
+		return nil, fmt.Errorf("HEIMDALL_JWT_AUDIENCE and HEIMDALL_JWT_ISSUER are required")
 	}
-	jwtIssuer, ok := os.LookupEnv("JWT_ISSUER")
-	if !ok || jwtIssuer == "" {
-		return nil, fmt.Errorf("JWT_ISSUER is required")
-	}
-	// Heimdall dual-accept (LFXV2-3351) is opt-in and all-or-nothing; the
-	// auth package itself enforces the all-or-nothing invariant.
-	heimdallJWKSURL := getEnv("HEIMDALL_JWKS_URL", "")
-	heimdallAudience := getEnv("HEIMDALL_JWT_AUDIENCE", "")
-	heimdallIssuer := getEnv("HEIMDALL_JWT_ISSUER", "")
 	stripeKey := getEnv("STRIPE_SECRET_KEY", "")
 	if stripeKey == "" {
 		return nil, fmt.Errorf("STRIPE_SECRET_KEY is required")
@@ -309,13 +295,10 @@ func LoadConfig() (*Config, error) {
 			ConnMaxLifetime: connMaxLifetime,
 		},
 		JWT: JWTConfig{
-			JWKSURL:          jwksURL,
-			Audience:         jwtAudience,
-			Issuer:           jwtIssuer,
-			ClockSkew:        auth.DefaultClockSkew,
-			HeimdallJWKSURL:  heimdallJWKSURL,
-			HeimdallAudience: heimdallAudience,
-			HeimdallIssuer:   heimdallIssuer,
+			JWKSURL:   jwksURL,
+			Audience:  jwtAudience,
+			Issuer:    jwtIssuer,
+			ClockSkew: auth.DefaultClockSkew,
 		},
 		Stripe: StripeConfig{
 			SecretKey:                stripeKey,

@@ -91,7 +91,8 @@ The audience is environment-specific:
 | staging | `https://crowdfunding-api.staging.lfx.dev` |
 | prod | `https://crowdfunding-api.linuxfoundation.org` |
 
-The exact value Auth0 issues and the API validates is the `JWT_AUDIENCE` env var (see
+The CF backend no longer validates Auth0 tokens itself: the gateway (Heimdall) validates them and
+forwards a Heimdall-minted JWT, which is the only kind the backend accepts (see
 [Configuration Reference](#cf-backend-initiatives-api)). Diagrams in this doc use
 `{CF audience}` as shorthand.
 
@@ -197,7 +198,7 @@ Self Serve forwards the **user's own LFX v2 access token** (`req.bearerToken`, f
 One login) to CF through the platform API gateway at `lfx-api.<domain>`, like every other SS module.
 There is no second Auth0 token, no M2M credential and no identity header. Heimdall validates the
 token, applies the route's configured authorization, and forwards a Heimdall-minted JWT to CF,
-which CF accepts alongside Auth0 tokens (dual-accept, LFXV2-3351). Self-scoped `/crowdfunding/me/*`
+the only kind of token CF accepts (#311). Self-scoped `/crowdfunding/me/*`
 routes use `allow_all` and rely on CF scoping the query to the caller's principal; manager routes on
 an initiative or entity use `openfga_check` (see [`12`](../backend/docs/rewrite/12-fga-authorization-model.md)).
 
@@ -421,11 +422,11 @@ rather than the LFX secrets-distribution pipeline.
 
 | Env var | Purpose | Example values |
 |---|---|---|
-| `JWKS_URL` | Auth0 JWKS endpoint | dev/staging: `https://linuxfoundation-{dev,staging}.auth0.com/.well-known/jwks.json`<br/>prod: `https://sso.linuxfoundation.org/.well-known/jwks.json` |
-| `JWT_ISSUER` | Expected `iss` claim | dev/staging: `https://linuxfoundation-{dev,staging}.auth0.com/`<br/>prod: `https://sso.linuxfoundation.org/` |
-| `JWT_AUDIENCE` | Expected `aud` claim | `https://crowdfunding-api.{dev,staging}.lfx.dev` / `https://crowdfunding-api.linuxfoundation.org` |
+| `HEIMDALL_JWKS_URL` | Heimdall JWKS endpoint | `http://lfx-platform-heimdall.lfx.svc.cluster.local:4457/.well-known/jwks` |
+| `HEIMDALL_JWT_ISSUER` | Expected `iss` claim | `heimdall` |
+| `HEIMDALL_JWT_AUDIENCE` | Expected `aud` claim (the chart's `app.audience`) | `lfx-crowdfunding-backend` |
 | `ALLOW_MOCK_LOCAL_PRINCIPAL_BYPASS` | Local-dev safety gate — must be `true` to permit `DISABLED_MOCK_LOCAL_PRINCIPAL`. Does nothing on its own. | not set in deployed envs |
-| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Local-dev only: when set (and the gate above is `true`), skips JWKS and injects this static mock Principal. Mutually exclusive with `JWKS_URL`. | not set in deployed envs |
+| `DISABLED_MOCK_LOCAL_PRINCIPAL` | Local-dev only: when set (and the gate above is `true`), skips JWKS and injects this static mock Principal. Mutually exclusive with `HEIMDALL_JWKS_URL`. | not set in deployed envs |
 
 ### CF Frontend (Nuxt BFF)
 
