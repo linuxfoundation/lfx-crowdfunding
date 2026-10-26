@@ -253,22 +253,23 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	}
 
 	result, err := s.stripe.CreateSubscription(ctx, models.StripeSubscriptionRequest{
-		InitiativeID:     initiativeID,
-		InitiativeSlug:   initiative.Slug,
-		InitiativeName:   initiative.Name,
-		UserID:           user.LegacyUserID,
-		DonorName:        user.Name,
-		DonorEmail:       user.Email,
-		OwnerEmail:       ownerEmail,
-		OwnerName:        ownerName,
-		StripeCustomerID: customerID,
-		StripePriceID:    priceID,
-		PaymentMethodID:  input.StripePaymentMethodID,
-		Category:         input.Category,
-		OrganizationName: org.Name,
-		PaymentMethod:    models.PaymentMethodStripe, // subscriptions are always card-based; invoice billing is not supported
-		Frequency:        input.Frequency,
-		IdempotencyKey:   input.IdempotencyKey,
+		InitiativeID:       initiativeID,
+		InitiativeSlug:     initiative.Slug,
+		InitiativeName:     initiative.Name,
+		UserID:             user.LegacyUserID,
+		DonorName:          user.Name,
+		DonorEmail:         user.Email,
+		OwnerEmail:         ownerEmail,
+		OwnerName:          ownerName,
+		StripeCustomerID:   customerID,
+		StripePriceID:      priceID,
+		PaymentMethodID:    input.StripePaymentMethodID,
+		Category:           input.Category,
+		OrganizationName:   org.Name,
+		OrganizationDomain: org.Domain,
+		PaymentMethod:      models.PaymentMethodStripe, // subscriptions are always card-based; invoice billing is not supported
+		Frequency:          input.Frequency,
+		IdempotencyKey:     input.IdempotencyKey,
 	})
 	if err != nil {
 		span.RecordError(err)
