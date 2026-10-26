@@ -176,7 +176,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	subscriptionH := handler.NewSubscriptionHandler(subscriptionSvc)
 	paymentH := handler.NewPaymentHandler(paymentSvc)
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
-	webhookH := handler.NewWebhookHandler(stripeClient, ledgerClient, donationRepo, subscriptionRepo, emailSvc, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
+	webhookH := handler.NewWebhookHandler(stripeClient, ledgerClient, donationRepo, subscriptionRepo, emailSvc, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks, cfg.Stripe.V2RaceWindow)
 	uploadH := handler.NewUploadHandler(s3Client)
 	expenseH := handler.NewExpenseHandler(reimbursementClient, userRepo)
 	orgH := handler.NewOrganizationHandler(orgSvc)

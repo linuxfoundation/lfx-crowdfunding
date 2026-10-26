@@ -271,7 +271,7 @@ func TestWebhookIntegration_PaymentIntentSucceeded(t *testing.T) {
 	sc := &intStripeClient{}
 	dr := db.NewDonationRepository(handlerTestPool)
 	sr := db.NewSubscriptionRepository(handlerTestPool)
-	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false)
+	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false, 0)
 
 	rr := postSignedWebhook(t, h, payloadBytes, webhookSecret)
 
@@ -375,7 +375,7 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 	sc := &intStripeClient{}
 	dr := db.NewDonationRepository(handlerTestPool)
 	sr := db.NewSubscriptionRepository(handlerTestPool)
-	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false)
+	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false, 0)
 
 	rr := postSignedWebhook(t, h, payloadBytes, webhookSecret)
 

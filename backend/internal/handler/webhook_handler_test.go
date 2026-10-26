@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	stripe "github.com/stripe/stripe-go/v85"
 
@@ -218,12 +219,12 @@ func discardLogger() *slog.Logger {
 
 // newTestWebhookHandler wires up a WebhookHandler with the given mocks.
 func newTestWebhookHandler(sc *wbStripeClient, dr *wbDonationRepo, sr *wbSubscriptionRepo) *WebhookHandler {
-	return NewWebhookHandler(sc, &wbLedgerClient{}, dr, sr, &wbEmailService{}, "whsec_test", discardLogger(), false)
+	return NewWebhookHandler(sc, &wbLedgerClient{}, dr, sr, &wbEmailService{}, "whsec_test", discardLogger(), false, 0)
 }
 
 // newTestWebhookHandlerFull allows injecting custom ledger and email stubs.
 func newTestWebhookHandlerFull(sc *wbStripeClient, dr *wbDonationRepo, sr *wbSubscriptionRepo, lc *wbLedgerClient, es *wbEmailService) *WebhookHandler {
-	return NewWebhookHandler(sc, lc, dr, sr, es, "whsec_test", discardLogger(), false)
+	return NewWebhookHandler(sc, lc, dr, sr, es, "whsec_test", discardLogger(), false, 0)
 }
 
 // postWebhook sends a simulated Stripe webhook POST to the handler.
@@ -690,6 +691,32 @@ func TestWebhookHandler_PaymentIntentSucceeded_V2DonationNotFound_Returns500(t *
 	rr := postWebhook(t, newTestWebhookHandler(sc, dr, &wbSubscriptionRepo{}), "t=1,v1=sig", `{}`)
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500 for v2 INSERT/webhook race", rr.Code)
+	}
+}
+
+// TestWebhookHandler_PaymentIntentSucceeded_V2DonationNotFound_PastRaceWindow_Returns200
+// verifies that with a race window set (dev), a v2 not-found older than the window
+// is acknowledged: the PI came from another backend on the shared Stripe test account.
+func TestWebhookHandler_PaymentIntentSucceeded_V2DonationNotFound_PastRaceWindow_Returns200(t *testing.T) {
+	dr := &wbDonationRepo{
+		onUpdateByPaymentIntentID: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrDonationNotFound
+		},
+	}
+	event := buildEvent("payment_intent.succeeded",
+		`{"id":"pi_v2_foreign","metadata":{"version":"v2","initiative_id":"init-1","user_id":"u1"}}`)
+	sc := &wbStripeClient{
+		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
+	}
+	h := NewWebhookHandler(sc, &wbLedgerClient{}, dr, &wbSubscriptionRepo{}, &wbEmailService{}, "whsec_test", discardLogger(), false, 10*time.Minute)
+
+	event.Created = time.Now().Add(-time.Minute).Unix()
+	if rr := postWebhook(t, h, "t=1,v1=sig", `{}`); rr.Code != http.StatusInternalServerError {
+		t.Errorf("inside window: status = %d, want 500", rr.Code)
+	}
+	event.Created = time.Now().Add(-time.Hour).Unix()
+	if rr := postWebhook(t, h, "t=1,v1=sig", `{}`); rr.Code != http.StatusOK {
+		t.Errorf("past window: status = %d, want 200", rr.Code)
 	}
 }
 
