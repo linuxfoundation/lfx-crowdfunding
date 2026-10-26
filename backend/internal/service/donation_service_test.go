@@ -1007,9 +1007,15 @@ func TestOrgClaim(t *testing.T) {
 
 func TestResolveOrgClaim_LegacyOrgID(t *testing.T) {
 	const orgID = "11111111-1111-1111-1111-111111111111"
+	const blankID = "22222222-2222-2222-2222-222222222222"
+	const newlineID = "33333333-3333-3333-3333-333333333333"
 	repo := &summaryInitiativeRepo{
 		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
-			return map[string]models.Organization{orgID: {ID: orgID, OwnerID: "owner", Name: "Acme"}}, nil
+			return map[string]models.Organization{
+				orgID:     {ID: orgID, OwnerID: "owner", Name: " Acme "},
+				blankID:   {ID: blankID, OwnerID: "owner", Name: "  "},
+				newlineID: {ID: newlineID, OwnerID: "owner", Name: "Acme\nCorp"},
+			}, nil
 		},
 	}
 	tests := []struct {
@@ -1025,6 +1031,8 @@ func TestResolveOrgClaim_LegacyOrgID(t *testing.T) {
 		{"own org uppercase", nil, strings.ToUpper(orgID), "owner", models.OrgClaim{Name: "Acme"}, nil},
 		{"foreign org", nil, orgID, "someone-else", models.OrgClaim{}, domain.ErrOrganizationNotFound},
 		{"not a uuid", nil, "not-a-uuid", "owner", models.OrgClaim{}, domain.ErrOrganizationNotFound},
+		{"blank stored name", nil, blankID, "owner", models.OrgClaim{}, domain.ErrInvalidInput},
+		{"control char in stored name", nil, newlineID, "owner", models.OrgClaim{}, domain.ErrInvalidInput},
 		{"claim wins over legacy id", &models.OrgClaim{Name: "Other", Domain: "other.com"}, orgID, "someone-else", models.OrgClaim{Name: "Other", Domain: "other.com"}, nil},
 	}
 	for _, tt := range tests {

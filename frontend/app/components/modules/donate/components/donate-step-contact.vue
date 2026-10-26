@@ -130,6 +130,7 @@ SPDX-License-Identifier: MIT
             >
               <lfx-input
                 v-model="manualName"
+                aria-label="Organization name"
                 placeholder="Acme Inc."
               />
             </lfx-field>
@@ -139,6 +140,7 @@ SPDX-License-Identifier: MIT
             >
               <lfx-input
                 v-model="manualWebsite"
+                aria-label="Website"
                 placeholder="acme.com"
                 :invalid="websiteInvalid"
               />
@@ -175,7 +177,11 @@ import LfxRadio from '~/components/uikit/radio/radio.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
 import { useOrgSuggest } from '~/composables/useOrgSuggest';
-import { ORG_SEARCH_MIN_CHARS, ORG_WEBSITE_PATTERN } from '~/components/modules/donate/config/org-search.config';
+import {
+  ORG_SEARCH_MIN_CHARS,
+  ORG_WEBSITE_PATTERN,
+  manualOrgClaim,
+} from '~/components/modules/donate/config/org-search.config';
 import type { DonateContactForm } from '#shared/types/donate.types';
 
 const props = defineProps<{
@@ -222,10 +228,7 @@ const pickSuggestion = (domain: string) => {
 };
 
 watch([manualName, manualWebsite], ([name, website]) => {
-  if (!manualEntry.value) return;
-  const n = name.trim();
-  const w = website.trim();
-  form.organization = n && ORG_WEBSITE_PATTERN.test(w) ? { name: n, domain: w } : null;
+  if (manualEntry.value) form.organization = manualOrgClaim(name, website);
 });
 
 const startManualEntry = () => {

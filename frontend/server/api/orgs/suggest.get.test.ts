@@ -75,4 +75,23 @@ describe('GET /api/orgs/suggest BFF handler', () => {
     await expect(run()).resolves.toEqual([]);
     expect(mockUseBackendFetch).not.toHaveBeenCalled();
   });
+
+  it('caps the query at 100 characters', async () => {
+    mockGetQuery.mockReturnValue({ query: 'a'.repeat(150) });
+    mockUseBackendFetch.mockResolvedValue({ suggestions: [] });
+
+    await run();
+    expect(mockUseBackendFetch).toHaveBeenCalledWith(
+      mockEvent,
+      `/query/orgs/suggest?v=1&query=${'a'.repeat(100)}`,
+      { platform: true },
+    );
+  });
+
+  it('returns no suggestions when upstream omits them', async () => {
+    mockGetQuery.mockReturnValue({ query: 'acme' });
+    mockUseBackendFetch.mockResolvedValue({ suggestions: null });
+
+    await expect(run()).resolves.toEqual([]);
+  });
 });

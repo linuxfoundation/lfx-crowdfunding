@@ -51,11 +51,13 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>();
 const model = ref(props.modelValue);
 const input = ref<HTMLInputElement | null>(null);
 
+let focusTimer: ReturnType<typeof setTimeout> | undefined;
 onMounted(() => {
   // Deferred to a task, so it runs once the click that opened the dropdown has been
   // handled and Popper has positioned the panel.
-  if (props.autofocus) setTimeout(() => input.value?.focus({ preventScroll: true }));
+  if (props.autofocus) focusTimer = setTimeout(() => input.value?.focus({ preventScroll: true }));
 });
+onBeforeUnmount(() => clearTimeout(focusTimer));
 
 watch(
   () => props.modelValue,

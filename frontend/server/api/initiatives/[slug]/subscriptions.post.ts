@@ -3,7 +3,7 @@
 
 import { defineEventHandler, readBody, getHeader, createError } from 'h3';
 import { useBackendFetch } from '../../../utils/backend-fetch';
-import { toOrgClaimBody } from '../../../utils/org-claim';
+import { rejectLegacyOrgId, toOrgClaimBody } from '../../../utils/org-claim';
 import type { BackendInitiative } from '../../../types/initiatives.types';
 import type { SubscriptionResultWire } from '../../../types/payment.types';
 import type { SubscriptionRequest, SubscriptionResult } from '#shared/types/payment.types';
@@ -23,6 +23,7 @@ export default defineEventHandler(async (event): Promise<SubscriptionResult> => 
   });
 
   const body = await readBody<SubscriptionRequest>(event);
+  rejectLegacyOrgId(body);
   const raw = await useBackendFetch<SubscriptionResultWire>(
     event,
     `/crowdfunding/me/initiatives/${initiative.id}/subscriptions`,

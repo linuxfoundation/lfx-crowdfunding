@@ -49,7 +49,7 @@ Click **Search instead** to go back to the search.
 A few things to know:
 
 - The organization is shown publicly as you entered or selected it. There is no check that you work there.
-- You can't change the organization after the donation is made, and confirmation emails don't mention it.
+- You can't change the organization after the donation is made. Your confirmation email shows it.
 - For a monthly donation, every charge is credited to the organization you chose when you subscribed.
 
 ## Step 3 — Payment

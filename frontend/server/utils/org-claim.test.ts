@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect } from 'vitest';
-import { toOrgClaimBody } from './org-claim';
+import { rejectLegacyOrgId, toOrgClaimBody } from './org-claim';
 
 describe('toOrgClaimBody', () => {
   it('returns nothing for an individual donation', () => {
@@ -13,5 +13,20 @@ describe('toOrgClaimBody', () => {
     expect(toOrgClaimBody({ name: 'Acme', domain: 'acme.com' })).toEqual({
       organization: { name: 'Acme', domain: 'acme.com' },
     });
+  });
+});
+
+describe('rejectLegacyOrgId', () => {
+  it('rejects the pre-#409 organizationId payload with a 409', () => {
+    expect(() => rejectLegacyOrgId({ organizationId: 'org-1' })).toThrow(
+      expect.objectContaining({ statusCode: 409 }),
+    );
+  });
+
+  it('lets new and individual payloads through', () => {
+    expect(() => rejectLegacyOrgId({})).not.toThrow();
+    expect(() =>
+      rejectLegacyOrgId({ organization: { name: 'Acme', domain: 'acme.com' } }),
+    ).not.toThrow();
   });
 });
