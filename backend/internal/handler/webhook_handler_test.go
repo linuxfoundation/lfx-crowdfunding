@@ -750,7 +750,7 @@ const piV2JSON = `{
 		"initiative_name":"Test Initiative","user_id":"usr_001",
 		"donor_name":"Jane Doe","donor_email":"jane@example.com",
 		"owner_email":"owner@example.com","owner_name":"Bob Owner",
-		"category":"fund","org_name":"Acme Corp","payment_method":"stripe"
+		"category":"fund","org_name":"Acme Corp","org_domain":"acme.com","payment_method":"stripe"
 	}
 }`
 
@@ -809,6 +809,9 @@ func TestWebhookHandler_PaymentIntentSucceeded_V2_PostsLedgerAndSendsEmails(t *t
 	}
 	if gotTxn.Amount != 5000 {
 		t.Errorf("Ledger Amount = %d, want 5000", gotTxn.Amount)
+	}
+	if gotTxn.OrganizationName != "Acme Corp" || gotTxn.OrganizationDomain != "acme.com" || gotTxn.OrganizationID != "" {
+		t.Errorf("Ledger org = %q / %q / id %q, want Acme Corp / acme.com / empty", gotTxn.OrganizationName, gotTxn.OrganizationDomain, gotTxn.OrganizationID)
 	}
 	if gotConfirmTo != "jane@example.com" {
 		t.Errorf("confirmation email to = %q, want jane@example.com", gotConfirmTo)

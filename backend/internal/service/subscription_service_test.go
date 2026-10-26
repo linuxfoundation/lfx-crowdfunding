@@ -841,8 +841,7 @@ func TestSubscriptionService_Create_StoresOrgClaim(t *testing.T) {
 	if saved.OrgName != "Acme" || saved.OrgDomain != "acme.com" || saved.OrganizationID != "" {
 		t.Errorf("stored org = %q, %q, id %q; want Acme, acme.com, empty id", saved.OrgName, saved.OrgDomain, saved.OrganizationID)
 	}
-	// OrganizationName also feeds the subscription item metadata Ledger reads on renewals.
-	if gotReq.OrganizationName != "Acme" || gotReq.OrganizationID != "" {
-		t.Errorf("Stripe org = %q, id %q; want Acme, empty id", gotReq.OrganizationName, gotReq.OrganizationID)
+	if gotReq.OrganizationName != "Acme" || gotReq.OrganizationDomain != "acme.com" {
+		t.Errorf("Stripe org = %q / %q, want Acme / acme.com", gotReq.OrganizationName, gotReq.OrganizationDomain)
 	}
 }
