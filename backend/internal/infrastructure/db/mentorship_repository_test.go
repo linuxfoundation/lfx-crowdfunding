@@ -183,3 +183,38 @@ func TestMentorshipRepository_UpsertProgram_FallbackSlugTaken(t *testing.T) {
 		t.Errorf("slug with all fallbacks taken = %q, want NULL", *got)
 	}
 }
+
+// Legacy-migrated rows may carry the Snowflake program ID only as their own id or
+// only in jobspring_project_id; both must count as known so backfill skips them.
+func TestMentorshipRepository_ListKnownProgramIDs_IncludesIDsAndJobspringIDs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "legacy-owner")
+	byID := seedInitiative(t, ctx, owner.ID, "Legacy By ID", "legacy-by-id")
+	byJobspring := seedInitiative(t, ctx, owner.ID, "Legacy By Jobspring", "legacy-by-jobspring")
+	jobspringID := uuid.New().String()
+	if _, err := testPool.Exec(ctx,
+		`UPDATE crowdfunding.initiatives SET jobspring_project_id = $1, status = 'hidden' WHERE id = $2`,
+		jobspringID, byJobspring.ID,
+	); err != nil {
+		t.Fatalf("set jobspring_project_id: %v", err)
+	}
+
+	ids, err := NewMentorshipRepository(testPool, nil).ListKnownProgramIDs(ctx)
+	if err != nil {
+		t.Fatalf("ListKnownProgramIDs() error = %v", err)
+	}
+	known := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		known[id] = true
+	}
+	for _, want := range []string{byID.ID, byJobspring.ID, jobspringID} {
+		if !known[want] {
+			t.Errorf("ListKnownProgramIDs() missing %q; got %v", want, ids)
+		}
+	}
+}

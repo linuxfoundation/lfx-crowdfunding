@@ -172,9 +172,9 @@ type MentorshipRepository interface {
 	// The upsert key is the program's UUID (initiatives.id). Returns the initiative UUID.
 	UpsertProgram(ctx context.Context, p models.MentorshipProgram) (string, error)
 
-	// ListJobspringIDs returns the jobspring_project_id values for all existing
-	// mentorship initiatives. Used to backfill programs missing from CF.
-	ListJobspringIDs(ctx context.Context) ([]string, error)
+	// ListKnownProgramIDs returns every initiative id and jobspring_project_id in CF,
+	// of any type or status. Used so backfill never touches a row that already exists.
+	ListKnownProgramIDs(ctx context.Context) ([]string, error)
 }
 
 // AnnouncementRepository defines persistence operations for initiative announcements.

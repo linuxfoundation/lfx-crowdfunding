@@ -231,17 +231,17 @@ ON CONFLICT (initiative_id, name) DO NOTHING`
 	return id, nil
 }
 
-// ListJobspringIDs returns the jobspring_project_id for all existing mentorship initiatives.
-func (r *MentorshipRepositoryImpl) ListJobspringIDs(ctx context.Context) ([]string, error) {
+// ListKnownProgramIDs returns every initiative id and jobspring_project_id, of any
+// type or status. Legacy-migrated rows may hold the program ID in only one of them.
+func (r *MentorshipRepositoryImpl) ListKnownProgramIDs(ctx context.Context) ([]string, error) {
 	const q = `
-SELECT jobspring_project_id
-FROM initiatives
-WHERE initiative_type = $1
-  AND jobspring_project_id IS NOT NULL
+SELECT id::text FROM initiatives
+UNION
+SELECT jobspring_project_id FROM initiatives WHERE jobspring_project_id IS NOT NULL
 `
-	rows, err := r.pool.Query(ctx, q, initiativeTypeMentorship)
+	rows, err := r.pool.Query(ctx, q)
 	if err != nil {
-		return nil, fmt.Errorf("list jobspring IDs: %w", err)
+		return nil, fmt.Errorf("list known program IDs: %w", err)
 	}
 	defer rows.Close()
 
@@ -249,7 +249,7 @@ WHERE initiative_type = $1
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("scan jobspring ID: %w", err)
+			return nil, fmt.Errorf("scan known program ID: %w", err)
 		}
 		ids = append(ids, id)
 	}
