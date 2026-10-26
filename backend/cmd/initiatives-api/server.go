@@ -204,7 +204,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 	// Router
 	r := chi.NewRouter()
-	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Recoverer)
 	// otelhttp must sit inside Chi's Timeout middleware so that its
