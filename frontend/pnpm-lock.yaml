@@ -10,7 +10,7 @@ overrides:
   dompurify: ">=3.4.17"
   immutable: ">=5.1.8"
   svgo: ">=4.1.0"
-  undici: 7.29.1
+  undici: 7.30.1
   nanoid: ">=3.3.17"
   ws: ">=8.21.0 <9"
   devalue: ^5.9.3
@@ -10213,14 +10213,6 @@ packages:
       }
     engines: { node: ">= 10.x" }
 
-  srvx@1.0.4:
-    resolution:
-      {
-        integrity: sha512-eZmYaxUfZSo7/8m8UdsHRJNmTLSCTPPom9d7a60vMmuVeZvwhbvflRR+00/CxTCjMOFa5+H8tgBeNDVZ+w7AAQ==,
-      }
-    engines: { node: ">=20.16.0" }
-    hasBin: true
-
   srvx@1.0.5:
     resolution:
       {
@@ -10956,10 +10948,10 @@ packages:
         integrity: sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg==,
       }
 
-  undici@7.29.1:
+  undici@7.30.1:
     resolution:
       {
-        integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==,
+        integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==,
       }
     engines: { node: ">=20.18.1" }
 
@@ -16942,7 +16934,7 @@ snapshots:
   h3@2.0.1-rc.31:
     dependencies:
       rou3: 0.9.2
-      srvx: 1.0.4
+      srvx: 1.0.6
 
   happy-dom@20.9.0:
     dependencies:
@@ -17391,7 +17383,7 @@ snapshots:
       saxes: 6.0.0
       symbol-tree: 3.2.4
       tough-cookie: 6.0.1
-      undici: 7.29.1
+      undici: 7.30.1
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -18263,7 +18255,7 @@ snapshots:
       ultrahtml: 1.7.0
       uncrypto: 0.1.3
       unctx: 3.0.1(magic-string@1.4.3)(rolldown@1.2.14)(unplugin@3.4.0(esbuild@0.28.1)(rolldown@1.2.14)(rollup@4.62.0)(vite@8.3.4(@types/node@25.6.2)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.48.0)(yaml@2.8.4)))
-      undici: 7.29.1
+      undici: 7.30.1
       unhead: 3.4.3(esbuild@0.28.1)(rolldown@1.2.14)(rollup@4.62.0)(vite@8.3.4(@types/node@25.6.2)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.48.0)(yaml@2.8.4))
       unimport: 7.0.2(acorn@8.18.0)(esbuild@0.28.1)(rolldown@1.2.14)(rollup@4.62.0)(vite@8.3.4(@types/node@25.6.2)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.48.0)(yaml@2.8.4))
       unplugin: 3.4.0(esbuild@0.28.1)(rolldown@1.2.14)(rollup@4.62.0)(vite@8.3.4(@types/node@25.6.2)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.48.0)(yaml@2.8.4))
@@ -19395,8 +19387,6 @@ snapshots:
 
   split2@4.2.0: {}
 
-  srvx@1.0.4: {}
-
   srvx@1.0.5: {}
 
   srvx@1.0.6: {}
@@ -19842,7 +19832,7 @@ snapshots:
 
   undici-types@7.19.2: {}
 
-  undici@7.29.1: {}
+  undici@7.30.1: {}
 
   unenv@2.0.0-rc.24:
     dependencies:
