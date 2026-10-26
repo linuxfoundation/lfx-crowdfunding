@@ -10,6 +10,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 )
@@ -41,6 +42,9 @@ func mustParseFeaturedOrgs(raw []byte) []FeaturedOrg {
 	for _, o := range orgs {
 		if d, err := domain.NormalizeDomain(o.Domain); err != nil || d != o.Domain {
 			panic(fmt.Sprintf("config: featured_orgs.json domain %q is not a normalized domain", o.Domain))
+		}
+		if strings.TrimSpace(o.Name) == "" {
+			panic(fmt.Sprintf("config: featured_orgs.json domain %q has no name", o.Domain))
 		}
 	}
 	return orgs

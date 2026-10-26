@@ -69,6 +69,10 @@ type LedgerClient interface {
 	// callers are responsible for supplying a sensible value (handler defaults to 10).
 	GetPlatformBalance(ctx context.Context, topLimit int) (*LedgerPlatformBalance, error)
 
+	// GetOrgDonationTotals returns the summed credits per org bucket for exactly
+	// the given keys (domain, or legacy CF org UUID). Keys without credits are absent.
+	GetOrgDonationTotals(ctx context.Context, keys []string) (map[string]int64, error)
+
 	// GetPlatformMonthly returns monthly donation buckets for the last N months.
 	GetPlatformMonthly(ctx context.Context, months int) (*LedgerPlatformMonthly, error)
 
@@ -381,6 +385,34 @@ type ledgerPlatformRecentResponse struct {
 		TxnCategory    string `json:"txnCategory"`
 		SourceType     string `json:"sourceType"`
 	} `json:"data"`
+}
+
+// GetOrgDonationTotals fetches per-key org totals from
+// GET /transactions/platform/org-donations?keys=...
+func (c *ledgerHTTPClient) GetOrgDonationTotals(ctx context.Context, keys []string) (map[string]int64, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetOrgDonationTotals")
+	defer span.End()
+
+	endpoint := fmt.Sprintf("%s/transactions/platform/org-donations?%s", c.baseURL,
+		url.Values{"keys": {strings.Join(keys, ",")}}.Encode())
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
+
+	var resp []struct {
+		OrgID         string `json:"orgId"`
+		AmountInCents int64  `json:"amount_in_cents"`
+	}
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger GET /transactions/platform/org-donations returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger org donations: %w", err)
+	}
+	totals := make(map[string]int64, len(resp))
+	for _, d := range resp {
+		totals[d.OrgID] += d.AmountInCents
+	}
+	return totals, nil
 }
 
 // GetPlatformBalance fetches platform-wide aggregate data from the Ledger service.

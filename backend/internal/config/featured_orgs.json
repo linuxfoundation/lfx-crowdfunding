@@ -1,7 +1,7 @@
 [
   {"domain": "cncf.io", "name": "Cloud Native Computing Foundation", "logo_url": "https://lff-prod-uploads.s3.amazonaws.com/be42ed6c-d69c-470d-97f9-c1df1cecd3cd", "legacy_id": "c64448e2-ad1d-4132-afdc-1fa5de259372"},
   {"domain": "google.com", "name": "Google", "logo_url": "https://lff-prod-uploads.s3.amazonaws.com/2dd1bf9b-8bc7-46a5-9fb5-fafa9b8aa35b", "legacy_id": "1c7953a6-6bed-4eb2-9a54-e03f68ee87cc"},
-  {"domain": "hyperledger.org", "name": "Hyperledger", "logo_url": "https://lff-prod-uploads.s3.amazonaws.com/ef2bae92-0d4b-4da1-8ffe-600b4a3f7dee", "legacy_id": "32694046-9495-49e6-a64c-2339bb8a6b4a"},
+  {"domain": "lfdecentralizedtrust.org", "name": "LF Decentralized Trust", "logo_url": "https://lff-prod-uploads.s3.amazonaws.com/ef2bae92-0d4b-4da1-8ffe-600b4a3f7dee", "legacy_id": "32694046-9495-49e6-a64c-2339bb8a6b4a"},
   {"domain": "openmainframeproject.org", "name": "Open Mainframe Project", "logo_url": "https://lff-prod-uploads.s3.amazonaws.com/829e7730-e28c-4218-8fde-85ab3882d1ba", "legacy_id": "26b40d9a-fa10-4517-b5e9-f398d599119a"},
   {"domain": "redhat.com", "name": "Red Hat", "logo_url": "https://lff-prod-uploads.s3.amazonaws.com/753d4b49-215d-470b-8978-14881943b329", "legacy_id": "c24884e2-da5b-4232-adcc-8ca5df629112"},
   {"domain": "riscv.org", "name": "RISC-V", "logo_url": "https://lff-prod-uploads.s3.amazonaws.com/ca98ab90-8d6a-4a61-a13c-461663a5ec22", "legacy_id": "01597fd9-e8a2-4eee-81ed-fde0f57a7970"},

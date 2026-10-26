@@ -85,6 +85,8 @@ type testLedgerClient struct {
 	platformBalance *clients.LedgerPlatformBalance
 	platformMonthly *clients.LedgerPlatformMonthly
 	recentDonations []clients.LedgerRecentDonation
+	orgTotals       map[string]int64
+	gotOrgKeys      []string
 	err             error
 }
 
@@ -105,6 +107,10 @@ func (c *testLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 }
 func (c *testLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return c.recentDonations, c.err
+}
+func (c *testLedgerClient) GetOrgDonationTotals(_ context.Context, keys []string) (map[string]int64, error) {
+	c.gotOrgKeys = keys
+	return c.orgTotals, c.err
 }
 func (c *testLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {
 	return &clients.LedgerUserBalance{}, nil

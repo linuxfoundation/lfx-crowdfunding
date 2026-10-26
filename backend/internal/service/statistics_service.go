@@ -161,10 +161,6 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 	return out, nil
 }
 
-// featuredTopLimit is how many Ledger top-org buckets GetInvestingCompanies
-// scans for the featured orgs.
-const featuredTopLimit = 1000
-
 // GetInvestingCompanies returns the organizations featured on the
 // "/for-companies" page, each with its total donation amount from the
 // Ledger — the system of record for donations (CF Postgres only persists
@@ -173,32 +169,31 @@ const featuredTopLimit = 1000
 // Ledger buckets org donations by domain, or by legacy CF org UUID for rows
 // not yet backfilled (#408), so each featured org sums both buckets. Orgs with
 // no donations in either bucket are skipped.
-// ponytail: pulls the top featuredTopLimit org buckets to filter a handful; move to a Ledger ?domains= query if the org count grows.
 func (s *StatisticsService) GetInvestingCompanies(ctx context.Context) ([]models.OrgContribution, error) {
 	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetInvestingCompanies")
 	defer span.End()
 
-	raw, err := s.ledgerClient.GetPlatformBalance(ctx, featuredTopLimit)
+	featured := config.FeaturedOrgs()
+	keys := make([]string, 0, 2*len(featured))
+	for _, f := range featured {
+		keys = append(keys, f.Domain)
+		if f.LegacyID != "" {
+			keys = append(keys, f.LegacyID)
+		}
+	}
+
+	totals, err := s.ledgerClient.GetOrgDonationTotals(ctx, keys)
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUpstreamUnavailable) {
 			return []models.OrgContribution{}, nil
 		}
-		return nil, fmt.Errorf("get platform balance: %w", err)
+		return nil, fmt.Errorf("get org donation totals: %w", err)
 	}
 
-	totals := make(map[string]int64, len(raw.TopOrganizations))
-	for _, o := range raw.TopOrganizations {
-		totals[o.ID] += o.Total
-	}
-
-	featured := config.FeaturedOrgs()
 	out := make([]models.OrgContribution, 0, len(featured))
 	for _, f := range featured {
-		amount := totals[f.Domain]
-		if f.LegacyID != "" {
-			amount += totals[f.LegacyID]
-		}
+		amount := totals[f.Domain] + totals[f.LegacyID]
 		if amount <= 0 {
 			continue
 		}

@@ -85,6 +85,30 @@ func TestLedgerGetTransactions_NameOnlyOrgIsOrganizationDonor(t *testing.T) {
 	}
 }
 
+func TestLedgerGetOrgDonationTotals_SendsKeysAndDecodes(t *testing.T) {
+	t.Parallel()
+
+	var gotKeys string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKeys = r.URL.Query().Get("keys")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"orgId": "cncf.io", "amount_in_cents": 500}, {"orgId": "c64448e2", "amount_in_cents": 200}]`))
+	}))
+	defer srv.Close()
+
+	client := NewLedgerClient(LedgerConfig{BaseURL: srv.URL, APIKey: "test", Timeout: 2 * time.Second})
+	totals, err := client.GetOrgDonationTotals(context.Background(), []string{"cncf.io", "c64448e2"})
+	if err != nil {
+		t.Fatalf("GetOrgDonationTotals error: %v", err)
+	}
+	if gotKeys != "cncf.io,c64448e2" {
+		t.Errorf("keys query: got %q", gotKeys)
+	}
+	if totals["cncf.io"] != 500 || totals["c64448e2"] != 200 {
+		t.Errorf("totals: got %v", totals)
+	}
+}
+
 func TestLedgerGetUserBalance_EscapesUserIDAndDecodes(t *testing.T) {
 	t.Parallel()
 

@@ -6,15 +6,32 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/config"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
-	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 )
 
-func topOrgsLedger(orgs ...clients.LedgerSponsorRaw) *testLedgerClient {
-	return &testLedgerClient{platformBalance: &clients.LedgerPlatformBalance{TopOrganizations: orgs}}
+func orgTotalsLedger(totals map[string]int64) *testLedgerClient {
+	return &testLedgerClient{orgTotals: totals}
+}
+
+// TestGetInvestingCompanies_RequestsEveryFeaturedKey verifies Ledger is asked
+// for each featured org's domain and legacy UUID by key, so no featured org
+// can fall outside a top-N cutoff.
+func TestGetInvestingCompanies_RequestsEveryFeaturedKey(t *testing.T) {
+	ledger := orgTotalsLedger(nil)
+	if _, err := newStatsSvc(&testStatisticsRepo{}, ledger).GetInvestingCompanies(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, f := range config.FeaturedOrgs() {
+		for _, k := range []string{f.Domain, f.LegacyID} {
+			if k != "" && !slices.Contains(ledger.gotOrgKeys, k) {
+				t.Errorf("key %q for %s not requested; got %v", k, f.Name, ledger.gotOrgKeys)
+			}
+		}
+	}
 }
 
 // TestGetInvestingCompanies_PreservesConfigOrder verifies the result follows
@@ -27,10 +44,10 @@ func TestGetInvestingCompanies_PreservesConfigOrder(t *testing.T) {
 	// Give the lower-priority featured org the larger amount, so a naive
 	// amount-descending sort would put it first.
 	first, second := featured[0], featured[1]
-	svc := newStatsSvc(&testStatisticsRepo{}, topOrgsLedger(
-		clients.LedgerSponsorRaw{ID: second.Domain, Total: 900_00},
-		clients.LedgerSponsorRaw{ID: first.Domain, Total: 100_00},
-	))
+	svc := newStatsSvc(&testStatisticsRepo{}, orgTotalsLedger(map[string]int64{
+		second.Domain: 900_00,
+		first.Domain:  100_00,
+	}))
 
 	got, err := svc.GetInvestingCompanies(context.Background())
 	if err != nil {
@@ -49,11 +66,11 @@ func TestGetInvestingCompanies_PreservesConfigOrder(t *testing.T) {
 // backfilled), and takes name and logo from config.
 func TestGetInvestingCompanies_SumsDomainAndLegacyBuckets(t *testing.T) {
 	f := config.FeaturedOrgs()[0]
-	svc := newStatsSvc(&testStatisticsRepo{}, topOrgsLedger(
-		clients.LedgerSponsorRaw{ID: f.Domain, Total: 300_00, Name: "Typed Name"},
-		clients.LedgerSponsorRaw{ID: f.LegacyID, Total: 200_00},
-		clients.LedgerSponsorRaw{ID: "unrelated.com", Total: 999_00},
-	))
+	svc := newStatsSvc(&testStatisticsRepo{}, orgTotalsLedger(map[string]int64{
+		f.Domain:        300_00,
+		f.LegacyID:      200_00,
+		"unrelated.com": 999_00,
+	}))
 
 	got, err := svc.GetInvestingCompanies(context.Background())
 	if err != nil {
@@ -73,7 +90,7 @@ func TestGetInvestingCompanies_SumsDomainAndLegacyBuckets(t *testing.T) {
 // TestGetInvestingCompanies_SkipsFeaturedOrgMissingFromLedger verifies that a
 // config entry with no Ledger bucket is skipped rather than rendered at zero.
 func TestGetInvestingCompanies_SkipsFeaturedOrgMissingFromLedger(t *testing.T) {
-	svc := newStatsSvc(&testStatisticsRepo{}, topOrgsLedger())
+	svc := newStatsSvc(&testStatisticsRepo{}, orgTotalsLedger(nil))
 
 	got, err := svc.GetInvestingCompanies(context.Background())
 	if err != nil {
