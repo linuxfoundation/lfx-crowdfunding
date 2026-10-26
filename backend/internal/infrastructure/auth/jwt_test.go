@@ -19,7 +19,6 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +32,7 @@ import (
 const (
 	testSecret   = "test-secret-key-for-unit-tests-only"
 	testAudience = "test-audience"
-	testIssuer   = "https://test-issuer.example"
+	testIssuer   = "heimdall"
 )
 
 var testRSAKey = mustGenerateRSAKey()
@@ -48,7 +47,7 @@ func mustGenerateRSAKey() *rsa.PrivateKey {
 
 // ── test helpers ──────────────────────────────────────────────────────────────
 
-// newTestAuthenticator builds an authenticator that validates RS256 tokens
+// newTestAuthenticator builds an authenticator that validates PS256 tokens
 // against an in-memory public key (no network JWKS fetch).
 func newTestAuthenticator(cfg JWTAuthConfig) *JWTAuthenticator {
 	return &JWTAuthenticator{
@@ -65,7 +64,7 @@ func newJWTTestValidatorWithKey(cfg JWTAuthConfig, publicKey *rsa.PublicKey) *va
 
 	v, err := validator.New(
 		keyFunc,
-		validator.RS256,
+		validator.PS256,
 		cfg.Issuer,
 		[]string{cfg.Audience},
 		validator.WithCustomClaims(func() validator.CustomClaims { return &JWTClaims{} }),
@@ -87,7 +86,7 @@ func defaultCfg() JWTAuthConfig {
 }
 
 func sign(claims map[string]any) string {
-	signed, err := signRS256(claims, testRSAKey, "test-kid")
+	signed, err := signPS256(claims, testRSAKey, "test-kid")
 	if err != nil {
 		panic(err)
 	}
@@ -111,7 +110,7 @@ func signRS256(claims map[string]any, key *rsa.PrivateKey, kid string) (string, 
 }
 
 // signPS256 signs with RSA-PSS/SHA256 — the algorithm Heimdall's create_jwt
-// finalizer uses (see LFXV2-3351).
+// finalizer uses.
 func signPS256(claims map[string]any, key *rsa.PrivateKey, kid string) (string, error) {
 	header := map[string]any{"alg": "PS256", "typ": "JWT", "kid": kid}
 	return signJWT(claims, header, func(signingInput string) ([]byte, error) {
@@ -225,7 +224,7 @@ func TestMiddleware_RejectsHS256(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// HS256 token must be rejected by the RS256-configured validator.
+	// HS256 token must be rejected by the PS256-configured validator.
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, makeRequest(userTokenHS256()))
 	if w.Code != http.StatusUnauthorized {
@@ -233,49 +232,27 @@ func TestMiddleware_RejectsHS256(t *testing.T) {
 	}
 }
 
-func TestMiddleware_AcceptsRS256(t *testing.T) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generate RSA key: %v", err)
-	}
-	a := &JWTAuthenticator{
-		cfg:       defaultCfg(),
-		validator: newJWTTestValidatorWithKey(defaultCfg(), &key.PublicKey),
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-	claims := map[string]any{
+// An Auth0-style RS256 token must be rejected even when signed by a trusted
+// key: only Heimdall-minted (PS256) tokens are accepted (lfx-crowdfunding#311).
+func TestMiddleware_RejectsRS256(t *testing.T) {
+	a := newTestAuthenticator(defaultCfg())
+	signed, err := signRS256(map[string]any{
 		"sub": "auth0|rs256user",
 		"iss": testIssuer,
 		"aud": testAudience,
 		"exp": time.Now().Add(time.Hour).Unix(),
-		"https://sso.linuxfoundation.org/claims/username": "rs256user",
-		"email":          "rs256@example.com",
-		"email_verified": true,
-	}
-	signed, err := signRS256(claims, key, "test-kid")
+	}, testRSAKey, "test-kid")
 	if err != nil {
 		t.Fatalf("sign RS256 token: %v", err)
 	}
-
-	var got *models.Principal
-	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = PrincipalFromContext(r.Context())
+	h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, makeRequest(signed))
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for RS256 token, got %d", w.Code)
-	}
-	if got == nil {
-		t.Fatal("principal not set in context")
-	}
-	if got.UserID != "auth0|rs256user" {
-		t.Errorf("UserID = %q, want %q", got.UserID, "auth0|rs256user")
-	}
-	if got.Email != "rs256@example.com" {
-		t.Errorf("Email = %q, want %q", got.Email, "rs256@example.com")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for RS256 token, got %d", w.Code)
 	}
 }
 
@@ -614,7 +591,7 @@ func TestNewJWTAuthenticator_MutualExclusion(t *testing.T) {
 		JWKSURL:                    "https://example.com/.well-known/jwks.json",
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err == nil {
-		t.Error("expected error when both bypass and JWKS_URL are set")
+		t.Error("expected error when both bypass and HEIMDALL_JWKS_URL are set")
 	}
 }
 
@@ -639,8 +616,8 @@ func TestNewJWTAuthenticator_WhitespaceBypassPrincipalDoesNotEnableBypass(t *tes
 	if err == nil {
 		t.Fatal("expected constructor error when bypass principal is whitespace-only")
 	}
-	if !strings.Contains(err.Error(), "JWKS_URL is required") {
-		t.Fatalf("expected JWKS_URL required error, got: %v", err)
+	if !strings.Contains(err.Error(), "HEIMDALL_JWKS_URL is required") {
+		t.Fatalf("expected HEIMDALL_JWKS_URL required error, got: %v", err)
 	}
 }
 
@@ -674,89 +651,15 @@ func TestNewJWTAuthenticator_WhitespaceBypassPrincipalDoesNotBypassWithJWTConfig
 	}
 }
 
-// TestNewJWTAuthenticator_EnforcesValidMethods exercises NewJWTAuthenticator
-// end-to-end with a real in-process JWKS server, verifying that the constructor
-// wires WithValidMethods correctly: HS256 must be rejected and RS256 accepted.
-func TestNewJWTAuthenticator_EnforcesValidMethods(t *testing.T) {
-	const kid = "test-key"
-
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generate RSA key: %v", err)
-	}
-
-	// Minimal JWKS endpoint backed by the generated public key.
-	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		n := base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes())
-		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"keys": []map[string]any{{
-				"kty": "RSA", "use": "sig", "kid": kid, "alg": "RS256",
-				"n": n, "e": e,
-			}},
-		})
-	}))
-	defer jwksServer.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	a, err := NewJWTAuthenticator(ctx, JWTAuthConfig{
-		JWKSURL:   jwksServer.URL,
-		Audience:  testAudience,
-		Issuer:    testIssuer,
-		ClockSkew: 0,
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err != nil {
-		t.Fatalf("NewJWTAuthenticator: %v", err)
-	}
-
-	handler := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	// HS256 token must be rejected by the asymmetric-only WithValidMethods list.
-	t.Run("rejects HS256", func(t *testing.T) {
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, makeRequest(userTokenHS256()))
-		if w.Code != http.StatusUnauthorized {
-			t.Errorf("expected 401 for HS256 token, got %d", w.Code)
-		}
-	})
-
-	// RS256 token signed with the matching private key must be accepted.
-	t.Run("accepts RS256", func(t *testing.T) {
-		claims := map[string]any{
-			"sub":   "auth0|e2euser",
-			"iss":   testIssuer,
-			"aud":   testAudience,
-			"exp":   time.Now().Add(time.Hour).Unix(),
-			"email": "e2e@example.com",
-		}
-		signed, err := signRS256(claims, key, kid)
-		if err != nil {
-			t.Fatalf("sign RS256 token: %v", err)
-		}
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, makeRequest(signed))
-		if w.Code != http.StatusOK {
-			t.Errorf("expected 200 for RS256 token via constructor, got %d", w.Code)
-		}
-	})
-}
-
-// ── dual-accept (LFXV2-3351): Heimdall alongside Auth0 ──────────────────────────
-
 func newJWKSServer(t *testing.T, kid string, key *rsa.PrivateKey) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		n := base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes())
-		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
+		n := base64.RawURLEncoding.EncodeToString(key.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"keys": []map[string]any{{
-				"kty": "RSA", "use": "sig", "kid": kid, "alg": "RS256",
+				"kty": "RSA", "use": "sig", "kid": kid, "alg": "PS256",
 				"n": n, "e": e,
 			}},
 		})
@@ -765,220 +668,121 @@ func newJWKSServer(t *testing.T, kid string, key *rsa.PrivateKey) *httptest.Serv
 	return srv
 }
 
-func TestNewJWTAuthenticator_HeimdallFieldsAllOrNothing(t *testing.T) {
-	jwksServer := newJWKSServer(t, "auth0-key", testRSAKey)
+// TestNewJWTAuthenticator_HeimdallOnly exercises NewJWTAuthenticator end-to-end
+// with a real in-process JWKS server shaped like Heimdall's (bare issuer, plain
+// HTTP JWKS, PS256) and verifies only Heimdall-minted tokens are accepted.
+func TestNewJWTAuthenticator_HeimdallOnly(t *testing.T) {
+	const kid = "heimdall-key"
+	jwksServer := newJWKSServer(t, kid, testRSAKey)
 
-	_, err := NewJWTAuthenticator(context.Background(), JWTAuthConfig{
-		JWKSURL:         jwksServer.URL,
-		Audience:        testAudience,
-		Issuer:          testIssuer,
-		HeimdallJWKSURL: "https://heimdall.example/.well-known/jwks",
-		// HeimdallAudience and HeimdallIssuer intentionally left empty.
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err == nil {
-		t.Fatal("expected error when only some Heimdall fields are set")
-	}
-	if !strings.Contains(err.Error(), "must all be set or all be empty") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-func TestNewJWTAuthenticator_HeimdallIssuerMustDifferFromAuth0(t *testing.T) {
-	jwksServer := newJWKSServer(t, "auth0-key", testRSAKey)
-
-	_, err := NewJWTAuthenticator(context.Background(), JWTAuthConfig{
-		JWKSURL:          jwksServer.URL,
-		Audience:         testAudience,
-		Issuer:           testIssuer,
-		HeimdallJWKSURL:  jwksServer.URL,
-		HeimdallAudience: "heimdall-audience",
-		HeimdallIssuer:   testIssuer, // same as Issuer — invalid
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err == nil {
-		t.Fatal("expected error when HeimdallIssuer equals Issuer")
-	}
-	if !strings.Contains(err.Error(), "must differ from JWT_ISSUER") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// TestDualAccept_AcceptsBothAuth0AndHeimdallTokens builds an authenticator with
-// two independent JWKS backends (distinct keys, issuers, audiences) and verifies
-// tokens from either are accepted, while a token whose issuer matches neither is
-// rejected.
-func TestDualAccept_AcceptsBothAuth0AndHeimdallTokens(t *testing.T) {
-	// Heimdall's real contract: bare issuer (not a URL), plain in-cluster
-	// HTTP JWKS endpoint, PS256 signing — none of which match Auth0's shape.
-	const heimdallIssuer = "heimdall"
-	const heimdallAudience = "lfx-crowdfunding-backend"
-
-	auth0Server := newJWKSServer(t, "test-kid", testRSAKey)
-	heimdallKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generate heimdall RSA key: %v", err)
-	}
-	heimdallServer := newJWKSServer(t, "heimdall-key", heimdallKey)
-
-	a, err := NewJWTAuthenticator(context.Background(), JWTAuthConfig{
-		JWKSURL:          auth0Server.URL,
-		Audience:         testAudience,
-		Issuer:           testIssuer,
-		HeimdallJWKSURL:  heimdallServer.URL,
-		HeimdallAudience: heimdallAudience,
-		HeimdallIssuer:   heimdallIssuer,
+	a, err := NewJWTAuthenticator(ctx, JWTAuthConfig{
+		JWKSURL:  jwksServer.URL,
+		Audience: testAudience,
+		Issuer:   testIssuer,
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewJWTAuthenticator: %v", err)
 	}
 
+	var got *models.Principal
 	handler := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		p := PrincipalFromContext(r.Context())
-		if p != nil {
-			w.Header().Set("X-User-ID", p.UserID)
-			w.Header().Set("X-Username", p.Username)
-			w.Header().Set("X-Is-Heimdall", strconv.FormatBool(p.IsHeimdallIssued))
-		}
+		got = PrincipalFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
-
-	t.Run("accepts Auth0 token", func(t *testing.T) {
+	serve := func(token string) int {
+		got = nil
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, makeRequest(userToken()))
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 for Auth0 token, got %d", w.Code)
+		handler.ServeHTTP(w, makeRequest(token))
+		return w.Code
+	}
+	mustPS256 := func(claims map[string]any) string {
+		signed, err := signPS256(claims, testRSAKey, kid)
+		if err != nil {
+			t.Fatalf("sign PS256 token: %v", err)
 		}
-		// Auth0 never sets a "principal" claim — SyncProfile (LFXV2-3351) relies
-		// on this to decide whether it's safe to call Auth0 UserInfo.
-		if got := w.Header().Get("X-Is-Heimdall"); got != "false" {
-			t.Errorf("IsHeimdallIssued = %q, want %q for an Auth0 token", got, "false")
-		}
-	})
+		return signed
+	}
 
 	t.Run("accepts Heimdall token", func(t *testing.T) {
 		// Heimdall's create_jwt finalizer stamps "principal", never "sub"
-		// (lfx-v2-helm charts/lfx-platform/values.yaml) — this is the real
-		// shape a Heimdall-minted token has on the wire.
-		signed, err := signPS256(map[string]any{
-			"principal": "heimdall|testuser",
-			"iss":       heimdallIssuer,
-			"aud":       heimdallAudience,
+		// (lfx-v2-helm charts/lfx-platform/values.yaml).
+		code := serve(mustPS256(map[string]any{
+			"principal": "testuser",
+			"iss":       testIssuer,
+			"aud":       testAudience,
 			"exp":       time.Now().Add(time.Hour).Unix(),
-		}, heimdallKey, "heimdall-key")
-		if err != nil {
-			t.Fatalf("sign Heimdall token: %v", err)
+		}))
+		if code != http.StatusOK {
+			t.Fatalf("expected 200 for Heimdall token, got %d", code)
 		}
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, makeRequest(signed))
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 for Heimdall token, got %d", w.Code)
+		if got == nil || got.UserID != "testuser" || got.Username != "testuser" {
+			t.Fatalf("principal = %+v, want UserID and Username %q", got, "testuser")
 		}
-		if got := w.Header().Get("X-User-ID"); got != "heimdall|testuser" {
-			t.Errorf("UserID = %q, want %q", got, "heimdall|testuser")
-		}
-		// Heimdall tokens aren't guaranteed to carry the Auth0-style namespaced
-		// username claim; Principal.Username must fall back to sub so that
-		// user resolution (service.GetByUsername) doesn't silently break.
-		if got := w.Header().Get("X-Username"); got != "heimdall|testuser" {
-			t.Errorf("Username = %q, want %q (fallback to sub)", got, "heimdall|testuser")
-		}
-		// Regression check (LFXV2-3351): SyncProfile skips Auth0 UserInfo only
-		// when this is true. Middleware — not just OptionalMiddleware — must set it,
-		// since it's the one guarding PATCH /crowdfunding/me.
-		if got := w.Header().Get("X-Is-Heimdall"); got != "true" {
-			t.Errorf("IsHeimdallIssued = %q, want %q for a Heimdall-minted token", got, "true")
+		if !got.IsHeimdallIssued {
+			t.Error("IsHeimdallIssued should be true")
 		}
 	})
 
-	t.Run("rejects token signed by Heimdall key but claiming Auth0 issuer", func(t *testing.T) {
+	t.Run("rejects Auth0-style RS256 token", func(t *testing.T) {
 		signed, err := signRS256(map[string]any{
-			"sub": "heimdall|testuser",
-			"iss": testIssuer, // claims Auth0's issuer, routed to the Auth0 validator
+			"sub": "auth0|testuser",
+			"iss": testIssuer,
 			"aud": testAudience,
 			"exp": time.Now().Add(time.Hour).Unix(),
-		}, heimdallKey, "heimdall-key")
+		}, testRSAKey, kid)
 		if err != nil {
-			t.Fatalf("sign token: %v", err)
+			t.Fatalf("sign RS256 token: %v", err)
 		}
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, makeRequest(signed))
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("expected 401 for cross-signed token, got %d", w.Code)
+		if code := serve(signed); code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for RS256 token, got %d", code)
 		}
 	})
 
-	t.Run("rejects Heimdall token with no principal or sub", func(t *testing.T) {
-		signed, err := signPS256(map[string]any{
-			"iss": heimdallIssuer,
-			"aud": heimdallAudience,
+	t.Run("rejects HS256", func(t *testing.T) {
+		if code := serve(userTokenHS256()); code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for HS256 token, got %d", code)
+		}
+	})
+
+	t.Run("rejects another service's audience", func(t *testing.T) {
+		code := serve(mustPS256(map[string]any{
+			"principal": "testuser",
+			"iss":       testIssuer,
+			"aud":       "lfx-v2-meeting-service",
+			"exp":       time.Now().Add(time.Hour).Unix(),
+		}))
+		if code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for foreign-audience token, got %d", code)
+		}
+	})
+
+	t.Run("rejects token with no principal or sub", func(t *testing.T) {
+		code := serve(mustPS256(map[string]any{
+			"iss": testIssuer,
+			"aud": testAudience,
 			"exp": time.Now().Add(time.Hour).Unix(),
-		}, heimdallKey, "heimdall-key")
-		if err != nil {
-			t.Fatalf("sign Heimdall token: %v", err)
-		}
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, makeRequest(signed))
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("expected 401 for Heimdall token missing both claims, got %d", w.Code)
+		}))
+		if code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for token missing both claims, got %d", code)
 		}
 	})
 
-	t.Run("rejects Heimdall token stamped _anonymous as unauthenticated", func(t *testing.T) {
+	t.Run("rejects _anonymous principal", func(t *testing.T) {
 		// anonymous_authenticator pipelines stamp the literal "_anonymous"
-		// principal; it must not be treated as a real subject on routes that
-		// require auth.
-		signed, err := signPS256(map[string]any{
+		// principal; it must not be treated as a real subject.
+		code := serve(mustPS256(map[string]any{
 			"principal": "_anonymous",
-			"iss":       heimdallIssuer,
-			"aud":       heimdallAudience,
+			"iss":       testIssuer,
+			"aud":       testAudience,
 			"exp":       time.Now().Add(time.Hour).Unix(),
-		}, heimdallKey, "heimdall-key")
-		if err != nil {
-			t.Fatalf("sign Heimdall token: %v", err)
-		}
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, makeRequest(signed))
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("expected 401 for _anonymous-principal token, got %d", w.Code)
+		}))
+		if code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for _anonymous-principal token, got %d", code)
 		}
 	})
-
-	t.Run("rejects token with unknown issuer", func(t *testing.T) {
-		signed, err := signRS256(map[string]any{
-			"sub": "someone",
-			"iss": "https://unknown-issuer.example",
-			"aud": testAudience,
-			"exp": time.Now().Add(time.Hour).Unix(),
-		}, testRSAKey, "test-kid")
-		if err != nil {
-			t.Fatalf("sign token: %v", err)
-		}
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, makeRequest(signed))
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("expected 401 for unknown-issuer token, got %d", w.Code)
-		}
-	})
-}
-
-func TestUnverifiedIssuer(t *testing.T) {
-	tests := []struct {
-		name string
-		raw  string
-		want string
-	}{
-		{name: "valid token", raw: userToken(), want: testIssuer},
-		{name: "malformed - too few segments", raw: "not.a.jwt.token", want: ""},
-		{name: "malformed - bad base64", raw: "header.!!!not-base64!!!.sig", want: ""},
-		{name: "malformed - not JSON", raw: "header." + base64.RawURLEncoding.EncodeToString([]byte("not json")) + ".sig", want: ""},
-		{name: "empty", raw: "", want: ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := unverifiedIssuer(tt.raw); got != tt.want {
-				t.Errorf("unverifiedIssuer(%q) = %q, want %q", tt.raw, got, tt.want)
-			}
-		})
-	}
 }
 
 func TestAuthFailureCategory(t *testing.T) {
