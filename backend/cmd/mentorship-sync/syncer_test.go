@@ -430,3 +430,52 @@ func TestSyncer_Run_skipsAndCountsErrorForInvalidStatus(t *testing.T) {
 		t.Errorf("only js-2 should be upserted, got %+v", repo.upsertedPrograms)
 	}
 }
+
+func TestSyncer_Run_backfillsOnlyStaleProgramsMissingFromCF(t *testing.T) {
+	t.Parallel()
+
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{JobspringProjectID: "recent-existing", Name: "A", Status: "Published", OwnerLFUsername: "alice", RecentlyUpdated: true},
+			{JobspringProjectID: "stale-existing", Name: "B", Status: "Published", OwnerLFUsername: "alice"},
+			{JobspringProjectID: "stale-missing", Name: "C", Status: "Published", OwnerLFUsername: "alice"},
+		},
+	}
+	repo := &mockMentorshipRepo{jobspringIDs: []string{"recent-existing", "stale-existing"}}
+
+	s := newSyncer(repo, src, discardLogger())
+	result, err := s.Run(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.total != 3 || result.upserted != 2 || result.backfilled != 1 || result.unchanged != 1 || result.errors != 0 {
+		t.Errorf("unexpected result: %+v", result)
+	}
+	var got []string
+	for _, p := range repo.upsertedPrograms {
+		got = append(got, p.JobspringProjectID)
+	}
+	if len(got) != 2 || got[0] != "recent-existing" || got[1] != "stale-missing" {
+		t.Errorf("upserted IDs: got %v, want [recent-existing stale-missing]", got)
+	}
+}
+
+func TestSyncer_Run_propagatesListJobspringIDsError(t *testing.T) {
+	t.Parallel()
+
+	src := &mockMentorshipSource{
+		programs: []models.MentorshipProgram{
+			{JobspringProjectID: "js-1", Name: "A", Status: "Published", OwnerLFUsername: "alice"},
+		},
+	}
+	repo := &mockMentorshipRepo{listErr: errors.New("db unavailable")}
+
+	s := newSyncer(repo, src, discardLogger())
+	if _, err := s.Run(context.Background()); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if len(repo.upsertedPrograms) != 0 {
+		t.Errorf("no programs should be upserted when existing IDs cannot be listed, got %d", len(repo.upsertedPrograms))
+	}
+}

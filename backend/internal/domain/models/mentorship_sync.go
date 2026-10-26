@@ -19,6 +19,10 @@ type MentorshipProgram struct {
 	OwnerLastName      string // OWNER_LAST_NAME
 	OwnerAvatarURL     string // OWNER_AVATAR_URL
 
+	// RecentlyUpdated is true when UPDATED_AT falls inside the sync window.
+	// Programs outside it are only synced if they are missing from CF.
+	RecentlyUpdated bool
+
 	// Skills is nil when the source did not provide skills data.
 	// A nil slice means "do not touch skills"; non-nil (even empty) replaces all existing rows.
 	Skills []string

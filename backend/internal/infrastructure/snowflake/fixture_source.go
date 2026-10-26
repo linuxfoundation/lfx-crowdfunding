@@ -96,6 +96,7 @@ func (f *FixtureSource) FetchPrograms(_ context.Context) ([]models.MentorshipPro
 			OwnerFirstName:     r.OwnerFirstName,
 			OwnerLastName:      r.OwnerLastName,
 			OwnerAvatarURL:     r.OwnerAvatarURL,
+			RecentlyUpdated:    true,
 			Skills:             r.Skills,
 			Mentors:            mentors,
 			Beneficiaries:      beneficiaries,

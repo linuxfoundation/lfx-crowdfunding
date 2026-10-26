@@ -37,10 +37,15 @@ SELECT
 	p.PROGRAM_TECHNOLOGY,
 	p.SELECTED_MENTEES,
 	p.MENTORS,
-	p.PROGRAM_SKILLS
+	p.PROGRAM_SKILLS,
+	COALESCE(p.UPDATED_AT >= DATEADD(DAY, -30, CURRENT_TIMESTAMP()), FALSE) AS RECENTLY_UPDATED
 FROM ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS p
 WHERE p.PROGRAM_ID IS NOT NULL
-  AND p.UPDATED_AT >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
+  AND (
+	p.UPDATED_AT >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
+	-- Older published programs are fetched so the syncer can backfill any missing from CF.
+	OR LOWER(p.PROGRAM_STATUS) = 'published'
+  )
 `
 
 // snowflakePerson is the shared JSON structure for entries in the
@@ -163,6 +168,7 @@ func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgra
 			menteesJSON     sql.NullString
 			mentorsJSON     sql.NullString
 			skillsJSON      sql.NullString
+			recentlyUpdated bool
 		)
 		if err := rows.Scan(
 			&programID,
@@ -179,6 +185,7 @@ func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgra
 			&menteesJSON,
 			&mentorsJSON,
 			&skillsJSON,
+			&recentlyUpdated,
 		); err != nil {
 			return nil, fmt.Errorf("scan mentorship program row: %w", err)
 		}
@@ -195,6 +202,7 @@ func (c *Client) FetchPrograms(ctx context.Context) (_ []models.MentorshipProgra
 			OwnerLastName:      ownerLastName,
 			OwnerAvatarURL:     ownerAvatarURL,
 			Industry:           industry.String,
+			RecentlyUpdated:    recentlyUpdated,
 		}
 
 		// Parse VARIANT JSON columns. A NULL column → nil slice (skip upsert).
