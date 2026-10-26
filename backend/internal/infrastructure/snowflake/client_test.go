@@ -62,6 +62,7 @@ func (r *mockRows) Columns() []string {
 		"SELECTED_MENTEES",
 		"mentors",
 		"program_skills",
+		"RECENTLY_UPDATED",
 	}
 }
 func (r *mockRows) Close() error { return nil }
@@ -98,6 +99,7 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 				menteesJSON,
 				mentorsJSON,
 				skillsJSON,
+				true,
 			},
 		},
 	}
@@ -123,6 +125,9 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 	}
 	if !containsSubstr(mock.lastQuery, wantTable) {
 		t.Errorf("query does not reference %q\ngot: %s", wantTable, mock.lastQuery)
+	}
+	if !containsSubstr(mock.lastQuery, "OR LOWER(p.PROGRAM_STATUS) = 'published'") {
+		t.Errorf("query does not include published programs outside the update window\ngot: %s", mock.lastQuery)
 	}
 
 	// Assert field mapping.
@@ -162,6 +167,9 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 	}
 	if p.Industry != "Cloud Native" {
 		t.Errorf("Industry: got %q, want Cloud Native", p.Industry)
+	}
+	if !p.RecentlyUpdated {
+		t.Error("RecentlyUpdated: got false, want true")
 	}
 
 	// Beneficiaries (SELECTED_MENTEES).

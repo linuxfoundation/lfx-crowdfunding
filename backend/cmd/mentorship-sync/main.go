@@ -84,6 +84,8 @@ func run(logger *slog.Logger) error {
 		"duration", time.Since(start).String(),
 		"total", result.total,
 		"upserted", result.upserted,
+		"backfilled", result.backfilled,
+		"unchanged", result.unchanged,
 		"errors", result.errors,
 	)
 	if result.errors > 0 {

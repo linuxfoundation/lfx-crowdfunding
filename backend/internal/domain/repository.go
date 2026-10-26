@@ -173,8 +173,7 @@ type MentorshipRepository interface {
 	UpsertProgram(ctx context.Context, p models.MentorshipProgram) (string, error)
 
 	// ListJobspringIDs returns the jobspring_project_id values for all existing
-	// mentorship initiatives. Used to detect programs that have been removed from
-	// Snowflake (not currently acted on, but useful for future reconciliation).
+	// mentorship initiatives. Used to backfill programs missing from CF.
 	ListJobspringIDs(ctx context.Context) ([]string, error)
 }
 
