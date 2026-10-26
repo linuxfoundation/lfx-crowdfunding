@@ -186,13 +186,12 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		return nil, fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 	}
 
-	// The donor may only attribute to an organization they own (#278).
-	orgID, orgName, err := ownedOrg(ctx, s.initiativeRepo, input.OrganizationID, user.ID)
+	// The org is stored as the donor stated it; there is no affiliation check (doc 13 §5.1).
+	org, err := resolveOrgClaim(ctx, s.initiativeRepo, input.Organization, input.OrganizationID, user.ID)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	input.OrganizationID = orgID
 
 	// Prevent duplicate active subscriptions for the same user + initiative.
 	// A user may only hold one non-terminal subscription at a time per initiative.
@@ -266,8 +265,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		StripePriceID:    priceID,
 		PaymentMethodID:  input.StripePaymentMethodID,
 		Category:         input.Category,
-		OrganizationID:   input.OrganizationID,
-		OrganizationName: orgName,
+		OrganizationName: org.Name,
 		PaymentMethod:    models.PaymentMethodStripe, // subscriptions are always card-based; invoice billing is not supported
 		Frequency:        input.Frequency,
 		IdempotencyKey:   input.IdempotencyKey,
@@ -280,7 +278,8 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	sub := &models.Subscription{
 		UserID:                   user.ID,
 		InitiativeID:             initiativeID,
-		OrganizationID:           input.OrganizationID,
+		OrgName:                  org.Name,
+		OrgDomain:                org.Domain,
 		Category:                 input.Category,
 		CurrentAmountCents:       input.AmountCents,
 		Frequency:                input.Frequency,

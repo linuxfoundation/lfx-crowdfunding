@@ -38,7 +38,7 @@ func (r *DonationRepository) GetByID(ctx context.Context, id string) (*models.Do
 	span.SetAttributes(attribute.String("db.donation_id", id))
 
 	const q = `
-		SELECT id, user_id, initiative_id, organization_id, category,
+		SELECT id, user_id, initiative_id, organization_id, org_name, org_domain, category,
 		       current_amount_in_cents, po_number, payment_method,
 		       status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on
 		FROM donations WHERE id = $1`
@@ -101,7 +101,7 @@ func (r *DonationRepository) listDonations(ctx context.Context, col, val string,
 	// caller to render (the donations table only stores initiative_id).
 	dataArgs := append(args, limit, offset) //nolint:gocritic // intentional re-slice
 	dataQ := fmt.Sprintf(`
-		SELECT d.id, d.user_id, d.initiative_id, i.name, d.organization_id, d.category,
+		SELECT d.id, d.user_id, d.initiative_id, i.name, d.organization_id, d.org_name, d.org_domain, d.category,
 		       d.current_amount_in_cents, d.po_number, d.payment_method,
 		       d.status, d.stripe_payment_intent_id, d.stripe_charge_id, d.donation_tier, d.created_on, d.updated_on
 		FROM donations d
@@ -138,17 +138,18 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 
 	const q = `
 		INSERT INTO donations
-		       (user_id, initiative_id, organization_id, category,
+		       (user_id, initiative_id, organization_id, org_name, org_domain, category,
 		        current_amount_in_cents, po_number, payment_method,
 		        status, stripe_payment_intent_id, stripe_charge_id, donation_tier)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		ON CONFLICT (stripe_payment_intent_id) WHERE stripe_payment_intent_id IS NOT NULL DO NOTHING
-		RETURNING id, user_id, initiative_id, organization_id, category,
+		RETURNING id, user_id, initiative_id, organization_id, org_name, org_domain, category,
 		          current_amount_in_cents, po_number, payment_method,
 		          status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on`
 
 	row := r.pool.QueryRow(ctx, q,
 		d.UserID, d.InitiativeID, nullableString(d.OrganizationID),
+		nullableString(d.OrgName), nullableString(d.OrgDomain),
 		nullableString(d.Category), d.CurrentAmountCents,
 		nullableString(d.PONumber), nullableString(d.PaymentMethod),
 		nullableString(d.Status), nullableString(d.StripePaymentIntentID),
@@ -157,7 +158,7 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 	created, err := scanDonation(row)
 	if errors.Is(err, domain.ErrDonationNotFound) && d.StripePaymentIntentID != "" {
 		created, err = scanDonation(r.pool.QueryRow(ctx, `
-			SELECT id, user_id, initiative_id, organization_id, category,
+			SELECT id, user_id, initiative_id, organization_id, org_name, org_domain, category,
 			       current_amount_in_cents, po_number, payment_method,
 			       status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on
 			FROM donations WHERE stripe_payment_intent_id = $1`, d.StripePaymentIntentID))
@@ -212,7 +213,7 @@ func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, 
 }
 
 // ListOrgDonations returns all succeeded donations made by organisations,
-// enriched with org name, initiative name, and donor display name.
+// enriched with org name (the stored org_name, else the legacy organizations row), initiative name, and donor display name.
 // Used exclusively for the internal CSV export endpoint.
 func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error) {
 	ctx, span := donationTracer.Start(ctx, "db.donations.ListOrgDonations")
@@ -220,8 +221,8 @@ func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.Org
 
 	const q = `
 		SELECT
-			CAST(o.id AS text),
-			o.name,
+			COALESCE(CAST(o.id AS text), ''),
+			COALESCE(d.org_name, o.name),
 			COALESCE(i.name, ''),
 			COALESCE(CAST(i.id AS text), ''),
 			d.current_amount_in_cents,
@@ -233,12 +234,12 @@ func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.Org
 			d.created_on,
 			d.status
 		FROM donations d
-		JOIN organizations o  ON o.id = d.organization_id
-		LEFT JOIN initiatives i ON i.id = d.initiative_id
-		JOIN users u           ON u.id = d.user_id
-		WHERE d.organization_id IS NOT NULL
+		LEFT JOIN organizations o ON o.id = d.organization_id
+		LEFT JOIN initiatives i   ON i.id = d.initiative_id
+		JOIN users u              ON u.id = d.user_id
+		WHERE COALESCE(d.org_name, o.name) IS NOT NULL
 		  AND d.status = 'succeeded'
-		ORDER BY o.name ASC, d.created_on DESC`
+		ORDER BY 2 ASC, d.created_on DESC`
 
 	rows, err := r.pool.Query(ctx, q)
 	if err != nil {
@@ -277,13 +278,14 @@ func scanDonation(row scanner) (*models.Donation, error) {
 	d := &models.Donation{}
 	var (
 		initiativeID, organizationID, category *string
+		orgName, orgDomain                     *string
 		poNumber, paymentMethod, status        *string
 		stripePaymentIntentID, stripeChargeID  *string
 		donationTier                           *string
 		createdOn, updatedOn                   *time.Time
 	)
 	err := row.Scan(
-		&d.ID, &d.UserID, &initiativeID, &organizationID, &category,
+		&d.ID, &d.UserID, &initiativeID, &organizationID, &orgName, &orgDomain, &category,
 		&d.CurrentAmountCents, &poNumber, &paymentMethod,
 		&status, &stripePaymentIntentID, &stripeChargeID, &donationTier, &createdOn, &updatedOn,
 	)
@@ -295,6 +297,8 @@ func scanDonation(row scanner) (*models.Donation, error) {
 	}
 	d.InitiativeID = derefString(initiativeID)
 	d.OrganizationID = derefString(organizationID)
+	d.OrgName = derefString(orgName)
+	d.OrgDomain = derefString(orgDomain)
 	d.Category = derefString(category)
 	d.PONumber = derefString(poNumber)
 	d.PaymentMethod = derefString(paymentMethod)
@@ -318,13 +322,14 @@ func scanDonationWithInitiative(row scanner) (*models.Donation, error) {
 	d := &models.Donation{}
 	var (
 		initiativeID, initiativeName, organizationID, category *string
+		orgName, orgDomain                                     *string
 		poNumber, paymentMethod, status                        *string
 		stripePaymentIntentID, stripeChargeID                  *string
 		donationTier                                           *string
 		createdOn, updatedOn                                   *time.Time
 	)
 	err := row.Scan(
-		&d.ID, &d.UserID, &initiativeID, &initiativeName, &organizationID, &category,
+		&d.ID, &d.UserID, &initiativeID, &initiativeName, &organizationID, &orgName, &orgDomain, &category,
 		&d.CurrentAmountCents, &poNumber, &paymentMethod,
 		&status, &stripePaymentIntentID, &stripeChargeID, &donationTier, &createdOn, &updatedOn,
 	)
@@ -337,6 +342,8 @@ func scanDonationWithInitiative(row scanner) (*models.Donation, error) {
 	d.InitiativeID = derefString(initiativeID)
 	d.InitiativeName = derefString(initiativeName)
 	d.OrganizationID = derefString(organizationID)
+	d.OrgName = derefString(orgName)
+	d.OrgDomain = derefString(orgDomain)
 	d.Category = derefString(category)
 	d.PONumber = derefString(poNumber)
 	d.PaymentMethod = derefString(paymentMethod)
