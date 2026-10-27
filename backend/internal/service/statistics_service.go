@@ -253,7 +253,9 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	seenUsers := map[string]bool{}
 	seenProjects := map[string]bool{}
 	for _, d := range uniqueRaw {
-		if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
+		if d.OrganizationName != "" {
+			// Org as the donor stated it (#365); nothing to look up.
+		} else if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
 			orgIDs = append(orgIDs, d.OrganizationID)
 			seenOrgs[d.OrganizationID] = true
 		} else if d.UserID != "" && !seenUsers[d.UserID] {
@@ -292,7 +294,11 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 			TxnDate:     d.TxnDate,
 			Category:    d.TxnCategory,
 		}
-		if d.OrganizationID != "" {
+		if d.OrganizationName != "" {
+			entry.DonorType = donorTypeOrganization
+			entry.DonorName = d.OrganizationName
+			entry.DonorAvatarURL = generatedAvatarURL(cmp.Or(d.OrganizationDomain, d.OrganizationName), d.OrganizationName)
+		} else if d.OrganizationID != "" {
 			entry.DonorType = donorTypeOrganization
 			if org, ok := orgs[d.OrganizationID]; ok {
 				entry.DonorName = org.Name
