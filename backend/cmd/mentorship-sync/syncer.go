@@ -62,7 +62,7 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 		return syncResult{}, fmt.Errorf("fetch programs: %w", err)
 	}
 
-	existingIDs, err := s.repo.ListJobspringIDs(ctx)
+	existingIDs, err := s.repo.ListKnownProgramIDs(ctx)
 	if err != nil {
 		return syncResult{}, fmt.Errorf("list existing programs: %w", err)
 	}

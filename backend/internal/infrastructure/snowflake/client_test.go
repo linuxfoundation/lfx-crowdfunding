@@ -126,8 +126,8 @@ func TestClient_FetchPrograms_queriesExpectedSQL(t *testing.T) {
 	if !containsSubstr(mock.lastQuery, wantTable) {
 		t.Errorf("query does not reference %q\ngot: %s", wantTable, mock.lastQuery)
 	}
-	if !containsSubstr(mock.lastQuery, "OR LOWER(p.PROGRAM_STATUS) = 'published'") {
-		t.Errorf("query does not include published programs outside the update window\ngot: %s", mock.lastQuery)
+	if !containsSubstr(mock.lastQuery, "OR (LOWER(p.PROGRAM_STATUS) = 'published' AND LOWER(p.TERM_STATUS) = 'open')") {
+		t.Errorf("query does not limit backfill to published programs with an open term\ngot: %s", mock.lastQuery)
 	}
 
 	// Assert field mapping.

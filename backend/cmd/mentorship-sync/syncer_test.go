@@ -25,7 +25,7 @@ func (m *mockMentorshipSource) FetchPrograms(_ context.Context) ([]models.Mentor
 type mockMentorshipRepo struct {
 	upsertedPrograms []models.MentorshipProgram
 	programErr       error
-	jobspringIDs     []string
+	knownIDs         []string
 	listErr          error
 }
 
@@ -37,8 +37,8 @@ func (m *mockMentorshipRepo) UpsertProgram(_ context.Context, p models.Mentorshi
 	return "initiative-uuid-" + p.JobspringProjectID, nil
 }
 
-func (m *mockMentorshipRepo) ListJobspringIDs(_ context.Context) ([]string, error) {
-	return m.jobspringIDs, m.listErr
+func (m *mockMentorshipRepo) ListKnownProgramIDs(_ context.Context) ([]string, error) {
+	return m.knownIDs, m.listErr
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -263,8 +263,8 @@ func (r *failOnSecondRepo) UpsertProgram(ctx context.Context, p models.Mentorshi
 	return r.base.UpsertProgram(ctx, p)
 }
 
-func (r *failOnSecondRepo) ListJobspringIDs(ctx context.Context) ([]string, error) {
-	return r.base.ListJobspringIDs(ctx)
+func (r *failOnSecondRepo) ListKnownProgramIDs(ctx context.Context) ([]string, error) {
+	return r.base.ListKnownProgramIDs(ctx)
 }
 
 func TestSyncer_Run_skillsUpsertedForInitiative(t *testing.T) {
@@ -441,7 +441,7 @@ func TestSyncer_Run_backfillsOnlyStaleProgramsMissingFromCF(t *testing.T) {
 			{JobspringProjectID: "stale-missing", Name: "C", Status: "Published", OwnerLFUsername: "alice"},
 		},
 	}
-	repo := &mockMentorshipRepo{jobspringIDs: []string{"recent-existing", "stale-existing"}}
+	repo := &mockMentorshipRepo{knownIDs: []string{"recent-existing", "stale-existing"}}
 
 	s := newSyncer(repo, src, discardLogger())
 	result, err := s.Run(context.Background())
@@ -461,7 +461,7 @@ func TestSyncer_Run_backfillsOnlyStaleProgramsMissingFromCF(t *testing.T) {
 	}
 }
 
-func TestSyncer_Run_propagatesListJobspringIDsError(t *testing.T) {
+func TestSyncer_Run_propagatesListKnownProgramIDsError(t *testing.T) {
 	t.Parallel()
 
 	src := &mockMentorshipSource{

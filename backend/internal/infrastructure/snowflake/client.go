@@ -43,8 +43,8 @@ FROM ANALYTICS.GOLD_FACT.MENTORSHIP_PROGRAMS p
 WHERE p.PROGRAM_ID IS NOT NULL
   AND (
 	p.UPDATED_AT >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
-	-- Older published programs are fetched so the syncer can backfill any missing from CF.
-	OR LOWER(p.PROGRAM_STATUS) = 'published'
+	-- Older published programs with an open term are fetched so the syncer can backfill any missing from CF.
+	OR (LOWER(p.PROGRAM_STATUS) = 'published' AND LOWER(p.TERM_STATUS) = 'open')
   )
 `
 
