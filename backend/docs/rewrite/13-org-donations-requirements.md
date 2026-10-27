@@ -396,9 +396,10 @@ admins (§4, option B). This applies to every option.
 5. **Lens page coverage. Decided (October 2026): deferred** with the `b2b_org` work to a
    separate epic, #402. Only donations with a `b2b_org` reference can show on the lens page (§4.1), and none
    can get one until `b2b_org` search (§5.2 item 3) or domain matching (§5.2 item 4) ships.
-6. **Lens page content. Decided (October 2026): deferred** with item 5 to #402. What the page shows per donation:
-   initiative, amount, date, and which donor details (name, email). Anonymous donations need a
-   rule too.
+6. **Lens page content. Decided (October 2026): deferred** with item 5 to #402. **Decided (PM,
+   October 2026):** each row shows the initiative, date, donor name, donor email and amount.
+   Anonymous donations still show, as "Anonymous" with no donor name or email, so the
+   company's total stays complete (#414).
 
 ### 5.2 Architecture
 
@@ -437,14 +438,17 @@ admins (§4, option B). This applies to every option.
 4. **Adopting older records. Decided (October 2026): deferred** with item 3. Whether and when CF subscribes to
    org created and updated events to attach `b2b_org` references by domain (§4.1). Not needed
    for the first version.
-5. **Lens donations API. Decided (October 2026): deferred** with item 3. Role decided (October 2026): `writer`,
-   the same as the initiative attribution lens list. CF exposes
+5. **Lens donations API. Decided (October 2026): deferred** with item 3. Role decided (PM, October 2026): `auditor`,
+   so everyone who can view the company in the Org lens sees its donations. CF exposes
    `GET /crowdfunding/organizations/{uid}/donations`,
    following the per-entity initiatives list that already ships for the lens
    (`GET /crowdfunding/organizations/{uid}/initiatives`, #333; doc 11 §5.1): a filtered query on
    the donation's `b2b_org` SFID, guarded in Heimdall with `openfga_check` on `b2b_org:{uid}`.
-   It checks `writer`, like the initiatives list, rather than `auditor` (the lens read gate,
-   §4.3). The response is per caller, so like the initiatives list it sets
+   It checks `auditor` (the lens read gate, §4.3), unlike the initiatives list, which checks
+   `writer`. With `writer`, most people at the company wouldn't see their company's donations.
+   Because rows include donor emails (§5.1 item 6), every lens viewer at the company sees them,
+   which follows from the two PM decisions. Anonymous rows never carry the donor's name or
+   email. The response is per caller, so like the initiatives list it sets
    `Cache-Control: private, no-store` and `Vary: Authorization`
    (`backend/internal/handler/initiative_handler.go:154-155`). Self Serve builds the page
    (cross-team).
