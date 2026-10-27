@@ -329,15 +329,17 @@ type LedgerMonthlyBucket struct {
 
 // LedgerRecentDonation is one entry from GET /transactions/platform/recent.
 type LedgerRecentDonation struct {
-	TxnID          string
-	ProjectID      string
-	UserID         string
-	OrganizationID string
-	SubmitterName  string
-	Amount         int64
-	TxnDate        int64
-	TxnCategory    string
-	SourceType     string
+	TxnID              string
+	ProjectID          string
+	UserID             string
+	OrganizationID     string
+	OrganizationName   string
+	OrganizationDomain string
+	SubmitterName      string
+	Amount             int64
+	TxnDate            int64
+	TxnCategory        string
+	SourceType         string
 }
 
 // raw JSON types for platform balance response
@@ -375,15 +377,17 @@ type ledgerPlatformMonthlyResponse struct {
 // raw JSON types for platform recent transactions response
 type ledgerPlatformRecentResponse struct {
 	Data []struct {
-		TxnID          string `json:"txnID"`
-		ProjectID      string `json:"projectID"`
-		UserID         string `json:"userID"`
-		OrganizationID string `json:"organizationID"`
-		SubmitterName  string `json:"submitterName"`
-		Amount         int64  `json:"amount"`
-		TxnDate        int64  `json:"txnDate"`
-		TxnCategory    string `json:"txnCategory"`
-		SourceType     string `json:"sourceType"`
+		TxnID              string `json:"txnID"`
+		ProjectID          string `json:"projectID"`
+		UserID             string `json:"userID"`
+		OrganizationID     string `json:"organizationID"`
+		OrganizationName   string `json:"organizationName"`
+		OrganizationDomain string `json:"organizationDomain"`
+		SubmitterName      string `json:"submitterName"`
+		Amount             int64  `json:"amount"`
+		TxnDate            int64  `json:"txnDate"`
+		TxnCategory        string `json:"txnCategory"`
+		SourceType         string `json:"sourceType"`
 	} `json:"data"`
 }
 
@@ -503,15 +507,17 @@ func (c *ledgerHTTPClient) GetPlatformRecentDonations(ctx context.Context) ([]Le
 	out := make([]LedgerRecentDonation, 0, len(resp.Data))
 	for _, d := range resp.Data {
 		out = append(out, LedgerRecentDonation{
-			TxnID:          d.TxnID,
-			ProjectID:      d.ProjectID,
-			UserID:         d.UserID,
-			OrganizationID: d.OrganizationID,
-			SubmitterName:  d.SubmitterName,
-			Amount:         d.Amount,
-			TxnDate:        d.TxnDate,
-			TxnCategory:    d.TxnCategory,
-			SourceType:     d.SourceType,
+			TxnID:              d.TxnID,
+			ProjectID:          d.ProjectID,
+			UserID:             d.UserID,
+			OrganizationID:     d.OrganizationID,
+			OrganizationName:   d.OrganizationName,
+			OrganizationDomain: d.OrganizationDomain,
+			SubmitterName:      d.SubmitterName,
+			Amount:             d.Amount,
+			TxnDate:            d.TxnDate,
+			TxnCategory:        d.TxnCategory,
+			SourceType:         d.SourceType,
 		})
 	}
 	return out, nil

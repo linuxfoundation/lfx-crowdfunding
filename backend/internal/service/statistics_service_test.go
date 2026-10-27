@@ -382,6 +382,34 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 	}
 }
 
+func TestGetRecentDonations_NameOnlyOrgDonor(t *testing.T) {
+	repo := &testStatisticsRepo{orgs: map[string]models.Organization{}, users: map[string]models.User{}}
+	ledger := &testLedgerClient{
+		recentDonations: []clients.LedgerRecentDonation{
+			{TxnID: "txn-1", ProjectID: "proj-1", UserID: "auth0|jdoe", SubmitterName: "Jane Doe", OrganizationName: "Acme Inc.", OrganizationDomain: "acme.com", Amount: 5_000, SourceType: domain.LedgerSourceTypeStripe},
+		},
+	}
+
+	svc := newStatsSvc(repo, ledger)
+	resp, err := svc.GetRecentDonations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("expected 1 donation, got %d", len(resp.Data))
+	}
+	d := resp.Data[0]
+	if d.DonorType != donorTypeOrganization {
+		t.Errorf("DonorType: want %q, got %s", donorTypeOrganization, d.DonorType)
+	}
+	if d.DonorName != "Acme Inc." {
+		t.Errorf("DonorName: want Acme Inc., got %s", d.DonorName)
+	}
+	if want := generatedAvatarURL("acme.com", "Acme Inc."); d.DonorAvatarURL != want {
+		t.Errorf("DonorAvatarURL: want %s, got %s", want, d.DonorAvatarURL)
+	}
+}
+
 func TestGetRecentDonations_EnrichesProjectName(t *testing.T) {
 	repo := &testStatisticsRepo{
 		orgs:         map[string]models.Organization{"org-1": {ID: "org-1", Name: "BigCorp"}},
