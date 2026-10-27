@@ -30,9 +30,11 @@ type mentorshipSource interface {
 
 // syncResult carries the per-run counters logged on completion.
 type syncResult struct {
-	total    int
-	upserted int
-	errors   int
+	total      int
+	upserted   int
+	backfilled int // subset of upserted: outside the window but missing from CF
+	unchanged  int // outside the window and already in CF
+	errors     int
 }
 
 // Syncer orchestrates a single mentorship-sync run.
@@ -49,19 +51,38 @@ func newSyncer(repo domain.MentorshipRepository, source mentorshipSource, logger
 
 // Run executes the full sync algorithm:
 //
-//  1. Fetch all programs from source (Snowflake or fixture).
-//  2. For each program: normalise status, upsert initiative row, upsert beneficiaries.
-//  3. Log per-program errors without halting the run.
-//  4. Return per-run counters for summary logging.
+//  1. Fetch programs from source (Snowflake or fixture) and the IDs already in CF.
+//  2. Skip programs outside the update window that already exist in CF.
+//  3. For each remaining program: normalise status, upsert initiative row, upsert beneficiaries.
+//  4. Log per-program errors without halting the run.
+//  5. Return per-run counters for summary logging.
 func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 	programs, err := s.source.FetchPrograms(ctx)
 	if err != nil {
 		return syncResult{}, fmt.Errorf("fetch programs: %w", err)
 	}
 
+	existingIDs, err := s.repo.ListJobspringIDs(ctx)
+	if err != nil {
+		return syncResult{}, fmt.Errorf("list existing programs: %w", err)
+	}
+	existing := make(map[string]struct{}, len(existingIDs))
+	for _, id := range existingIDs {
+		existing[id] = struct{}{}
+	}
+
 	result := syncResult{total: len(programs)}
 
 	for _, p := range programs {
+		backfill := false
+		if !p.RecentlyUpdated {
+			if _, ok := existing[p.JobspringProjectID]; ok {
+				result.unchanged++
+				continue
+			}
+			backfill = true
+		}
+
 		p.Status = strings.ToLower(p.Status)
 		// Map Jobspring values with no CF equivalent onto CF statuses.
 		switch p.Status {
@@ -98,6 +119,12 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 		}
 
 		result.upserted++
+		if backfill {
+			result.backfilled++
+			s.logger.InfoContext(ctx, "backfilled program missing from CF",
+				"jobspring_project_id", p.JobspringProjectID,
+			)
+		}
 	}
 
 	return result, nil

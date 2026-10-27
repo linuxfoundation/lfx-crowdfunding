@@ -264,6 +264,11 @@ RuleSet once cut over, with no window where a caller could still be reaching
 the backend directly) — if that trade-off should be revisited, raise it with
 the reviewers on #282 rather than deciding it in this playbook.
 
+> **Update (#311):** the backend no longer accepts Auth0 JWTs at all, only
+> Heimdall-minted ones, so an in-cluster caller that skips the gateway can't
+> authenticate either. The gateway-only guarantee now holds without relying
+> on a NetworkPolicy.
+
 **Backend** — `values/<env>/lfx-crowdfunding-backend.yaml` (pattern from
 `values/dev/lfx-crowdfunding-backend.yaml`):
 
