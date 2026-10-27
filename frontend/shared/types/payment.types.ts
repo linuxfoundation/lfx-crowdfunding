@@ -1,6 +1,8 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
+import type { OrgClaim } from './organization.types';
+
 export interface CardDetails {
   paymentMethodId: string;
   lastFour: string;
@@ -17,7 +19,7 @@ export interface DonationRequest {
   amountInCents: number;
   stripePaymentMethodId: string;
   category?: string;
-  organizationId?: string;
+  organization?: OrgClaim;
   donationTier?: string;
 }
 
@@ -34,7 +36,7 @@ export interface SubscriptionRequest {
   frequency: SubscriptionFrequency;
   stripePaymentMethodId: string;
   category?: string;
-  organizationId?: string;
+  organization?: OrgClaim;
 }
 
 export interface SubscriptionResult {

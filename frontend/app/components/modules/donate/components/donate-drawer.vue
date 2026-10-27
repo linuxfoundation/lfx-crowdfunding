@@ -199,7 +199,7 @@ const amountForm = ref<DonateAmountForm>({
 
 const contactForm = ref<DonateContactForm>({
   donorType: 'individual',
-  organizationId: null,
+  organization: null,
 });
 
 const hasSelection = computed(() => amountForm.value.amountCents > 0);
@@ -207,7 +207,7 @@ const hasSelection = computed(() => amountForm.value.amountCents > 0);
 const contactFormValid = computed(() => {
   const f = contactForm.value;
   if (f.donorType === 'individual') return true;
-  return !!f.organizationId;
+  return !!f.organization;
 });
 
 const isCurrentStepValid = computed(() => {
@@ -250,7 +250,7 @@ const close = () => {
   };
   contactForm.value = {
     donorType: 'individual',
-    organizationId: null,
+    organization: null,
   };
 };
 
@@ -284,8 +284,8 @@ const handleContinue = async () => {
     }
 
     const orgPayload =
-      contactForm.value.donorType === 'organization' && contactForm.value.organizationId
-        ? { organizationId: contactForm.value.organizationId }
+      contactForm.value.donorType === 'organization' && contactForm.value.organization
+        ? { organization: contactForm.value.organization }
         : {};
 
     if (amountForm.value.donationType === 'monthly') {

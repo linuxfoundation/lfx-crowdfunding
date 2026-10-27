@@ -23,6 +23,7 @@ const PROTECTED: ProtectedRoute[] = [
   { match: (p) => RE_PROCESS_APPROVAL.test(p), methods: ['POST'] },
   { match: (p) => RE_EXPENSE_ACTION.test(p), methods: ['POST'] },
   { match: (p) => p === '/api/fundraise', methods: ['POST'] },
+  { match: (p) => p === '/api/orgs/suggest' },
 ];
 
 export default defineEventHandler((event) => {

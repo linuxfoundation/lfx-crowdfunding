@@ -361,39 +361,49 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	return created, nil
 }
 
-// orgClaim validates the org a donor gives on behalf of and normalizes its domain.
-// nil means an individual donation and returns a zero OrgClaim. Domain is
-// optional until the org picker sends one (#409).
+// orgClaim validates the org a donor gives on behalf of: a 1-255 character name
+// and a domain, which is normalized. nil means an individual donation and returns
+// a zero OrgClaim.
 func orgClaim(in *models.OrgClaim) (models.OrgClaim, error) {
 	if in == nil {
 		return models.OrgClaim{}, nil
 	}
-	name := strings.TrimSpace(in.Name)
+	name, err := orgName(in.Name)
+	if err != nil {
+		return models.OrgClaim{}, err
+	}
+	d, err := domain.NormalizeDomain(in.Domain)
+	if err != nil {
+		return models.OrgClaim{}, err
+	}
+	return models.OrgClaim{Name: name, Domain: d}, nil
+}
+
+// orgName trims an org name and requires 1-255 characters with no control characters.
+func orgName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
 	if name == "" || utf8.RuneCountInString(name) > 255 || strings.ContainsFunc(name, unicode.IsControl) {
-		return models.OrgClaim{}, fmt.Errorf("%w: organization.name must be 1-255 characters with no control characters", domain.ErrInvalidInput)
+		return "", fmt.Errorf("%w: organization.name must be 1-255 characters with no control characters", domain.ErrInvalidInput)
 	}
-	org := models.OrgClaim{Name: name}
-	if strings.TrimSpace(in.Domain) != "" {
-		d, err := domain.NormalizeDomain(in.Domain)
-		if err != nil {
-			return models.OrgClaim{}, err
-		}
-		org.Domain = d
-	}
-	return org, nil
+	return name, nil
 }
 
 // resolveOrgClaim is orgClaim plus the legacy organization_id input: when no
 // claim is sent, a caller-owned org ID resolves to a name-only claim, so a BFF
-// and backend on different versions keep the org attribution. The FK is not stored.
-// ponytail: mixed-version deploy bridge; drop with OrganizationID once #409 ships.
+// and backend on different versions keep the org attribution. Legacy orgs have
+// no domain, so this claim gets orgClaim's name check but not its domain requirement. The FK is not stored.
+// ponytail: mixed-version deploy bridge; drop with OrganizationID once this BFF is everywhere.
 func resolveOrgClaim(ctx context.Context, repo domain.InitiativeRepository, in *models.OrgClaim, legacyID, userID string) (models.OrgClaim, error) {
 	if in == nil && legacyID != "" {
-		_, name, err := ownedOrg(ctx, repo, legacyID, userID)
+		_, stored, err := ownedOrg(ctx, repo, legacyID, userID)
 		if err != nil {
 			return models.OrgClaim{}, err
 		}
-		in = &models.OrgClaim{Name: name}
+		name, err := orgName(stored)
+		if err != nil {
+			return models.OrgClaim{}, err
+		}
+		return models.OrgClaim{Name: name}, nil
 	}
 	return orgClaim(in)
 }
