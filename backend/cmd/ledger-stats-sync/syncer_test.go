@@ -447,6 +447,17 @@ func TestEnrichSponsors(t *testing.T) {
 			wantUserNames: []string{""},
 		},
 		{
+			name: "domain bucket keeps the Ledger name; legacy UUID bucket keeps its Ledger name and gets the CF logo",
+			raw: models.LedgerRawSponsors{
+				Orgs: []models.LedgerRawSponsor{
+					{ID: "acme.com", Name: "Acme Inc.", Total: 100},
+					{ID: "org-1", Name: "LF as sent", Total: 100},
+				},
+			},
+			wantOrgNames:      []string{"Acme Inc.", "LF as sent"},
+			wantOrgAvatarURLs: []string{"", "http://lf.org/logo.png"},
+		},
+		{
 			name: "empty ID strings are dropped",
 			raw: models.LedgerRawSponsors{
 				Orgs:        []models.LedgerRawSponsor{{ID: ""}, {ID: "org-1"}},

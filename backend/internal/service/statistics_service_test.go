@@ -85,7 +85,8 @@ type testLedgerClient struct {
 	platformBalance *clients.LedgerPlatformBalance
 	platformMonthly *clients.LedgerPlatformMonthly
 	recentDonations []clients.LedgerRecentDonation
-	orgDonations    []clients.LedgerOrgDonation
+	orgTotals       map[string]int64
+	gotOrgKeys      []string
 	err             error
 }
 
@@ -107,8 +108,9 @@ func (c *testLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 func (c *testLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return c.recentDonations, c.err
 }
-func (c *testLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
-	return c.orgDonations, c.err
+func (c *testLedgerClient) GetOrgDonationTotals(_ context.Context, keys []string) (map[string]int64, error) {
+	c.gotOrgKeys = keys
+	return c.orgTotals, c.err
 }
 func (c *testLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {
 	return &clients.LedgerUserBalance{}, nil
@@ -167,6 +169,33 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 	}
 	if details.TopIndividuals[0].Name != "Alice Smith" {
 		t.Errorf("user name: want Alice Smith, got %s", details.TopIndividuals[0].Name)
+	}
+}
+
+func TestGetPlatformDetails_LedgerOrgNameWins(t *testing.T) {
+	repo := &testStatisticsRepo{
+		orgs: map[string]models.Organization{
+			"org-1": {ID: "org-1", Name: "CF Name", AvatarURL: "https://example.com/cf.png"},
+		},
+	}
+	ledger := &testLedgerClient{
+		platformBalance: &clients.LedgerPlatformBalance{
+			TopOrganizations: []clients.LedgerSponsorRaw{
+				{ID: "acme.com", Name: "Acme Inc.", Total: 300},
+				{ID: "org-1", Total: 200},
+			},
+		},
+	}
+
+	details, err := newStatsSvc(repo, ledger).GetPlatformDetails(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := details.TopOrganizations[0]; got.ID != "acme.com" || got.Name != "Acme Inc." {
+		t.Errorf("domain bucket: want acme.com/Acme Inc., got %+v", got)
+	}
+	if got := details.TopOrganizations[1]; got.Name != "CF Name" || got.AvatarURL != "https://example.com/cf.png" {
+		t.Errorf("legacy UUID bucket: want CF name and logo, got %+v", got)
 	}
 }
 

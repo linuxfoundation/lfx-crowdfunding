@@ -9,6 +9,8 @@ package models
 type LedgerRawSponsor struct {
 	ID    string `json:"id"`
 	Total int64  `json:"total"`
+	// Name is the org name as the donor stated it; set for orgs keyed by domain (#365).
+	Name string `json:"name,omitempty"`
 }
 
 // LedgerRawSponsors contains the raw sponsor entries as returned by the

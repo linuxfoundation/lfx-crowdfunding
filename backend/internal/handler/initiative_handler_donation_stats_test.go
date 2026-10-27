@@ -25,6 +25,9 @@ type userBalanceLedger struct {
 	err        error
 }
 
+func (c *userBalanceLedger) GetOrgDonationTotals(_ context.Context, _ []string) (map[string]int64, error) {
+	return nil, nil
+}
 func (c *userBalanceLedger) GetUserBalance(_ context.Context, userID string) (*clients.LedgerUserBalance, error) {
 	c.lastUserID = userID
 	return c.balance, c.err

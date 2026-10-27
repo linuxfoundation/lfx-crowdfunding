@@ -69,15 +69,15 @@ type LedgerClient interface {
 	// callers are responsible for supplying a sensible value (handler defaults to 10).
 	GetPlatformBalance(ctx context.Context, topLimit int) (*LedgerPlatformBalance, error)
 
+	// GetOrgDonationTotals returns the summed credits per org bucket for exactly
+	// the given keys (domain, or legacy CF org UUID). Keys without credits are absent.
+	GetOrgDonationTotals(ctx context.Context, keys []string) (map[string]int64, error)
+
 	// GetPlatformMonthly returns monthly donation buckets for the last N months.
 	GetPlatformMonthly(ctx context.Context, months int) (*LedgerPlatformMonthly, error)
 
 	// GetPlatformRecentDonations returns the most recent platform-wide credit transactions.
 	GetPlatformRecentDonations(ctx context.Context) ([]LedgerRecentDonation, error)
-
-	// GetOrgDonations returns the sum of all credit transactions (amount > 0)
-	// for a fixed set of organisations, ordered by amount descending.
-	GetOrgDonations(ctx context.Context) ([]LedgerOrgDonation, error)
 
 	// GetUserBalance returns the total a user has donated and the number of
 	// distinct projects they have donated to.
@@ -168,13 +168,16 @@ type ledgerTransactionRaw struct {
 	ProjectID      string `json:"projectID"`
 	UserID         string `json:"userID"`
 	OrganizationID string `json:"organizationID"`
-	AccountEmail   string `json:"accountEmail"`
-	SubmitterName  string `json:"submitterName"`
-	TxnType        string `json:"txnType"` // "credit" | "debit"
-	TxnCategory    string `json:"txnCategory"`
-	Amount         int64  `json:"amount"`         // cents
-	TxnDate        int64  `json:"txnDate"`        // unix seconds
-	SubscriptionID string `json:"subscriptionID"` // non-empty for recurring charges
+	// OrganizationName and OrganizationDomain are the org as the donor stated it (#403).
+	OrganizationName   string `json:"organizationName"`
+	OrganizationDomain string `json:"organizationDomain"`
+	AccountEmail       string `json:"accountEmail"`
+	SubmitterName      string `json:"submitterName"`
+	TxnType            string `json:"txnType"` // "credit" | "debit"
+	TxnCategory        string `json:"txnCategory"`
+	Amount             int64  `json:"amount"`         // cents
+	TxnDate            int64  `json:"txnDate"`        // unix seconds
+	SubscriptionID     string `json:"subscriptionID"` // non-empty for recurring charges
 }
 
 type ledgerTransactionsResponse struct {
@@ -255,7 +258,7 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			txnType = models.TransactionTypeReimbursement
 		}
 		donorType := "individual"
-		if raw.OrganizationID != "" {
+		if raw.OrganizationID != "" || raw.OrganizationName != "" {
 			donorType = "organization"
 		}
 		txns = append(txns, models.Transaction{
@@ -269,6 +272,8 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			Recurring:       raw.SubscriptionID != "",
 			LedgerUserID:    raw.UserID,
 			LedgerOrgID:     raw.OrganizationID,
+			LedgerOrgName:   raw.OrganizationName,
+			LedgerOrgDomain: raw.OrganizationDomain,
 			LedgerProjectID: raw.ProjectID,
 		})
 	}
@@ -304,6 +309,8 @@ type LedgerCategoryTotal struct {
 type LedgerSponsorRaw struct {
 	ID    string
 	Total int64
+	// Name is the org name as the donor stated it; set for orgs keyed by domain (#365).
+	Name string
 }
 
 // LedgerPlatformMonthly holds monthly donation buckets from GET /balance/platform/monthly.
@@ -318,15 +325,6 @@ type LedgerMonthlyBucket struct {
 	TotalCents    int64
 	Supporters    int64
 	NewSupporters int64
-}
-
-// LedgerOrgDonation holds the summed credit amount for a single organisation
-// from GET /transactions/platform/org-donations.
-type LedgerOrgDonation struct {
-	OrgID         string `json:"orgId"`
-	Name          string `json:"name"`
-	AmountInCents int64  `json:"amount_in_cents"`
-	AvatarURL     string `json:"avatar_url"`
 }
 
 // LedgerRecentDonation is one entry from GET /transactions/platform/recent.
@@ -355,6 +353,7 @@ type ledgerPlatformBalanceResponse struct {
 	TopOrganizations []struct {
 		ID    string `json:"id"`
 		Total int64  `json:"total"`
+		Name  string `json:"name"`
 	} `json:"topOrganizations"`
 	TopIndividuals []struct {
 		ID    string `json:"id"`
@@ -388,6 +387,34 @@ type ledgerPlatformRecentResponse struct {
 	} `json:"data"`
 }
 
+// GetOrgDonationTotals fetches per-key org totals from
+// GET /transactions/platform/org-donations?keys=...
+func (c *ledgerHTTPClient) GetOrgDonationTotals(ctx context.Context, keys []string) (map[string]int64, error) {
+	ctx, span := ledgerTracer.Start(ctx, "ledger.GetOrgDonationTotals")
+	defer span.End()
+
+	endpoint := fmt.Sprintf("%s/transactions/platform/org-donations?%s", c.baseURL,
+		url.Values{"keys": {strings.Join(keys, ",")}}.Encode())
+	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
+
+	var resp []struct {
+		OrgID         string `json:"orgId"`
+		AmountInCents int64  `json:"amount_in_cents"`
+	}
+	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
+		return fmt.Errorf("ledger GET /transactions/platform/org-donations returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
+	})
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("ledger org donations: %w", err)
+	}
+	totals := make(map[string]int64, len(resp))
+	for _, d := range resp {
+		totals[d.OrgID] += d.AmountInCents
+	}
+	return totals, nil
+}
+
 // GetPlatformBalance fetches platform-wide aggregate data from the Ledger service.
 func (c *ledgerHTTPClient) GetPlatformBalance(ctx context.Context, topLimit int) (*LedgerPlatformBalance, error) {
 	ctx, span := ledgerTracer.Start(ctx, "ledger.GetPlatformBalance")
@@ -417,7 +444,7 @@ func (c *ledgerHTTPClient) GetPlatformBalance(ctx context.Context, topLimit int)
 		out.Categories = append(out.Categories, LedgerCategoryTotal{Name: c.Name, TotalCents: c.TotalCents, Count: c.Count})
 	}
 	for _, o := range resp.TopOrganizations {
-		out.TopOrganizations = append(out.TopOrganizations, LedgerSponsorRaw{ID: o.ID, Total: o.Total})
+		out.TopOrganizations = append(out.TopOrganizations, LedgerSponsorRaw{ID: o.ID, Total: o.Total, Name: o.Name})
 	}
 	for _, i := range resp.TopIndividuals {
 		out.TopIndividuals = append(out.TopIndividuals, LedgerSponsorRaw{ID: i.ID, Total: i.Total})
@@ -488,25 +515,6 @@ func (c *ledgerHTTPClient) GetPlatformRecentDonations(ctx context.Context) ([]Le
 		})
 	}
 	return out, nil
-}
-
-// GetOrgDonations fetches org-level donation totals from GET /transactions/platform/org-donations.
-func (c *ledgerHTTPClient) GetOrgDonations(ctx context.Context) ([]LedgerOrgDonation, error) {
-	ctx, span := ledgerTracer.Start(ctx, "ledger.GetOrgDonations")
-	defer span.End()
-
-	endpoint := fmt.Sprintf("%s/transactions/platform/org-donations", c.baseURL)
-	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
-
-	var resp []LedgerOrgDonation
-	err := c.httpClient.GetJSON(ctx, endpoint, headers, &resp, func(r *http.Response) error {
-		return fmt.Errorf("ledger GET /transactions/platform/org-donations returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
-	})
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("ledger org donations: %w", err)
-	}
-	return resp, nil
 }
 
 // GetAllBalances fetches the full bulk balance snapshot from the Ledger service.
