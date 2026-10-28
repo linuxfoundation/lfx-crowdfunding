@@ -43,3 +43,9 @@ CVE-2026-102826
 CVE-2026-102827
 CVE-2026-102828
 CVE-2026-102829
+
+# CVE-2026-93753 / deepmerge prototype poisoning via mergeObject: no fixed
+# version exists. deepmerge is only reached through @rollup/plugin-node-resolve
+# (nitropack's bundler) to merge build config at build time; it never sees
+# request input and is not part of the runtime server bundle.
+CVE-2026-93753
