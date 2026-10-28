@@ -1,0 +1,49 @@
+org_id,domain,note
+c64448e2-ad1d-4132-afdc-1fa5de259372,cncf.io,featured: Cloud Native Computing Foundation
+1c7953a6-6bed-4eb2-9a54-e03f68ee87cc,google.com,featured: Google
+32694046-9495-49e6-a64c-2339bb8a6b4a,lfdecentralizedtrust.org,featured: Hyperledger (now LF Decentralized Trust)
+26b40d9a-fa10-4517-b5e9-f398d599119a,openmainframeproject.org,featured: Open Mainframe Project
+c24884e2-da5b-4232-adcc-8ca5df629112,redhat.com,featured: Red Hat
+01597fd9-e8a2-4eee-81ed-fde0f57a7970,riscv.org,featured: RISC-V
+e4994c28-38cf-4bac-bc84-cd0e1dff7d93,graphql.org,featured: GraphQL
+da991783-b553-4776-b78f-3cd99eb0dd8b,intel.com,featured: Intel Corporation
+bda9cb38-3e49-4c44-b828-5d269b6bb8d9,alpha-omega.dev,featured: Alpha-Omega
+48d54209-b254-4dd6-99ce-eb20fa72b87e,openssf.org,featured: OpenSSF
+4bf2ca3d-c208-40e1-ab27-118462e6f4c1,sysdig.com,"featured: Sysdig, Inc."
+09e36557-5ef7-4ee1-b9b5-820b24fd8b36,github.com,featured: GitHub
+adbc0b16-9ccb-46fc-8938-50d295fb07aa,crowdstrike.com,featured: Crowdstrike
+ea1fc61b-13f7-409f-8ccf-abb3ff569cc4,cisco.com,featured: Cisco
+7319eb76-5147-4812-8398-ce0c3aaf5ecc,check24.de,featured: CHECK24
+3d6b41a7-1a5b-49ff-a7be-f2f83b87e1ca,wayfair.com,featured: Wayfair LLC
+d858985c-1a80-445d-b53f-aa0ea8db8433,redhat.com,duplicate CF row: Red Hat
+a28880e2-dd5b-4232-adcc-8ca5de629372,linuxfoundation.org,Linux Foundation
+4ed21eb3-fb93-4a85-a783-5e9a5338ccbc,linuxfoundation.org,LF Product Team
+a28680e2-dd1b-4332-adcc-8fa5de659372,lfnetworking.org,Linux Foundation Networking
+5521f1c4-298f-4487-8327-37262f166697,lfdecentralizedtrust.org,LFDT
+9f7190dc-9656-4e4e-9b22-163874d2b7ee,sonicfoundation.dev,SONiC Foundation
+bbe0009d-a91b-4b96-a74f-58c664cd8a31,r-consortium.org,R Consortium
+e7d1cbe3-36c2-434a-8992-6a8f035461a4,opiproject.org,Open Programmable Infrastructure
+4360b18e-e1a8-4068-a17c-8a3a1540fcee,confidentialcomputing.io,Confidential Computing Consortium
+599f0ee4-7d89-4bf4-a69f-e5861c2445d5,elisa.tech,Elisa Project
+db436b05-4b66-4a26-834e-67d978069eb6,pqca.org,Post Quantum Cryptography Alliance
+c46a907e-6407-4136-b250-bd8311dfc16e,openhpc.community,OpenHPC
+5d52e8c1-c23b-4ae9-b23f-cf1f7dd70c00,dent.dev,DENT
+8da238cb-6b4c-40c2-b210-76d7d8e78d1d,finos.org,FINOS
+797a666a-28b0-4e8e-99f0-e7c88933ff36,o-ran.org,O-RAN
+bf054c86-0766-4c03-b07e-316cb22b7540,moja.global,moja global
+033c09dd-273d-4b17-8b98-7debbdfd855b,jenkins.io,Jenkins project - SPI
+20809995-fb1f-4ae4-8a5c-765810b1f53f,tetrate.io,"Tetrate.io, Inc."
+287451b0-3996-49d6-9360-31475d60bb39,xilinx.com,Xilinx Inc
+9a1d132f-32e2-498e-b114-e617212547d2,dell.com,Dell Corporation
+a96d4b7c-5be2-4e38-bfb8-a10c318a9086,discover.com,Discover Financial Services
+c4867ec6-6e0c-4abf-8840-67827a34fe74,cloudbees.com,CloudBees
+b733f2c8-2c7f-4454-ad45-233a08818572,collabora.com,Collabora Ltd.
+ccd9cf55-60a0-4fb6-a221-e36c4578171b,foundries.io,Foundries.io Limited
+405eef8d-76ff-4580-9f23-852f3f55a846,giantswarm.io,Giant Swarm GmbH
+ac6366f4-fac9-45d9-a83d-359802270742,nirmata.com,Nirmata
+c2dd8a38-7dc4-4aa6-aeea-c3d02ded7991,loft.sh,Loft Labs
+c1ff883c-f109-45e9-80e5-091567d81ffa,syseleven.de,SysEleven GmbH
+3d5cd081-e3a5-4363-8daa-62ccb2118d43,sonderformat.llc,SONDERFORMAT
+6685d35d-450e-49d7-855d-b224d8839160,sonderformat.llc,not in CF; donor email is at sonderformat.llc
+c64448e2-ad1d-4132-afdc-1fa5de259374,cncf.io,not in CF; typo of the CNCF ID on a manual mentorship entry (CNCF - Konveyor)
+c64448e2-ad1d-4132-afdc-1fa5de259375,cncf.io,not in CF; typo of the CNCF ID on manual mentorship entries (CNCF - Devfile and OpenFunction)

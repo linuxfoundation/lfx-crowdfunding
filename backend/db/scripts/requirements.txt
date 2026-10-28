@@ -2,3 +2,4 @@
 # SPDX-License-Identifier: MIT
 boto3>=1.34
 psycopg2-binary>=2.9
+stripe>=10.0
