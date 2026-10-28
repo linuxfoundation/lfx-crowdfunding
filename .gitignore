@@ -13,3 +13,6 @@ specs
 .playwright-mcp/
 .worktrees/
 .claude/worktrees/
+
+# Ledger backups written by backend/db/scripts/backfill_org_claim.py --apply
+ledger_backup_*.json
