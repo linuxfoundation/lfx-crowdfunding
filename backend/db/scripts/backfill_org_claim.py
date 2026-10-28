@@ -115,6 +115,11 @@ def backfill_stripe(conn, apply: bool) -> None:
             print(f"    {r['stripe_subscription_id']}  {meta}", flush=True)
             continue
         sub = stripe.Subscription.retrieve(r["stripe_subscription_id"])
+        # CF's status can be stale; a subscription Stripe has ended never charges again,
+        # and Stripe rejects item updates on it.
+        if sub["status"] not in LIVE_SUBSCRIPTION_STATUSES:
+            print(f"    {sub['id']}  skipped: {sub['status']} in Stripe", flush=True)
+            continue
         items = sub["items"]["data"]
         item = next((i for i in items if i["id"] == r["stripe_subscription_item_id"]), items[0])
         # Fill only empty keys, so a claim already on Stripe is never replaced.
