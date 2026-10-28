@@ -6,6 +6,9 @@ SPDX-License-Identifier: MIT
   <div
     class="c-dropdown__item"
     :class="{ 'is-selected': isSelected }"
+    role="option"
+    tabindex="-1"
+    :aria-selected="!!isSelected"
     @click="handleClick"
   >
     <slot>
