@@ -36,6 +36,8 @@ type Transaction struct {
 	// Internal: used by the service to look up CF DB records. Not serialised.
 	LedgerUserID    string `json:"-"`
 	LedgerOrgID     string `json:"-"`
+	LedgerOrgName   string `json:"-"`
+	LedgerOrgDomain string `json:"-"`
 	LedgerProjectID string `json:"-"`
 }
 

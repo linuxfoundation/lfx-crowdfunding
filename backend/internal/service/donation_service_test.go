@@ -983,12 +983,12 @@ func TestOrgClaim(t *testing.T) {
 		err  bool
 	}{
 		{"individual", nil, models.OrgClaim{}, false},
-		{"name only", &models.OrgClaim{Name: "  Acme  "}, models.OrgClaim{Name: "Acme"}, false},
-		{"name and domain", &models.OrgClaim{Name: "Acme", Domain: "https://WWW.Acme.com/about"}, models.OrgClaim{Name: "Acme", Domain: "acme.com"}, false},
+		{"name and domain", &models.OrgClaim{Name: "  Acme  ", Domain: "https://WWW.Acme.com/about"}, models.OrgClaim{Name: "Acme", Domain: "acme.com"}, false},
+		{"missing domain", &models.OrgClaim{Name: "Acme"}, models.OrgClaim{}, true},
 		{"blank name", &models.OrgClaim{Name: "  ", Domain: "acme.com"}, models.OrgClaim{}, true},
-		{"name too long", &models.OrgClaim{Name: strings.Repeat("a", 256)}, models.OrgClaim{}, true},
+		{"name too long", &models.OrgClaim{Name: strings.Repeat("a", 256), Domain: "acme.com"}, models.OrgClaim{}, true},
 		{"bad domain", &models.OrgClaim{Name: "Acme", Domain: "not a domain"}, models.OrgClaim{}, true},
-		{"255 multibyte chars", &models.OrgClaim{Name: strings.Repeat("株", 255)}, models.OrgClaim{Name: strings.Repeat("株", 255)}, false},
+		{"255 multibyte chars", &models.OrgClaim{Name: strings.Repeat("株", 255), Domain: "acme.com"}, models.OrgClaim{Name: strings.Repeat("株", 255), Domain: "acme.com"}, false},
 		{"256 multibyte chars", &models.OrgClaim{Name: strings.Repeat("株", 256)}, models.OrgClaim{}, true},
 		{"NUL in name", &models.OrgClaim{Name: "Acme\x00Corp"}, models.OrgClaim{}, true},
 		{"newline in name", &models.OrgClaim{Name: "Acme\nCorp"}, models.OrgClaim{}, true},
@@ -1007,9 +1007,15 @@ func TestOrgClaim(t *testing.T) {
 
 func TestResolveOrgClaim_LegacyOrgID(t *testing.T) {
 	const orgID = "11111111-1111-1111-1111-111111111111"
+	const blankID = "22222222-2222-2222-2222-222222222222"
+	const newlineID = "33333333-3333-3333-3333-333333333333"
 	repo := &summaryInitiativeRepo{
 		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
-			return map[string]models.Organization{orgID: {ID: orgID, OwnerID: "owner", Name: "Acme"}}, nil
+			return map[string]models.Organization{
+				orgID:     {ID: orgID, OwnerID: "owner", Name: " Acme "},
+				blankID:   {ID: blankID, OwnerID: "owner", Name: "  "},
+				newlineID: {ID: newlineID, OwnerID: "owner", Name: "Acme\nCorp"},
+			}, nil
 		},
 	}
 	tests := []struct {
@@ -1025,7 +1031,9 @@ func TestResolveOrgClaim_LegacyOrgID(t *testing.T) {
 		{"own org uppercase", nil, strings.ToUpper(orgID), "owner", models.OrgClaim{Name: "Acme"}, nil},
 		{"foreign org", nil, orgID, "someone-else", models.OrgClaim{}, domain.ErrOrganizationNotFound},
 		{"not a uuid", nil, "not-a-uuid", "owner", models.OrgClaim{}, domain.ErrOrganizationNotFound},
-		{"claim wins over legacy id", &models.OrgClaim{Name: "Other"}, orgID, "someone-else", models.OrgClaim{Name: "Other"}, nil},
+		{"blank stored name", nil, blankID, "owner", models.OrgClaim{}, domain.ErrInvalidInput},
+		{"control char in stored name", nil, newlineID, "owner", models.OrgClaim{}, domain.ErrInvalidInput},
+		{"claim wins over legacy id", &models.OrgClaim{Name: "Other", Domain: "other.com"}, orgID, "someone-else", models.OrgClaim{Name: "Other", Domain: "other.com"}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

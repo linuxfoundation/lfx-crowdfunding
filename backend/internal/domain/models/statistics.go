@@ -75,7 +75,8 @@ type RecentDonationsResponse struct {
 
 // OrgContribution is one organization's total succeeded-donation amount,
 // returned by GET /crowdfunding/statistics/investing-companies. JSON tags match the
-// legacy Ledger org-donations wire shape so frontend consumers need no changes.
+// legacy Ledger org-donations wire shape so frontend consumers need no changes;
+// OrgID now carries the org's domain.
 type OrgContribution struct {
 	OrgID       string `json:"orgId"`
 	Name        string `json:"name"`

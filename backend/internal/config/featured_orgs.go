@@ -10,43 +10,48 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
+
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 )
 
 //go:embed featured_orgs.json
 var featuredOrgsJSON []byte
 
-// featuredOrg is one entry in featured_orgs.json. Name is a human-readable
-// comment for maintainers; the database remains authoritative for the
-// rendered organization name.
-type featuredOrg struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+// FeaturedOrg is one entry in featured_orgs.json, keyed by the normalized
+// domain Ledger groups org donations on (#365). LegacyID is the org's prod CF
+// UUID, which Ledger still buckets on for donations not yet backfilled with a
+// domain (#408).
+type FeaturedOrg struct {
+	Domain   string `json:"domain"`
+	Name     string `json:"name"`
+	LogoURL  string `json:"logo_url"`
+	LegacyID string `json:"legacy_id"`
 }
 
-// featuredOrgIDs is the parsed, ordered list of organization IDs curated for
-// the "/for-companies" investing-companies section. Order is preserved from
-// featured_orgs.json and used as the display order in prod.
-var featuredOrgIDs = mustParseFeaturedOrgIDs(featuredOrgsJSON)
+// featuredOrgs is the parsed, ordered list of organizations curated for the
+// "/for-companies" investing-companies section. Order is preserved from
+// featured_orgs.json and used as the display order.
+var featuredOrgs = mustParseFeaturedOrgs(featuredOrgsJSON)
 
-func mustParseFeaturedOrgIDs(raw []byte) []string {
-	var orgs []featuredOrg
+func mustParseFeaturedOrgs(raw []byte) []FeaturedOrg {
+	var orgs []FeaturedOrg
 	if err := json.Unmarshal(raw, &orgs); err != nil {
 		panic(fmt.Sprintf("config: failed to parse featured_orgs.json: %v", err))
 	}
-	ids := make([]string, len(orgs))
-	for i, o := range orgs {
-		if o.ID == "" {
-			panic("config: featured_orgs.json contains an entry with an empty id")
+	for _, o := range orgs {
+		if d, err := domain.NormalizeDomain(o.Domain); err != nil || d != o.Domain {
+			panic(fmt.Sprintf("config: featured_orgs.json domain %q is not a normalized domain", o.Domain))
 		}
-		ids[i] = o.ID
+		if strings.TrimSpace(o.Name) == "" {
+			panic(fmt.Sprintf("config: featured_orgs.json domain %q has no name", o.Domain))
+		}
 	}
-	return ids
+	return orgs
 }
 
-// FeaturedOrgIDs returns the curated, ordered list of organization IDs for the
-// investing-companies section. These IDs come from the production database
-// (see featured_orgs.json) and generally won't resolve to rows in local, dev,
-// or staging databases.
-func FeaturedOrgIDs() []string {
-	return featuredOrgIDs
+// FeaturedOrgs returns the curated, ordered list of organizations for the
+// investing-companies section.
+func FeaturedOrgs() []FeaturedOrg {
+	return featuredOrgs
 }

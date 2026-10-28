@@ -62,7 +62,7 @@ func (c *statsLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*clien
 func (c *statsLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return nil, nil
 }
-func (c *statsLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
+func (c *statsLedgerClient) GetOrgDonationTotals(_ context.Context, _ []string) (map[string]int64, error) {
 	return nil, nil
 }
 func (c *statsLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {

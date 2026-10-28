@@ -34,7 +34,7 @@ type OrganizationUpdateInput struct {
 // organizations row. Domain is normalized by the service before it is stored.
 type OrgClaim struct {
 	Name   string `json:"name"`
-	Domain string `json:"domain,omitempty"`
+	Domain string `json:"domain"`
 }
 
 // User maps to the crowdfunding.users table.

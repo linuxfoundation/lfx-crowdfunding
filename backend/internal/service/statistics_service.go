@@ -5,6 +5,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -68,8 +69,8 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		return nil, fmt.Errorf("get platform balance: %w", err)
 	}
 
-	// Collect IDs for enrichment. Org IDs are UUIDs; individual IDs from Ledger
-	// are Auth0 subjects (legacy_user_id), not internal UUIDs.
+	// Collect IDs for enrichment. Org IDs are a domain or a legacy CF UUID;
+	// individual IDs from Ledger are Auth0 subjects (legacy_user_id), not internal UUIDs.
 	orgIDs := make([]string, 0, len(raw.TopOrganizations))
 	for _, o := range raw.TopOrganizations {
 		if o.ID != "" {
@@ -111,13 +112,12 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		})
 	}
 	for _, o := range raw.TopOrganizations {
-		entry := models.SponsorEntry{ID: o.ID, TotalCents: o.Total}
-		if org, ok := orgs[o.ID]; ok {
-			entry.Name = org.Name
+		entry := models.SponsorEntry{ID: o.ID, Name: o.Name, TotalCents: o.Total}
+		if org, ok := orgs[o.ID]; ok { // legacy CF org UUID bucket
+			entry.Name = cmp.Or(entry.Name, org.Name)
 			entry.AvatarURL = org.AvatarURL
-		} else {
-			entry.Name = unknownOrgName
 		}
+		entry.Name = cmp.Or(entry.Name, unknownOrgName)
 		out.TopOrganizations = append(out.TopOrganizations, entry)
 	}
 	for _, u := range raw.TopIndividuals {
@@ -166,58 +166,42 @@ func (s *StatisticsService) GetPlatformMonthly(ctx context.Context) (*models.Pla
 // Ledger — the system of record for donations (CF Postgres only persists
 // one-time charges; Ledger also captures recurring/subscription charges).
 //
-// Ledger's org-donations aggregation ("GET /transactions/platform/org-donations")
-// is itself scoped to a fixed set of org IDs (mocked in non-prod), which today
-// matches internal/config/featured_orgs.json exactly. Adding a new org to that
-// config file requires a matching change in ledger-service, or it will have no
-// amount here and be skipped.
+// Ledger buckets org donations by domain, or by legacy CF org UUID for rows
+// not yet backfilled (#408), so each featured org sums both buckets. Orgs with
+// no donations in either bucket are skipped.
 func (s *StatisticsService) GetInvestingCompanies(ctx context.Context) ([]models.OrgContribution, error) {
 	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetInvestingCompanies")
 	defer span.End()
 
-	raw, err := s.ledgerClient.GetOrgDonations(ctx)
+	featured := config.FeaturedOrgs()
+	keys := make([]string, 0, 2*len(featured))
+	for _, f := range featured {
+		keys = append(keys, f.Domain)
+		if f.LegacyID != "" {
+			keys = append(keys, f.LegacyID)
+		}
+	}
+
+	totals, err := s.ledgerClient.GetOrgDonationTotals(ctx, keys)
 	if err != nil {
 		span.RecordError(err)
 		if errors.Is(err, domain.ErrUpstreamUnavailable) {
 			return []models.OrgContribution{}, nil
 		}
-		return nil, fmt.Errorf("get org donations: %w", err)
+		return nil, fmt.Errorf("get org donation totals: %w", err)
 	}
 
-	amounts := make(map[string]clients.LedgerOrgDonation, len(raw))
-	for _, d := range raw {
-		amounts[d.OrgID] = d
-	}
-
-	featuredIDs := config.FeaturedOrgIDs()
-	orgs, err := s.repo.GetOrganizationsByIDs(ctx, featuredIDs)
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("enrich featured organizations: %w", err)
-	}
-
-	out := make([]models.OrgContribution, 0, len(featuredIDs))
-	for _, id := range featuredIDs {
-		d, ok := amounts[id]
-		if !ok {
-			continue // ponytail: ledger aggregates a fixed org set; a config-only org has no amount
+	out := make([]models.OrgContribution, 0, len(featured))
+	for _, f := range featured {
+		amount := totals[f.Domain] + totals[f.LegacyID]
+		if amount <= 0 {
+			continue
 		}
 		entry := models.OrgContribution{
-			OrgID:       id,
-			Name:        d.Name,
-			AvatarURL:   d.AvatarURL,
-			AmountCents: d.AmountInCents,
-		}
-		if org, found := orgs[id]; found { // CF DB is fresher than ledger's baked-in values
-			if org.Name != "" {
-				entry.Name = org.Name
-			}
-			if org.AvatarURL != "" {
-				entry.AvatarURL = org.AvatarURL
-			}
-		}
-		if entry.Name == "" {
-			entry.Name = unknownOrgName
+			OrgID:       f.Domain,
+			Name:        f.Name,
+			AvatarURL:   f.LogoURL,
+			AmountCents: amount,
 		}
 		if entry.AvatarURL == "" {
 			entry.AvatarURL = generatedAvatarURL(entry.OrgID, entry.Name)
@@ -269,7 +253,9 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	seenUsers := map[string]bool{}
 	seenProjects := map[string]bool{}
 	for _, d := range uniqueRaw {
-		if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
+		if d.OrganizationName != "" {
+			// Org as the donor stated it (#365); nothing to look up.
+		} else if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
 			orgIDs = append(orgIDs, d.OrganizationID)
 			seenOrgs[d.OrganizationID] = true
 		} else if d.UserID != "" && !seenUsers[d.UserID] {
@@ -308,7 +294,11 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 			TxnDate:     d.TxnDate,
 			Category:    d.TxnCategory,
 		}
-		if d.OrganizationID != "" {
+		if d.OrganizationName != "" {
+			entry.DonorType = donorTypeOrganization
+			entry.DonorName = d.OrganizationName
+			entry.DonorAvatarURL = generatedAvatarURL(cmp.Or(d.OrganizationDomain, d.OrganizationName), d.OrganizationName)
+		} else if d.OrganizationID != "" {
 			entry.DonorType = donorTypeOrganization
 			if org, ok := orgs[d.OrganizationID]; ok {
 				entry.DonorName = org.Name

@@ -85,7 +85,8 @@ type testLedgerClient struct {
 	platformBalance *clients.LedgerPlatformBalance
 	platformMonthly *clients.LedgerPlatformMonthly
 	recentDonations []clients.LedgerRecentDonation
-	orgDonations    []clients.LedgerOrgDonation
+	orgTotals       map[string]int64
+	gotOrgKeys      []string
 	err             error
 }
 
@@ -107,8 +108,9 @@ func (c *testLedgerClient) GetPlatformMonthly(_ context.Context, _ int) (*client
 func (c *testLedgerClient) GetPlatformRecentDonations(_ context.Context) ([]clients.LedgerRecentDonation, error) {
 	return c.recentDonations, c.err
 }
-func (c *testLedgerClient) GetOrgDonations(_ context.Context) ([]clients.LedgerOrgDonation, error) {
-	return c.orgDonations, c.err
+func (c *testLedgerClient) GetOrgDonationTotals(_ context.Context, keys []string) (map[string]int64, error) {
+	c.gotOrgKeys = keys
+	return c.orgTotals, c.err
 }
 func (c *testLedgerClient) GetUserBalance(_ context.Context, _ string) (*clients.LedgerUserBalance, error) {
 	return &clients.LedgerUserBalance{}, nil
@@ -167,6 +169,33 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 	}
 	if details.TopIndividuals[0].Name != "Alice Smith" {
 		t.Errorf("user name: want Alice Smith, got %s", details.TopIndividuals[0].Name)
+	}
+}
+
+func TestGetPlatformDetails_LedgerOrgNameWins(t *testing.T) {
+	repo := &testStatisticsRepo{
+		orgs: map[string]models.Organization{
+			"org-1": {ID: "org-1", Name: "CF Name", AvatarURL: "https://example.com/cf.png"},
+		},
+	}
+	ledger := &testLedgerClient{
+		platformBalance: &clients.LedgerPlatformBalance{
+			TopOrganizations: []clients.LedgerSponsorRaw{
+				{ID: "acme.com", Name: "Acme Inc.", Total: 300},
+				{ID: "org-1", Total: 200},
+			},
+		},
+	}
+
+	details, err := newStatsSvc(repo, ledger).GetPlatformDetails(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := details.TopOrganizations[0]; got.ID != "acme.com" || got.Name != "Acme Inc." {
+		t.Errorf("domain bucket: want acme.com/Acme Inc., got %+v", got)
+	}
+	if got := details.TopOrganizations[1]; got.Name != "CF Name" || got.AvatarURL != "https://example.com/cf.png" {
+		t.Errorf("legacy UUID bucket: want CF name and logo, got %+v", got)
 	}
 }
 
@@ -350,6 +379,34 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 	}
 	if d.Category != "Development" {
 		t.Errorf("Category: want Development, got %q", d.Category)
+	}
+}
+
+func TestGetRecentDonations_NameOnlyOrgDonor(t *testing.T) {
+	repo := &testStatisticsRepo{orgs: map[string]models.Organization{}, users: map[string]models.User{}}
+	ledger := &testLedgerClient{
+		recentDonations: []clients.LedgerRecentDonation{
+			{TxnID: "txn-1", ProjectID: "proj-1", UserID: "auth0|jdoe", SubmitterName: "Jane Doe", OrganizationName: "Acme Inc.", OrganizationDomain: "acme.com", Amount: 5_000, SourceType: domain.LedgerSourceTypeStripe},
+		},
+	}
+
+	svc := newStatsSvc(repo, ledger)
+	resp, err := svc.GetRecentDonations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("expected 1 donation, got %d", len(resp.Data))
+	}
+	d := resp.Data[0]
+	if d.DonorType != donorTypeOrganization {
+		t.Errorf("DonorType: want %q, got %s", donorTypeOrganization, d.DonorType)
+	}
+	if d.DonorName != "Acme Inc." {
+		t.Errorf("DonorName: want Acme Inc., got %s", d.DonorName)
+	}
+	if want := generatedAvatarURL("acme.com", "Acme Inc."); d.DonorAvatarURL != want {
+		t.Errorf("DonorAvatarURL: want %s, got %s", want, d.DonorAvatarURL)
 	}
 }
 

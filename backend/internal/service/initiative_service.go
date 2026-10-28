@@ -1537,7 +1537,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 			userIDs = append(userIDs, t.LedgerUserID)
 			seenUsers[t.LedgerUserID] = true
 		}
-		if t.LedgerOrgID != "" && !seenOrgs[t.LedgerOrgID] {
+		if t.LedgerOrgName == "" && t.LedgerOrgID != "" && !seenOrgs[t.LedgerOrgID] {
 			orgIDs = append(orgIDs, t.LedgerOrgID)
 			seenOrgs[t.LedgerOrgID] = true
 		}
@@ -1556,7 +1556,11 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 
 	for i := range txns {
 		t := &txns[i]
-		if t.LedgerOrgID != "" {
+		if t.LedgerOrgName != "" {
+			// The org as the donor stated it (#365); no CF row to look up.
+			t.DonorName = t.LedgerOrgName
+			t.DonorLogoURL = generatedAvatarURL(cmp.Or(t.LedgerOrgDomain, t.LedgerOrgName), t.DonorName)
+		} else if t.LedgerOrgID != "" {
 			if org, ok := orgs[t.LedgerOrgID]; ok {
 				t.DonorName = org.Name
 				t.DonorLogoURL = org.AvatarURL

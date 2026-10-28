@@ -132,6 +132,7 @@ func (r *LedgerStatsRepository) GetOrganizationsByIDs(ctx context.Context, ids [
 	span.SetAttributes(attribute.Int("db.id_count", len(ids)))
 
 	result := make(map[string]models.Organization, len(ids))
+	ids = filterValidUUIDs(ids) // Ledger keys newer org buckets by domain, not CF UUID
 	if len(ids) == 0 {
 		return result, nil
 	}
