@@ -274,8 +274,9 @@ def main():
         changed = backfill_ledger(cf_conn, ledger_conn, domains)
         if args.apply and changed:
             # Written before the commit: if the backup can't be saved, nothing is committed.
-            backup = Path(f"ledger_backup_{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json")
-            backup.write_text(json.dumps(changed, indent=2))
+            backup = Path(f"ledger_backup_{datetime.now(UTC):%Y%m%dT%H%M%S%fZ}.json")
+            with backup.open("x") as f:  # "x": never overwrite an existing backup
+                json.dump(changed, f, indent=2)
             print(f"  backup: {backup.resolve()}", flush=True)
         finish(ledger_conn, args.apply)
 
