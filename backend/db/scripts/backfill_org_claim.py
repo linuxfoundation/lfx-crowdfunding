@@ -132,6 +132,9 @@ def backfill_stripe(conn, apply: bool) -> None:
 
 def missing_metadata(current, meta: dict[str, str]) -> dict[str, str]:
     """Returns the keys of meta that are empty or absent in current."""
+    # stripe-python 13+ objects are no longer dicts; to_dict() turns them into one.
+    if hasattr(current, "to_dict"):
+        current = current.to_dict()
     return {k: v for k, v in meta.items() if not (current or {}).get(k)}
 
 
