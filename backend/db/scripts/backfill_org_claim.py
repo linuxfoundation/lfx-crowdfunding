@@ -10,16 +10,17 @@ org name, plus a domain from org_domains.csv where one was hand-curated, onto:
   cf      donations and subscriptions (org_name, org_domain)
   stripe  live org subscriptions: subscription item and subscription metadata
           (org_name, org_domain), so future charges reach Ledger with the org
-  ledger  Ledger transactions (organization_name, organization_domain), so
-          legacy rows join their domain bucket in org totals
 
 Steps run in that order; stripe reads the names written by cf. Every step
 only fills empty values, so re-running is safe.
 
+Ledger transactions are backfilled from ledger-service
+(scripts/backfill-organization-claim), which owns writes to the Ledger DB.
+--export FILE writes the org_id,name,domain CSV that script reads.
+
 Environment variables (CLI flags take precedence):
 
   CF_DB_URL / CF_DB_PASSWORD   CF DB (falls back to the dev tunnel 127.0.0.1:15432)
-  LEDGER_DB_URL, LEDGER_DB_PORT, LEDGER_DB_USER, LEDGER_DB_PASSWORD, LEDGER_DB_NAME
   STRIPE_SECRET_KEY            needed for the stripe step
 
 Usage (dry-run — default, nothing written):
@@ -28,7 +29,9 @@ Usage (dry-run — default, nothing written):
 Usage (apply one step at a time):
     python3 backfill_org_claim.py --apply --only cf
     python3 backfill_org_claim.py --apply --only stripe
-    python3 backfill_org_claim.py --apply --only ledger
+
+Usage (export the claims for the ledger-service backfill; reads only):
+    python3 backfill_org_claim.py --export org_claims.csv
 
 Requires: psycopg2-binary, stripe
 """
@@ -42,10 +45,10 @@ from pathlib import Path
 import psycopg2
 import psycopg2.extras
 import stripe
-from backfill_donation_status import DEFAULT_CF_DB, LEDGER_DB, _connect_cf
+from backfill_donation_status import DEFAULT_CF_DB, _connect_cf
 
 CSV_PATH = Path(__file__).with_name("org_domains.csv")
-STEPS = ("cf", "stripe", "ledger")
+STEPS = ("cf", "stripe")
 LIVE_SUBSCRIPTION_STATUSES = ("active", "past_due")
 
 # Same shape Ledger's util.NormalizeDomain accepts: lowercase labels, no www.
@@ -133,28 +136,20 @@ def missing_metadata(current, meta: dict[str, str]) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# ledger: transactions
+# export: claims for the ledger-service backfill
 # ---------------------------------------------------------------------------
-def backfill_ledger(cf_conn, ledger_conn, domains: dict[str, str]) -> None:
-    with cf_conn.cursor() as cur:
+def export_claims(conn, domains: dict[str, str], path: Path) -> None:
+    with conn.cursor() as cur:
         cur.execute("SELECT id::text, name FROM organizations")
         names = dict(cur.fetchall())
 
     # CSV ids missing from CF (Ledger-only typos) get a domain and keep their Ledger name.
-    rows = [(org_id, names.get(org_id), domains.get(org_id)) for org_id in names.keys() | domains.keys()]
-    with ledger_conn.cursor() as cur:
-        cur.execute("CREATE TEMP TABLE org_claim (org_id TEXT PRIMARY KEY, name TEXT, domain TEXT) ON COMMIT DROP")
-        psycopg2.extras.execute_values(cur, "INSERT INTO org_claim VALUES %s", rows)
-        cur.execute("""
-            UPDATE ledger l
-            SET organization_name   = COALESCE(NULLIF(l.organization_name, ''), c.name),
-                organization_domain = COALESCE(NULLIF(l.organization_domain, ''), c.domain)
-            FROM org_claim c
-            WHERE l.organization_id = c.org_id
-              AND ((NULLIF(l.organization_name, '') IS NULL AND c.name IS NOT NULL)
-                   OR (NULLIF(l.organization_domain, '') IS NULL AND c.domain IS NOT NULL))
-        """)
-        print(f"  ledger: {cur.rowcount:,} rows", flush=True)
+    with path.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(("org_id", "name", "domain"))
+        for org_id in sorted(names.keys() | domains.keys()):
+            w.writerow((org_id, names.get(org_id) or "", domains.get(org_id, "")))
+    print(f"  {len(names.keys() | domains.keys()):,} org claims written to {path.resolve()}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +160,8 @@ def parse_args():
     p.add_argument("--apply", action="store_true", help="Write changes. Without this flag nothing is written.")
     p.add_argument("--only", choices=STEPS, help="Run a single step.")
     p.add_argument("--cf-db-url", help="PostgreSQL DSN for the CF DB (overrides CF_DB_URL and the dev tunnel).")
-    p.add_argument("--ledger-db-url", help="PostgreSQL DSN for the Ledger DB (overrides LEDGER_DB_* env vars).")
+    p.add_argument("--export", type=Path, metavar="FILE",
+                   help="Write the org_id,name,domain CSV for ledger-service's backfill. Runs nothing else.")
     return p.parse_args()
 
 
@@ -190,6 +186,12 @@ def main():
         raise SystemExit("ERROR: set CF_DB_PASSWORD / CF_DB_URL or pass --cf-db-url.")
     cf_conn = _connect_cf(cf_db_url) if cf_db_url else psycopg2.connect(**DEFAULT_CF_DB)
 
+    if args.export:
+        print("\n[export] org claims for ledger-service", flush=True)
+        export_claims(cf_conn, domains, args.export)
+        finish(cf_conn, apply=False)
+        return
+
     if "cf" in steps:
         print("\n[cf] donations and subscriptions", flush=True)
         # On a dry run the writes stay uncommitted, so the stripe step still sees them.
@@ -204,14 +206,6 @@ def main():
         if args.apply and not stripe.api_key:
             raise SystemExit("ERROR: STRIPE_SECRET_KEY is required for --apply on the stripe step.")
         backfill_stripe(cf_conn, args.apply)
-
-    if "ledger" in steps:
-        print("\n[ledger] transactions", flush=True)
-        if not args.ledger_db_url and not LEDGER_DB["host"]:
-            raise SystemExit("ERROR: set LEDGER_DB_URL or pass --ledger-db-url.")
-        ledger_conn = psycopg2.connect(args.ledger_db_url) if args.ledger_db_url else psycopg2.connect(**LEDGER_DB)
-        backfill_ledger(cf_conn, ledger_conn, domains)
-        finish(ledger_conn, args.apply)
 
     finish(cf_conn, args.apply)
     if not args.apply:
