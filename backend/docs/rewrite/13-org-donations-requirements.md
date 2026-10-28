@@ -400,6 +400,11 @@ admins (§4, option B). This applies to every option.
    October 2026):** each row shows the initiative, date, donor name, donor email and amount.
    Anonymous donations still show, as "Anonymous" with no donor name or email, so the
    company's total stays complete (#414).
+7. **Donor notice and privacy review. Open, for #402.** Anyone can credit any org without
+   proof (item 1), and lens rows include the donor's name and email (item 6), so a donor's
+   details reach whichever company they name. Before the lens page ships, checkout tells
+   donors that their name and email will be visible to the org they credit unless they donate
+   anonymously, and privacy/legal confirm the disclosure.
 
 ### 5.2 Architecture
 
@@ -448,14 +453,15 @@ admins (§4, option B). This applies to every option.
    `writer`. With `writer`, most people at the company wouldn't see their company's donations.
    Because rows include donor emails (§5.1 item 6), every lens viewer at the company sees them,
    which follows from the two PM decisions. Anonymous rows never carry the donor's name or
-   email. The response is per caller, so like the initiatives list it sets
+   email. The checkout notice and privacy/legal sign-off (§5.1 item 7) must land before the
+   page ships. The response is per caller, so like the initiatives list it sets
    `Cache-Control: private, no-store` and `Vary: Authorization`
    (`backend/internal/handler/initiative_handler.go:154-155`). Self Serve builds the page
    (cross-team).
 
 ### 5.3 Sign-off
 
-- [x] Requirements agreed (§5.1): items 1–4 decided; items 5 and 6 deferred to the separate
+- [x] Requirements agreed (§5.1): items 1–4 decided; items 5–7 deferred to the separate
   `b2b_org` epic, #402
 - [x] Option D confirmed (§5.2)
 - [x] PM sign-off (October 2026)
