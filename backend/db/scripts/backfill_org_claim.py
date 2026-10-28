@@ -107,15 +107,29 @@ def backfill_stripe(conn, apply: bool) -> None:
         meta = {"org_name": r["org_name"][:STRIPE_METADATA_VALUE_MAX]}
         if r["org_domain"]:
             meta["org_domain"] = r["org_domain"]
-        print(f"    {r['stripe_subscription_id']}  {meta}", flush=True)
+        if not stripe.api_key:
+            # Dry run without a key: show the CF claim; what Stripe already holds is unknown.
+            print(f"    {r['stripe_subscription_id']}  {meta}", flush=True)
+            continue
+        sub = stripe.Subscription.retrieve(r["stripe_subscription_id"])
+        items = sub["items"]["data"]
+        item = next((i for i in items if i["id"] == r["stripe_subscription_item_id"]), items[0])
+        # Fill only empty keys, so a claim already on Stripe is never replaced.
+        item_fill = missing_metadata(item["metadata"], meta)
+        sub_fill = missing_metadata(sub["metadata"], meta)
+        print(f"    {sub['id']}  item {item_fill or '-'}  subscription {sub_fill or '-'}", flush=True)
         if not apply:
             continue
-        item_id = r["stripe_subscription_item_id"]
-        if not item_id:
-            item_id = stripe.Subscription.retrieve(r["stripe_subscription_id"])["items"]["data"][0]["id"]
         # The Ledger charge.succeeded hook reads the invoice line, which carries the item metadata.
-        stripe.SubscriptionItem.modify(item_id, metadata=meta)
-        stripe.Subscription.modify(r["stripe_subscription_id"], metadata=meta)
+        if item_fill:
+            stripe.SubscriptionItem.modify(item["id"], metadata=item_fill)
+        if sub_fill:
+            stripe.Subscription.modify(sub["id"], metadata=sub_fill)
+
+
+def missing_metadata(current, meta: dict[str, str]) -> dict[str, str]:
+    """Returns the keys of meta that are empty or absent in current."""
+    return {k: v for k, v in meta.items() if not (current or {}).get(k)}
 
 
 # ---------------------------------------------------------------------------
@@ -185,10 +199,10 @@ def main():
 
     if "stripe" in steps:
         print("\n[stripe] live org subscriptions", flush=True)
-        if args.apply:
-            stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
-            if not stripe.api_key:
-                raise SystemExit("ERROR: STRIPE_SECRET_KEY is required for --apply on the stripe step.")
+        # Optional on a dry run: with a key it reports what Stripe is actually missing.
+        stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+        if args.apply and not stripe.api_key:
+            raise SystemExit("ERROR: STRIPE_SECRET_KEY is required for --apply on the stripe step.")
         backfill_stripe(cf_conn, args.apply)
 
     if "ledger" in steps:
