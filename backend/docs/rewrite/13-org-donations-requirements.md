@@ -423,17 +423,22 @@ admins (§4, option B). This applies to every option.
    (member-service #73). A website lookup is also on member-service main:
    `lfx.member.b2b_org_lookup_by_website` (member-service #123, October 2026) takes
    `{name, website}` and returns the SFID. It matches primary domain, then domain alias, then
-   website, then name, and refuses ambiguous domain matches. Still to confirm: whether it's
-   deployed, CF access to the subject, and whether a name-only match is acceptable for
-   donations. Eric
+   website, then name, and refuses ambiguous domain matches. Eric
    argued against a real-time domain *fallback* and against domain alignment for non-`b2b_org`
-   records (LFXV2-2400 Q3B, Q4), not against this write-time lookup. CF would need access to
-   the subject. Eric confirmed (October 2026) that the route is an engineering decision for CF,
+   records (LFXV2-2400 Q3B, Q4), not against this write-time lookup. Eric confirmed (October 2026) that the route is an engineering decision for CF,
    not an architecture one, and that the Q1 field list comes from product need: name, domain,
    website and logo, kept minimal. **Decided (October 2026): match by
    domain when the donation is saved**, sending an empty name so only primary domain, domain
    alias or Account website can match (no name-only matches). It's deployed in member-service
    v0.10.26. Q1+Q2 is an optional follow-up. Tracked in #402 (#411–#415).
+   **Confirmed (Org Lens team, Luis Mori Guerra, October 2026):** no member-service code is
+   needed. CF sends `{name: "", website: <domain>}` after the donation is saved, with a timeout
+   of about 10 s, and never blocks checkout. `"b2b org not found"`, `not_found` and `ambiguous`
+   mean no match. Any other error is temporary: the SFID stays empty and the backfill (#412)
+   retries it. Matches cover member companies only. Member-service #126 (v0.10.27) makes
+   every Company Account a `b2b_org`, which widens that set once it's deployed, so the
+   expected set is to be confirmed in #411. CF reaches the subject over the platform NATS
+   connection it already holds (`FGA_NATS_URL`). The dev check is part of #411.
 4. **Adopting older records. Decided (October 2026): deferred** with item 3. Whether and when CF subscribes to
    org created and updated events to attach `b2b_org` references by domain (§4.1). Not needed
    for the first version.
@@ -469,7 +474,11 @@ admins (§4, option B). This applies to every option.
   - Eric Searcy: treat donation orgs like committee-member orgs (§4.1). Later signed off on
     option D, with the org claim owned by the donation and the FK-connected CF org deprecated.
   - Luis Mori Guerra: Self Serve's committee picker still writes to CDP; `b2b_org` search isn't
-    open to donors yet; name and domain alone reopen #349.
+    open to donors yet; name and domain alone reopen #349. Later, on #402: the domain lookup
+    route and reply handling (§5.2 item 3), and `auditor` for the lens donations API. The Org Lens
+    team reviews #415. Member-company search in the donate picker
+    (linuxfoundation/lfx-self-serve-ops#1110) is a separate proposal and not a dependency. Known
+    risks are tracked in linuxfoundation/lfx-self-serve-ops#1109.
 - lfx-v2-committee-service:
   - `cmd/committee-api/design/type.go` (`OrganizationInfoAttributes`)
   - `gen/http/openapi3.yaml` (add committee member payload, `organization`)
