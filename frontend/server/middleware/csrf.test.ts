@@ -42,7 +42,7 @@ describe('csrf middleware', () => {
   it('allows same-origin JSON POST (Origin scheme may differ behind the ingress)', () => {
     expect(
       statusOf(
-        run('POST', '/api/me/organizations', {
+        run('POST', '/api/fundraise', {
           origin: 'https://crowdfunding.lfx.dev',
           ...JSON_TYPE,
         }),
@@ -57,7 +57,7 @@ describe('csrf middleware', () => {
   });
 
   it('rejects the opaque null origin', () => {
-    expect(statusOf(run('DELETE', '/api/me/organizations/1', { origin: 'null' }))).toBe(403);
+    expect(statusOf(run('DELETE', '/api/payment/method', { origin: 'null' }))).toBe(403);
   });
 
   it('falls back to Sec-Fetch-Site when Origin is absent', () => {
