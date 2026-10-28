@@ -9,10 +9,3 @@ export interface OrgClaim {
   name: string;
   domain: string;
 }
-
-export interface Organization {
-  id: string;
-  name: string;
-  avatarUrl: string;
-  status: string;
-}

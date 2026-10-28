@@ -54,7 +54,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	subscriptionRepo := db.NewSubscriptionRepository(pool)
 	statisticsRepo := db.NewStatisticsRepository(pool)
 	userRepo := db.NewUserRepository(pool)
-	orgRepo := db.NewOrganizationRepository(pool)
 	announcementRepo := db.NewAnnouncementRepository(pool)
 
 	// Clients
@@ -145,7 +144,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
-	orgSvc := service.NewOrganizationService(orgRepo, userRepo)
 	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)
 	if roleResolver != nil {
 		announcementSvc.SetEntityRoleResolver(roleResolver)
@@ -179,7 +177,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	webhookH := handler.NewWebhookHandler(stripeClient, ledgerClient, donationRepo, subscriptionRepo, emailSvc, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks)
 	uploadH := handler.NewUploadHandler(s3Client)
 	expenseH := handler.NewExpenseHandler(reimbursementClient, userRepo)
-	orgH := handler.NewOrganizationHandler(orgSvc)
 	announcementH := handler.NewAnnouncementHandler(announcementSvc)
 
 	// UserInfo client — fetches full profile from Auth0 on login sync.
@@ -295,7 +292,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			// Profile sync — calls Auth0 UserInfo, writes to DB.
 			r.Patch("/", userH.SyncProfile)
 
-			// Caller's own initiatives, donations, subscriptions, and organizations.
+			// Caller's own initiatives, donations, and subscriptions.
 			r.Get("/initiatives", initiativeH.ListForUser)
 			r.Get("/donations/csv", donationH.ExportOrgCSV)
 			r.Get("/donations/stats", initiativeH.GetMyDonationStats)
@@ -303,10 +300,6 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Get("/transactions", initiativeH.GetAllMyTransactions)
 			r.Get("/subscriptions", subscriptionH.ListForUser)
 			r.Get("/subscriptions/{id}", subscriptionH.GetForUser)
-			r.Get("/organizations", orgH.List)
-			r.Post("/organizations", orgH.Create)
-			r.Patch("/organizations/{id}", orgH.Update)
-			r.Delete("/organizations/{id}", orgH.Delete)
 
 			// Payment account (saved card for 3DS flows).
 			r.Post("/setup-intent", paymentH.CreateSetupIntent)
