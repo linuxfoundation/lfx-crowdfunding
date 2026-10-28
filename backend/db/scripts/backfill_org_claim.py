@@ -115,6 +115,11 @@ def backfill_stripe(conn, apply: bool) -> None:
             print(f"    {r['stripe_subscription_id']}  {meta}", flush=True)
             continue
         sub = stripe.Subscription.retrieve(r["stripe_subscription_id"])
+        # CF's status can be stale; a subscription Stripe has ended never charges again,
+        # and Stripe rejects item updates on it.
+        if sub["status"] not in LIVE_SUBSCRIPTION_STATUSES:
+            print(f"    {sub['id']}  skipped: {sub['status']} in Stripe", flush=True)
+            continue
         items = sub["items"]["data"]
         item = next((i for i in items if i["id"] == r["stripe_subscription_item_id"]), items[0])
         # Fill only empty keys, so a claim already on Stripe is never replaced.
@@ -132,6 +137,9 @@ def backfill_stripe(conn, apply: bool) -> None:
 
 def missing_metadata(current, meta: dict[str, str]) -> dict[str, str]:
     """Returns the keys of meta that are empty or absent in current."""
+    # stripe-python 13+ objects are no longer dicts; to_dict() turns them into one.
+    if hasattr(current, "to_dict"):
+        current = current.to_dict()
     return {k: v for k, v in meta.items() if not (current or {}).get(k)}
 
 
