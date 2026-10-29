@@ -9,9 +9,14 @@ SPDX-License-Identifier: MIT
     :match-width="true"
     class="!w-full"
   >
-    <template #trigger="{ selectedOption }">
+    <template #trigger="{ selectedOption, listboxId }">
       <div
         class="c-select"
+        tabindex="0"
+        role="combobox"
+        aria-haspopup="listbox"
+        :aria-expanded="isOpen"
+        :aria-controls="listboxId"
         :class="{ '!rounded-full !pl-4': props.pill }"
       >
         <div class="flex items-center">

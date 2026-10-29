@@ -8,12 +8,15 @@ SPDX-License-Identifier: MIT
     :placement="props.placement"
     :width="props.width"
     :match-width="props.matchWidth"
+    panel-role="listbox"
+    :panel-id="listboxId"
     v-bind="$attrs"
   >
     <template #trigger>
       <slot
         name="trigger"
         :selected-option="selectedOption"
+        :listbox-id="listboxId"
       />
     </template>
 
@@ -23,7 +26,7 @@ SPDX-License-Identifier: MIT
 
 <script setup lang="ts">
 import type { Placement } from '@popperjs/core';
-import { computed, type VNode, provide } from 'vue';
+import { computed, type VNode, provide, useId } from 'vue';
 import { useSlots } from 'vue';
 import LfxDropdown from '~/components/uikit/dropdown/dropdown.vue';
 
@@ -49,6 +52,7 @@ const emit = defineEmits<{
 }>();
 
 const slots = useSlots();
+const listboxId = useId();
 
 const value = computed({
   get: () => props.modelValue,

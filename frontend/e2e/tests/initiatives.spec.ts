@@ -25,6 +25,29 @@ test.describe('Initiatives list', () => {
     const hasEmpty = await page.getByText('No initiatives found.').count();
     expect(hasCards + hasEmpty).toBeGreaterThan(0);
   });
+
+  test('sort dropdown is keyboard operable', async ({ page }) => {
+    await page.waitForLoadState('networkidle');
+    const trigger = page.getByRole('button', { name: 'Most supporters' });
+    const listbox = page.getByRole('listbox');
+
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await expect(listbox).toBeVisible();
+    await expect(page.getByRole('option', { name: 'Most supporters' })).toBeFocused();
+
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(listbox).toBeHidden();
+    const sorted = page.getByRole('button', { name: 'Most funded' });
+    await expect(sorted).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(listbox).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(listbox).toBeHidden();
+    await expect(sorted).toBeFocused();
+  });
 });
 
 test.describe('Initiative detail', () => {
