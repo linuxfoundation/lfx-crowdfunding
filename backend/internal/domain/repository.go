@@ -64,7 +64,10 @@ type DonationRepository interface {
 	ListByUser(ctx context.Context, userID string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
 	Create(ctx context.Context, donation *models.Donation) (*models.Donation, error)
 	// UpdateByPaymentIntentID is called by the Stripe webhook to reconcile async 3DS results.
-	UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error
+	// It returns the donation's b2b_org SFID, or "" when none has been matched yet.
+	UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) (string, error)
+	// SetB2BOrgSFID stores the matched b2b_org SFID; an SFID already stored is kept.
+	SetB2BOrgSFID(ctx context.Context, id, sfid string) error
 	// ListOrgDonations returns all succeeded donations made by organisations,
 	// enriched with org name, initiative name, and donor display name.
 	// Used exclusively for the internal CSV export endpoint.
@@ -88,6 +91,8 @@ type SubscriptionRepository interface {
 	Update(ctx context.Context, sub *models.Subscription) (*models.Subscription, error)
 	// UpdateByStripeSubscriptionID is called by the Stripe webhook to advance subscription status.
 	UpdateByStripeSubscriptionID(ctx context.Context, stripeSubID, status string) error
+	// SetB2BOrgSFID stores the matched b2b_org SFID; an SFID already stored is kept.
+	SetB2BOrgSFID(ctx context.Context, id, sfid string) error
 }
 
 // UserRepository defines persistence operations for users.

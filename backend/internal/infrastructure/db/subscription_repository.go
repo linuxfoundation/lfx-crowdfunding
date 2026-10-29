@@ -386,6 +386,24 @@ func (r *SubscriptionRepository) UpdateByStripeSubscriptionID(ctx context.Contex
 	return nil
 }
 
+// SetB2BOrgSFID stores the b2b_org SFID matched from the subscription's org domain.
+// An SFID already stored is kept, so a late or repeated lookup can't overwrite it.
+func (r *SubscriptionRepository) SetB2BOrgSFID(ctx context.Context, id, sfid string) error {
+	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.SetB2BOrgSFID")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.subscription_id", id))
+
+	const q = `
+		UPDATE subscriptions SET b2b_org_sfid = $2, updated_on = NOW()
+		WHERE id = $1 AND b2b_org_sfid IS NULL`
+
+	if _, err := r.pool.Exec(ctx, q, id, sfid); err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("set subscription b2b_org sfid: %w", err)
+	}
+	return nil
+}
+
 // Update saves changes to a subscription (status, amount, Stripe IDs).
 func (r *SubscriptionRepository) Update(ctx context.Context, s *models.Subscription) (*models.Subscription, error) {
 	ctx, span := subscriptionTracer.Start(ctx, "db.subscriptions.Update")

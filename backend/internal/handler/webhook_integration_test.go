@@ -50,6 +50,9 @@ func (c *intStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ s
 func (c *intStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }
+func (c *intStripeClient) UpdateSubscriptionMetadata(_ context.Context, _, _ string, _ map[string]string) error {
+	return nil
+}
 func (c *intStripeClient) ConstructWebhookEvent(payload []byte, sig, secret string) (stripe.Event, error) {
 	if c.onConstruct != nil {
 		return c.onConstruct(payload, sig, secret)

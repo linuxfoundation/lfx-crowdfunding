@@ -142,6 +142,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	initiativeSvc.SetSubscriptionRepo(subscriptionRepo)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
+	if fgaConn != nil {
+		memberClient := clients.NewMemberClient(fgaConn)
+		donationSvc.SetB2BOrgResolver(memberClient)
+		subscriptionSvc.SetB2BOrgResolver(memberClient)
+	}
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)

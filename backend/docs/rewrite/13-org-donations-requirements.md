@@ -439,7 +439,9 @@ admins (§4, option B). This applies to every option.
    website and logo, kept minimal. **Decided (October 2026): match by
    domain when the donation is saved**, sending an empty name so only primary domain, domain
    alias or Account website can match (no name-only matches). It's deployed in member-service
-   v0.10.26. Q1+Q2 is an optional follow-up. Tracked in #402 (#411–#415).
+   v0.10.26. **Decided (October 2026): matches cover every Company Account**, not just member
+   companies (member-service #126, v0.10.27, in staging and prod). Q1+Q2 is an optional
+   follow-up. Tracked in #402 (#411–#415).
 4. **Adopting older records. Decided (October 2026): deferred** with item 3. Whether and when CF subscribes to
    org created and updated events to attach `b2b_org` references by domain (§4.1). Not needed
    for the first version.
