@@ -49,6 +49,9 @@ func (c *wbStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ st
 func (c *wbStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }
+func (c *wbStripeClient) UpdateSubscriptionMetadata(_ context.Context, _, _ string, _ map[string]string) error {
+	return nil
+}
 func (c *wbStripeClient) ConstructWebhookEvent(payload []byte, sig, secret string) (stripe.Event, error) {
 	if c.onConstruct != nil {
 		return c.onConstruct(payload, sig, secret)
@@ -153,6 +156,8 @@ func (e *wbEmailService) InitiativeURL(slug string) string {
 // wbDonationRepo implements domain.DonationRepository for webhook tests.
 type wbDonationRepo struct {
 	onUpdateByPaymentIntentID func(ctx context.Context, piID, status, chargeID string) error
+	// b2bOrgSFID is what UpdateByPaymentIntentID returns as the donation's matched SFID.
+	b2bOrgSFID string
 }
 
 func (r *wbDonationRepo) GetByID(_ context.Context, _ string) (*models.Donation, error) {
@@ -167,12 +172,15 @@ func (r *wbDonationRepo) ListByUser(_ context.Context, _ string, _ models.Donati
 func (r *wbDonationRepo) Create(_ context.Context, d *models.Donation) (*models.Donation, error) {
 	return d, nil
 }
-func (r *wbDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error {
+func (r *wbDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) (string, error) {
 	if r.onUpdateByPaymentIntentID != nil {
-		return r.onUpdateByPaymentIntentID(ctx, piID, status, chargeID)
+		if err := r.onUpdateByPaymentIntentID(ctx, piID, status, chargeID); err != nil {
+			return "", err
+		}
 	}
-	return nil
+	return r.b2bOrgSFID, nil
 }
+func (r *wbDonationRepo) SetB2BOrgSFID(_ context.Context, _, _ string) error { return nil }
 
 func (r *wbDonationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
 	return nil, nil
@@ -210,6 +218,7 @@ func (r *wbSubscriptionRepo) UpdateByStripeSubscriptionID(ctx context.Context, s
 	}
 	return nil
 }
+func (r *wbSubscriptionRepo) SetB2BOrgSFID(_ context.Context, _, _ string) error { return nil }
 
 // discardLogger creates a slog.Logger that discards all output.
 func discardLogger() *slog.Logger {
@@ -766,7 +775,7 @@ func TestWebhookHandler_PaymentIntentSucceeded_V2_PostsLedgerAndSendsEmails(t *t
 		onConstruct: func(_ []byte, _ string, _ string) (stripe.Event, error) { return event, nil },
 	}
 
-	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{}, &wbSubscriptionRepo{}, lc, es), "t=1,v1=sig", `{}`)
+	rr := postWebhook(t, newTestWebhookHandlerFull(sc, &wbDonationRepo{b2bOrgSFID: "0012M00002qnukOQAQ"}, &wbSubscriptionRepo{}, lc, es), "t=1,v1=sig", `{}`)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rr.Code)
@@ -785,6 +794,9 @@ func TestWebhookHandler_PaymentIntentSucceeded_V2_PostsLedgerAndSendsEmails(t *t
 	}
 	if gotTxn.OrganizationName != "Acme Corp" || gotTxn.OrganizationDomain != "acme.com" || gotTxn.OrganizationID != "" {
 		t.Errorf("Ledger org = %q / %q / id %q, want Acme Corp / acme.com / empty", gotTxn.OrganizationName, gotTxn.OrganizationDomain, gotTxn.OrganizationID)
+	}
+	if gotTxn.OrganizationSFID != "0012M00002qnukOQAQ" {
+		t.Errorf("Ledger OrganizationSFID = %q, want the donation's stored SFID", gotTxn.OrganizationSFID)
 	}
 	if gotConfirmTo != "jane@example.com" {
 		t.Errorf("confirmation email to = %q, want jane@example.com", gotConfirmTo)

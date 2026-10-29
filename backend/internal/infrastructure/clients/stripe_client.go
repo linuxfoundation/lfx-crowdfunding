@@ -79,6 +79,10 @@ type StripeClient interface {
 	// Used by the invoice.finalized webhook to stamp version=v2 onto subscription
 	// invoice PIs so the Ledger service skips the duplicate charge.succeeded post.
 	UpdatePaymentIntentMetadata(ctx context.Context, piID string, metadata map[string]string) error
+	// UpdateSubscriptionMetadata merges the given key/value pairs into a subscription's
+	// metadata and its item's metadata, the two places CreateSubscription stamps the
+	// org claim. Renewal invoices copy them, so later charges carry the new keys.
+	UpdateSubscriptionMetadata(ctx context.Context, subscriptionID, itemID string, metadata map[string]string) error
 
 	// Webhooks
 	// ConstructWebhookEvent validates the Stripe-Signature header and parses the event.
@@ -602,6 +606,27 @@ func (c *stripeClientImpl) UpdatePaymentIntentMetadata(ctx context.Context, piID
 	if _, err := c.api.V1PaymentIntents.Update(ctx, piID, params); err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("stripe update payment intent metadata: %w", err)
+	}
+	return nil
+}
+
+// UpdateSubscriptionMetadata merges key/value pairs into a subscription's and its
+// item's metadata. Keys not in the map are preserved by Stripe's metadata merge.
+func (c *stripeClientImpl) UpdateSubscriptionMetadata(ctx context.Context, subscriptionID, itemID string, metadata map[string]string) error {
+	_, span := stripeTracer.Start(ctx, "stripe.UpdateSubscriptionMetadata")
+	defer span.End()
+	span.SetAttributes(attribute.String("stripe.subscription_id", subscriptionID))
+
+	if _, err := c.api.V1Subscriptions.Update(ctx, subscriptionID, &stripe.SubscriptionUpdateParams{Metadata: metadata}); err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("stripe update subscription metadata: %w", err)
+	}
+	if itemID == "" {
+		return nil
+	}
+	if _, err := c.api.V1SubscriptionItems.Update(ctx, itemID, &stripe.SubscriptionItemUpdateParams{Metadata: metadata}); err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("stripe update subscription item metadata: %w", err)
 	}
 	return nil
 }

@@ -172,9 +172,10 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 
 // UpdateByPaymentIntentID is called by the Stripe webhook to reconcile the
 // result of an async 3DS challenge. chargeID may be empty on failure events.
+// It returns the donation's b2b_org SFID ("" when none is matched yet).
 // Returns ErrAlreadyProcessed if the donation is already in the target status
 // (enabling idempotent webhook retries), or ErrDonationNotFound if no row exists.
-func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error {
+func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) (string, error) {
 	ctx, span := donationTracer.Start(ctx, "db.donations.UpdateByPaymentIntentID")
 	defer span.End()
 	span.SetAttributes(
@@ -188,26 +189,46 @@ func (r *DonationRepository) UpdateByPaymentIntentID(ctx context.Context, piID, 
 			stripe_charge_id = COALESCE(NULLIF($3, ''), stripe_charge_id),
 			updated_on      = NOW()
 		WHERE stripe_payment_intent_id = $1
-		  AND status IS DISTINCT FROM $2`
+		  AND status IS DISTINCT FROM $2
+		RETURNING b2b_org_sfid`
 
-	tag, err := r.pool.Exec(ctx, q, piID, status, chargeID)
-	if err != nil {
-		span.RecordError(err)
-		return fmt.Errorf("update donation by payment intent: %w", err)
+	var sfid *string
+	err := r.pool.QueryRow(ctx, q, piID, status, chargeID).Scan(&sfid)
+	if err == nil {
+		return derefString(sfid), nil
 	}
-	if tag.RowsAffected() == 0 {
-		// Distinguish "row exists but already in target state" from "row missing".
-		var exists bool
-		if err := r.pool.QueryRow(ctx,
-			`SELECT EXISTS(SELECT 1 FROM donations WHERE stripe_payment_intent_id = $1)`, piID,
-		).Scan(&exists); err != nil {
-			span.RecordError(err)
-			return fmt.Errorf("check donation existence: %w", err)
-		}
-		if !exists {
-			return domain.ErrDonationNotFound
-		}
-		return domain.ErrAlreadyProcessed
+	if !errors.Is(err, pgx.ErrNoRows) {
+		span.RecordError(err)
+		return "", fmt.Errorf("update donation by payment intent: %w", err)
+	}
+	// Distinguish "row exists but already in target state" from "row missing".
+	var exists bool
+	if err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM donations WHERE stripe_payment_intent_id = $1)`, piID,
+	).Scan(&exists); err != nil {
+		span.RecordError(err)
+		return "", fmt.Errorf("check donation existence: %w", err)
+	}
+	if !exists {
+		return "", domain.ErrDonationNotFound
+	}
+	return "", domain.ErrAlreadyProcessed
+}
+
+// SetB2BOrgSFID stores the b2b_org SFID matched from the donation's org domain.
+// An SFID already stored is kept, so a late or repeated lookup can't overwrite it.
+func (r *DonationRepository) SetB2BOrgSFID(ctx context.Context, id, sfid string) error {
+	ctx, span := donationTracer.Start(ctx, "db.donations.SetB2BOrgSFID")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.donation_id", id))
+
+	const q = `
+		UPDATE donations SET b2b_org_sfid = $2, updated_on = NOW()
+		WHERE id = $1 AND b2b_org_sfid IS NULL`
+
+	if _, err := r.pool.Exec(ctx, q, id, sfid); err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("set donation b2b_org sfid: %w", err)
 	}
 	return nil
 }

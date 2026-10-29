@@ -29,6 +29,7 @@ type SubscriptionService struct {
 	initiativeRepo domain.InitiativeRepository
 	userRepo       domain.UserRepository
 	stripe         clients.StripeClient
+	b2bOrgResolver B2BOrgResolver
 }
 
 // NewSubscriptionService returns a SubscriptionService.
@@ -39,6 +40,12 @@ func NewSubscriptionService(
 	stripe clients.StripeClient,
 ) *SubscriptionService {
 	return &SubscriptionService{repo: repo, initiativeRepo: initiativeRepo, userRepo: userRepo, stripe: stripe}
+}
+
+// SetB2BOrgResolver wires the b2b_org lookup run after an org subscription is saved.
+// A setter so tests and NATS-less environments can leave it unset.
+func (s *SubscriptionService) SetB2BOrgResolver(r B2BOrgResolver) {
+	s.b2bOrgResolver = r
 }
 
 // ListByInitiative returns paginated subscriptions for an initiative.
@@ -295,6 +302,15 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		span.RecordError(err)
 		return nil, fmt.Errorf("record subscription: %w", err)
 	}
+	// Stripe first: ledger-service posts renewal charges from Stripe metadata, and a
+	// row left without an SFID is what #412 retries, so a failed patch isn't lost.
+	subID, itemID := created.StripeSubscriptionID, created.StripeSubscriptionItemID
+	resolveB2BOrg(ctx, s.b2bOrgResolver, "subscription", created.ID, created.OrgDomain, func(ctx context.Context, sfid string) error {
+		if err := s.stripe.UpdateSubscriptionMetadata(ctx, subID, itemID, map[string]string{"b2b_org_sfid": sfid}); err != nil {
+			return err
+		}
+		return s.repo.SetB2BOrgSFID(ctx, created.ID, sfid)
+	})
 
 	// Surface client_secret when 3DS is needed on the first invoice — transient, not stored.
 	created.ClientSecret = result.ClientSecret

@@ -29,6 +29,7 @@ type DonationService struct {
 	initiativeRepo domain.InitiativeRepository
 	userRepo       domain.UserRepository
 	stripe         clients.StripeClient
+	b2bOrgResolver B2BOrgResolver
 }
 
 // NewDonationService returns a DonationService.
@@ -39,6 +40,12 @@ func NewDonationService(
 	stripe clients.StripeClient,
 ) *DonationService {
 	return &DonationService{repo: repo, initiativeRepo: initiativeRepo, userRepo: userRepo, stripe: stripe}
+}
+
+// SetB2BOrgResolver wires the b2b_org lookup run after an org donation is saved.
+// A setter so tests and NATS-less environments can leave it unset.
+func (s *DonationService) SetB2BOrgResolver(r B2BOrgResolver) {
+	s.b2bOrgResolver = r
 }
 
 // ListByInitiative returns a paginated public summary of donations for an
@@ -349,6 +356,9 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		span.RecordError(err)
 		return nil, fmt.Errorf("record donation: %w", err)
 	}
+	resolveB2BOrg(ctx, s.b2bOrgResolver, "donation", created.ID, created.OrgDomain, func(ctx context.Context, sfid string) error {
+		return s.repo.SetB2BOrgSFID(ctx, created.ID, sfid)
+	})
 
 	// Overlay the actual Stripe PaymentIntent status on the response.
 	// The DB row is always stored as "pending" (see above), but the caller

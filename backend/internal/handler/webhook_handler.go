@@ -156,7 +156,8 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 	if pi.LatestCharge != nil {
 		chargeID = pi.LatestCharge.ID
 	}
-	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusSucceeded, chargeID); err != nil {
+	b2bOrgSFID, err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusSucceeded, chargeID)
+	if err != nil {
 		if errors.Is(err, domain.ErrAlreadyProcessed) {
 			h.logger.Debug("payment_intent.succeeded: already processed, skipping", "pi_id", pi.ID)
 			return nil
@@ -215,14 +216,16 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		OrganizationID:     pi.Metadata["org_id"],
 		OrganizationName:   pi.Metadata["org_name"],
 		OrganizationDomain: pi.Metadata["org_domain"],
-		AccountEmail:       donorEmail,
-		SourceType:         domain.LedgerSourceTypeStripe,
-		SourceTxnID:        sourceTxnID,
-		SourceAccountID:    customerID,
-		TxnType:            ledgerTxnType,
-		TxnCategory:        pi.Metadata["category"],
-		Amount:             amount,
-		TxnDate:            pi.Created,
+		// Empty when the post-save b2b_org lookup hasn't matched yet; #412 fills it in later.
+		OrganizationSFID: b2bOrgSFID,
+		AccountEmail:     donorEmail,
+		SourceType:       domain.LedgerSourceTypeStripe,
+		SourceTxnID:      sourceTxnID,
+		SourceAccountID:  customerID,
+		TxnType:          ledgerTxnType,
+		TxnCategory:      pi.Metadata["category"],
+		Amount:           amount,
+		TxnDate:          pi.Created,
 	}
 	// Ledger post is best-effort: the DB is already marked succeeded, so returning
 	// an error would cause Stripe to retry — but the retry hits ErrAlreadyProcessed
@@ -283,7 +286,7 @@ func (h *WebhookHandler) handlePaymentIntentFailed(r *http.Request, event stripe
 		h.logger.Error("payment_intent.payment_failed: unmarshal failed", "event_id", event.ID, "error", err)
 		return fmt.Errorf("payment_intent.payment_failed: unmarshal: %w", err)
 	}
-	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusFailed, ""); err != nil {
+	if _, err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusFailed, ""); err != nil {
 		if errors.Is(err, domain.ErrAlreadyProcessed) {
 			h.logger.Debug("payment_intent.payment_failed: already processed, skipping", "pi_id", pi.ID)
 			return nil
