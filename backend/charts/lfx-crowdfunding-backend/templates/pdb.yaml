@@ -10,9 +10,9 @@
   {{- fail "podDisruptionBudget: either minAvailable or maxUnavailable must be set" }}
 {{- end }}
 ---
-# Keeps at least one pod running through voluntary disruptions (node drains,
-# EKS consolidation, cluster upgrades). The Deployment always runs 2 or more
-# replicas, so minAvailable: 1 never blocks a drain.
+# Limits voluntary disruptions (node drains, EKS consolidation, cluster
+# upgrades) to one pod at a time. maxUnavailable: 1 never blocks a drain,
+# whatever the replica count.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
