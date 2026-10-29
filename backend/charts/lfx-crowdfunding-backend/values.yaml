@@ -262,6 +262,29 @@ fgaReconcileCronJob:
   failedJobsHistoryLimit: 1
   concurrencyPolicy: Forbid
 
+# ── CronJob: b2b-org-backfill ─────────────────────────────────────────────────
+# Attaches b2b_org SFIDs to org donations and subscriptions that have none
+# (lfx-crowdfunding#412), looking up each unmatched domain once on member-service
+# over FGA_NATS_URL. Only empty SFIDs are filled, so daily re-runs are safe and
+# retry failed lookups. Ledger rows are filled separately (see cmd/b2b-org-backfill).
+b2bOrgBackfillCronJob:
+  enabled: false
+  schedule: "0 8 * * *"    # daily at 08:00 UTC
+  image:
+    # Defaults to same repository and tag as the main API image.
+    repository: ""
+    tag: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+
 # ── CronJob: ledger-stats-sync ────────────────────────────────────────────────
 # Runs hourly to sync financial data from the ledger service into initiative_ledger_stats.
 # ── DB migration Job (pre-install/pre-upgrade Helm hook) ─────────────────────
