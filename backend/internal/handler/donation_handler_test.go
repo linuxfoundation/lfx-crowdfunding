@@ -34,6 +34,8 @@ type donationRepo struct {
 	createErr           error
 	lastCreated         *models.Donation
 	updateByPIIDErr     error
+	listByB2BOrg        []models.OrgLensDonation
+	listByB2BOrgSFID    string
 }
 
 func (r *donationRepo) GetByID(_ context.Context, _ string) (*models.Donation, error) {
@@ -67,6 +69,11 @@ func (r *donationRepo) UpdateByPaymentIntentID(_ context.Context, _, _, _ string
 	return "", r.updateByPIIDErr
 }
 func (r *donationRepo) SetB2BOrgSFID(_ context.Context, _, _ string) error { return nil }
+
+func (r *donationRepo) ListByB2BOrg(_ context.Context, sfid string, limit, offset int) ([]models.OrgLensDonation, *models.PaginationMeta, error) {
+	r.listByB2BOrgSFID = sfid
+	return r.listByB2BOrg, &models.PaginationMeta{Total: len(r.listByB2BOrg), Limit: limit, Offset: offset}, nil
+}
 
 func (r *donationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
 	return nil, nil
@@ -558,5 +565,55 @@ func TestDonationCreate_DefaultsPaymentMethodToStripe(t *testing.T) {
 	}
 	if donRepo.lastCreated.PaymentMethod != models.PaymentMethodStripe {
 		t.Errorf("Donation.PaymentMethod = %q, want %q", donRepo.lastCreated.PaymentMethod, models.PaymentMethodStripe)
+	}
+}
+
+func TestDonationListForOrganization(t *testing.T) {
+	donRepo := &donationRepo{listByB2BOrg: []models.OrgLensDonation{
+		{ID: "don-1", Type: models.OrgLensDonationOneTime, DonorName: "Ada", DonorEmail: "ada@example.com", AmountCents: 1000},
+	}}
+	h := newDonationHandler(donRepo, &donationInitiativeRepo{}, &donationUserRepo{}, &donationStripeClient{})
+
+	// A 15-character SFID is canonicalized to 18 before the query.
+	req := setChiParam(httptest.NewRequest(http.MethodGet, "/crowdfunding/organizations/0014100000Te0yv/donations", nil), "uid", "0014100000Te0yv")
+	w := httptest.NewRecorder()
+	h.ListForOrganization(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if donRepo.listByB2BOrgSFID != "0014100000Te0yvAAB" {
+		t.Errorf("queried SFID = %q, want the 18-character form", donRepo.listByB2BOrgSFID)
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "private, no-store" {
+		t.Errorf("Cache-Control = %q", cc)
+	}
+	if v := w.Header().Get("Vary"); v != "Authorization" {
+		t.Errorf("Vary = %q", v)
+	}
+	var body struct {
+		Data []models.OrgLensDonation `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Data) != 1 || body.Data[0].DonorEmail != "ada@example.com" {
+		t.Errorf("data = %+v", body.Data)
+	}
+}
+
+func TestDonationListForOrganization_MalformedUID_400(t *testing.T) {
+	donRepo := &donationRepo{}
+	h := newDonationHandler(donRepo, &donationInitiativeRepo{}, &donationUserRepo{}, &donationStripeClient{})
+
+	req := setChiParam(httptest.NewRequest(http.MethodGet, "/crowdfunding/organizations/short/donations", nil), "uid", "short")
+	w := httptest.NewRecorder()
+	h.ListForOrganization(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+	if donRepo.listByB2BOrgSFID != "" {
+		t.Error("repo must not be queried on an invalid uid")
 	}
 }

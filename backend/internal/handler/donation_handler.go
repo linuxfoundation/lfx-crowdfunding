@@ -71,6 +71,29 @@ func (h *DonationHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListForOrganization handles GET /crowdfunding/organizations/{uid}/donations for
+// the Org lens: donations matched to that b2b_org, with donor name and email.
+// Heimdall guards it on auditor for b2b_org:{uid}.
+func (h *DonationHandler) ListForOrganization(w http.ResponseWriter, r *http.Request) {
+	attr := models.Attribution{Type: models.AttributionOrganization, EntityUID: chi.URLParam(r, "uid")}
+	if err := attr.Validate(); err != nil {
+		Error(w, fmt.Errorf("%w: %v", domain.ErrInvalidInput, err))
+		return
+	}
+	limit, offset, ok := parsePaginationParams(w, r)
+	if !ok {
+		return
+	}
+	rows, meta, err := h.svc.ListByB2BOrg(r.Context(), attr.EntityUID, limit, offset)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Vary", "Authorization")
+	JSON(w, http.StatusOK, map[string]any{"data": rows, "meta": meta})
+}
+
 // ListForUser handles GET /crowdfunding/me/donations — requires JWT.
 // Returns the authenticated user's own donations across all initiatives, paginated.
 func (h *DonationHandler) ListForUser(w http.ResponseWriter, r *http.Request) {
