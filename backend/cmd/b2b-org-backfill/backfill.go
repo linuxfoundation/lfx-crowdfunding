@@ -123,7 +123,7 @@ func (b *backfiller) patchStripe(ctx context.Context, sub unmatchedSub, sfid str
 		b.logger.Warn("stripe metadata update failed, will retry", "subscription_id", sub.ID, "stripe_subscription_id", sub.StripeSubscriptionID, "error", err)
 		return false
 	case !live:
-		// CF's status can be stale (#438): Stripe has already ended it.
+		// CF's status can be stale (#438): Stripe has already ended it for good.
 		res.stripeSkipped++
 		b.logger.Info("stripe subscription not live, filling row only", "subscription_id", sub.ID, "stripe_subscription_id", sub.StripeSubscriptionID)
 		return true

@@ -22,7 +22,9 @@ func (p stripePatcher) PatchLiveSubscription(ctx context.Context, subscriptionID
 	if err != nil {
 		return false, fmt.Errorf("stripe get subscription: %w", err)
 	}
-	if sub.Status != stripe.SubscriptionStatusActive && sub.Status != stripe.SubscriptionStatusPastDue {
+	// Only these two never charge again; anything else (incomplete, trialing,
+	// unpaid, paused) can still renew, so it gets the metadata too.
+	if sub.Status == stripe.SubscriptionStatusCanceled || sub.Status == stripe.SubscriptionStatusIncompleteExpired {
 		return false, nil
 	}
 	item := currentItem(sub, itemID)
