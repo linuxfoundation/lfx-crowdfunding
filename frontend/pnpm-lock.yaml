@@ -30,7 +30,7 @@ overrides:
   postcss-selector-parser@^6.0.0: ">=6.1.3"
   postcss-selector-parser@^6.1.1: ">=7.1.6"
   postcss-selector-parser@^7.0.0: ">=7.1.6"
-  seroval: ">=1.6.3"
+  seroval: ">=1.6.11"
   source-map-js: ">=1.2.2"
   vue: ">=3.5.42"
   "@vue/server-renderer": ">=3.5.42"
@@ -9972,12 +9972,12 @@ packages:
       }
     engines: { node: ">=20.0.0" }
 
-  seroval@1.6.8:
+  seroval@1.7.2:
     resolution:
       {
-        integrity: sha512-HlSgSAkTk4EqHcje1ptJjfZi1YDv5KbhVJ/d3P7T/nAXua2VmDu+AKDX5VTdFfZf48nDkWB2TKYt0DrCSa+3wg==,
+        integrity: sha512-NPOYrDVbvtuTo5m9InqKE7O6wBASON46OabjyqLUGPvoXNDYp0pReuFYkqOQwGsoj1OpZVj6mIdnRRgt5O1/gQ==,
       }
-    engines: { node: ">=10" }
+    engines: { node: ">=20" }
 
   serve-placeholder@2.0.2:
     resolution:
@@ -13614,7 +13614,7 @@ snapshots:
       pkg-types: 2.4.0
       postcss: 8.5.23
       rolldown-string: 0.3.1(rolldown@1.2.14)
-      seroval: 1.6.8
+      seroval: 1.7.2
       std-env: 4.3.0
       ufo: 1.6.4
       unenv: 2.0.0-rc.24
@@ -19241,7 +19241,7 @@ snapshots:
 
   serialize-javascript@7.1.4: {}
 
-  seroval@1.6.8: {}
+  seroval@1.7.2: {}
 
   serve-placeholder@2.0.2:
     dependencies:
