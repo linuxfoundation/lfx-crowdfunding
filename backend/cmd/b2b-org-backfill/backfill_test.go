@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stripe/stripe-go/v85"
@@ -46,15 +47,19 @@ func (r fakeResolver) LookupB2BOrgByWebsite(_ context.Context, domain string) (s
 
 type fakeStripe struct {
 	errs    map[string]error // stripe subscription id -> error
+	ended   map[string]bool  // stripe subscription ids Stripe no longer bills
 	patched []string
 }
 
-func (s *fakeStripe) UpdateSubscriptionMetadata(_ context.Context, subID, _ string, md map[string]string) error {
+func (s *fakeStripe) PatchLiveSubscription(_ context.Context, subID, _ string, md map[string]string) (bool, error) {
 	if err := s.errs[subID]; err != nil {
-		return err
+		return false, err
+	}
+	if s.ended[subID] {
+		return false, nil
 	}
 	s.patched = append(s.patched, subID+"="+md["b2b_org_sfid"])
-	return nil
+	return true, nil
 }
 
 func TestBackfillerRun(t *testing.T) {
@@ -65,14 +70,18 @@ func TestBackfillerRun(t *testing.T) {
 			{ID: "canceled", Status: "canceled", StripeSubscriptionID: "sub_canceled"},
 			{ID: "stale", Status: "active", StripeSubscriptionID: "sub_stale"},
 			{ID: "flaky", Status: "active", StripeSubscriptionID: "sub_flaky"},
+			{ID: "rejected", Status: "active", StripeSubscriptionID: "sub_rejected"},
 		}},
 		donations: map[string]string{},
 		subSFIDs:  map[string]string{},
 	}
-	sc := &fakeStripe{errs: map[string]error{
-		"sub_stale": fmt.Errorf("stripe update subscription metadata: %w", &stripe.Error{HTTPStatusCode: http.StatusBadRequest}),
-		"sub_flaky": fmt.Errorf("stripe update subscription metadata: %w", &stripe.Error{HTTPStatusCode: http.StatusInternalServerError}),
-	}}
+	sc := &fakeStripe{
+		errs: map[string]error{
+			"sub_flaky":    fmt.Errorf("stripe get subscription: %w", &stripe.Error{HTTPStatusCode: http.StatusInternalServerError}),
+			"sub_rejected": fmt.Errorf("stripe update subscription item metadata: %w", &stripe.Error{HTTPStatusCode: http.StatusBadRequest}),
+		},
+		ended: map[string]bool{"sub_stale": true},
+	}
 	b := &backfiller{
 		store:  st,
 		lookup: fakeResolver{"acme.com": "001A", "failed.org": "ERR"},
@@ -94,12 +103,12 @@ func TestBackfillerRun(t *testing.T) {
 	if len(sc.patched) != 1 || sc.patched[0] != "sub_live=001A" {
 		t.Errorf("stripe patched = %v, want only sub_live", sc.patched)
 	}
-	// The canceled and stale subscriptions still get the SFID; the flaky one is left for the next run.
+	// Canceled in CF or in Stripe still get the SFID; any Stripe error, a 400 included, is left for the next run.
 	want := map[string]string{"live": "001A", "canceled": "001A", "stale": "001A"}
 	if fmt.Sprint(st.subSFIDs) != fmt.Sprint(want) {
 		t.Errorf("subscriptions filled = %v, want %v", st.subSFIDs, want)
 	}
-	if res.stripePatched != 1 || res.stripeSkipped != 2 || res.stripeFailed != 1 {
+	if res.stripePatched != 1 || res.stripeSkipped != 2 || res.stripeFailed != 2 {
 		t.Errorf("stripe counts = %+v", res)
 	}
 }
@@ -119,5 +128,35 @@ func TestBackfillerRun_DryRunWritesNothing(t *testing.T) {
 	}
 	if res.matched != 1 || len(st.donations) != 0 || len(st.subSFIDs) != 0 {
 		t.Errorf("dry run: matched %d, wrote %v / %v", res.matched, st.donations, st.subSFIDs)
+	}
+}
+
+func TestCurrentItem(t *testing.T) {
+	sub := &stripe.Subscription{Items: &stripe.SubscriptionItemList{Data: []*stripe.SubscriptionItem{{ID: "si_first"}, {ID: "si_second"}}}}
+	for itemID, want := range map[string]string{"si_second": "si_second", "": "si_first", "si_stale": "si_first"} {
+		if got := currentItem(sub, itemID); got != want {
+			t.Errorf("currentItem(%q) = %q, want %q", itemID, got, want)
+		}
+	}
+	if got := currentItem(&stripe.Subscription{}, "si_x"); got != "" {
+		t.Errorf("currentItem with no items = %q, want empty", got)
+	}
+}
+
+func TestWriteMatches(t *testing.T) {
+	var buf strings.Builder
+	n, conflicts, err := writeMatches(&buf, []matchRow{
+		{domain: "acme.com", sfid: "001A", sfids: 1},
+		{domain: "split.org", sfid: "001B", sfids: 2},
+		{domain: "zeta.io", sfid: "001C", sfids: 1},
+	})
+	if err != nil {
+		t.Fatalf("writeMatches: %v", err)
+	}
+	if want := "domain,sfid\nacme.com,001A\nzeta.io,001C\n"; buf.String() != want {
+		t.Errorf("csv = %q, want %q", buf.String(), want)
+	}
+	if n != 2 || fmt.Sprint(conflicts) != "[split.org]" {
+		t.Errorf("exported %d, conflicts %v; want 2, [split.org]", n, conflicts)
 	}
 }

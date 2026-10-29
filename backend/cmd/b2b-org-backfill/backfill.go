@@ -5,11 +5,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log/slog"
-	"net/http"
-
-	"github.com/stripe/stripe-go/v85"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
@@ -37,8 +33,11 @@ type resolver interface {
 	LookupB2BOrgByWebsite(ctx context.Context, domain string) (string, error)
 }
 
-type subscriptionMetadataUpdater interface {
-	UpdateSubscriptionMetadata(ctx context.Context, subscriptionID, itemID string, metadata map[string]string) error
+type subscriptionPatcher interface {
+	// PatchLiveSubscription writes metadata to the subscription's current item and
+	// the subscription. It reports false, writing nothing, when Stripe no longer
+	// bills the subscription.
+	PatchLiveSubscription(ctx context.Context, subscriptionID, itemID string, metadata map[string]string) (bool, error)
 }
 
 type result struct {
@@ -51,7 +50,7 @@ type result struct {
 type backfiller struct {
 	store  store
 	lookup resolver
-	stripe subscriptionMetadataUpdater
+	stripe subscriptionPatcher
 	dryRun bool
 	logger *slog.Logger
 }
@@ -108,27 +107,27 @@ func (b *backfiller) Run(ctx context.Context) (result, error) {
 
 // patchStripe writes b2b_org_sfid to a subscription's Stripe metadata so
 // ledger-service's hook carries it on renewals. It reports whether the row should
-// get the SFID: false only for a temporary Stripe failure worth retrying.
+// get the SFID: false for a Stripe failure, which the next run retries.
 func (b *backfiller) patchStripe(ctx context.Context, sub unmatchedSub, sfid string, res *result) bool {
 	// A canceled subscription never charges again, and Stripe rejects updates to it.
 	if sub.Status == models.SubscriptionStatusCanceled || sub.StripeSubscriptionID == "" {
 		res.stripeSkipped++
 		return true
 	}
-	err := b.stripe.UpdateSubscriptionMetadata(ctx, sub.StripeSubscriptionID, sub.StripeSubscriptionItemID, map[string]string{"b2b_org_sfid": sfid})
-	if err == nil {
-		res.stripePatched++
-		return true
-	}
-	// CF's status can be stale (#438): Stripe answers 400/404 for a subscription it
-	// has already canceled. Treat that as not live and still fill the row.
-	var se *stripe.Error
-	if errors.As(err, &se) && (se.HTTPStatusCode == http.StatusBadRequest || se.HTTPStatusCode == http.StatusNotFound) {
+	live, err := b.stripe.PatchLiveSubscription(ctx, sub.StripeSubscriptionID, sub.StripeSubscriptionItemID, map[string]string{"b2b_org_sfid": sfid})
+	switch {
+	case err != nil:
+		// Any Stripe error, including a 400 or 404, is retried: canceled
+		// subscriptions stay retrievable, so a 404 points at the wrong key or account.
+		res.stripeFailed++
+		b.logger.Warn("stripe metadata update failed, will retry", "subscription_id", sub.ID, "stripe_subscription_id", sub.StripeSubscriptionID, "error", err)
+		return false
+	case !live:
+		// CF's status can be stale (#438): Stripe has already ended it.
 		res.stripeSkipped++
-		b.logger.Info("stripe subscription not updatable, filling row only", "subscription_id", sub.ID, "stripe_subscription_id", sub.StripeSubscriptionID, "error", err)
+		b.logger.Info("stripe subscription not live, filling row only", "subscription_id", sub.ID, "stripe_subscription_id", sub.StripeSubscriptionID)
 		return true
 	}
-	res.stripeFailed++
-	b.logger.Warn("stripe metadata update failed, will retry", "subscription_id", sub.ID, "stripe_subscription_id", sub.StripeSubscriptionID, "error", err)
-	return false
+	res.stripePatched++
+	return true
 }

@@ -19,10 +19,10 @@ type pgStore struct {
 func (s *pgStore) UnmatchedDomains(ctx context.Context) ([]string, error) {
 	const q = `
 		SELECT org_domain FROM crowdfunding.donations
-		WHERE org_domain IS NOT NULL AND b2b_org_sfid IS NULL
+		WHERE org_domain IS NOT NULL AND org_domain <> '' AND b2b_org_sfid IS NULL
 		UNION
 		SELECT org_domain FROM crowdfunding.subscriptions
-		WHERE org_domain IS NOT NULL AND b2b_org_sfid IS NULL
+		WHERE org_domain IS NOT NULL AND org_domain <> '' AND b2b_org_sfid IS NULL
 		ORDER BY 1`
 	rows, err := s.pool.Query(ctx, q)
 	if err != nil {
@@ -90,7 +90,7 @@ func (s *pgStore) ExportMatches(ctx context.Context, w io.Writer) (exported int,
 			UNION ALL
 			SELECT org_domain, b2b_org_sfid FROM crowdfunding.subscriptions WHERE b2b_org_sfid IS NOT NULL
 		) m
-		WHERE org_domain IS NOT NULL
+		WHERE org_domain IS NOT NULL AND org_domain <> ''
 		GROUP BY org_domain
 		ORDER BY org_domain`)
 	if err != nil {
@@ -98,27 +98,42 @@ func (s *pgStore) ExportMatches(ctx context.Context, w io.Writer) (exported int,
 	}
 	defer rows.Close()
 
+	var matches []matchRow
+	for rows.Next() {
+		var m matchRow
+		if err := rows.Scan(&m.domain, &m.sfid, &m.sfids); err != nil {
+			return 0, nil, fmt.Errorf("scan matched domain: %w", err)
+		}
+		matches = append(matches, m)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, nil, err
+	}
+	return writeMatches(w, matches)
+}
+
+// matchRow is one domain's matched SFID and how many distinct SFIDs its rows carry.
+type matchRow struct {
+	domain, sfid string
+	sfids        int
+}
+
+// writeMatches writes the domain,sfid CSV, skipping and returning domains with
+// more than one SFID.
+func writeMatches(w io.Writer, matches []matchRow) (exported int, conflicts []string, err error) {
 	cw := csv.NewWriter(w)
 	if err := cw.Write([]string{"domain", "sfid"}); err != nil {
 		return 0, nil, err
 	}
-	for rows.Next() {
-		var domain, sfid string
-		var n int
-		if err := rows.Scan(&domain, &sfid, &n); err != nil {
-			return 0, nil, fmt.Errorf("scan matched domain: %w", err)
-		}
-		if n > 1 {
-			conflicts = append(conflicts, domain)
+	for _, m := range matches {
+		if m.sfids > 1 {
+			conflicts = append(conflicts, m.domain)
 			continue
 		}
-		if err := cw.Write([]string{domain, sfid}); err != nil {
+		if err := cw.Write([]string{m.domain, m.sfid}); err != nil {
 			return 0, nil, err
 		}
 		exported++
-	}
-	if err := rows.Err(); err != nil {
-		return 0, nil, err
 	}
 	cw.Flush()
 	return exported, conflicts, cw.Error()

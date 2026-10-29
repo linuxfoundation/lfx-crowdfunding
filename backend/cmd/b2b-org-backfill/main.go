@@ -24,6 +24,7 @@
 //
 //	--dry-run  Look up domains and report matches without writing anything.
 //	--export   After the run, write domain,sfid for every matched domain to this path.
+//	           Can't be combined with --dry-run, which saves no matches to export.
 //
 // Required env vars: DATABASE_URL, FGA_NATS_URL, STRIPE_SECRET_KEY.
 //
@@ -40,6 +41,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/stripe/stripe-go/v85"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/db"
@@ -51,6 +53,10 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "Look up domains and report matches without writing")
 	export := flag.String("export", "", "Write domain,sfid for every matched domain to this path")
 	flag.Parse()
+	if *dryRun && *export != "" {
+		logger.Error("--export can't be combined with --dry-run: the export reads saved matches and a dry run saves none")
+		os.Exit(2)
+	}
 
 	if err := run(logger, *dryRun, *export); err != nil {
 		logger.Error("b2b-org-backfill failed", "error", err)
@@ -88,7 +94,7 @@ func run(logger *slog.Logger, dryRun bool, exportPath string) error {
 	b := &backfiller{
 		store:  st,
 		lookup: clients.NewMemberClient(conn),
-		stripe: clients.NewStripeClient(clients.StripeConfig{SecretKey: cfg.StripeSecretKey, Timeout: 30 * time.Second}),
+		stripe: stripePatcher{api: stripe.NewClient(cfg.StripeSecretKey)},
 		dryRun: dryRun,
 		logger: logger,
 	}
