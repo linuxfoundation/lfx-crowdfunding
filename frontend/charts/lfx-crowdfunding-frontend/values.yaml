@@ -82,6 +82,12 @@ tolerations: []
 affinity: {}
 topologySpreadConstraints: []
 
+# Keep at least one pod through node drains and EKS consolidation. Set exactly
+# one of minAvailable or maxUnavailable.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
 # ── Non-secret environment variables ─────────────────────────────────────────
 config:
   NUXT_PUBLIC_APP_ENV: "production"

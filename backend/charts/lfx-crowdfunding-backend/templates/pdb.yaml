@@ -1,0 +1,33 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $hasMin := hasKey .Values.podDisruptionBudget "minAvailable" }}
+{{- $hasMax := hasKey .Values.podDisruptionBudget "maxUnavailable" }}
+{{- if and $hasMin $hasMax }}
+  {{- fail "podDisruptionBudget: cannot set both minAvailable and maxUnavailable" }}
+{{- end }}
+{{- if not (or $hasMin $hasMax) }}
+  {{- fail "podDisruptionBudget: either minAvailable or maxUnavailable must be set" }}
+{{- end }}
+---
+# Keeps at least one pod running through voluntary disruptions (node drains,
+# EKS consolidation, cluster upgrades). The Deployment always runs 2 or more
+# replicas, so minAvailable: 1 never blocks a drain.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "lfx-v2-initiatives-service.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lfx-v2-initiatives-service.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "lfx-v2-initiatives-service.selectorLabels" . | nindent 6 }}
+  {{- if $hasMin }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if $hasMax }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+{{- end }}
