@@ -95,6 +95,14 @@ tolerations: []
 affinity: {}
 topologySpreadConstraints: []
 
+# podDisruptionBudget configures a PodDisruptionBudget for the deployment.
+# Only one of minAvailable or maxUnavailable may be set (not both).
+# Off by default; each environment turns it on in lfx-v2-argocd.
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+
 # ── Non-secret environment variables ────────────────────────────────────────
 # These are rendered into a ConfigMap and mounted via envFrom.
 config:

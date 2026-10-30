@@ -82,6 +82,14 @@ tolerations: []
 affinity: {}
 topologySpreadConstraints: []
 
+# podDisruptionBudget configures a PodDisruptionBudget for the deployment.
+# Only one of minAvailable or maxUnavailable may be set (not both).
+# Off by default; each environment turns it on in lfx-v2-argocd.
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+
 # ── Non-secret environment variables ─────────────────────────────────────────
 config:
   NUXT_PUBLIC_APP_ENV: "production"
