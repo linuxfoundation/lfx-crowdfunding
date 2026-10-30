@@ -82,11 +82,13 @@ tolerations: []
 affinity: {}
 topologySpreadConstraints: []
 
-# Keep at least one pod through node drains and EKS consolidation. Set exactly
-# one of minAvailable or maxUnavailable.
+# podDisruptionBudget configures a PodDisruptionBudget for the deployment.
+# Only one of minAvailable or maxUnavailable may be set (not both).
+# Off by default; each environment turns it on in lfx-v2-argocd.
 podDisruptionBudget:
-  enabled: true
-  minAvailable: 1
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
 
 # ── Non-secret environment variables ─────────────────────────────────────────
 config:
