@@ -95,11 +95,11 @@ tolerations: []
 affinity: {}
 topologySpreadConstraints: []
 
-# Evict at most one pod at a time during node drains and EKS consolidation.
-# Set exactly one of minAvailable or maxUnavailable.
+# Keep at least one pod through node drains and EKS consolidation. Set exactly
+# one of minAvailable or maxUnavailable.
 podDisruptionBudget:
   enabled: true
-  maxUnavailable: 1
+  minAvailable: 1
 
 # ── Non-secret environment variables ────────────────────────────────────────
 # These are rendered into a ConfigMap and mounted via envFrom.
