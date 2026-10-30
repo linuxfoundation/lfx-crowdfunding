@@ -25,7 +25,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     -o /build/migrate ./cmd/migrate \
  && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags "-s -w" \
-    -o /build/fga-backfill ./cmd/fga-backfill
+    -o /build/fga-backfill ./cmd/fga-backfill \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath -ldflags "-s -w" \
+    -o /build/b2b-org-backfill ./cmd/b2b-org-backfill
 
 # ── Final stage ───────────────────────────────────────────────────────────────
 FROM alpine:3.20
@@ -41,6 +44,7 @@ COPY --from=builder /build/ledger-stats-sync ./ledger-stats-sync
 COPY --from=builder /build/mentorship-sync ./mentorship-sync
 COPY --from=builder /build/migrate ./migrate
 COPY --from=builder /build/fga-backfill ./fga-backfill
+COPY --from=builder /build/b2b-org-backfill ./b2b-org-backfill
 COPY cmd/mentorship-sync/testdata/ /app/testdata/
 
 USER appuser

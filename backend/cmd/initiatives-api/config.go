@@ -72,6 +72,12 @@ type StripeConfig struct {
 	// pre-production environments where real Stripe deliveries are active but
 	// DB persistence has not yet landed. Set STRIPE_WEBHOOK_ACK_UNIMPLEMENTED=true.
 	AckUnimplementedWebhooks bool
+	// V2RaceWindow bounds how long a payment_intent.succeeded for a v2 PI with
+	// no matching donation is treated as an INSERT/webhook race (500, Stripe
+	// retries). Past it the event is acknowledged. 0 retries forever (prod).
+	// Dev sets it because local backends share the Stripe test account, so
+	// their events also reach the dev webhook. Set STRIPE_WEBHOOK_V2_RACE_WINDOW.
+	V2RaceWindow time.Duration
 }
 
 // S3Config holds settings for S3 logo uploads.
@@ -251,6 +257,10 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	stripeV2RaceWindow, err := getDurationEnv("STRIPE_WEBHOOK_V2_RACE_WINDOW", 0)
+	if err != nil {
+		return nil, err
+	}
 	stripeReturnURL := getEnv("STRIPE_RETURN_URL", "")
 	if stripeReturnURL == "" {
 		return nil, fmt.Errorf("STRIPE_RETURN_URL is required (set to the frontend URL Stripe redirects to after 3DS, e.g. https://yourdomain.com/payment/complete)")
@@ -306,6 +316,7 @@ func LoadConfig() (*Config, error) {
 			Timeout:                  stripeTimeout,
 			ReturnURL:                stripeReturnURL,
 			AckUnimplementedWebhooks: stripeAckUnimplemented,
+			V2RaceWindow:             stripeV2RaceWindow,
 		},
 		Ledger: LedgerConfig{
 			BaseURL: ledgerBaseURL,
