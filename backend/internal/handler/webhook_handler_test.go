@@ -183,6 +183,10 @@ func (r *wbDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, stat
 }
 func (r *wbDonationRepo) SetB2BOrgSFID(_ context.Context, _, _ string) error { return nil }
 
+func (r *wbDonationRepo) ListByB2BOrg(_ context.Context, _ string, _, _ int) ([]models.OrgLensDonation, *models.PaginationMeta, error) {
+	return nil, nil, nil
+}
+
 func (r *wbDonationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
 	return nil, nil
 }

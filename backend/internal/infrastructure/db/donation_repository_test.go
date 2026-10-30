@@ -247,3 +247,57 @@ func TestDonationRepository_Create_ReplayedPaymentIntentReturnsExistingRow(t *te
 		t.Errorf("donation rows = %d, want 3", n)
 	}
 }
+
+func TestDonationRepository_ListByB2BOrg(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.subscriptions", "crowdfunding.donations", "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "test-owner-org-lens")
+	initiative := seedInitiative(t, ctx, owner.ID, "Test Initiative Org Lens", "test-initiative-org-lens")
+	repo := NewDonationRepository(testPool)
+	subRepo := NewSubscriptionRepository(testPool)
+	const sfid = "001000000000001AAA"
+
+	setDonation := func(sfid, status string) string {
+		d := seedDonation(t, ctx, owner.ID, initiative.ID)
+		if err := repo.SetB2BOrgSFID(ctx, d.ID, sfid); err != nil {
+			t.Fatalf("SetB2BOrgSFID: %v", err)
+		}
+		if _, err := testPool.Exec(ctx, "UPDATE crowdfunding.donations SET status = $2 WHERE id = $1", d.ID, status); err != nil {
+			t.Fatalf("set status: %v", err)
+		}
+		return d.ID
+	}
+	paid := setDonation(sfid, models.DonationStatusSucceeded)
+	setDonation(sfid, models.DonationStatusPending)
+	setDonation("001000000000002AAA", models.DonationStatusSucceeded)
+
+	active := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusActive, "sub_org_lens_active")
+	unpaid := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_incomplete")
+	for _, id := range []string{active.ID, unpaid.ID} {
+		if err := subRepo.SetB2BOrgSFID(ctx, id, sfid); err != nil {
+			t.Fatalf("subscription SetB2BOrgSFID: %v", err)
+		}
+	}
+
+	rows, meta, err := repo.ListByB2BOrg(ctx, sfid, 20, 0)
+	if err != nil {
+		t.Fatalf("ListByB2BOrg() error = %v", err)
+	}
+	if meta.Total != 2 || len(rows) != 2 {
+		t.Fatalf("got %d rows (total %d), want the succeeded donation and the active subscription: %+v", len(rows), meta.Total, rows)
+	}
+	got := map[string]string{}
+	for _, r := range rows {
+		got[r.ID] = r.Type
+		if r.InitiativeName != "Test Initiative Org Lens" || r.DonorEmail != owner.Email {
+			t.Errorf("row %s: initiative %q, donor email %q", r.ID, r.InitiativeName, r.DonorEmail)
+		}
+	}
+	if got[paid] != models.OrgLensDonationOneTime || got[active.ID] != models.OrgLensDonationRecurring {
+		t.Errorf("rows = %v", got)
+	}
+}

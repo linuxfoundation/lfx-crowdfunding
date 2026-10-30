@@ -216,6 +216,10 @@ func (r *testDonationRepo) SetB2BOrgSFID(ctx context.Context, id, sfid string) e
 	return nil
 }
 
+func (r *testDonationRepo) ListByB2BOrg(_ context.Context, _ string, _, _ int) ([]models.OrgLensDonation, *models.PaginationMeta, error) {
+	return nil, nil, nil
+}
+
 func (r *testDonationRepo) ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error) {
 	if r.onListOrgDonations != nil {
 		return r.onListOrgDonations(ctx)

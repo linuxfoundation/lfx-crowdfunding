@@ -99,3 +99,25 @@ type OrgDonationRow struct {
 	DonatedAt        time.Time
 	Status           string
 }
+
+// Donation kinds on the Org lens list.
+const (
+	OrgLensDonationOneTime   = "one_time"
+	OrgLensDonationRecurring = "recurring"
+)
+
+// OrgLensDonation is one row of GET /crowdfunding/organizations/{uid}/donations:
+// a donation or subscription matched to that b2b_org. A subscription is one row
+// with its per-charge amount; its individual charges live only in Ledger.
+type OrgLensDonation struct {
+	ID             string    `json:"id"`
+	Type           string    `json:"type"`
+	InitiativeID   string    `json:"initiative_id,omitempty"`
+	InitiativeName string    `json:"initiative_name,omitempty"`
+	DonorName      string    `json:"donor_name"`
+	DonorEmail     string    `json:"donor_email"`
+	AmountCents    int64     `json:"amount_cents"`
+	Frequency      string    `json:"frequency,omitempty"`
+	Status         string    `json:"status"`
+	CreatedOn      time.Time `json:"created_on"`
+}

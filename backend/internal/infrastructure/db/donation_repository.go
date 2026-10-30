@@ -295,6 +295,71 @@ func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.Org
 	return result, nil
 }
 
+// orgLensRows is the Org lens list: succeeded one-time donations plus every
+// subscription that reached a paid state, each matched to $1 (a b2b_org SFID).
+const orgLensRows = `
+	SELECT CAST(d.id AS text), 'one_time', d.initiative_id, d.user_id,
+	       d.current_amount_in_cents, '', d.status, d.created_on
+	FROM donations d
+	WHERE d.b2b_org_sfid = $1 AND d.status = 'succeeded'
+	UNION ALL
+	SELECT CAST(s.id AS text), 'recurring', s.initiative_id, s.user_id,
+	       s.current_amount_in_cents, COALESCE(s.frequency, ''), s.status, s.created_on
+	FROM subscriptions s
+	WHERE s.b2b_org_sfid = $1 AND s.status IN ('active', 'past_due', 'canceled')`
+
+// ListByB2BOrg returns the donations and subscriptions matched to a b2b_org,
+// newest first, with initiative and donor details.
+func (r *DonationRepository) ListByB2BOrg(ctx context.Context, sfid string, limit, offset int) ([]models.OrgLensDonation, *models.PaginationMeta, error) {
+	ctx, span := donationTracer.Start(ctx, "db.donations.ListByB2BOrg")
+	defer span.End()
+
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var total int
+	if err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM ("+orgLensRows+") t", sfid).Scan(&total); err != nil {
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("count org lens donations: %w", err)
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT t.id, t.kind, COALESCE(CAST(i.id AS text), ''), COALESCE(i.name, ''),
+		       COALESCE(
+		           NULLIF(u.name, ''),
+		           NULLIF(TRIM(COALESCE(u.given_name, '') || ' ' || COALESCE(u.family_name, '')), ''),
+		           ''),
+		       COALESCE(u.email, ''), t.amount, t.frequency, t.status, t.created_on
+		FROM (`+orgLensRows+`) AS t(id, kind, initiative_id, user_id, amount, frequency, status, created_on)
+		LEFT JOIN initiatives i ON i.id = t.initiative_id
+		JOIN users u ON u.id = t.user_id
+		ORDER BY t.created_on DESC, t.id
+		LIMIT $2 OFFSET $3`, sfid, limit, offset)
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("list org lens donations: %w", err)
+	}
+	defer rows.Close()
+
+	result := []models.OrgLensDonation{}
+	for rows.Next() {
+		var d models.OrgLensDonation
+		if err := rows.Scan(&d.ID, &d.Type, &d.InitiativeID, &d.InitiativeName, &d.DonorName,
+			&d.DonorEmail, &d.AmountCents, &d.Frequency, &d.Status, &d.CreatedOn); err != nil {
+			return nil, nil, fmt.Errorf("scan org lens donation: %w", err)
+		}
+		result = append(result, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterate org lens donations: %w", err)
+	}
+	return result, &models.PaginationMeta{Total: total, Limit: limit, Offset: offset}, nil
+}
+
 func scanDonation(row scanner) (*models.Donation, error) {
 	d := &models.Donation{}
 	var (
