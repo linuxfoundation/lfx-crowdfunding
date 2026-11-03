@@ -161,6 +161,7 @@ backend/
 | `PUT` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Update announcement |
 | `DELETE` | `/crowdfunding/initiatives/{id}/announcements/{announcementId}` | `access:me` + writer | Delete announcement |
 | `GET` | `/crowdfunding/organizations/{uid}/initiatives` | `access:me` + writer on `b2b_org` | All initiatives (any status) attributed to that organization (Org lens) |
+| `GET` | `/crowdfunding/organizations/{uid}/donations` | `access:me` + auditor on `b2b_org` | Succeeded donations and paid subscriptions matched to that organization, with donor name and email (Org lens) |
 | `GET` | `/crowdfunding/projects/{uid}/initiatives` | `access:me` + `writer_guard` on `project` | All initiatives (any status) attributed to that project (Project lens) |
 | `GET` | `/crowdfunding/me/donations` | `access:me` | Caller's donations (one-time and recurring), read from the Ledger like `/me/transactions?type=donations` |
 | `GET` | `/crowdfunding/me/donations/stats` | `access:me` | Caller's `total_donated_cents` and `initiatives_supported`, aggregated by the Ledger (`/balance/user/{userID}`) |

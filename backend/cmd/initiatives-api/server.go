@@ -275,8 +275,10 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 		// Per-entity lists for the Org/Project lens pages: all initiatives
 		// attributed to one parent, guarded at Heimdall on writer for that parent.
+		// Org donations are guarded on auditor instead (#413).
 		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe)).Group(func(r chi.Router) {
 			r.Get("/organizations/{uid}/initiatives", initiativeH.ListByAttribution(models.AttributionOrganization))
+			r.Get("/organizations/{uid}/donations", donationH.ListForOrganization)
 			r.Get("/projects/{uid}/initiatives", initiativeH.ListByAttribution(models.AttributionProject))
 		})
 

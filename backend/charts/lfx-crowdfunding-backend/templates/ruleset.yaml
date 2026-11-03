@@ -425,6 +425,34 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
+    # Org lens donations (#413): donations matched to one b2b_org, with donor
+    # name and email. Guarded on auditor, not writer, so everyone who can view
+    # the company in the Org lens sees them (PM, October 2026). A denial is a 403.
+    - id: "rule:lfx:lfx-crowdfunding-backend:org-donations-list"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /crowdfunding/organizations/:uid/donations
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        # Always enforced, even when openfga.enabled is false: this list exposes
+        # donor emails, so it must never fall back to allow_all.
+        - authorizer: openfga_check
+          config:
+            values:
+              relation: auditor
+              object: "b2b_org:{{ "{{- .Request.URL.Captures.uid -}}" }}"
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
     - id: "rule:lfx:lfx-crowdfunding-backend:project-initiatives-list"
       allow_encoded_slashes: "off"
       match:

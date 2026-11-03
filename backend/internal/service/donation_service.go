@@ -156,6 +156,20 @@ func (s *DonationService) ListOrgDonations(ctx context.Context) ([]models.OrgDon
 	return rows, nil
 }
 
+// ListByB2BOrg returns the donations matched to a b2b_org for the Org lens.
+// Authorization (auditor on the b2b_org) is enforced at Heimdall.
+func (s *DonationService) ListByB2BOrg(ctx context.Context, sfid string, limit, offset int) ([]models.OrgLensDonation, *models.PaginationMeta, error) {
+	ctx, span := donationSvcTracer.Start(ctx, "DonationService.ListByB2BOrg")
+	defer span.End()
+
+	rows, meta, err := s.repo.ListByB2BOrg(ctx, sfid, limit, offset)
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("list org lens donations: %w", err)
+	}
+	return rows, meta, nil
+}
+
 // ListByUser returns paginated donations for the authenticated user.
 func (s *DonationService) ListByUser(ctx context.Context, username string, filter models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error) {
 	ctx, span := donationSvcTracer.Start(ctx, "DonationService.ListByUser")
