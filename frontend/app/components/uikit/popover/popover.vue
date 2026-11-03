@@ -9,6 +9,7 @@ SPDX-License-Identifier: MIT
     :class="{ 'is-open': isVisible }"
     v-bind="$attrs"
     @click="handleClick"
+    @keydown="handleTriggerKeydown"
   >
     <slot />
   </div>
@@ -137,6 +138,31 @@ const handleClick = (e: Event) => {
   }
 };
 
+const handleTriggerKeydown = (e: KeyboardEvent) => {
+  if (props.triggerEvent !== 'click') return;
+  // Native buttons/links already turn Enter/Space into a click.
+  const isNative = (e.target as HTMLElement).closest('button, a, input, textarea, select');
+  if ((e.key === 'Enter' || e.key === ' ') && !isNative) {
+    e.preventDefault();
+    handleClick(e);
+  } else if (e.key === 'ArrowDown' && !isVisible.value) {
+    e.preventDefault();
+    openPopover();
+  }
+};
+
+const focusTrigger = () => {
+  trigger.value?.querySelector<HTMLElement>('button, a, input, [tabindex]:not([tabindex="-1"])')?.focus();
+};
+
+// keyup + capture so the Escape doesn't also reach a surrounding drawer/modal (they close on window keyup).
+const handleEscape = (e: KeyboardEvent) => {
+  if (e.key !== 'Escape') return;
+  e.stopPropagation();
+  closePopover();
+  focusTrigger();
+};
+
 const handleClickOutside = (e: Event) => {
   if (popover.value && !popover.value.contains(e.target as Node) && !trigger.value?.contains(e.target as Node)) {
     closePopover();
@@ -165,6 +191,7 @@ onMounted(async () => {
       createPopperInstance();
       if (props.triggerEvent === 'click') {
         document.addEventListener('click', handleClickOutside, true);
+        document.addEventListener('keyup', handleEscape, true);
       }
     }
     if (props.triggerEvent === 'hover') {
@@ -183,6 +210,7 @@ watch(isVisible, async (visible) => {
 
     if (props.triggerEvent === 'click') {
       document.addEventListener('click', handleClickOutside, true);
+      document.addEventListener('keyup', handleEscape, true);
     }
 
     if (props.triggerEvent === 'hover') {
@@ -194,6 +222,7 @@ watch(isVisible, async (visible) => {
 
     if (props.triggerEvent === 'click') {
       document.removeEventListener('click', handleClickOutside, true);
+      document.removeEventListener('keyup', handleEscape, true);
     }
 
     if (props.triggerEvent === 'hover') {
@@ -208,6 +237,7 @@ onBeforeUnmount(() => {
 
   if (props.triggerEvent === 'click') {
     document.removeEventListener('click', handleClickOutside, true);
+    document.removeEventListener('keyup', handleEscape, true);
   }
 
   if (props.triggerEvent === 'hover') {
@@ -225,6 +255,7 @@ onBeforeUnmount(() => {
 defineExpose({
   closePopover,
   openPopover,
+  focusTrigger,
 });
 </script>
 
