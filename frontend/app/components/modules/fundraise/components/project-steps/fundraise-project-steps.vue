@@ -42,7 +42,7 @@ SPDX-License-Identifier: MIT
       />
 
       <fundraise-attribution-step
-        v-else-if="showAttribution && currentStep === attributionStepIndex"
+        v-else-if="currentStep === attributionStepIndex"
         :model-value="modelValue.attribution"
         @update:model-value="emit('update:modelValue', { ...modelValue, attribution: $event })"
       />
@@ -62,12 +62,7 @@ import FundraiseStepIndicator from '../main/fundraise-step-indicator.vue';
 import FundraiseComplianceStep from '../main/fundraise-compliance-step.vue';
 import FundraiseDonationOptionsStep from '../main/fundraise-donation-options-step.vue';
 import FundraiseAttributionStep from '../main/fundraise-attribution-step.vue';
-import {
-  PROJECT_STEPS,
-  PROJECT_STEPS_WITH_ATTRIBUTION,
-  PROJECT_GITHUB_STEPS,
-  PROJECT_GITHUB_STEPS_WITH_ATTRIBUTION,
-} from '../../config/fundraise-steps.config';
+import { PROJECT_STEPS, PROJECT_GITHUB_STEPS } from '../../config/fundraise-steps.config';
 import FundraiseProjectHostingStep from './fundraise-project-hosting-step.vue';
 import FundraiseProjectGithubStep from './github-sub-steps/fundraise-project-github-step.vue';
 import FundraiseProjectDetailsStep from './details/fundraise-project-details-step.vue';
@@ -76,7 +71,6 @@ import type { ProjectFormData } from '~/types/fundraise.types';
 const props = defineProps<{
   currentStep: number;
   modelValue: ProjectFormData;
-  showAttribution: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -86,16 +80,9 @@ const emit = defineEmits<{
 const detailsStepIndex = computed(() => (props.modelValue.hostingType === 'github' ? 2 : 1));
 const donationOptionsStepIndex = computed(() => detailsStepIndex.value + 1);
 const attributionStepIndex = computed(() => donationOptionsStepIndex.value + 1);
-const complianceStepIndex = computed(() =>
-  props.showAttribution ? attributionStepIndex.value + 1 : donationOptionsStepIndex.value + 1,
-);
+const complianceStepIndex = computed(() => attributionStepIndex.value + 1);
 
-const steps = computed(() => {
-  if (props.modelValue.hostingType === 'github') {
-    return props.showAttribution ? PROJECT_GITHUB_STEPS_WITH_ATTRIBUTION : PROJECT_GITHUB_STEPS;
-  }
-  return props.showAttribution ? PROJECT_STEPS_WITH_ATTRIBUTION : PROJECT_STEPS;
-});
+const steps = computed(() => (props.modelValue.hostingType === 'github' ? PROJECT_GITHUB_STEPS : PROJECT_STEPS));
 </script>
 
 <script lang="ts">

@@ -25,7 +25,7 @@ SPDX-License-Identifier: MIT
         @update:model-value="emit('update:modelValue', { ...modelValue, donationOptions: $event })"
       />
       <fundraise-attribution-step
-        v-else-if="props.showAttribution && currentStep === attributionStepIndex"
+        v-else-if="currentStep === attributionStepIndex"
         :model-value="modelValue.attribution"
         @update:model-value="emit('update:modelValue', { ...modelValue, attribution: $event })"
       />
@@ -39,27 +39,23 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
 import FundraiseStepIndicator from '../main/fundraise-step-indicator.vue';
 import FundraiseComplianceStep from '../main/fundraise-compliance-step.vue';
 import FundraiseDonationOptionsStep from '../main/fundraise-donation-options-step.vue';
 import FundraiseAttributionStep from '../main/fundraise-attribution-step.vue';
-import { STANDARD_STEPS, STANDARD_STEPS_WITH_ATTRIBUTION } from '../../config/fundraise-steps.config';
+import { STANDARD_STEPS } from '../../config/fundraise-steps.config';
 import FundraiseEventDetailsStep from './fundraise-event-details-step.vue';
 import type { EventFormData } from '~/types/fundraise.types';
 
-const props = defineProps<{
+defineProps<{
   currentStep: number;
   modelValue: EventFormData;
-  showAttribution: boolean;
 }>();
 
 const donationOptionsStepIndex = 1;
 const attributionStepIndex = donationOptionsStepIndex + 1;
-const complianceStepIndex = computed(() =>
-  props.showAttribution ? attributionStepIndex + 1 : donationOptionsStepIndex + 1,
-);
-const STEPS = computed(() => (props.showAttribution ? STANDARD_STEPS_WITH_ATTRIBUTION : STANDARD_STEPS));
+const complianceStepIndex = attributionStepIndex + 1;
+const STEPS = STANDARD_STEPS;
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: EventFormData): void;
