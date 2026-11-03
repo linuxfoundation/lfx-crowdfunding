@@ -49,6 +49,7 @@ Click **Search instead** to go back to the search.
 A few things to know:
 
 - The organization is shown publicly as you entered or selected it. There is no check that you work there.
+- People who can view the organization in LFX see your name and email next to the donation on its LFX organization page. The donate drawer reminds you of this once you pick an organization.
 - You can't change the organization after the donation is made. Your confirmation email shows it.
 - For a monthly donation, every charge is credited to the organization you chose when you subscribed.
 

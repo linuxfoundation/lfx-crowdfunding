@@ -158,6 +158,14 @@ SPDX-License-Identifier: MIT
               @click="stopManualEntry"
             />
           </div>
+
+          <!-- Lens rows show donor name and email to the credited org (#436) -->
+          <lfx-field-message
+            v-if="form.organization"
+            type="info"
+          >
+            {{ form.organization.name }} will see your name and email with this donation on its LFX organization page.
+          </lfx-field-message>
         </template>
       </div>
     </div>
