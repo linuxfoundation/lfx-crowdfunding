@@ -49,3 +49,12 @@ CVE-2026-102829
 # (via nitropack) at build time on developer-controlled config, never on
 # request input.
 CVE-2026-93753
+
+# CVE-2026-118773 / glob DoS via incomplete traversal cancellation and
+# CVE-2026-118764 / minimatch DoS via crafted pattern expansion: fixed only in
+# glob 14 and minimatch 11, majors that drop the CJS/default exports eslint 9
+# (minimatch 3), archiver (glob 10, minimatch 5) and @vercel/nft (glob 13) load.
+# All are build or lint tooling run on developer-controlled patterns, never on
+# request input, and none ships in the Nitro server bundle.
+CVE-2026-118773
+CVE-2026-118764
