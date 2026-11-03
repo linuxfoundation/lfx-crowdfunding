@@ -60,7 +60,13 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
     ).toBeVisible();
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 
-    // Step 1c: compliance — scope checkboxes to each section to avoid matching unrelated inputs
+    // Step 1c: attribution — defaults to 'personal' (valid), just continue
+    await expect(
+      authenticatedPage.getByRole('heading', { name: 'Initiative attribution' }),
+    ).toBeVisible();
+    await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
+
+    // Step 1d: compliance — scope checkboxes to each section to avoid matching unrelated inputs
     await expect(authenticatedPage.getByText('Compliance Confirmation')).toBeVisible();
 
     const ofacSection = authenticatedPage
@@ -105,6 +111,11 @@ test.describe('Fundraise form — General Fund (authenticated)', () => {
 
     await expect(
       authenticatedPage.getByRole('heading', { name: 'Donation options' }),
+    ).toBeVisible();
+    await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
+
+    await expect(
+      authenticatedPage.getByRole('heading', { name: 'Initiative attribution' }),
     ).toBeVisible();
     await authenticatedPage.getByRole('button', { name: 'Continue' }).click();
 

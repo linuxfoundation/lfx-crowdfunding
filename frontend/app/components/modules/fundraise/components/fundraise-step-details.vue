@@ -8,7 +8,6 @@ SPDX-License-Identifier: MIT
     v-if="initiativeType === 'project'"
     :current-step="subStep"
     :model-value="projectForm"
-    :show-attribution="showAttribution"
     @update:model-value="projectForm = $event"
   />
 
@@ -17,7 +16,6 @@ SPDX-License-Identifier: MIT
     v-else-if="initiativeType === 'security_audit'"
     :current-step="subStep"
     :model-value="securityAuditForm"
-    :show-attribution="showAttribution"
     @update:model-value="securityAuditForm = $event"
   />
 
@@ -26,7 +24,6 @@ SPDX-License-Identifier: MIT
     v-else-if="initiativeType === 'general_fund'"
     :current-step="subStep"
     :model-value="generalFundForm"
-    :show-attribution="showAttribution"
     @update:model-value="generalFundForm = $event"
   />
 
@@ -35,7 +32,6 @@ SPDX-License-Identifier: MIT
     v-else-if="initiativeType === 'event'"
     :current-step="subStep"
     :model-value="eventForm"
-    :show-attribution="showAttribution"
     @update:model-value="eventForm = $event"
   />
 </template>
@@ -235,16 +231,13 @@ const securityAuditForm = ref<SecurityAuditFormData>(createInitialSecurityAuditF
 const generalFundForm = ref<GeneralFundFormData>(createInitialGeneralFundForm());
 const eventForm = ref<EventFormData>(createInitialEventForm());
 
-const showAttribution = useFeatureFlags().getBooleanFlag('crowdfunding-attribution-step');
-
 const totalSubSteps = computed(() => {
-  const attributionSteps = showAttribution.value ? 1 : 0;
   if (props.initiativeType === 'project') {
-    return (projectForm.value.hostingType === 'github' ? 5 : 4) + attributionSteps;
+    return projectForm.value.hostingType === 'github' ? 6 : 5;
   }
-  if (props.initiativeType === 'security_audit') return 3 + attributionSteps;
-  if (props.initiativeType === 'general_fund') return 3 + attributionSteps;
-  if (props.initiativeType === 'event') return 3 + attributionSteps;
+  if (props.initiativeType === 'security_audit') return 4;
+  if (props.initiativeType === 'general_fund') return 4;
+  if (props.initiativeType === 'event') return 4;
   return 1;
 });
 
@@ -261,14 +254,12 @@ const isDonationOptionsStepValid = (donationOptions: DonationOptionsData): boole
 const isAttributionStepValid = (attribution: AttributionData): boolean =>
   attribution.kind === 'personal' || attribution.entityId !== null;
 
-// Compliance is always last; Attribution (when the flag is on) sits directly before it;
-// Donation options sits before either of those. Named here once instead of repeating the
+// Compliance is always last; Attribution sits directly before it; Donation options sits
+// before Attribution. Named here once instead of repeating the
 // `totalSubSteps - N` arithmetic in every per-type branch below.
 const complianceIndex = computed(() => totalSubSteps.value - 1);
-const attributionIndex = computed(() => (showAttribution.value ? complianceIndex.value - 1 : -1));
-const donationOptionsIndex = computed(() =>
-  showAttribution.value ? attributionIndex.value - 1 : complianceIndex.value - 1,
-);
+const attributionIndex = computed(() => complianceIndex.value - 1);
+const donationOptionsIndex = computed(() => attributionIndex.value - 1);
 
 const isCurrentSubStepValid = computed(() => {
   if (props.initiativeType === 'project') {
@@ -337,16 +328,6 @@ watch(
     }
   },
 );
-
-// Feature flags update live. If attribution turns off mid-flow the current step can sit past the
-// shortened wizard (advance() would then increment forever) and a hidden selection would still submit.
-watch(showAttribution, (enabled) => {
-  if (enabled) return;
-  subStep.value = Math.min(subStep.value, totalSubSteps.value - 1);
-  for (const form of [projectForm, securityAuditForm, generalFundForm, eventForm]) {
-    form.value.attribution = createDefaultAttribution();
-  }
-});
 
 const advance = () => {
   if (!isLastSubStep.value) subStep.value++;
