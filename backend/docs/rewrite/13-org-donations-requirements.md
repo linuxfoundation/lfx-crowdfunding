@@ -397,14 +397,15 @@ admins (§4, option B). This applies to every option.
    separate epic, #402. Only donations with a `b2b_org` reference can show on the lens page (§4.1), and none
    can get one until `b2b_org` search (§5.2 item 3) or domain matching (§5.2 item 4) ships.
 6. **Lens page content. Decided (October 2026): deferred** with item 5 to #402. **Decided (PM,
-   October 2026):** each row shows the initiative, date, donor name, donor email and amount.
-   Anonymous donations still show, as "Anonymous" with no donor name or email, so the
-   company's total stays complete (#414).
-7. **Donor notice and privacy review. Open, for #402.** Anyone can credit any org without
-   proof (item 1), and lens rows include the donor's name and email (item 6), so a donor's
-   details reach whichever company they name. Before the lens page ships, checkout tells
-   donors that their name and email will be visible to the org they credit unless they donate
-   anonymously, and privacy/legal confirm the disclosure.
+   October 2026):** each row shows the initiative, date, donor name, donor email and amount
+   (#414). CF checkout has no anonymous option, so every row carries the donor's name and
+   email, including org donations made before the checkout notice (item 7). *Assumed (November
+   2026), pending PM reply.*
+7. **Donor notice and privacy review. Notice built (#436); privacy/legal review open.** Anyone
+   can credit any org without proof (item 1), and lens rows include the donor's name and email
+   (item 6), so a donor's details reach whichever company they name. Before the lens page
+   ships, checkout tells donors, once they pick an org: "{Org} will see your name and email with
+   this donation on its LFX organization page." Privacy/legal confirm the wording.
 
 ### 5.2 Architecture
 
@@ -454,8 +455,7 @@ admins (§4, option B). This applies to every option.
    It checks `auditor` (the lens read gate, §4.3), unlike the initiatives list, which checks
    `writer`. With `writer`, most people at the company wouldn't see their company's donations.
    Because rows include donor emails (§5.1 item 6), every lens viewer at the company sees them,
-   which follows from the two PM decisions. Anonymous rows never carry the donor's name or
-   email. The checkout notice and privacy/legal sign-off (§5.1 item 7) must land before the
+   which follows from the two PM decisions. The checkout notice and privacy/legal sign-off (§5.1 item 7) must land before the
    page ships. The response is per caller, so like the initiatives list it sets
    `Cache-Control: private, no-store` and `Vary: Authorization`
    (`backend/internal/handler/initiative_handler.go:154-155`). Self Serve builds the page
