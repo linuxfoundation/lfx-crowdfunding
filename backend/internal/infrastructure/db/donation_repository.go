@@ -296,7 +296,9 @@ func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.Org
 }
 
 // orgLensRows is the Org lens list: succeeded one-time donations plus every
-// subscription that reached a paid state, each matched to $1 (a b2b_org SFID).
+// subscription that took a payment, each matched to $1 (a b2b_org SFID).
+// active and past_due imply a paid first invoice; canceled needs first_paid_at,
+// since never-paid attempts (incomplete, incomplete_expired) also end canceled.
 const orgLensRows = `
 	SELECT CAST(d.id AS text), 'one_time', d.initiative_id, d.user_id,
 	       d.current_amount_in_cents, '', d.status, d.created_on
@@ -306,7 +308,9 @@ const orgLensRows = `
 	SELECT CAST(s.id AS text), 'recurring', s.initiative_id, s.user_id,
 	       s.current_amount_in_cents, COALESCE(s.frequency, ''), s.status, s.created_on
 	FROM subscriptions s
-	WHERE s.b2b_org_sfid = $1 AND s.status IN ('active', 'past_due', 'canceled')`
+	WHERE s.b2b_org_sfid = $1
+	  AND (s.status IN ('active', 'past_due')
+	       OR (s.status = 'canceled' AND s.first_paid_at IS NOT NULL))`
 
 // ListByB2BOrg returns the donations and subscriptions matched to a b2b_org,
 // newest first, with initiative and donor details.

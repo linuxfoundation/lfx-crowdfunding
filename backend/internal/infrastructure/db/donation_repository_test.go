@@ -277,7 +277,20 @@ func TestDonationRepository_ListByB2BOrg(t *testing.T) {
 
 	active := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusActive, "sub_org_lens_active")
 	unpaid := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_incomplete")
-	for _, id := range []string{active.ID, unpaid.ID} {
+	// Webhook paths: paid then canceled stays; incomplete then canceled
+	// (abandoned 3DS, incomplete_expired) never took a payment and is dropped.
+	paidCanceled := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_paid_canceled")
+	unpaidCanceled := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_unpaid_canceled")
+	for _, step := range []struct{ stripeID, status string }{
+		{"sub_org_lens_paid_canceled", models.SubscriptionStatusActive},
+		{"sub_org_lens_paid_canceled", models.SubscriptionStatusCanceled},
+		{"sub_org_lens_unpaid_canceled", models.SubscriptionStatusCanceled},
+	} {
+		if err := subRepo.UpdateByStripeSubscriptionID(ctx, step.stripeID, step.status); err != nil {
+			t.Fatalf("UpdateByStripeSubscriptionID(%s, %s): %v", step.stripeID, step.status, err)
+		}
+	}
+	for _, id := range []string{active.ID, unpaid.ID, paidCanceled.ID, unpaidCanceled.ID} {
 		if err := subRepo.SetB2BOrgSFID(ctx, id, sfid); err != nil {
 			t.Fatalf("subscription SetB2BOrgSFID: %v", err)
 		}
@@ -287,8 +300,8 @@ func TestDonationRepository_ListByB2BOrg(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListByB2BOrg() error = %v", err)
 	}
-	if meta.Total != 2 || len(rows) != 2 {
-		t.Fatalf("got %d rows (total %d), want the succeeded donation and the active subscription: %+v", len(rows), meta.Total, rows)
+	if meta.Total != 3 || len(rows) != 3 {
+		t.Fatalf("got %d rows (total %d), want the succeeded donation, the active and the paid-then-canceled subscriptions: %+v", len(rows), meta.Total, rows)
 	}
 	got := map[string]string{}
 	for _, r := range rows {
@@ -297,7 +310,8 @@ func TestDonationRepository_ListByB2BOrg(t *testing.T) {
 			t.Errorf("row %s: initiative %q, donor email %q", r.ID, r.InitiativeName, r.DonorEmail)
 		}
 	}
-	if got[paid] != models.OrgLensDonationOneTime || got[active.ID] != models.OrgLensDonationRecurring {
+	if got[paid] != models.OrgLensDonationOneTime || got[active.ID] != models.OrgLensDonationRecurring ||
+		got[paidCanceled.ID] != models.OrgLensDonationRecurring {
 		t.Errorf("rows = %v", got)
 	}
 }

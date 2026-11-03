@@ -360,6 +360,19 @@ func (r *SubscriptionRepository) UpdateByStripeSubscriptionID(ctx context.Contex
 		attribute.String("db.status", status),
 	)
 
+	// Active means an invoice was paid: stamp the first payment, which the Org
+	// lens uses to keep paid cancellations and drop never-paid ones. Separate
+	// from the status update so a row already active (no status change) still
+	// gets it, without changing the ErrAlreadyProcessed result.
+	if status == models.SubscriptionStatusActive {
+		if _, err := r.pool.Exec(ctx, `
+			UPDATE subscriptions SET first_paid_at = NOW()
+			WHERE stripe_subscription_id = $1 AND first_paid_at IS NULL`, stripeSubID); err != nil {
+			span.RecordError(err)
+			return fmt.Errorf("set subscription first_paid_at: %w", err)
+		}
+	}
+
 	const q = `
 		UPDATE subscriptions SET status = $2, updated_on = NOW()
 		WHERE stripe_subscription_id = $1
