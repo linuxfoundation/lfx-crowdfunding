@@ -88,6 +88,7 @@ func (r *subscriptionRepo) Update(_ context.Context, s *models.Subscription) (*m
 func (r *subscriptionRepo) UpdateByStripeSubscriptionID(_ context.Context, _, _ string) error {
 	return r.updateErr
 }
+func (r *subscriptionRepo) SetB2BOrgSFID(_ context.Context, _, _ string) error { return nil }
 
 // subscriptionInitiativeRepo is a minimal InitiativeRepository stub for subscription tests.
 type subscriptionInitiativeRepo struct {
@@ -214,6 +215,9 @@ func (c *subscriptionStripeClient) GetSubscriptionCurrentPeriodEnd(ctx context.C
 	return 0, nil
 }
 func (c *subscriptionStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
+func (c *subscriptionStripeClient) UpdateSubscriptionMetadata(_ context.Context, _, _ string, _ map[string]string) error {
 	return nil
 }
 func (c *subscriptionStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.Event, error) {

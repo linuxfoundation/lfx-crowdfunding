@@ -24,6 +24,7 @@ type configStripeClient struct {
 	onCancelSubscription          func(context.Context, string) error
 	onGetSubscriptionPeriodEnd    func(context.Context, string) (int64, error)
 	onUpdatePaymentIntentMetadata func(context.Context, string, map[string]string) error
+	onUpdateSubscriptionMetadata  func(context.Context, string, string, map[string]string) error
 	onConstructWebhook            func([]byte, string, string) (stripe.Event, error)
 	onCreateCustomer              func(context.Context, string, string) (string, error)
 	onCreateSetupIntent           func(context.Context, string) (string, error)
@@ -80,6 +81,12 @@ func (c *configStripeClient) UpdatePaymentIntentMetadata(ctx context.Context, pi
 		return c.onUpdatePaymentIntentMetadata(ctx, piID, metadata)
 	}
 	panic("UpdatePaymentIntentMetadata not expected")
+}
+func (c *configStripeClient) UpdateSubscriptionMetadata(ctx context.Context, subID, itemID string, metadata map[string]string) error {
+	if c.onUpdateSubscriptionMetadata != nil {
+		return c.onUpdateSubscriptionMetadata(ctx, subID, itemID, metadata)
+	}
+	panic("UpdateSubscriptionMetadata not expected")
 }
 func (c *configStripeClient) ConstructWebhookEvent(p []byte, sig, secret string) (stripe.Event, error) {
 	if c.onConstructWebhook != nil {
@@ -172,6 +179,7 @@ type testDonationRepo struct {
 	onListByInitiative        func(context.Context, string, models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
 	onListByUser              func(context.Context, string, models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
 	onListOrgDonations        func(context.Context) ([]models.OrgDonationRow, error)
+	onSetB2BOrgSFID           func(context.Context, string, string) error
 }
 
 func (r *testDonationRepo) GetByID(_ context.Context, _ string) (*models.Donation, error) {
@@ -195,9 +203,15 @@ func (r *testDonationRepo) Create(ctx context.Context, d *models.Donation) (*mod
 	}
 	return d, nil
 }
-func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) error {
+func (r *testDonationRepo) UpdateByPaymentIntentID(ctx context.Context, piID, status, chargeID string) (string, error) {
 	if r.onUpdateByPaymentIntentID != nil {
-		return r.onUpdateByPaymentIntentID(ctx, piID, status, chargeID)
+		return "", r.onUpdateByPaymentIntentID(ctx, piID, status, chargeID)
+	}
+	return "", nil
+}
+func (r *testDonationRepo) SetB2BOrgSFID(ctx context.Context, id, sfid string) error {
+	if r.onSetB2BOrgSFID != nil {
+		return r.onSetB2BOrgSFID(ctx, id, sfid)
 	}
 	return nil
 }
@@ -219,6 +233,7 @@ type testSubscriptionRepo struct {
 	onCreate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
 	onUpdate                       func(context.Context, *models.Subscription) (*models.Subscription, error)
 	onUpdateByStripeSubscriptionID func(context.Context, string, string) error
+	onSetB2BOrgSFID                func(context.Context, string, string) error
 }
 
 func (r *testSubscriptionRepo) GetByID(ctx context.Context, id string) (*models.Subscription, error) {
@@ -266,6 +281,12 @@ func (r *testSubscriptionRepo) Update(ctx context.Context, s *models.Subscriptio
 func (r *testSubscriptionRepo) UpdateByStripeSubscriptionID(ctx context.Context, subID, status string) error {
 	if r.onUpdateByStripeSubscriptionID != nil {
 		return r.onUpdateByStripeSubscriptionID(ctx, subID, status)
+	}
+	return nil
+}
+func (r *testSubscriptionRepo) SetB2BOrgSFID(ctx context.Context, id, sfid string) error {
+	if r.onSetB2BOrgSFID != nil {
+		return r.onSetB2BOrgSFID(ctx, id, sfid)
 	}
 	return nil
 }

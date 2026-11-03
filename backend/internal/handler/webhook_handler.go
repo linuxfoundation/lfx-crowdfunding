@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
@@ -33,7 +34,8 @@ type WebhookHandler struct {
 	emailService     domain.EmailService
 	webhookSecret    string
 	logger           *slog.Logger
-	ackUnimplemented bool // when true, reply 200 for known-but-unimplemented events
+	ackUnimplemented bool          // when true, reply 200 for known-but-unimplemented events
+	v2RaceWindow     time.Duration // 0 = a missing v2 donation is always retried; see StripeConfig.V2RaceWindow
 }
 
 // NewWebhookHandler creates a WebhookHandler.
@@ -46,6 +48,7 @@ func NewWebhookHandler(
 	webhookSecret string,
 	logger *slog.Logger,
 	ackUnimplemented bool,
+	v2RaceWindow time.Duration,
 ) *WebhookHandler {
 	return &WebhookHandler{
 		stripeClient:     stripeClient,
@@ -56,6 +59,7 @@ func NewWebhookHandler(
 		webhookSecret:    webhookSecret,
 		logger:           logger,
 		ackUnimplemented: ackUnimplemented,
+		v2RaceWindow:     v2RaceWindow,
 	}
 }
 
@@ -156,13 +160,17 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 	if pi.LatestCharge != nil {
 		chargeID = pi.LatestCharge.ID
 	}
-	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusSucceeded, chargeID); err != nil {
+	b2bOrgSFID, err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusSucceeded, chargeID)
+	if err != nil {
 		if errors.Is(err, domain.ErrAlreadyProcessed) {
 			h.logger.Debug("payment_intent.succeeded: already processed, skipping", "pi_id", pi.ID)
 			return nil
 		}
 		if errors.Is(err, domain.ErrDonationNotFound) {
-			if pi.Metadata["version"] == "v2" {
+			// Past the race window the row is never coming: the PI was created
+			// by another backend on the same Stripe account (e.g. a local one).
+			raceExpired := h.v2RaceWindow > 0 && time.Since(time.Unix(event.Created, 0)) > h.v2RaceWindow
+			if pi.Metadata["version"] == "v2" && !raceExpired {
 				// INSERT/webhook race: the donation row may not be committed yet.
 				// Return a transient error (not wrapping ErrDonationNotFound) so
 				// dispatch returns 500 and Stripe retries with its normal backoff.
@@ -170,7 +178,7 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 					"pi_id", pi.ID)
 				return fmt.Errorf("payment_intent.succeeded: v2 donation not yet committed (pi_id=%s)", pi.ID)
 			}
-			// Non-v2 (LFF-era events): no row will ever appear — propagate
+			// Non-v2 (LFF-era events) or v2 past the race window: no row will ever appear — propagate
 			// ErrDonationNotFound so dispatch acknowledges with 200 and stops
 			// Stripe's 72-hour retry loop.
 		}
@@ -215,14 +223,16 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		OrganizationID:     pi.Metadata["org_id"],
 		OrganizationName:   pi.Metadata["org_name"],
 		OrganizationDomain: pi.Metadata["org_domain"],
-		AccountEmail:       donorEmail,
-		SourceType:         domain.LedgerSourceTypeStripe,
-		SourceTxnID:        sourceTxnID,
-		SourceAccountID:    customerID,
-		TxnType:            ledgerTxnType,
-		TxnCategory:        pi.Metadata["category"],
-		Amount:             amount,
-		TxnDate:            pi.Created,
+		// Empty when the post-save b2b_org lookup hasn't matched yet; #412 fills it in later.
+		OrganizationSFID: b2bOrgSFID,
+		AccountEmail:     donorEmail,
+		SourceType:       domain.LedgerSourceTypeStripe,
+		SourceTxnID:      sourceTxnID,
+		SourceAccountID:  customerID,
+		TxnType:          ledgerTxnType,
+		TxnCategory:      pi.Metadata["category"],
+		Amount:           amount,
+		TxnDate:          pi.Created,
 	}
 	// Ledger post is best-effort: the DB is already marked succeeded, so returning
 	// an error would cause Stripe to retry — but the retry hits ErrAlreadyProcessed
@@ -283,7 +293,7 @@ func (h *WebhookHandler) handlePaymentIntentFailed(r *http.Request, event stripe
 		h.logger.Error("payment_intent.payment_failed: unmarshal failed", "event_id", event.ID, "error", err)
 		return fmt.Errorf("payment_intent.payment_failed: unmarshal: %w", err)
 	}
-	if err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusFailed, ""); err != nil {
+	if _, err := h.donationRepo.UpdateByPaymentIntentID(r.Context(), pi.ID, models.DonationStatusFailed, ""); err != nil {
 		if errors.Is(err, domain.ErrAlreadyProcessed) {
 			h.logger.Debug("payment_intent.payment_failed: already processed, skipping", "pi_id", pi.ID)
 			return nil

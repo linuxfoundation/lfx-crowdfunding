@@ -624,10 +624,11 @@ func TestInitiativeRepository_GetOrganizationsByIDs(t *testing.T) {
 	truncate(t, ctx, "crowdfunding.organizations", "crowdfunding.users")
 
 	owner := seedUser(t, ctx, "org-owner")
-	org, err := NewOrganizationRepository(testPool).Create(ctx, owner.ID, models.OrganizationCreateInput{
-		Name: "Acme", AvatarURL: "https://example.com/acme.png",
-	})
-	if err != nil {
+	// Inserted directly: the API no longer creates organizations (#410).
+	var org models.Organization
+	if err := testPool.QueryRow(ctx,
+		`INSERT INTO organizations (id, owner_id, name, avatar_url) VALUES (gen_random_uuid(), $1, 'Acme', 'https://example.com/acme.png') RETURNING id`,
+		owner.ID).Scan(&org.ID); err != nil {
 		t.Fatalf("create organization: %v", err)
 	}
 

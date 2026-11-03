@@ -169,6 +169,9 @@ func (m *mockStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ 
 func (m *mockStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }
+func (m *mockStripeClient) UpdateSubscriptionMetadata(_ context.Context, _, _ string, _ map[string]string) error {
+	return nil
+}
 func (m *mockStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.Event, error) {
 	return stripe.Event{}, nil
 }

@@ -2,5 +2,9 @@
 // SPDX-License-Identifier: MIT
 .c-select {
   @apply border border-neutral-200 rounded-md w-full h-9 flex justify-between;
-  @apply text-sm pl-2.5;
+  @apply text-sm pl-2.5 outline-none;
+
+  &:focus-visible {
+    @apply border-neutral-900;
+  }
 }

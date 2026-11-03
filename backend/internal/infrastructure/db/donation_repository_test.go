@@ -103,10 +103,20 @@ func TestDonationRepository_UpdateByPaymentIntentID(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
+	// A second SFID must not overwrite the first one.
+	for _, sfid := range []string{"001000000000001AAA", "001000000000002AAA"} {
+		if err := repo.SetB2BOrgSFID(ctx, created.ID, sfid); err != nil {
+			t.Fatalf("SetB2BOrgSFID(%q) error = %v", sfid, err)
+		}
+	}
+
 	// Update to succeeded with chargeID
-	err = repo.UpdateByPaymentIntentID(ctx, "pi_update_test", models.DonationStatusSucceeded, "ch_test_456")
+	sfid, err := repo.UpdateByPaymentIntentID(ctx, "pi_update_test", models.DonationStatusSucceeded, "ch_test_456")
 	if err != nil {
 		t.Fatalf("UpdateByPaymentIntentID() error = %v", err)
+	}
+	if sfid != "001000000000001AAA" {
+		t.Errorf("UpdateByPaymentIntentID() sfid = %q, want the first stored SFID", sfid)
 	}
 
 	// Verify the update
@@ -123,7 +133,7 @@ func TestDonationRepository_UpdateByPaymentIntentID(t *testing.T) {
 	}
 
 	// Call again with same args → expect ErrAlreadyProcessed (idempotency)
-	err = repo.UpdateByPaymentIntentID(ctx, "pi_update_test", models.DonationStatusSucceeded, "ch_test_456")
+	_, err = repo.UpdateByPaymentIntentID(ctx, "pi_update_test", models.DonationStatusSucceeded, "ch_test_456")
 	if err == nil {
 		t.Fatal("UpdateByPaymentIntentID() expected ErrAlreadyProcessed, got nil")
 	}
@@ -142,7 +152,7 @@ func TestDonationRepository_UpdateByPaymentIntentID_NotFound(t *testing.T) {
 	repo := NewDonationRepository(testPool)
 
 	// Call with nonexistent piID
-	err := repo.UpdateByPaymentIntentID(ctx, "pi_nonexistent", models.DonationStatusSucceeded, "ch_test")
+	_, err := repo.UpdateByPaymentIntentID(ctx, "pi_nonexistent", models.DonationStatusSucceeded, "ch_test")
 	if err == nil {
 		t.Fatal("UpdateByPaymentIntentID() expected ErrDonationNotFound, got nil")
 	}

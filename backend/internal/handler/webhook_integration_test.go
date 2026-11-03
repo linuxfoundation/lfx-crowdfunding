@@ -50,6 +50,9 @@ func (c *intStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context, _ s
 func (c *intStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }
+func (c *intStripeClient) UpdateSubscriptionMetadata(_ context.Context, _, _ string, _ map[string]string) error {
+	return nil
+}
 func (c *intStripeClient) ConstructWebhookEvent(payload []byte, sig, secret string) (stripe.Event, error) {
 	if c.onConstruct != nil {
 		return c.onConstruct(payload, sig, secret)
@@ -271,7 +274,7 @@ func TestWebhookIntegration_PaymentIntentSucceeded(t *testing.T) {
 	sc := &intStripeClient{}
 	dr := db.NewDonationRepository(handlerTestPool)
 	sr := db.NewSubscriptionRepository(handlerTestPool)
-	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false)
+	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false, 0)
 
 	rr := postSignedWebhook(t, h, payloadBytes, webhookSecret)
 
@@ -375,7 +378,7 @@ func TestWebhookIntegration_SubscriptionActivated(t *testing.T) {
 	sc := &intStripeClient{}
 	dr := db.NewDonationRepository(handlerTestPool)
 	sr := db.NewSubscriptionRepository(handlerTestPool)
-	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false)
+	h := handler.NewWebhookHandler(sc, &intLedgerClient{}, dr, sr, &intEmailService{}, webhookSecret, discardLogger(), false, 0)
 
 	rr := postSignedWebhook(t, h, payloadBytes, webhookSecret)
 

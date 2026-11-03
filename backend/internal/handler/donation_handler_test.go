@@ -63,9 +63,10 @@ func (r *donationRepo) Create(_ context.Context, d *models.Donation) (*models.Do
 	}
 	return d, nil
 }
-func (r *donationRepo) UpdateByPaymentIntentID(_ context.Context, _, _, _ string) error {
-	return r.updateByPIIDErr
+func (r *donationRepo) UpdateByPaymentIntentID(_ context.Context, _, _, _ string) (string, error) {
+	return "", r.updateByPIIDErr
 }
+func (r *donationRepo) SetB2BOrgSFID(_ context.Context, _, _ string) error { return nil }
 
 func (r *donationRepo) ListOrgDonations(_ context.Context) ([]models.OrgDonationRow, error) {
 	return nil, nil
@@ -187,6 +188,9 @@ func (c *donationStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context
 	return 0, nil
 }
 func (c *donationStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
+func (c *donationStripeClient) UpdateSubscriptionMetadata(_ context.Context, _, _ string, _ map[string]string) error {
 	return nil
 }
 func (c *donationStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.Event, error) {

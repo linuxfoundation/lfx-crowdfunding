@@ -17,18 +17,6 @@ type Organization struct {
 	UpdatedOn time.Time `json:"updated_on"`
 }
 
-// OrganizationCreateInput holds the fields required to create a new organization.
-type OrganizationCreateInput struct {
-	Name      string `json:"name"`
-	AvatarURL string `json:"avatar_url,omitempty"`
-}
-
-// OrganizationUpdateInput holds the fields that may be updated on an organization.
-type OrganizationUpdateInput struct {
-	Name      string `json:"name"`
-	AvatarURL string `json:"avatar_url,omitempty"`
-}
-
 // OrgClaim is the organization a donor gives on behalf of, as the donor stated it.
 // It is stored on the donation or subscription itself, not as a reference to an
 // organizations row. Domain is normalized by the service before it is stored.

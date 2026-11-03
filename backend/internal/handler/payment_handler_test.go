@@ -77,6 +77,9 @@ func (c *paymentStripeClient) GetSubscriptionCurrentPeriodEnd(_ context.Context,
 func (c *paymentStripeClient) UpdatePaymentIntentMetadata(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }
+func (c *paymentStripeClient) UpdateSubscriptionMetadata(_ context.Context, _, _ string, _ map[string]string) error {
+	return nil
+}
 func (c *paymentStripeClient) ConstructWebhookEvent(_ []byte, _, _ string) (stripe.Event, error) {
 	return stripe.Event{}, nil
 }
