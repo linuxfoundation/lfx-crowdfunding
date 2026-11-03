@@ -329,8 +329,12 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 		INSERT INTO subscriptions
 		       (user_id, initiative_id, organization_id, org_name, org_domain, category,
 		        current_amount_in_cents, frequency, status,
-		        stripe_subscription_id, stripe_subscription_item_id, stripe_price_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		        stripe_subscription_id, stripe_subscription_item_id, stripe_price_id,
+		        first_paid_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+		        -- Created active: Stripe charged the first invoice without 3DS. The
+		        -- invoice webhook can land before this INSERT and is not retried.
+		        CASE WHEN $13 THEN NOW() END)
 		RETURNING ` + subscriptionColumns
 
 	row := r.pool.QueryRow(ctx, q,
@@ -339,6 +343,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 		nullableString(s.Category), s.CurrentAmountCents, s.Frequency,
 		nullableString(s.Status), nullableString(s.StripeSubscriptionID),
 		nullableString(s.StripeSubscriptionItemID), nullableString(s.StripePriceID),
+		s.Status == models.SubscriptionStatusActive,
 	)
 	created, err := scanSubscription(row)
 	if err != nil {

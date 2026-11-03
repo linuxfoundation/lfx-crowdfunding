@@ -11,11 +11,13 @@ SET LOCAL search_path TO crowdfunding, public;
 ALTER TABLE subscriptions
   ADD COLUMN IF NOT EXISTS first_paid_at TIMESTAMPTZ NULL;
 
--- ponytail: rows canceled before this column existed can't be told apart, so
--- they count as paid; a few never-paid ones stay on the Org lens list. Check
--- Stripe invoices per row if exact history is ever needed.
+-- active and past_due already imply a paid first invoice; stamp them so they
+-- stay listed if canceled later. ponytail: rows canceled before this column
+-- existed can't be told apart, so they count as paid; a few never-paid ones
+-- stay on the Org lens list. Check Stripe invoices per row if exact history is
+-- ever needed.
 UPDATE subscriptions SET first_paid_at = created_on
-WHERE status = 'canceled' AND first_paid_at IS NULL;
+WHERE status IN ('active', 'past_due', 'canceled') AND first_paid_at IS NULL;
 
 -- Org lens donations list filters on the matched b2b_org (#413).
 CREATE INDEX IF NOT EXISTS idx_donations_b2b_org_sfid
