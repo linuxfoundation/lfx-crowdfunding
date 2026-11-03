@@ -40,7 +40,7 @@ export const lfxFooterMenu: FooterMenuSection[] = [
     links: [
       { name: 'LFX Self Serve', link: 'https://lfx.linuxfoundation.org' },
       { name: 'LFX Insights', link: 'https://insights.lfx.linuxfoundation.org' },
-      { name: 'LFX Mentorship', link: 'https://mentorship.lfx.linuxfoundation.org' },
+      { name: 'LFX Mentorship', link: 'https://mentorship.linuxfoundation.org' },
       { name: 'About the LF', link: 'https://www.linuxfoundation.org/about' },
     ],
   },
