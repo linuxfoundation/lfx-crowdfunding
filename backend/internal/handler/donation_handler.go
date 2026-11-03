@@ -73,7 +73,9 @@ func (h *DonationHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // ListForOrganization handles GET /crowdfunding/organizations/{uid}/donations for
 // the Org lens: donations matched to that b2b_org, with donor name and email.
-// Heimdall guards it on auditor for b2b_org:{uid}.
+// Heimdall guards it on auditor for b2b_org:{uid}, using the raw uid, so only the
+// 18-character SFID gets through (Self Serve lens routes only send that form). The
+// 15-character canonicalization in Validate is a safety net, not a supported input.
 func (h *DonationHandler) ListForOrganization(w http.ResponseWriter, r *http.Request) {
 	attr := models.Attribution{Type: models.AttributionOrganization, EntityUID: chi.URLParam(r, "uid")}
 	if err := attr.Validate(); err != nil {

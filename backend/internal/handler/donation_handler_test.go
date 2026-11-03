@@ -574,7 +574,9 @@ func TestDonationListForOrganization(t *testing.T) {
 	}}
 	h := newDonationHandler(donRepo, &donationInitiativeRepo{}, &donationUserRepo{}, &donationStripeClient{})
 
-	// A 15-character SFID is canonicalized to 18 before the query.
+	// The handler canonicalizes a 15-character SFID to 18 before the query. Deployed,
+	// Heimdall's FGA check on the raw uid rejects the 15-character form first (403),
+	// so this covers the handler's safety net, not a supported input.
 	req := setChiParam(httptest.NewRequest(http.MethodGet, "/crowdfunding/organizations/0014100000Te0yv/donations", nil), "uid", "0014100000Te0yv")
 	w := httptest.NewRecorder()
 	h.ListForOrganization(w, req)
