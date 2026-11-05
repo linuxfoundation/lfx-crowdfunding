@@ -256,13 +256,14 @@ func TestDonationRepository_ListByB2BOrg(t *testing.T) {
 	truncate(t, ctx, "crowdfunding.subscriptions", "crowdfunding.donations", "crowdfunding.initiatives", "crowdfunding.users")
 
 	owner := seedUser(t, ctx, "test-owner-org-lens")
+	donor := seedUser(t, ctx, "test-donor-org-lens")
 	initiative := seedInitiative(t, ctx, owner.ID, "Test Initiative Org Lens", "test-initiative-org-lens")
 	repo := NewDonationRepository(testPool)
 	subRepo := NewSubscriptionRepository(testPool)
 	const sfid = "001000000000001AAA"
 
 	setDonation := func(sfid, status string) string {
-		d := seedDonation(t, ctx, owner.ID, initiative.ID)
+		d := seedDonation(t, ctx, donor.ID, initiative.ID)
 		if err := repo.SetB2BOrgSFID(ctx, d.ID, sfid); err != nil {
 			t.Fatalf("SetB2BOrgSFID: %v", err)
 		}
@@ -275,14 +276,14 @@ func TestDonationRepository_ListByB2BOrg(t *testing.T) {
 	setDonation(sfid, models.DonationStatusPending)
 	setDonation("001000000000002AAA", models.DonationStatusSucceeded)
 
-	active := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusActive, "sub_org_lens_active")
-	unpaid := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_incomplete")
+	active := seedSubscription(t, ctx, donor.ID, initiative.ID, models.SubscriptionStatusActive, "sub_org_lens_active")
+	unpaid := seedSubscription(t, ctx, donor.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_incomplete")
 	// Webhook paths: paid then canceled stays; incomplete then canceled
 	// (abandoned 3DS, incomplete_expired) never took a payment and is dropped.
-	paidCanceled := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_paid_canceled")
-	unpaidCanceled := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_unpaid_canceled")
+	paidCanceled := seedSubscription(t, ctx, donor.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_paid_canceled")
+	unpaidCanceled := seedSubscription(t, ctx, donor.ID, initiative.ID, models.SubscriptionStatusIncomplete, "sub_org_lens_unpaid_canceled")
 	// Created active (no 3DS, invoice webhook raced ahead of the INSERT), then canceled: kept.
-	activeCanceled := seedSubscription(t, ctx, owner.ID, initiative.ID, models.SubscriptionStatusActive, "sub_org_lens_active_canceled")
+	activeCanceled := seedSubscription(t, ctx, donor.ID, initiative.ID, models.SubscriptionStatusActive, "sub_org_lens_active_canceled")
 	for _, step := range []struct{ stripeID, status string }{
 		{"sub_org_lens_active_canceled", models.SubscriptionStatusCanceled},
 		{"sub_org_lens_paid_canceled", models.SubscriptionStatusActive},
@@ -309,8 +310,11 @@ func TestDonationRepository_ListByB2BOrg(t *testing.T) {
 	got := map[string]string{}
 	for _, r := range rows {
 		got[r.ID] = r.Type
-		if r.InitiativeName != "Test Initiative Org Lens" || r.DonorEmail != owner.Email {
+		if r.InitiativeName != "Test Initiative Org Lens" || r.DonorEmail != donor.Email {
 			t.Errorf("row %s: initiative %q, donor email %q", r.ID, r.InitiativeName, r.DonorEmail)
+		}
+		if r.InitiativeSlug != "test-initiative-org-lens" || r.InitiativeCreator != owner.Name {
+			t.Errorf("row %s: initiative slug %q, creator %q", r.ID, r.InitiativeSlug, r.InitiativeCreator)
 		}
 	}
 	if got[paid] != models.OrgLensDonationOneTime || got[active.ID] != models.OrgLensDonationRecurring ||
