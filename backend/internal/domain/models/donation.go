@@ -110,14 +110,18 @@ const (
 // a donation or subscription matched to that b2b_org. A subscription is one row
 // with its per-charge amount; its individual charges live only in Ledger.
 type OrgLensDonation struct {
-	ID             string    `json:"id"`
-	Type           string    `json:"type"`
-	InitiativeID   string    `json:"initiative_id,omitempty"`
-	InitiativeName string    `json:"initiative_name,omitempty"`
-	DonorName      string    `json:"donor_name"`
-	DonorEmail     string    `json:"donor_email"`
-	AmountCents    int64     `json:"amount_cents"`
-	Frequency      string    `json:"frequency,omitempty"`
-	Status         string    `json:"status"`
-	CreatedOn      time.Time `json:"created_on"`
+	ID             string `json:"id"`
+	Type           string `json:"type"`
+	InitiativeID   string `json:"initiative_id,omitempty"`
+	InitiativeName string `json:"initiative_name,omitempty"`
+	// InitiativeSlug builds the link to the initiative's public page.
+	InitiativeSlug string `json:"initiative_slug,omitempty"`
+	// InitiativeCreator is the initiative owner's display name (never an email).
+	InitiativeCreator string    `json:"initiative_creator,omitempty"`
+	DonorName         string    `json:"donor_name"`
+	DonorEmail        string    `json:"donor_email"`
+	AmountCents       int64     `json:"amount_cents"`
+	Frequency         string    `json:"frequency,omitempty"`
+	Status            string    `json:"status"`
+	CreatedOn         time.Time `json:"created_on"`
 }

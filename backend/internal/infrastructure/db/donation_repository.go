@@ -333,6 +333,11 @@ func (r *DonationRepository) ListByB2BOrg(ctx context.Context, sfid string, limi
 
 	rows, err := r.pool.Query(ctx, `
 		SELECT t.id, t.kind, COALESCE(CAST(i.id AS text), ''), COALESCE(i.name, ''),
+		       COALESCE(i.slug, ''),
+		       COALESCE(
+		           NULLIF(o.name, ''),
+		           NULLIF(TRIM(COALESCE(o.given_name, '') || ' ' || COALESCE(o.family_name, '')), ''),
+		           ''),
 		       COALESCE(
 		           NULLIF(u.name, ''),
 		           NULLIF(TRIM(COALESCE(u.given_name, '') || ' ' || COALESCE(u.family_name, '')), ''),
@@ -340,6 +345,7 @@ func (r *DonationRepository) ListByB2BOrg(ctx context.Context, sfid string, limi
 		       COALESCE(u.email, ''), t.amount, t.frequency, t.status, t.created_on
 		FROM (`+orgLensRows+`) AS t(id, kind, initiative_id, user_id, amount, frequency, status, created_on)
 		LEFT JOIN initiatives i ON i.id = t.initiative_id
+		LEFT JOIN users o ON o.id = i.owner_id
 		JOIN users u ON u.id = t.user_id
 		ORDER BY t.created_on DESC, t.id
 		LIMIT $2 OFFSET $3`, sfid, limit, offset)
@@ -352,7 +358,8 @@ func (r *DonationRepository) ListByB2BOrg(ctx context.Context, sfid string, limi
 	result := []models.OrgLensDonation{}
 	for rows.Next() {
 		var d models.OrgLensDonation
-		if err := rows.Scan(&d.ID, &d.Type, &d.InitiativeID, &d.InitiativeName, &d.DonorName,
+		if err := rows.Scan(&d.ID, &d.Type, &d.InitiativeID, &d.InitiativeName, &d.InitiativeSlug,
+			&d.InitiativeCreator, &d.DonorName,
 			&d.DonorEmail, &d.AmountCents, &d.Frequency, &d.Status, &d.CreatedOn); err != nil {
 			return nil, nil, fmt.Errorf("scan org lens donation: %w", err)
 		}
