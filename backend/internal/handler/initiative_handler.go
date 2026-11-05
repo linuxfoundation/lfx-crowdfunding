@@ -137,7 +137,7 @@ func (h *InitiativeHandler) ListByAttribution(t models.AttributionType) http.Han
 		if !ok {
 			return
 		}
-		initiatives, meta, err := h.svc.List(r.Context(), models.InitiativeFilter{
+		initiatives, meta, err := h.svc.ListByAttribution(r.Context(), models.InitiativeFilter{
 			AttributedToType: attr.Type,
 			AttributedToUID:  attr.EntityUID,
 			Statuses:         statuses,

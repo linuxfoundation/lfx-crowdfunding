@@ -24,6 +24,7 @@ type stubInitiativeRepoForListForUser struct {
 	meta           *models.PaginationMeta
 	err            error
 	capturedFilter models.InitiativeFilter
+	users          map[string]models.User
 }
 
 func (r *stubInitiativeRepoForListForUser) List(_ context.Context, f models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
@@ -58,7 +59,7 @@ func (r *stubInitiativeRepoForListForUser) Update(_ context.Context, _ *models.I
 }
 func (r *stubInitiativeRepoForListForUser) Delete(_ context.Context, _ string) error { return nil }
 func (r *stubInitiativeRepoForListForUser) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
-	return nil, nil
+	return r.users, nil
 }
 func (r *stubInitiativeRepoForListForUser) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil

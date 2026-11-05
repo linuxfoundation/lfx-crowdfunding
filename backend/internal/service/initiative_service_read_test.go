@@ -24,6 +24,7 @@ type listInitiativeRepo struct {
 	onList          func(context.Context, models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error)
 	onListPublished func(context.Context) ([]models.InitiativeSummary, error)
 	onDelete        func(context.Context, string) error
+	onGetUsersByIDs func(context.Context, []string) (map[string]models.User, error)
 }
 
 func (r *listInitiativeRepo) GetByID(ctx context.Context, id string) (*models.Initiative, error) {
@@ -68,7 +69,10 @@ func (r *listInitiativeRepo) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
-func (r *listInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
+func (r *listInitiativeRepo) GetUsersByIDs(ctx context.Context, ids []string) (map[string]models.User, error) {
+	if r.onGetUsersByIDs != nil {
+		return r.onGetUsersByIDs(ctx, ids)
+	}
 	return map[string]models.User{}, nil
 }
 func (r *listInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
@@ -341,11 +345,14 @@ func TestGetForUser_BySlug_Owned(t *testing.T) {
 			return &models.Initiative{ID: "init-1", OwnerID: "owner-uuid", Name: "Draft"}, nil
 		},
 	}
-	userRepo := &mockUserRepository{user: &models.User{ID: "owner-uuid"}}
+	userRepo := &mockUserRepository{user: &models.User{ID: "owner-uuid", Name: "Alice Owner", Email: "alice@example.com"}}
 
 	init, err := newReadSvc(repo, userRepo).GetForUser(context.Background(), "draft-slug", "alice")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if init.Creator != "Alice Owner" {
+		t.Errorf("Creator = %q, want the caller's name", init.Creator)
 	}
 	if init.Name != "Draft" {
 		t.Errorf("name = %q, want Draft", init.Name)
@@ -363,7 +370,10 @@ func TestGetForUser_WriterIsNotOwner(t *testing.T) {
 				Attribution: models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB"}}, nil
 		},
 	}
-	svc := newReadSvc(repo, &mockUserRepository{user: &models.User{ID: "writer-uuid", Username: "bob"}})
+	svc := newReadSvc(repo, &mockUserRepository{
+		user: &models.User{ID: "writer-uuid", Username: "bob"},
+		byID: map[string]*models.User{"someone-else": {ID: "someone-else", GivenName: "Carol", FamilyName: "Creator", Email: "carol@example.com"}},
+	})
 	svc.SetEntityRoleResolver(&fakeResolver{ok: true})
 
 	init, err := svc.GetForUser(context.Background(), "draft-slug", "bob")
@@ -372,6 +382,85 @@ func TestGetForUser_WriterIsNotOwner(t *testing.T) {
 	}
 	if init.IsOwner {
 		t.Error("IsOwner = true, want false for a writer")
+	}
+	if init.Creator != "Carol Creator" {
+		t.Errorf("Creator = %q, want the owner's given + family name", init.Creator)
+	}
+}
+
+// A failed owner lookup leaves Creator blank instead of failing the read.
+func TestGetForUser_OwnerLookupFailsLeavesCreatorBlank(t *testing.T) {
+	repo := &listInitiativeRepo{
+		onGetBySlug: func(_ context.Context, _ string) (*models.Initiative, error) {
+			return &models.Initiative{ID: "init-1", OwnerID: "gone",
+				Attribution: models.Attribution{Type: models.AttributionOrganization, EntityUID: "0014100000Te0yvAAB"}}, nil
+		},
+	}
+	svc := newReadSvc(repo, &mockUserRepository{
+		user: &models.User{ID: "writer-uuid", Username: "bob"},
+		byID: map[string]*models.User{},
+	})
+	svc.SetEntityRoleResolver(&fakeResolver{ok: true})
+
+	init, err := svc.GetForUser(context.Background(), "draft-slug", "bob")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if init.Creator != "" {
+		t.Errorf("Creator = %q, want blank", init.Creator)
+	}
+}
+
+// --- ListByAttribution ---
+
+func TestListByAttribution_SetsCreatorFromOwners(t *testing.T) {
+	var lookedUp []string
+	repo := &listInitiativeRepo{
+		onList: func(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+			return []*models.Initiative{
+				{ID: "a", OwnerID: "u1"}, {ID: "b", OwnerID: "u1"}, {ID: "c", OwnerID: "u2"}, {ID: "d", OwnerID: "u3"},
+			}, &models.PaginationMeta{Total: 4}, nil
+		},
+		onGetUsersByIDs: func(_ context.Context, ids []string) (map[string]models.User, error) {
+			lookedUp = ids
+			return map[string]models.User{
+				"u1": {ID: "u1", Name: "Dana", Email: "dana@example.com"},
+				"u2": {ID: "u2", GivenName: "Eve", FamilyName: "Lin"},
+			}, nil
+		},
+	}
+
+	got, _, err := newReadSvc(repo, &mockUserRepository{}).ListByAttribution(context.Background(), models.InitiativeFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(lookedUp) != 3 {
+		t.Errorf("looked up %v, want each owner once", lookedUp)
+	}
+	want := []string{"Dana", "Dana", "Eve Lin", ""}
+	for i, init := range got {
+		if init.Creator != want[i] {
+			t.Errorf("%s: Creator = %q, want %q", init.ID, init.Creator, want[i])
+		}
+	}
+}
+
+func TestListByAttribution_OwnerLookupFailsStillLists(t *testing.T) {
+	repo := &listInitiativeRepo{
+		onList: func(_ context.Context, _ models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+			return []*models.Initiative{{ID: "a", OwnerID: "u1"}}, &models.PaginationMeta{Total: 1}, nil
+		},
+		onGetUsersByIDs: func(_ context.Context, _ []string) (map[string]models.User, error) {
+			return nil, errors.New("db down")
+		},
+	}
+
+	got, _, err := newReadSvc(repo, &mockUserRepository{}).ListByAttribution(context.Background(), models.InitiativeFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].Creator != "" {
+		t.Errorf("got %+v, want one initiative with a blank creator", got)
 	}
 }
 

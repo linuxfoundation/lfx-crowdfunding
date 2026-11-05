@@ -285,6 +285,29 @@ func TestInitiativeRepository_List_SortByTrending(t *testing.T) {
 	}
 }
 
+func TestInitiativeRepository_GetUsersByIDs_ReturnsNameParts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	user, err := NewUserRepository(testPool).Upsert(ctx, &models.User{
+		Username: "test-name-parts", Email: "test-name-parts@example.com", GivenName: "Eve", FamilyName: "Lin",
+	})
+	if err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	got, err := NewInitiativeRepository(testPool).GetUsersByIDs(ctx, []string{user.ID})
+	if err != nil {
+		t.Fatalf("GetUsersByIDs: %v", err)
+	}
+	if u := got[user.ID]; u.GivenName != "Eve" || u.FamilyName != "Lin" || u.DisplayName() != "Eve Lin" {
+		t.Errorf("got %+v, want given/family name and display name Eve Lin", u)
+	}
+}
+
 func TestInitiativeRepository_GetByID_NotFound(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DB integration test")

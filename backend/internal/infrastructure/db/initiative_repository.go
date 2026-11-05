@@ -1518,7 +1518,7 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 		return result, nil
 	}
 
-	const q = `SELECT id, name, avatar_url FROM users WHERE id = ANY($1::uuid[])`
+	const q = `SELECT id, name, given_name, family_name, avatar_url FROM users WHERE id = ANY($1::uuid[])`
 	rows, err := r.pool.Query(ctx, q, userIDs)
 	if err != nil {
 		span.RecordError(err)
@@ -1528,13 +1528,19 @@ func (r *InitiativeRepository) GetUsersByIDs(ctx context.Context, userIDs []stri
 
 	for rows.Next() {
 		var u models.User
-		var name, avatarURL *string
-		if err := rows.Scan(&u.ID, &name, &avatarURL); err != nil {
+		var name, givenName, familyName, avatarURL *string
+		if err := rows.Scan(&u.ID, &name, &givenName, &familyName, &avatarURL); err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		if name != nil {
 			u.Name = *name
+		}
+		if givenName != nil {
+			u.GivenName = *givenName
+		}
+		if familyName != nil {
+			u.FamilyName = *familyName
 		}
 		if avatarURL != nil {
 			u.AvatarURL = *avatarURL
