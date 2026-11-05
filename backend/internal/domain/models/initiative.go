@@ -314,6 +314,11 @@ type Initiative struct {
 	// re-attribution (lfx-crowdfunding#342).
 	IsOwner bool `json:"is_owner,omitempty"`
 
+	// Creator is the owner's display name, never an email. Set only on the
+	// manage read and the Org/Project lens list (lfx-crowdfunding#452), never on
+	// the public reads.
+	Creator string `json:"creator,omitempty"`
+
 	// Populated from initiative_ledger_stats; zero when cron has not yet run
 	Financials Financials `json:"financials"`
 

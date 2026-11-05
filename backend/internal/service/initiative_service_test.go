@@ -199,6 +199,8 @@ func (m *mockStripeClient) DeleteProduct(_ context.Context, _ string) error { re
 type mockUserRepository struct {
 	user *models.User
 	err  error
+	// byID, when set, answers GetByID instead of user (ErrUserNotFound when absent).
+	byID map[string]*models.User
 }
 
 func (m *mockUserRepository) GetByUsername(_ context.Context, username string) (*models.User, error) {
@@ -213,6 +215,12 @@ func (m *mockUserRepository) GetByUsername(_ context.Context, username string) (
 func (m *mockUserRepository) GetByID(_ context.Context, id string) (*models.User, error) {
 	if m.err != nil {
 		return nil, m.err
+	}
+	if m.byID != nil {
+		if u, ok := m.byID[id]; ok {
+			return u, nil
+		}
+		return nil, domain.ErrUserNotFound
 	}
 	if m.user != nil {
 		return m.user, nil

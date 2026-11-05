@@ -4,7 +4,10 @@
 // Package models defines the domain model types shared across the application.
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Organization maps to the crowdfunding.organizations table.
 type Organization struct {
@@ -43,6 +46,15 @@ type User struct {
 	// Stripe fields — internal, never serialised.
 	StripeCustomerID           string `json:"-"` // cus_xxx
 	StripeDefaultPaymentMethod string `json:"-"` // pm_xxx
+}
+
+// DisplayName returns the user's name, falling back to given + family name.
+// It never falls back to the email.
+func (u User) DisplayName() string {
+	if name := strings.TrimSpace(u.Name); name != "" {
+		return name
+	}
+	return strings.TrimSpace(strings.TrimSpace(u.GivenName) + " " + strings.TrimSpace(u.FamilyName))
 }
 
 // OwnerInfo holds PII fields returned by the M2M owner-info endpoint.
