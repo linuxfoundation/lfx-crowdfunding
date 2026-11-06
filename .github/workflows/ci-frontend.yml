@@ -8,10 +8,12 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "docs/user/**"
       - ".github/workflows/ci-frontend.yml"
   pull_request:
     paths:
       - "frontend/**"
+      - "docs/user/**"
       - ".github/workflows/ci-frontend.yml"
   merge_group:
 
