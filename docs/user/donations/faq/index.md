@@ -1,8 +1,8 @@
 ---
 title: Donations FAQ
 description: Answers to frequently asked questions about making and managing donations on LFX Crowdfunding.
-tags: [donations, faq, payment, recurring, cancel, refund, credit card, invoice]
-last_updated: 2026-10-14
+tags: [donations, faq, payment, recurring, cancel, refund, credit card, invoice, organization, company]
+last_updated: 2026-11-06
 display_order: 3
 intercom_collection: LFX Crowdfunding
 ---
@@ -21,13 +21,33 @@ Donations can only be paid by credit card, processed securely through Stripe. Pa
 
 Yes. You must be signed in with an [LF ID](https://openprofile.dev/) account to complete a donation.
 
+## Can I donate on behalf of my company or organization?
+
+Yes. In the donate drawer, under **I'm donating as**, select **An organization** and search for it by name. If it isn't in the results, click **Can't find it? Enter it manually** and enter its name and website. The organization's name then appears on the initiative's backer list instead of yours. See **Step 2 — Choose who you're donating as** in [Making a Donation](../make-donation/) for full steps.
+
+## Who can see that I donated on behalf of an organization?
+
+The initiative's backer list shows the organization's name publicly, with donor type **Company**. Your own name isn't shown there. People who can view the organization in LFX see your name and email next to the donation on its LFX organization page.
+
+## Do I need to work at the organization to donate on its behalf?
+
+There is no check that you work at the organization. The organization is shown as you selected or entered it, so make sure you have permission to donate in its name.
+
+## Can I change the organization after donating?
+
+No. The organization can't be changed after the donation is made. Your confirmation email shows which organization the donation was credited to. For a monthly donation, every charge is credited to the organization you chose when you subscribed; to credit a different organization, cancel the subscription and start a new donation.
+
+## Can my organization pay by invoice or bank transfer?
+
+No. Organization donations are paid by credit card, the same as individual donations. Paying by invoice and bank transfer are not supported.
+
 ## Are transaction fees deducted from my donation?
 
 No. The Linux Foundation underwrites all transaction fees, so 100% of your donation goes to the initiative.
 
 ## Can I donate anonymously?
 
-LFX Crowdfunding does not currently offer a donor-selectable anonymous option. Your name and avatar will appear on the initiative's backer list. If your donor information is unavailable at the time of processing, your name will appear as **Anonymous**.
+LFX Crowdfunding does not currently offer a donor-selectable anonymous option. Your name and avatar, or the organization's name if you donated on behalf of one, will appear on the initiative's backer list. If your donor information is unavailable at the time of processing, your name will appear as **Anonymous**.
 
 ## How do I cancel a monthly donation?
 
