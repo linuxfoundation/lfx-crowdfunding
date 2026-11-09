@@ -17,3 +17,6 @@ export interface UserProfile {
   username?: string;
   intercomJwt?: string;
 }
+
+// Value of the ?auth= query param the callback appends; read by app/plugins/auth.client.ts.
+export type AuthCallbackResult = 'success' | 'error';
