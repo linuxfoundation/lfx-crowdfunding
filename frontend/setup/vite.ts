@@ -5,6 +5,8 @@
 const LFX_WEB_COMPONENTS = new Set(['lfx-footer']);
 
 export default {
+  // Keep Vue's hydration mismatch details in prod builds so RUM shows which node differed.
+  define: { __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'true' },
   vue: {
     template: {
       compilerOptions: {
