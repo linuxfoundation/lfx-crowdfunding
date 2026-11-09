@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import { defineNuxtPlugin, useAsyncData, useRoute, navigateTo } from 'nuxt/app';
+import { defineNuxtPlugin, useAsyncData, useRoute, navigateTo, onNuxtReady } from 'nuxt/app';
 import { watch } from 'vue';
 import {
   authState,
@@ -51,20 +51,23 @@ export default defineNuxtPlugin(() => {
 
   const route = useRoute();
 
+  // authState is guaranteed to be populated once this resolves: watch(status) sets it
+  // synchronously before raising isAuthReady (see above).
+  const waitForAuthReady = async () => {
+    if (isAuthReady.value) return;
+    await new Promise<void>((resolve) => {
+      const stop = watch(isAuthReady, (ready) => {
+        if (!ready) return;
+        stop();
+        resolve();
+      });
+    });
+  };
+
   const syncProfile = async () => {
     // wait for auth state to be hydrated before syncing the profile so the
     // session cookie is guaranteed to be present server-side.
-    if (!isAuthReady.value) {
-      await new Promise<void>((resolve) => {
-        const stop = watch(isAuthReady, (ready) => {
-          if (!ready) return;
-          stop();
-          resolve();
-        });
-      });
-    }
-    // authState is now guaranteed to be populated: watch(status) sets it
-    // synchronously before raising isAuthReady (see above).
+    await waitForAuthReady();
 
     if (authState.value.isAuthenticated) {
       await $fetch('/api/me', { method: 'PATCH', credentials: 'include' }).catch((err) => {
@@ -72,6 +75,12 @@ export default defineNuxtPlugin(() => {
         showError('We could not update your profile. Please try again later.');
       });
     }
+  };
+
+  // Strip ?auth=... from the URL without triggering a navigation.
+  const stripAuthQuery = async () => {
+    const { auth: _auth, ...rest } = route.query;
+    await navigateTo({ path: route.path, query: rest }, { replace: true });
   };
 
   const handleAuthQuery = async (authParam: string | undefined) => {
@@ -86,10 +95,19 @@ export default defineNuxtPlugin(() => {
       const sync = syncProfile();
       setProfileSynced(sync);
       await sync;
+      await stripAuthQuery();
+      return;
+    }
 
-      // Strip ?auth=success from the URL without triggering a navigation.
-      const { auth: _auth, ...rest } = route.query;
-      await navigateTo({ path: route.path, query: rest }, { replace: true });
+    if (authParam === 'error') {
+      // The login callback was rejected (stale or tampered login, or an Auth0 error). A user
+      // who still has a session, e.g. after pressing Back onto the callback, needs no message.
+      await waitForAuthReady();
+      if (!authState.value.isAuthenticated) {
+        // The toast component (in the layout) drops messages sent before it has mounted.
+        onNuxtReady(() => showError('We could not log you in. Please try logging in again.'));
+      }
+      await stripAuthQuery();
     }
   };
 
@@ -97,7 +115,7 @@ export default defineNuxtPlugin(() => {
     handleAuthQuery(authParam).catch((err) => console.error('Auth query handling error:', err));
   };
 
-  if (route.query.auth === 'logout' || route.query.auth === 'success') {
+  if (['logout', 'success', 'error'].includes(route.query.auth as string)) {
     runAuthQuery(route.query.auth as string);
   }
 

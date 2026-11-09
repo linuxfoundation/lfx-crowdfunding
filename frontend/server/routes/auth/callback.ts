@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 import { discovery, authorizationCodeGrant, ClientSecretPost } from 'openid-client';
+import type { H3Event } from 'h3';
 import { H3Error } from 'h3';
+import type { AuthCallbackResult } from '../../types/auth.types';
 import { getSafeRedirectUrl } from '../../utils/redirect';
-import { logAuthError } from '../../utils/auth-log';
+import { isExpectedAuthError, logAuthError } from '../../utils/auth-log';
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const query = getQuery(event);
 
   const redirectTo = getSafeRedirectUrl(getCookie(event, 'auth_redirect_to'));
+  // Set when the request doesn't belong to a login started in this browser (bot, back button,
+  // second tab). Nothing is exchanged then, so an existing session is left alone.
+  let staleCallback = false;
 
   try {
     // Handle Auth0 errors (e.g. silent auth failure)
@@ -19,13 +24,15 @@ export default defineEventHandler(async (event) => {
       const errorDescription = query.error_description as string;
 
       if (error === 'login_required' || error === 'interaction_required') {
-        await sendRedirect(event, buildSuccessRedirect(redirectTo));
+        await sendRedirect(event, buildAuthRedirect(redirectTo, 'success'));
         return;
       }
 
+      // `message`, not `statusMessage`: h3 warns on every statusMessage it has to sanitise, and
+      // Auth0's description can contain characters it strips.
       throw createError({
         statusCode: 400,
-        statusMessage: `Authentication error: ${error} - ${errorDescription}`,
+        message: `Authentication error: ${error} - ${errorDescription}`,
       });
     }
 
@@ -45,17 +52,16 @@ export default defineEventHandler(async (event) => {
     }
 
     if (!query.code || !codeVerifier) {
+      staleCallback = true;
       throw createError({
         statusCode: 400,
-        statusMessage: 'Missing authorization code or code verifier',
+        message: 'Missing authorization code or code verifier',
       });
     }
 
     if (!storedState || storedState !== query.state) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Invalid state parameter — please try logging in again',
-      });
+      staleCallback = true;
+      throw createError({ statusCode: 400, message: 'Invalid state parameter' });
     }
 
     const authConfig = await discovery(
@@ -73,8 +79,7 @@ export default defineEventHandler(async (event) => {
       pkceCodeVerifier: codeVerifier,
     });
 
-    setCookie(event, 'auth_pkce', '', authCookieOptions(0));
-    setCookie(event, 'auth_redirect_to', '', authCookieOptions(0));
+    clearLoginCookies(event);
 
     if (!tokenResponse.id_token) {
       throw createError({ statusCode: 500, statusMessage: 'No ID token received from Auth0' });
@@ -86,11 +91,22 @@ export default defineEventHandler(async (event) => {
 
     setSessionCookies(event, tokenResponse, buildUserProfile(tokenResponse.id_token));
 
-    await sendRedirect(event, buildSuccessRedirect(redirectTo));
+    await sendRedirect(event, buildAuthRedirect(redirectTo, 'success'));
   } catch (error) {
     logAuthError('Auth callback error', error);
 
-    clearAuthCookies(event);
+    if (staleCallback) {
+      clearLoginCookies(event);
+    } else {
+      clearAuthCookies(event);
+    }
+
+    // Expected failures send the user back to where they started; the client then shows a
+    // toast asking them to log in again (unless they still have a session).
+    if (isExpectedAuthError(error)) {
+      await sendRedirect(event, buildAuthRedirect(redirectTo, 'error'));
+      return;
+    }
 
     let statusCode = 500;
     let statusMessage = 'Authentication callback error';
@@ -103,8 +119,13 @@ export default defineEventHandler(async (event) => {
   }
 });
 
-function buildSuccessRedirect(redirectTo: string): string {
+function clearLoginCookies(event: H3Event) {
+  setCookie(event, 'auth_pkce', '', authCookieOptions(0));
+  setCookie(event, 'auth_redirect_to', '', authCookieOptions(0));
+}
+
+function buildAuthRedirect(redirectTo: string, result: AuthCallbackResult): string {
   return redirectTo === '/'
-    ? '/?auth=success'
-    : `${redirectTo}${redirectTo.includes('?') ? '&' : '?'}auth=success`;
+    ? `/?auth=${result}`
+    : `${redirectTo}${redirectTo.includes('?') ? '&' : '?'}auth=${result}`;
 }
