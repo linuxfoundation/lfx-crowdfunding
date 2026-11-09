@@ -27,8 +27,6 @@ const selfServeUrl =
   (isProduction ? 'https://app.lfx.dev' : 'https://app.dev.lfx.dev');
 const auth0Domain =
   process.env.NUXT_PUBLIC_AUTH0_DOMAIN || 'https://linuxfoundation-staging.auth0.com';
-// Legacy: auth cookies are host-only now. Only used to expire old parent-domain cookies.
-const auth0CookieDomain = process.env.NUXT_AUTH0_COOKIE_DOMAIN;
 
 export default {
   // Server-only
@@ -39,7 +37,6 @@ export default {
   // overrides only replace keys whose own NUXT_* var is set.
   lfxApiBaseUrl: process.env.NUXT_LFX_API_BASE_URL || '',
   auth0ClientSecret: process.env.NUXT_AUTH0_CLIENT_SECRET || '',
-  auth0CookieDomain,
   githubOauthClientSecret: process.env.NUXT_GITHUB_OAUTH_CLIENT_SECRET || '',
 
   public: {

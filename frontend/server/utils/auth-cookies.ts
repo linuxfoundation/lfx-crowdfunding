@@ -87,13 +87,10 @@ export function getAuthCookie(event: H3Event, name: string): string | undefined 
   return decryptValue(getCookie(event, name));
 }
 
-// Clears host-only cookies and, if configured, the legacy parent-domain copies.
 export function clearAuthCookies(event: H3Event) {
   const opts = authCookieOptions(0);
-  const legacyDomain = useRuntimeConfig().auth0CookieDomain as string | undefined;
   for (const name of AUTH_COOKIE_NAMES) {
     setCookie(event, name, '', opts);
     freshCookies(event)[name] = '';
-    if (legacyDomain) setCookie(event, name, '', { ...opts, domain: legacyDomain });
   }
 }

@@ -160,7 +160,6 @@ Cookie details:
 - `auth_user_profile` — base64 JSON of display claims (name, email, username), encrypted like the token cookies; **for display only, never for authorization**
 - All cookies: `httpOnly: true`, `secure` (non-local), `sameSite: lax`, and **host-only** (no `Domain` attribute), so they are never sent to sibling hosts under a shared parent domain
 - The token and profile cookies are **AES-256-GCM encrypted** (`v1.` prefix, key derived with HKDF from `NUXT_AUTH0_CLIENT_SECRET`) by `server/utils/auth-cookies.ts`. A leaked cookie value cannot be used directly as a Bearer token; the BFF decrypts it before forwarding. Plaintext or tampered cookies are treated as logged out. Rotating the client secret logs everyone out.
-- Cookies previously issued with `Domain=NUXT_AUTH0_COOKIE_DOMAIN` are expired on the next request by `server/middleware/clear-legacy-auth-cookies.ts` while that variable is set. Once expired, a host-only `auth_legacy_cleared` marker cookie (30-day) stops the cleanup from repeating. Remove the variable and the middleware once 30 days have passed since rollout.
 - Limitation: the cookie is still a bearer credential for the BFF. A party that obtains an encrypted cookie value and can send it to the crowdfunding host itself could still replay it. Closing that needs a server-side session store.
 
 ### 1.3 Authenticated API Call
@@ -439,7 +438,6 @@ rather than the LFX secrets-distribution pipeline.
 | `NUXT_PUBLIC_AUTH0_AUDIENCE` | Token audience (e.g. `https://crowdfunding-api.staging.lfx.dev`) |
 | `NUXT_PUBLIC_AUTH0_REDIRECT_URI` | OAuth2 callback URL |
 | `NUXT_API_BASE_URL` | CF Go API base URL (server-internal, default `http://localhost:8080`) |
-| `NUXT_AUTH0_COOKIE_DOMAIN` | Legacy, optional. Auth cookies are host-only; when set, old cookies scoped to this parent domain are expired. Leave unset for new deployments |
 
 ### LFX Self Serve (Express BFF)
 
