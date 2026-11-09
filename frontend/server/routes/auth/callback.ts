@@ -4,6 +4,7 @@
 import { discovery, authorizationCodeGrant, ClientSecretPost } from 'openid-client';
 import { H3Error } from 'h3';
 import { getSafeRedirectUrl } from '../../utils/redirect';
+import { logAuthError } from '../../utils/auth-log';
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
@@ -87,7 +88,7 @@ export default defineEventHandler(async (event) => {
 
     await sendRedirect(event, buildSuccessRedirect(redirectTo));
   } catch (error) {
-    console.error('Auth callback error:', error);
+    logAuthError('Auth callback error', error);
 
     clearAuthCookies(event);
 

@@ -6,6 +6,7 @@ import { discovery, refreshTokenGrant, ClientSecretPost } from 'openid-client';
 import { decodeJwt } from 'jose';
 import type { UserProfile } from '../types/auth.types';
 import { clearAuthCookies, getAuthCookie, setAuthCookie } from './auth-cookies';
+import { logAuthError } from './auth-log';
 import type { DecodedIdToken } from '~~/types/auth/auth-jwt.types';
 
 const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
@@ -79,7 +80,7 @@ export async function refreshSession(event: H3Event): Promise<UserProfile | null
     setSessionCookies(event, tokenResponse, profile);
     return profile;
   } catch (error) {
-    console.error('Auth refresh error:', error);
+    logAuthError('Auth refresh error', error);
     // Refresh token invalid or revoked — fall back to a full Auth0 login.
     clearAuthCookies(event);
     return null;
