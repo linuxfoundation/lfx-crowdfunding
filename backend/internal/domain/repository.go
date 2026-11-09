@@ -72,6 +72,9 @@ type DonationRepository interface {
 	// enriched with org name, initiative name, and donor display name.
 	// Used exclusively for the internal CSV export endpoint.
 	ListOrgDonations(ctx context.Context) ([]models.OrgDonationRow, error)
+	// ListByB2BOrg returns succeeded donations and paid subscriptions matched to
+	// the b2b_org SFID, newest first.
+	ListByB2BOrg(ctx context.Context, sfid string, limit, offset int) ([]models.OrgLensDonation, *models.PaginationMeta, error)
 }
 
 // SubscriptionRepository defines persistence operations for subscriptions.

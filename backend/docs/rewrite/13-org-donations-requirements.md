@@ -397,14 +397,15 @@ admins (§4, option B). This applies to every option.
    separate epic, #402. Only donations with a `b2b_org` reference can show on the lens page (§4.1), and none
    can get one until `b2b_org` search (§5.2 item 3) or domain matching (§5.2 item 4) ships.
 6. **Lens page content. Decided (October 2026): deferred** with item 5 to #402. **Decided (PM,
-   October 2026):** each row shows the initiative, date, donor name, donor email and amount.
-   Anonymous donations still show, as "Anonymous" with no donor name or email, so the
-   company's total stays complete (#414).
-7. **Donor notice and privacy review. Open, for #402.** Anyone can credit any org without
-   proof (item 1), and lens rows include the donor's name and email (item 6), so a donor's
-   details reach whichever company they name. Before the lens page ships, checkout tells
-   donors that their name and email will be visible to the org they credit unless they donate
-   anonymously, and privacy/legal confirm the disclosure.
+   October 2026):** each row shows the initiative, date, donor name, donor email and amount
+   (#414). CF checkout has no anonymous option, so every row carries the donor's name and
+   email, including org donations made before the checkout notice (item 7). *Assumed (November
+   2026), pending PM reply.*
+7. **Donor notice and privacy review. Notice built (#436); privacy/legal review open.** Anyone
+   can credit any org without proof (item 1), and lens rows include the donor's name and email
+   (item 6), so a donor's details reach whichever company they name. Before the lens page
+   ships, checkout tells donors, once they pick an org: "{Org} will see your name and email with
+   this donation on its LFX organization page." Privacy/legal confirm the wording.
 
 ### 5.2 Architecture
 
@@ -429,12 +430,9 @@ admins (§4, option B). This applies to every option.
    (member-service #73). A website lookup is also on member-service main:
    `lfx.member.b2b_org_lookup_by_website` (member-service #123, October 2026) takes
    `{name, website}` and returns the SFID. It matches primary domain, then domain alias, then
-   website, then name, and refuses ambiguous domain matches. Still to confirm: whether it's
-   deployed, CF access to the subject, and whether a name-only match is acceptable for
-   donations. Eric
+   website, then name, and refuses ambiguous domain matches. Eric
    argued against a real-time domain *fallback* and against domain alignment for non-`b2b_org`
-   records (LFXV2-2400 Q3B, Q4), not against this write-time lookup. CF would need access to
-   the subject. Eric confirmed (October 2026) that the route is an engineering decision for CF,
+   records (LFXV2-2400 Q3B, Q4), not against this write-time lookup. Eric confirmed (October 2026) that the route is an engineering decision for CF,
    not an architecture one, and that the Q1 field list comes from product need: name, domain,
    website and logo, kept minimal. **Decided (October 2026): match by
    domain when the donation is saved**, sending an empty name so only primary domain, domain
@@ -442,6 +440,12 @@ admins (§4, option B). This applies to every option.
    v0.10.26. **Decided (October 2026): matches cover every Company Account**, not just member
    companies (member-service #126, v0.10.27, in staging and prod). Q1+Q2 is an optional
    follow-up. Tracked in #402 (#411–#415).
+   **Confirmed (Org Lens team, Luis Mori Guerra, October 2026):** no member-service code is
+   needed. CF sends `{name: "", website: <domain>}` after the donation is saved, with a timeout
+   of about 10 s, and never blocks checkout. `"b2b org not found"`, `not_found` and `ambiguous`
+   mean no match. Any other error is temporary: the SFID stays empty and the backfill (#412)
+   retries it. CF reaches the subject over the platform NATS connection it already holds
+   (`FGA_NATS_URL`). The dev check is part of #411.
 4. **Adopting older records. Decided (October 2026): deferred** with item 3. Whether and when CF subscribes to
    org created and updated events to attach `b2b_org` references by domain (§4.1). Not needed
    for the first version.
@@ -454,8 +458,7 @@ admins (§4, option B). This applies to every option.
    It checks `auditor` (the lens read gate, §4.3), unlike the initiatives list, which checks
    `writer`. With `writer`, most people at the company wouldn't see their company's donations.
    Because rows include donor emails (§5.1 item 6), every lens viewer at the company sees them,
-   which follows from the two PM decisions. Anonymous rows never carry the donor's name or
-   email. The checkout notice and privacy/legal sign-off (§5.1 item 7) must land before the
+   which follows from the two PM decisions. The checkout notice and privacy/legal sign-off (§5.1 item 7) must land before the
    page ships. The response is per caller, so like the initiatives list it sets
    `Cache-Control: private, no-store` and `Vary: Authorization`
    (`backend/internal/handler/initiative_handler.go:154-155`). Self Serve builds the page
@@ -481,7 +484,11 @@ admins (§4, option B). This applies to every option.
   - Eric Searcy: treat donation orgs like committee-member orgs (§4.1). Later signed off on
     option D, with the org claim owned by the donation and the FK-connected CF org deprecated.
   - Luis Mori Guerra: Self Serve's committee picker still writes to CDP; `b2b_org` search isn't
-    open to donors yet; name and domain alone reopen #349.
+    open to donors yet; name and domain alone reopen #349. Later, on #402: the domain lookup
+    route and reply handling (§5.2 item 3), and `auditor` for the lens donations API. The Org Lens
+    team reviews #415. Member-company search in the donate picker
+    (linuxfoundation/lfx-self-serve-ops#1110) is a separate proposal and not a dependency. Known
+    risks are tracked in linuxfoundation/lfx-self-serve-ops#1109.
 - lfx-v2-committee-service:
   - `cmd/committee-api/design/type.go` (`OrganizationInfoAttributes`)
   - `gen/http/openapi3.yaml` (add committee member payload, `organization`)

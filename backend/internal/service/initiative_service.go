@@ -345,9 +345,25 @@ func (s *InitiativeService) GetForUser(ctx context.Context, idOrSlug, callerUser
 	}
 
 	initiative.IsOwner = initiative.OwnerID == caller.ID
+	initiative.Creator = s.creatorName(ctx, initiative.OwnerID, caller)
 	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
 	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
+}
+
+// creatorName returns the owner's display name for the manage read, reusing
+// the caller when they are the owner. A failed lookup leaves it blank rather
+// than failing the read.
+func (s *InitiativeService) creatorName(ctx context.Context, ownerID string, caller *models.User) string {
+	if ownerID == caller.ID {
+		return caller.DisplayName()
+	}
+	owner, err := s.userRepo.GetByID(ctx, ownerID)
+	if err != nil {
+		s.logger.WarnContext(ctx, "initiative manage read: owner lookup failed", "error", err)
+		return ""
+	}
+	return owner.DisplayName()
 }
 
 // ResolveOwnedInitiativeID resolves a slug or UUID to the initiative's UUID, but
@@ -436,6 +452,44 @@ func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFi
 	}
 	for _, i := range initiatives {
 		i.Sponsors = flattenSponsors(i.RawSponsors)
+	}
+	return initiatives, meta, nil
+}
+
+// ListByAttribution lists the initiatives attributed to an org or project for
+// its lens page, with each owner's display name as Creator (lfx-crowdfunding#452).
+// A failed owner lookup leaves Creator blank rather than failing the list.
+func (s *InitiativeService) ListByAttribution(ctx context.Context, filter models.InitiativeFilter) ([]*models.Initiative, *models.PaginationMeta, error) {
+	ctx, span := initiativeSvcTracer.Start(ctx, "InitiativeService.ListByAttribution")
+	defer span.End()
+
+	initiatives, meta, err := s.List(ctx, filter)
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, err
+	}
+
+	ownerIDs := make([]string, 0, len(initiatives))
+	seen := map[string]bool{}
+	for _, i := range initiatives {
+		if i.OwnerID != "" && !seen[i.OwnerID] {
+			seen[i.OwnerID] = true
+			ownerIDs = append(ownerIDs, i.OwnerID)
+		}
+	}
+	if len(ownerIDs) == 0 {
+		return initiatives, meta, nil
+	}
+	owners, err := s.repo.GetUsersByIDs(ctx, ownerIDs)
+	if err != nil {
+		span.RecordError(err)
+		s.logger.WarnContext(ctx, "initiative lens list: owner lookup failed", "error", err)
+		return initiatives, meta, nil
+	}
+	for _, i := range initiatives {
+		if owner, ok := owners[i.OwnerID]; ok {
+			i.Creator = owner.DisplayName()
+		}
 	}
 	return initiatives, meta, nil
 }
