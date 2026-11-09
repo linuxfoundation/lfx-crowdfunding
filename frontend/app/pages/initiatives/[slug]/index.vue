@@ -25,8 +25,11 @@ const { data: initiative, error } = await useAsyncData<InitiativeDetail>(
 
 // Render the error page on the server too. Vue Query doesn't dehydrate failed queries, so
 // leaving this to the child would SSR an empty page that hydrates as a spinner (mismatch).
+// fatal makes Nitro log the full stack, and the server shows the error page without it,
+// so only client navigation and real 5xx failures are fatal (bot 404s stay quiet).
 if (error.value) {
-  throw createError({ statusCode: error.value.statusCode ?? 500, fatal: true });
+  const statusCode = error.value.statusCode ?? 500;
+  throw createError({ statusCode, fatal: import.meta.client || statusCode >= 500 });
 }
 
 const title = computed(() => initiative.value?.name ?? slug.value);
