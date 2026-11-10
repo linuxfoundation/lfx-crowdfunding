@@ -85,3 +85,31 @@ func TestAuthServiceClientPrimaryEmail_Empty(t *testing.T) {
 		t.Fatal("want error for empty primary_email")
 	}
 }
+
+func TestAuthServiceClientUsernameToSub(t *testing.T) {
+	cases := []struct {
+		name    string
+		reply   string
+		err     error
+		want    string
+		wantErr bool
+	}{
+		{"plain text subject", "auth0|jdoe\n", nil, "auth0|jdoe", false},
+		{"error envelope", `{"success":false,"error":"user not found"}`, nil, "", true},
+		{"not a subject", "jdoe", nil, "", true},
+		{"empty", "", nil, "", true},
+		{"request fails", "", errors.New("nats timeout"), "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			stub := &authRequesterStub{reply: []byte(c.reply), err: c.err}
+			got, err := NewAuthServiceClient(stub).UsernameToSub(context.Background(), "jdoe")
+			if (err != nil) != c.wantErr || got != c.want {
+				t.Fatalf("UsernameToSub = %q, %v; want %q (err %v)", got, err, c.want, c.wantErr)
+			}
+			if stub.subject != usernameToSubSubject || stub.data != "jdoe" {
+				t.Errorf("request = %q %q", stub.subject, stub.data)
+			}
+		})
+	}
+}

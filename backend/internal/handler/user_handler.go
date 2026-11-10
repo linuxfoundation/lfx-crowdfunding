@@ -20,6 +20,7 @@ import (
 type ProfileLookup interface {
 	UserMetadata(ctx context.Context, username string) (*clients.UserMetadata, error)
 	PrimaryEmail(ctx context.Context, username string) (string, error)
+	UsernameToSub(ctx context.Context, username string) (string, error)
 }
 
 // UserHandler holds Chi handlers for the /crowdfunding/me resource.
@@ -135,6 +136,29 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, result)
 }
 
+// heimdallLegacyUserID returns the Auth0 subject to bind to a Heimdall user's
+// row, or "" when the row already has one or the lookup fails. Heimdall tokens
+// carry only the username, but Stripe metadata and Ledger rows key donors by
+// the Auth0 subject; without it every donation skips the Ledger (#468). An
+// already-bound legacy_user_id is never replaced: Upsert would reject a
+// different value as a takeover and fail the sync.
+func (h *UserHandler) heimdallLegacyUserID(ctx context.Context, username string) string {
+	existing, err := h.userRepo.GetByUsername(ctx, username)
+	switch {
+	case err == nil && existing.LegacyUserID != "":
+		return ""
+	case err != nil && !errors.Is(err, domain.ErrUserNotFound):
+		h.logger.WarnContext(ctx, "user lookup failed; syncing without legacy user id", "error", err)
+		return ""
+	}
+	sub, err := h.profileLookup.UsernameToSub(ctx, username)
+	if err != nil {
+		h.logger.WarnContext(ctx, "auth-service subject lookup failed; syncing without legacy user id", "error", err)
+		return ""
+	}
+	return sub
+}
+
 // heimdallProfile builds the user for a Heimdall or mock-bypass principal. A
 // failed auth-service lookup only leaves its fields empty; it never fails the
 // sync. Both lookups use the authenticated principal's own username, which is
@@ -149,6 +173,9 @@ func (h *UserHandler) heimdallProfile(ctx context.Context, principal *models.Pri
 	}
 	if h.profileLookup == nil {
 		return user
+	}
+	if principal.IsHeimdallIssued {
+		user.LegacyUserID = h.heimdallLegacyUserID(ctx, principal.Username)
 	}
 	if user.Email == "" {
 		email, err := h.profileLookup.PrimaryEmail(ctx, principal.Username)

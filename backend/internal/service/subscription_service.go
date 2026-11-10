@@ -192,6 +192,11 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	if user.Email == "" {
 		return nil, fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 	}
+	// Stripe metadata and the Ledger key donors by the Auth0 subject; without it
+	// the payment would succeed but never reach the Ledger (#468).
+	if user.LegacyUserID == "" {
+		return nil, fmt.Errorf("%w: account id not set — call PATCH /crowdfunding/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
+	}
 
 	// The org is stored as the donor stated it; there is no affiliation check (doc 13 §5.1).
 	org, err := resolveOrgClaim(ctx, s.initiativeRepo, input.Organization, input.OrganizationID, user.ID)
