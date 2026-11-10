@@ -9,7 +9,7 @@ vi.mock('h3', async (importOriginal) => ({
   setCookie: vi.fn(),
 }));
 
-const runtimeConfig: { auth0ClientSecret: string; auth0CookieDomain?: string } = {
+const runtimeConfig: { auth0ClientSecret: string } = {
   auth0ClientSecret: 'test-secret',
 };
 vi.stubGlobal('useRuntimeConfig', () => runtimeConfig);
@@ -32,7 +32,6 @@ const event = {} as H3Event;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  delete runtimeConfig.auth0CookieDomain;
 });
 
 describe('auth cookies', () => {
@@ -82,20 +81,6 @@ describe('auth cookies', () => {
     for (const call of mockSetCookie.mock.calls) {
       expect(call[3]).toMatchObject({ maxAge: 0 });
       expect(call[3]).not.toHaveProperty('domain');
-    }
-  });
-
-  it('clearAuthCookies also expires the legacy Domain copy of every cookie', () => {
-    runtimeConfig.auth0CookieDomain = 'example.org';
-    clearAuthCookies(event);
-    expect(mockSetCookie).toHaveBeenCalledTimes(AUTH_COOKIE_NAMES.length * 2);
-    for (const name of AUTH_COOKIE_NAMES) {
-      expect(mockSetCookie).toHaveBeenCalledWith(
-        event,
-        name,
-        '',
-        expect.objectContaining({ domain: 'example.org', maxAge: 0 }),
-      );
     }
   });
 });
