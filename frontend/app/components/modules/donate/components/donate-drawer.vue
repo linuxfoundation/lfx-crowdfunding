@@ -200,6 +200,7 @@ const amountForm = ref<DonateAmountForm>({
 const contactForm = ref<DonateContactForm>({
   donorType: 'individual',
   organization: null,
+  anonymous: false,
 });
 
 const hasSelection = computed(() => amountForm.value.amountCents > 0);
@@ -251,6 +252,7 @@ const close = () => {
   contactForm.value = {
     donorType: 'individual',
     organization: null,
+    anonymous: false,
   };
 };
 
@@ -287,6 +289,7 @@ const handleContinue = async () => {
       contactForm.value.donorType === 'organization' && contactForm.value.organization
         ? { organization: contactForm.value.organization }
         : {};
+    const anonymousPayload = contactForm.value.anonymous ? { anonymous: true } : {};
 
     if (amountForm.value.donationType === 'monthly') {
       await subscribe(props.initiative.id, {
@@ -295,6 +298,7 @@ const handleContinue = async () => {
         stripePaymentMethodId: paymentMethodId,
         ...(amountForm.value.category ? { category: amountForm.value.category } : {}),
         ...orgPayload,
+        ...anonymousPayload,
       });
     } else {
       await donate(props.initiative.id, {
@@ -303,6 +307,7 @@ const handleContinue = async () => {
         ...(amountForm.value.category ? { category: amountForm.value.category } : {}),
         ...(amountForm.value.tierName ? { donationTier: amountForm.value.tierName } : {}),
         ...orgPayload,
+        ...anonymousPayload,
       });
     }
 

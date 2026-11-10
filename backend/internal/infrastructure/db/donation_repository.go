@@ -40,7 +40,7 @@ func (r *DonationRepository) GetByID(ctx context.Context, id string) (*models.Do
 	const q = `
 		SELECT id, user_id, initiative_id, organization_id, org_name, org_domain, category,
 		       current_amount_in_cents, po_number, payment_method,
-		       status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on
+		       status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on, anonymous
 		FROM donations WHERE id = $1`
 
 	row := r.pool.QueryRow(ctx, q, id)
@@ -103,7 +103,7 @@ func (r *DonationRepository) listDonations(ctx context.Context, col, val string,
 	dataQ := fmt.Sprintf(`
 		SELECT d.id, d.user_id, d.initiative_id, i.name, d.organization_id, d.org_name, d.org_domain, d.category,
 		       d.current_amount_in_cents, d.po_number, d.payment_method,
-		       d.status, d.stripe_payment_intent_id, d.stripe_charge_id, d.donation_tier, d.created_on, d.updated_on
+		       d.status, d.stripe_payment_intent_id, d.stripe_charge_id, d.donation_tier, d.created_on, d.updated_on, d.anonymous
 		FROM donations d
 		LEFT JOIN initiatives i ON i.id = d.initiative_id
 		WHERE %s
@@ -140,12 +140,12 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 		INSERT INTO donations
 		       (user_id, initiative_id, organization_id, org_name, org_domain, category,
 		        current_amount_in_cents, po_number, payment_method,
-		        status, stripe_payment_intent_id, stripe_charge_id, donation_tier)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		        status, stripe_payment_intent_id, stripe_charge_id, donation_tier, anonymous)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		ON CONFLICT (stripe_payment_intent_id) WHERE stripe_payment_intent_id IS NOT NULL DO NOTHING
 		RETURNING id, user_id, initiative_id, organization_id, org_name, org_domain, category,
 		          current_amount_in_cents, po_number, payment_method,
-		          status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on`
+		          status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on, anonymous`
 
 	row := r.pool.QueryRow(ctx, q,
 		d.UserID, d.InitiativeID, nullableString(d.OrganizationID),
@@ -153,14 +153,14 @@ func (r *DonationRepository) Create(ctx context.Context, d *models.Donation) (*m
 		nullableString(d.Category), d.CurrentAmountCents,
 		nullableString(d.PONumber), nullableString(d.PaymentMethod),
 		nullableString(d.Status), nullableString(d.StripePaymentIntentID),
-		nullableString(d.StripeChargeID), nullableString(d.DonationTier),
+		nullableString(d.StripeChargeID), nullableString(d.DonationTier), d.Anonymous,
 	)
 	created, err := scanDonation(row)
 	if errors.Is(err, domain.ErrDonationNotFound) && d.StripePaymentIntentID != "" {
 		created, err = scanDonation(r.pool.QueryRow(ctx, `
 			SELECT id, user_id, initiative_id, organization_id, org_name, org_domain, category,
 			       current_amount_in_cents, po_number, payment_method,
-			       status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on
+			       status, stripe_payment_intent_id, stripe_charge_id, donation_tier, created_on, updated_on, anonymous
 			FROM donations WHERE stripe_payment_intent_id = $1`, d.StripePaymentIntentID))
 	}
 	if err != nil {
@@ -253,7 +253,8 @@ func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.Org
 				NULLIF(TRIM(COALESCE(u.given_name, '') || ' ' || COALESCE(u.family_name, '')), '')
 			),
 			d.created_on,
-			d.status
+			d.status,
+			d.anonymous
 		FROM donations d
 		LEFT JOIN organizations o ON o.id = d.organization_id
 		LEFT JOIN initiatives i   ON i.id = d.initiative_id
@@ -283,6 +284,7 @@ func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.Org
 			&donorName,
 			&row.DonatedAt,
 			&row.Status,
+			&row.Anonymous,
 		); err != nil {
 			return nil, fmt.Errorf("scan org donation row: %w", err)
 		}
@@ -301,12 +303,12 @@ func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.Org
 // since never-paid attempts (incomplete, incomplete_expired) also end canceled.
 const orgLensRows = `
 	SELECT CAST(d.id AS text), 'one_time', d.initiative_id, d.user_id,
-	       d.current_amount_in_cents, '', d.status, d.created_on
+	       d.current_amount_in_cents, '', d.status, d.created_on, d.anonymous
 	FROM donations d
 	WHERE d.b2b_org_sfid = $1 AND d.status = 'succeeded'
 	UNION ALL
 	SELECT CAST(s.id AS text), 'recurring', s.initiative_id, s.user_id,
-	       s.current_amount_in_cents, COALESCE(s.frequency, ''), s.status, s.created_on
+	       s.current_amount_in_cents, COALESCE(s.frequency, ''), s.status, s.created_on, s.anonymous
 	FROM subscriptions s
 	WHERE s.b2b_org_sfid = $1
 	  AND (s.status IN ('active', 'past_due')
@@ -342,8 +344,8 @@ func (r *DonationRepository) ListByB2BOrg(ctx context.Context, sfid string, limi
 		           NULLIF(u.name, ''),
 		           NULLIF(TRIM(COALESCE(u.given_name, '') || ' ' || COALESCE(u.family_name, '')), ''),
 		           ''),
-		       COALESCE(u.email, ''), t.amount, t.frequency, t.status, t.created_on
-		FROM (`+orgLensRows+`) AS t(id, kind, initiative_id, user_id, amount, frequency, status, created_on)
+		       COALESCE(u.email, ''), t.amount, t.frequency, t.status, t.created_on, t.anonymous
+		FROM (`+orgLensRows+`) AS t(id, kind, initiative_id, user_id, amount, frequency, status, created_on, anonymous)
 		LEFT JOIN initiatives i ON i.id = t.initiative_id
 		LEFT JOIN users o ON o.id = i.owner_id
 		JOIN users u ON u.id = t.user_id
@@ -360,7 +362,7 @@ func (r *DonationRepository) ListByB2BOrg(ctx context.Context, sfid string, limi
 		var d models.OrgLensDonation
 		if err := rows.Scan(&d.ID, &d.Type, &d.InitiativeID, &d.InitiativeName, &d.InitiativeSlug,
 			&d.InitiativeCreator, &d.DonorName,
-			&d.DonorEmail, &d.AmountCents, &d.Frequency, &d.Status, &d.CreatedOn); err != nil {
+			&d.DonorEmail, &d.AmountCents, &d.Frequency, &d.Status, &d.CreatedOn, &d.Anonymous); err != nil {
 			return nil, nil, fmt.Errorf("scan org lens donation: %w", err)
 		}
 		result = append(result, d)
@@ -384,7 +386,7 @@ func scanDonation(row scanner) (*models.Donation, error) {
 	err := row.Scan(
 		&d.ID, &d.UserID, &initiativeID, &organizationID, &orgName, &orgDomain, &category,
 		&d.CurrentAmountCents, &poNumber, &paymentMethod,
-		&status, &stripePaymentIntentID, &stripeChargeID, &donationTier, &createdOn, &updatedOn,
+		&status, &stripePaymentIntentID, &stripeChargeID, &donationTier, &createdOn, &updatedOn, &d.Anonymous,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -428,7 +430,7 @@ func scanDonationWithInitiative(row scanner) (*models.Donation, error) {
 	err := row.Scan(
 		&d.ID, &d.UserID, &initiativeID, &initiativeName, &organizationID, &orgName, &orgDomain, &category,
 		&d.CurrentAmountCents, &poNumber, &paymentMethod,
-		&status, &stripePaymentIntentID, &stripeChargeID, &donationTier, &createdOn, &updatedOn,
+		&status, &stripePaymentIntentID, &stripeChargeID, &donationTier, &createdOn, &updatedOn, &d.Anonymous,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

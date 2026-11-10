@@ -24,6 +24,9 @@ import (
 // domain.LedgerSourceTypeStripe constant.
 const ledgerTxnType = "credit"
 
+// anonymousDonorName replaces a hidden donor's name in the owner's email (#466).
+const anonymousDonorName = "Anonymous"
+
 // WebhookHandler handles inbound Stripe webhook events.
 // Signature validation is ALWAYS performed before processing — never skip this check.
 type WebhookHandler struct {
@@ -34,8 +37,33 @@ type WebhookHandler struct {
 	emailService     domain.EmailService
 	webhookSecret    string
 	logger           *slog.Logger
-	ackUnimplemented bool          // when true, reply 200 for known-but-unimplemented events
-	v2RaceWindow     time.Duration // 0 = a missing v2 donation is always retried; see StripeConfig.V2RaceWindow
+	ackUnimplemented bool                          // when true, reply 200 for known-but-unimplemented events
+	v2RaceWindow     time.Duration                 // 0 = a missing v2 donation is always retried; see StripeConfig.V2RaceWindow
+	privacy          domain.DonorPrivacyRepository // nil in tests; nil never hides the donor
+}
+
+// SetDonorPrivacyRepo wires the anonymity lookup used to hide an anonymous
+// donor from the initiative owner's notification email (#466).
+func (h *WebhookHandler) SetDonorPrivacyRepo(r domain.DonorPrivacyRepository) {
+	h.privacy = r
+}
+
+// adminDonor returns the donor name and email for the owner's notification
+// email: "Anonymous" and no email when the donor hid their identity. A failed
+// lookup hides the donor too. The donor's own receipt is not affected.
+func (h *WebhookHandler) adminDonor(lookup func(domain.DonorPrivacyRepository) (bool, error), donorName, donorEmail string) (string, string) {
+	if h.privacy == nil {
+		return donorName, donorEmail
+	}
+	anonymous, err := lookup(h.privacy)
+	if err != nil {
+		h.logger.Warn("donor anonymity lookup failed; hiding donor in admin email", "error", err)
+		anonymous = true
+	}
+	if anonymous {
+		return anonymousDonorName, ""
+	}
+	return donorName, donorEmail
 }
 
 // NewWebhookHandler creates a WebhookHandler.
@@ -274,8 +302,11 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 				"pi_id", pi.ID, "error", emailErr)
 		}
 	}
+	adminDonorName, adminDonorEmail := h.adminDonor(func(p domain.DonorPrivacyRepository) (bool, error) {
+		return p.IsPaymentIntentAnonymous(r.Context(), pi.ID)
+	}, donorName, donorEmail)
 	if adminErr := h.emailService.SendDonationAdminNotificationEmail(
-		r.Context(), pi.Metadata["owner_email"], ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
+		r.Context(), pi.Metadata["owner_email"], ownerName, adminDonorName, adminDonorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 	); adminErr != nil {
 		h.logger.Warn("payment_intent.succeeded: admin notification email failed",
 			"pi_id", pi.ID, "error", adminErr)
@@ -393,8 +424,11 @@ func (h *WebhookHandler) handleInvoicePaymentSucceeded(r *http.Request, event st
 				"sub_id", subID, "error", emailErr)
 		}
 	}
+	adminDonorName, adminDonorEmail := h.adminDonor(func(p domain.DonorPrivacyRepository) (bool, error) {
+		return p.IsStripeSubscriptionAnonymous(r.Context(), subID)
+	}, donorName, donorEmail)
 	if adminErr := h.emailService.SendDonationAdminNotificationEmail(
-		r.Context(), subMeta["owner_email"], ownerName, donorName, donorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
+		r.Context(), subMeta["owner_email"], ownerName, adminDonorName, adminDonorEmail, initiativeName, initiativeURL, amountFormatted, category, orgName, payment, donationType,
 	); adminErr != nil {
 		h.logger.Warn("invoice.payment_succeeded: admin notification email failed",
 			"sub_id", subID, "error", adminErr)

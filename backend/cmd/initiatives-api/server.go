@@ -140,8 +140,12 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		logger.Warn("LFX_API_BASE_URL is not set — project attribution is rejected (cannot verify the project is public)")
 	}
 	initiativeSvc.SetSubscriptionRepo(subscriptionRepo)
+	donorPrivacyRepo := db.NewDonorPrivacyRepository(pool)
+	initiativeSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
+	donationSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
+	subscriptionSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
 	if fgaConn != nil {
 		memberClient := clients.NewMemberClient(fgaConn)
 		donationSvc.SetB2BOrgResolver(memberClient)
@@ -149,6 +153,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	}
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
+	statisticsSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
 	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)
 	if roleResolver != nil {
 		announcementSvc.SetEntityRoleResolver(roleResolver)
@@ -180,6 +185,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	paymentH := handler.NewPaymentHandler(paymentSvc)
 	statisticsH := handler.NewStatisticsHandler(statisticsSvc)
 	webhookH := handler.NewWebhookHandler(stripeClient, ledgerClient, donationRepo, subscriptionRepo, emailSvc, cfg.Stripe.WebhookSecret, logger, cfg.Stripe.AckUnimplementedWebhooks, cfg.Stripe.V2RaceWindow)
+	webhookH.SetDonorPrivacyRepo(donorPrivacyRepo)
 	uploadH := handler.NewUploadHandler(s3Client)
 	expenseH := handler.NewExpenseHandler(reimbursementClient, userRepo)
 	announcementH := handler.NewAnnouncementHandler(announcementSvc)
@@ -307,6 +313,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			r.Get("/transactions", initiativeH.GetAllMyTransactions)
 			r.Get("/subscriptions", subscriptionH.ListForUser)
 			r.Get("/subscriptions/{id}", subscriptionH.GetForUser)
+			// Donor's choice to hide their name on donor lists (#466).
+			r.Patch("/donations/{id}", donationH.SetAnonymous)
+			r.Patch("/subscriptions/{id}", subscriptionH.SetAnonymous)
 
 			// Payment account (saved card for 3DS flows).
 			r.Post("/setup-intent", paymentH.CreateSetupIntent)

@@ -159,22 +159,38 @@ SPDX-License-Identifier: MIT
             />
           </div>
 
-          <!-- Lens rows show donor name and email to the credited org (#436) -->
+          <!-- Lens rows show donor name and email to the credited org (#436), unless anonymous (#466) -->
           <lfx-field-message
             v-if="form.organization"
             type="info"
           >
-            {{ form.organization.name }} will see your name and email with this donation on its LFX organization page.
+            <template v-if="form.anonymous">
+              {{ form.organization.name }} will see this donation on its LFX organization page, but not your name or
+              email.
+            </template>
+            <template v-else>
+              {{ form.organization.name }} will see your name and email with this donation on its LFX organization page.
+            </template>
           </lfx-field-message>
         </template>
       </div>
     </div>
+
+    <lfx-checkbox v-model="form.anonymous">
+      <span class="text-sm font-medium text-neutral-900">Donate anonymously</span>
+      <span class="text-xs text-neutral-600">
+        Your name and email won't appear on donor lists. The amount still shows{{
+          form.donorType === 'organization' ? ', and so does the organization' : ''
+        }}.
+      </span>
+    </lfx-checkbox>
   </div>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, watch, computed } from 'vue';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
+import LfxCheckbox from '~/components/uikit/checkbox/checkbox.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 import LfxDropdownSearch from '~/components/uikit/dropdown/dropdown-search.vue';
 import LfxField from '~/components/uikit/field/field.vue';

@@ -163,6 +163,28 @@ func (h *DonationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, created)
 }
 
+// SetAnonymous handles PATCH /crowdfunding/me/donations/{id} — requires JWT.
+// Body {"anonymous": bool} hides or shows the caller's name and email on donor
+// lists for one of their own one-time donations (#466).
+func (h *DonationHandler) SetAnonymous(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	var input models.AnonymityUpdateInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Anonymous == nil {
+		Error(w, fmt.Errorf("%w: anonymous (boolean) is required", domain.ErrInvalidInput))
+		return
+	}
+	state, err := h.svc.SetAnonymous(r.Context(), chi.URLParam(r, "id"), principal.Username, *input.Anonymous)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, state)
+}
+
 // ExportOrgCSV handles GET /crowdfunding/me/donations/csv — restricted to csvDownloaders.
 // Query param: type=detail (default) | type=summary
 //

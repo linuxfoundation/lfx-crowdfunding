@@ -177,6 +177,8 @@ spec:
           - path: /crowdfunding/me/donations
           - path: /crowdfunding/me/donations/csv
           - path: /crowdfunding/me/donations/stats
+          # PATCH /me/donations/{id}: the donor's anonymity setting (#466).
+          - path: /crowdfunding/me/donations/:id
           - path: /crowdfunding/me/transactions
           - path: /crowdfunding/me/subscriptions
           - path: /crowdfunding/me/subscriptions/:*

@@ -6,7 +6,7 @@ Great news! Your initiative has just received a donation! Make sure you thank yo
 
 {{.DonationType}}: {{.InitiativeName}}
 {{with .Category}}Category: {{.}}
-{{end}}Donor: {{.DonorName}} <{{.DonorEmail}}>
+{{end}}Donor: {{.DonorName}}{{with .DonorEmail}} <{{.}}>{{end}}
 {{with .OrgName}}Organization: {{.}}
 {{end}}Payment Type: {{.Payment}}
 Amount: {{.Amount}}

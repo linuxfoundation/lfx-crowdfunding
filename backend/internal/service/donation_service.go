@@ -30,6 +30,42 @@ type DonationService struct {
 	userRepo       domain.UserRepository
 	stripe         clients.StripeClient
 	b2bOrgResolver B2BOrgResolver
+	privacy        domain.DonorPrivacyRepository
+}
+
+// SetDonorPrivacyRepo wires the store for the donor's anonymity choice (#466).
+func (s *DonationService) SetDonorPrivacyRepo(r domain.DonorPrivacyRepository) {
+	s.privacy = r
+}
+
+// SetAnonymous turns anonymity on or off for the caller's own one-time donation
+// (#466). Returns ErrDonationNotFound when the donation is missing or someone else's.
+func (s *DonationService) SetAnonymous(ctx context.Context, id, username string, anonymous bool) (*models.AnonymityState, error) {
+	ctx, span := donationSvcTracer.Start(ctx, "DonationService.SetAnonymous")
+	defer span.End()
+	span.SetAttributes(attribute.String("donation.id", id))
+
+	if s.privacy == nil {
+		return nil, fmt.Errorf("donor privacy store not configured")
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, domain.ErrDonationNotFound
+	}
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrDonationNotFound
+		}
+		span.RecordError(err)
+		return nil, fmt.Errorf("resolve user: %w", err)
+	}
+	if err := s.privacy.SetDonationAnonymous(ctx, id, user.ID, anonymous); err != nil {
+		if !errors.Is(err, domain.ErrDonationNotFound) {
+			span.RecordError(err)
+		}
+		return nil, err
+	}
+	return &models.AnonymityState{ID: id, Anonymous: anonymous}, nil
 }
 
 // NewDonationService returns a DonationService.
@@ -119,6 +155,7 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 			Status:       d.Status,
 			Category:     d.Category,
 			DonationTier: d.DonationTier,
+			Anonymous:    d.Anonymous,
 			CreatedOn:    d.CreatedOn,
 		}
 		if d.OrgName != "" {
@@ -132,7 +169,10 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 			}
 		} else {
 			s.DonorType = donorTypeIndividual
-			if user, ok := users[d.UserID]; ok {
+			if d.Anonymous {
+				s.DonorName = anonymousName
+				s.DonorAvatarURL = anonymousAvatarURL()
+			} else if user, ok := users[d.UserID]; ok {
 				s.DonorName = user.Name
 				s.DonorAvatarURL = user.AvatarURL
 			}
@@ -153,6 +193,12 @@ func (s *DonationService) ListOrgDonations(ctx context.Context) ([]models.OrgDon
 		span.RecordError(err)
 		return nil, fmt.Errorf("list org donations: %w", err)
 	}
+	for i := range rows {
+		if rows[i].Anonymous {
+			rows[i].DonorName = anonymousName
+			rows[i].DonorUserID = ""
+		}
+	}
 	return rows, nil
 }
 
@@ -166,6 +212,13 @@ func (s *DonationService) ListByB2BOrg(ctx context.Context, sfid string, limit, 
 	if err != nil {
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list org lens donations: %w", err)
+	}
+	// The org stays on the row; the person who donated for it is hidden (#466).
+	for i := range rows {
+		if rows[i].Anonymous {
+			rows[i].DonorName = anonymousName
+			rows[i].DonorEmail = ""
+		}
 	}
 	return rows, meta, nil
 }
@@ -355,6 +408,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		PONumber:           input.PONumber,
 		PaymentMethod:      input.PaymentMethod,
 		DonationTier:       input.DonationTier,
+		Anonymous:          input.Anonymous,
 		// Always start as pending so the payment_intent.succeeded webhook can
 		// perform the pending→succeeded transition unconditionally and send
 		// emails. When Stripe confirms synchronously (no 3DS), the PI comes
