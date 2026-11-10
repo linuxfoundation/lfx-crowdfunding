@@ -111,7 +111,7 @@ func TestSubscriptionService_Create_NewCustomerActive(t *testing.T) {
 
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", LegacyUserID: "auth0|u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -191,7 +191,7 @@ func TestSubscriptionService_Create_ExistingCustomer3DS(t *testing.T) {
 
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: existingCus}, nil
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", LegacyUserID: "auth0|u1", Email: "u1@test.example", StripeCustomerID: existingCus}, nil
 		},
 	}
 	stripe := &configStripeClient{

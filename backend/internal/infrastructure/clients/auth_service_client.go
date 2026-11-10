@@ -4,10 +4,12 @@
 package clients
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -17,11 +19,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// lfx-v2-auth-service profile subjects. Both accept a bare username as the
-// user identifier; user_metadata.read takes it as the raw payload.
+// lfx-v2-auth-service profile subjects. All accept a bare username as the
+// user identifier; user_metadata.read and username_to_sub take it as the raw payload.
 const (
 	userMetadataReadSubject = "lfx.auth-service.user_metadata.read"
 	userEmailsReadSubject   = "lfx.auth-service.user_emails.read"
+	usernameToSubSubject    = "lfx.auth-service.username_to_sub"
 )
 
 // authServiceTimeout bounds one lookup. It runs inline in the login sync, so a
@@ -80,6 +83,48 @@ func (c *AuthServiceClient) PrimaryEmail(ctx context.Context, username string) (
 		return "", errors.New("auth-service user_emails: no primary_email")
 	}
 	return data.PrimaryEmail, nil
+}
+
+// UsernameToSub returns the Auth0 subject (e.g. "auth0|jdoe") auth-service maps
+// username to. Ledger rows and Stripe metadata key users by it (#468). Unlike the
+// other subjects, a success reply is the bare subject as plain text; only an
+// error is a JSON envelope.
+func (c *AuthServiceClient) UsernameToSub(ctx context.Context, username string) (sub string, err error) {
+	ctx, span := authServiceTracer.Start(ctx, "nats.request "+usernameToSubSubject,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "nats"),
+			attribute.String("messaging.destination.name", usernameToSubSubject),
+		),
+	)
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+	}()
+
+	ctx, cancel := context.WithTimeout(ctx, authServiceTimeout)
+	defer cancel()
+
+	reply, err := c.conn.RequestWithContext(ctx, usernameToSubSubject, []byte(username))
+	if err != nil {
+		return "", fmt.Errorf("auth-service %s request: %w", usernameToSubSubject, err)
+	}
+	body := strings.TrimSpace(string(reply.Data))
+	if strings.HasPrefix(body, "{") {
+		var resp struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(reply.Data, &resp)
+		return "", fmt.Errorf("auth-service %s: %s", usernameToSubSubject, cmp.Or(resp.Error, "error reply"))
+	}
+	// A subject is "<connection>|<id>"; anything else is not one to store.
+	if !strings.Contains(body, "|") || strings.ContainsAny(body, " \t\n") {
+		return "", fmt.Errorf("auth-service %s: unexpected reply %q", usernameToSubSubject, body)
+	}
+	return body, nil
 }
 
 // request sends payload to subject and decodes the reply's data into out.

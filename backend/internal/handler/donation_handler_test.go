@@ -459,6 +459,7 @@ func TestDonationCreate_Success_Returns201(t *testing.T) {
 		user: &models.User{
 			ID:               userID,
 			Username:         username,
+			LegacyUserID:     "auth0|" + username,
 			Email:            "test@example.com",
 			StripeCustomerID: stripeCustomerID,
 		},
@@ -524,6 +525,7 @@ func TestDonationCreate_DefaultsPaymentMethodToStripe(t *testing.T) {
 		user: &models.User{
 			ID:               userID,
 			Username:         username,
+			LegacyUserID:     "auth0|" + username,
 			Email:            "test@example.com",
 			StripeCustomerID: "cus_xxx",
 		},
