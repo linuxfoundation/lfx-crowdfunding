@@ -195,8 +195,9 @@ func TestSetSponsors_LookupFailureHidesIndividuals(t *testing.T) {
 
 func TestGetRecentDonations_HidesAnonymousDonors(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs:  map[string]models.Organization{},
-		users: map[string]models.User{"u1": {Name: "Alice", AvatarURL: "https://example.com/alice.png"}},
+		orgs:         map[string]models.Organization{},
+		users:        map[string]models.User{"u1": {Name: "Alice", AvatarURL: "https://example.com/alice.png"}},
+		projectNames: map[string]string{"p1": "One", "p2": "Two"},
 	}
 	ledger := &testLedgerClient{recentDonations: []clients.LedgerRecentDonation{
 		{TxnID: "individual", ProjectID: "p1", UserID: "u1", Amount: 100, SourceType: domain.LedgerSourceTypeStripe},
@@ -226,6 +227,62 @@ func TestGetRecentDonations_HidesAnonymousDonors(t *testing.T) {
 	}
 	if d := got["legacy-org"]; d.DonorName != anonymousName {
 		t.Errorf("legacy org fell back to %q", d.DonorName)
+	}
+}
+
+func TestGetRecentDonations_LookupFailureHidesRowsWithoutUserID(t *testing.T) {
+	repo := &testStatisticsRepo{
+		orgs:         map[string]models.Organization{},
+		users:        map[string]models.User{},
+		projectNames: map[string]string{"p1": "One"},
+	}
+	ledger := &testLedgerClient{recentDonations: []clients.LedgerRecentDonation{
+		{TxnID: "no-user", ProjectID: "p1", SubmitterName: "Carol", Amount: 100, SourceType: domain.LedgerSourceTypeStripe},
+		{TxnID: "no-user-org", ProjectID: "p1", OrganizationID: "org-gone", SubmitterName: "Dave", Amount: 100, SourceType: domain.LedgerSourceTypeStripe},
+	}}
+	svc := newStatsSvc(repo, ledger)
+	svc.SetDonorPrivacyRepo(&fakeDonorPrivacy{err: errors.New("db down")})
+
+	resp, err := svc.GetRecentDonations(context.Background())
+	if err != nil {
+		t.Fatalf("GetRecentDonations: %v", err)
+	}
+	for _, d := range resp.Data {
+		if d.DonorName != anonymousName {
+			t.Errorf("%s = %q, want %q on a failed lookup", d.TxnID, d.DonorName, anonymousName)
+		}
+	}
+}
+
+func TestGetRecentDonations_HidesDonorsOfDeletedInitiatives(t *testing.T) {
+	repo := &testStatisticsRepo{
+		orgs:         map[string]models.Organization{},
+		users:        map[string]models.User{"u1": {Name: "Alice"}},
+		projectNames: map[string]string{"live": "Live"},
+	}
+	ledger := &testLedgerClient{recentDonations: []clients.LedgerRecentDonation{
+		{TxnID: "deleted", ProjectID: "gone", UserID: "u1", Amount: 100, SourceType: domain.LedgerSourceTypeStripe},
+		{TxnID: "deleted-org", ProjectID: "gone", OrganizationID: "org-gone", SubmitterName: "Alice", Amount: 100, SourceType: domain.LedgerSourceTypeStripe},
+		{TxnID: "deleted-stated-org", ProjectID: "gone", UserID: "u1", OrganizationName: "Acme", Amount: 100, SourceType: domain.LedgerSourceTypeStripe},
+		{TxnID: "live", ProjectID: "live", UserID: "u1", Amount: 100, SourceType: domain.LedgerSourceTypeStripe},
+	}}
+	svc := newStatsSvc(repo, ledger)
+	// The deleted initiative's anonymous rows no longer match, so the lookup finds nothing.
+	svc.SetDonorPrivacyRepo(&fakeDonorPrivacy{byInitiative: map[string]map[string]bool{}})
+
+	resp, err := svc.GetRecentDonations(context.Background())
+	if err != nil {
+		t.Fatalf("GetRecentDonations: %v", err)
+	}
+	got := map[string]string{}
+	for _, d := range resp.Data {
+		got[d.TxnID] = d.DonorName
+	}
+	want := map[string]string{"deleted": anonymousName, "deleted-org": anonymousName, "deleted-stated-org": "Acme", "live": "Alice"}
+	for id, name := range want {
+		if got[id] != name {
+			t.Errorf("%s = %q, want %q", id, got[id], name)
+		}
 	}
 }
 

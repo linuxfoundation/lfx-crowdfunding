@@ -25,7 +25,7 @@ You must have completed at least one donation. Sign in with your [LF ID](https:/
 
 ### Hide or show your name
 
-![Hide or show your name on a donation](/images/docs/screenshots/donations/manage-donations-anonymous.png)
+<!-- Screenshot to add once the Self Serve toggle is deployed: ![Hide or show your name on a donation](/images/docs/screenshots/donations/manage-donations-anonymous.png) -->
 
 You can change whether a donation is anonymous at any time:
 
@@ -34,7 +34,7 @@ You can change whether a donation is anonymous at any time:
 
 For a monthly donation, you can also open it and use **Hide my name** or **Show my name** under **Your Name**. The change applies to every charge of that subscription, past and future.
 
-The initiative page and the organization's LFX organization page reflect the change right away. Older donations, and donations recorded outside card payments, can't be changed here. See **Anonymous donations** in [Making a Donation](../make-donation/) for what anonymity hides.
+The initiative page and the organization's LFX organization page reflect the change within a few minutes. Older donations, and donations recorded outside card payments, can't be changed here. See **Anonymous donations** in [Making a Donation](../make-donation/) for what anonymity hides.
 
 ### Cancel a recurring donation
 

@@ -319,7 +319,14 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 
 	donations := make([]models.RecentDonation, 0, len(uniqueRaw))
 	for _, d := range uniqueRaw {
-		hide := d.UserID != "" && hidden(d.ProjectID, d.UserID)
+		// A failed lookup hides every row, including ones without a ledger user ID.
+		hide := hidden(d.ProjectID, d.UserID)
+		// Deleting an initiative nulls initiative_id on its donations and
+		// subscriptions, so their anonymity flags can no longer be found for it.
+		// Hide the donor on rows whose initiative is gone rather than risk showing them.
+		if _, exists := projectNames[d.ProjectID]; s.privacy != nil && d.ProjectID != "" && !exists {
+			hide = true
+		}
 		entry := models.RecentDonation{
 			TxnID:       d.TxnID,
 			ProjectID:   d.ProjectID,
