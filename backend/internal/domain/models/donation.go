@@ -27,9 +27,7 @@ type Donation struct {
 	InitiativeID string `json:"initiative_id"`
 	// InitiativeName is populated by the user/initiative donation list queries via a
 	// join on initiatives; it is not a column on the donations table.
-	InitiativeName string `json:"initiative_name,omitempty"`
-	// OrganizationID is the legacy per-user org FK; new donations store OrgName/OrgDomain instead.
-	OrganizationID     string `json:"-"`
+	InitiativeName     string `json:"initiative_name,omitempty"`
 	OrgName            string `json:"-"`
 	OrgDomain          string `json:"-"`
 	Category           string `json:"category,omitempty"`
@@ -57,8 +55,6 @@ type DonationCreateInput struct {
 	PONumber      string    `json:"po_number,omitempty"`
 	PaymentMethod string    `json:"payment_method,omitempty"`
 	Organization  *OrgClaim `json:"organization,omitempty"`
-	// OrganizationID is the legacy per-user org ID, used only when Organization is absent. Remove after #409.
-	OrganizationID string `json:"organization_id,omitempty"`
 	// StripePaymentMethodID is used to create a Stripe charge
 	StripePaymentMethodID string `json:"stripe_payment_method_id,omitempty"`
 	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.
@@ -71,7 +67,7 @@ type DonationCreateInput struct {
 
 // DonationSummary is the public-facing projection returned by the initiative
 // donation list (GET /crowdfunding/initiatives/{id}/donations). It omits internal
-// identifiers (user_id, organization_id) and Stripe IDs; donor_name and
+// identifiers (user_id) and Stripe IDs; donor_name and
 // donor_avatar_url are display-only fields intentionally included.
 type DonationSummary struct {
 	ID             string    `json:"id"`
@@ -85,19 +81,19 @@ type DonationSummary struct {
 	CreatedOn      time.Time `json:"created_on"`
 }
 
-// OrgDonationRow is a flat projection joining donations, organizations,
-// initiatives, and users. Used exclusively for the org-donors CSV export
+// OrgDonationRow is a flat projection joining donations, initiatives, and
+// users. Used exclusively for the org-donors CSV export
 // (GET /crowdfunding/me/donations/csv).
 type OrgDonationRow struct {
-	OrganizationID   string
-	OrganizationName string
-	InitiativeName   string
-	InitiativeID     string
-	AmountCents      int64
-	DonorUserID      string
-	DonorName        string
-	DonatedAt        time.Time
-	Status           string
+	OrganizationDomain string
+	OrganizationName   string
+	InitiativeName     string
+	InitiativeID       string
+	AmountCents        int64
+	DonorUserID        string
+	DonorName          string
+	DonatedAt          time.Time
+	Status             string
 }
 
 // Donation kinds on the Org lens list.

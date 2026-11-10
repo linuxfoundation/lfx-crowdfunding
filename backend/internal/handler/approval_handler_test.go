@@ -76,9 +76,6 @@ func (r *apprInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (mo
 func (r *apprInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
 	return nil, nil
 }
-func (r *apprInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	return nil, nil
-}
 func (r *apprInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil
 }

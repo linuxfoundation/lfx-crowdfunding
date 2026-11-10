@@ -322,3 +322,48 @@ func TestDonationRepository_ListByB2BOrg(t *testing.T) {
 		t.Errorf("rows = %v", got)
 	}
 }
+
+// The CSV export reads the org claim stored on the donation (#441).
+func TestDonationRepository_ListOrgDonations(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.donations", "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "test-owner-org-csv")
+	initiative := seedInitiative(t, ctx, owner.ID, "Test Initiative Org CSV", "test-initiative-org-csv")
+	repo := NewDonationRepository(testPool)
+
+	create := func(orgName, orgDomain, status string) {
+		t.Helper()
+		d, err := repo.Create(ctx, &models.Donation{
+			UserID: owner.ID, InitiativeID: initiative.ID, OrgName: orgName, OrgDomain: orgDomain,
+			CurrentAmountCents: 2500, Status: status,
+		})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if d.OrgName != orgName || d.OrgDomain != orgDomain {
+			t.Fatalf("stored org = %q / %q, want %q / %q", d.OrgName, d.OrgDomain, orgName, orgDomain)
+		}
+	}
+	create("Acme", "acme.com", models.DonationStatusSucceeded)
+	create("Legacy Co", "", models.DonationStatusSucceeded)
+	create("Pending Co", "pending.com", models.DonationStatusPending)
+	create("", "", models.DonationStatusSucceeded)
+
+	rows, err := repo.ListOrgDonations(ctx)
+	if err != nil {
+		t.Fatalf("ListOrgDonations: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2 (succeeded org donations only): %+v", len(rows), rows)
+	}
+	if rows[0].OrganizationName != "Acme" || rows[0].OrganizationDomain != "acme.com" || rows[0].InitiativeID != initiative.ID {
+		t.Errorf("rows[0] = %+v, want Acme / acme.com", rows[0])
+	}
+	if rows[1].OrganizationName != "Legacy Co" || rows[1].OrganizationDomain != "" {
+		t.Errorf("rows[1] = %+v, want Legacy Co with no domain", rows[1])
+	}
+}

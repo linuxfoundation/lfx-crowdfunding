@@ -546,7 +546,7 @@ spec:
     # CF-authorization-gated, Slack decision). Subscription list has no public
     # equivalent elsewhere, so this does grant any authenticated user the
     # per-initiative subscription schedule (amount/frequency/next charge
-    # date) — Subscription.UserID/OrganizationID/Stripe IDs stay json:"-", so
+    # date) — Subscription.UserID/Stripe IDs stay json:"-", so
     # no PII/payment identifiers leak. Accepted for now; split further or add
     # an ownership check if that needs tightening.
     - id: "rule:lfx:lfx-crowdfunding-backend:me-initiative-donate-list"

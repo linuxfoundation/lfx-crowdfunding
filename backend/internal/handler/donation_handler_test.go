@@ -84,7 +84,6 @@ type donationInitiativeRepo struct {
 	initiative *models.Initiative
 	getErr     error
 	usersByIDs map[string]models.User
-	orgsByIDs  map[string]models.Organization
 }
 
 func (r *donationInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -129,12 +128,6 @@ func (r *donationInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string)
 }
 func (r *donationInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
 	return nil, nil
-}
-func (r *donationInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	if r.orgsByIDs != nil {
-		return r.orgsByIDs, nil
-	}
-	return make(map[string]models.Organization), nil
 }
 func (r *donationInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil

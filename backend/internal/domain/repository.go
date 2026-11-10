@@ -40,10 +40,6 @@ type InitiativeRepository interface {
 	// Used to enrich Ledger transactions where UserID is an Auth0 subject.
 	GetUsersByLegacyIDs(ctx context.Context, legacyIDs []string) (map[string]models.User, error)
 
-	// GetOrganizationsByIDs returns a map of org UUID → Organization for the given IDs.
-	// Missing IDs are absent from the map. Used to enrich Ledger transactions.
-	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
-
 	// GetInitiativesByIDs returns a map of initiative UUID → Initiative for the given IDs.
 	// IDs not found in the DB are silently omitted from the result.
 	GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error)
@@ -120,10 +116,6 @@ type UserRepository interface {
 type StatisticsRepository interface {
 	GetPlatformStatistics(ctx context.Context) (*models.PlatformStatistics, error)
 
-	// GetOrganizationsByIDs returns a map of org UUID → Organization for the given IDs.
-	// Missing IDs are absent from the map. Used to enrich Ledger sponsor/donor data.
-	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
-
 	// GetUsersByIDs returns a map of user UUID → User for the given UUIDs.
 	// Missing IDs are absent from the map. Used to enrich Ledger sponsor/donor data.
 	GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error)
@@ -151,10 +143,6 @@ type LedgerStatsRepository interface {
 	// BulkUpsertLedgerStats inserts or updates rows in initiative_ledger_stats.
 	// Returns the number of rows successfully upserted.
 	BulkUpsertLedgerStats(ctx context.Context, stats []models.LedgerStats) (int, error)
-
-	// GetOrganizationsByIDs returns a map of org UUID → Organization for all
-	// IDs in the slice.  Missing IDs are simply absent from the map.
-	GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error)
 
 	// GetUsersByIDs returns a map of user UUID → User for all
 	// IDs in the slice.  Missing IDs are simply absent from the map.

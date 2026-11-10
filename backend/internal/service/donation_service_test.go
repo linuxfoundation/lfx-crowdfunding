@@ -17,8 +17,7 @@ import (
 // summaryInitiativeRepo is a minimal InitiativeRepository stub for
 // projectDonationSummaries tests. Only the lookup methods are configurable.
 type summaryInitiativeRepo struct {
-	onGetUsersByIDs         func(context.Context, []string) (map[string]models.User, error)
-	onGetOrganizationsByIDs func(context.Context, []string) (map[string]models.Organization, error)
+	onGetUsersByIDs func(context.Context, []string) (map[string]models.User, error)
 }
 
 func (r *summaryInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -63,12 +62,6 @@ func (r *summaryInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) 
 }
 func (r *summaryInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
 	return nil, nil
-}
-func (r *summaryInitiativeRepo) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
-	if r.onGetOrganizationsByIDs != nil {
-		return r.onGetOrganizationsByIDs(ctx, ids)
-	}
-	return map[string]models.Organization{}, nil
 }
 func (r *summaryInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil
@@ -119,32 +112,6 @@ func TestProjectDonationSummaries_IndividualDonor(t *testing.T) {
 	}
 	if s.DonorAvatarURL != "https://example.com/alice.png" {
 		t.Errorf("DonorAvatar = %q, want alice.png URL", s.DonorAvatarURL)
-	}
-}
-
-func TestProjectDonationSummaries_OrganizationDonor(t *testing.T) {
-	donations := []models.Donation{
-		{ID: "d2", OrganizationID: "org1", CurrentAmountCents: 5000, Status: "succeeded"},
-	}
-	repo := &summaryInitiativeRepo{
-		onGetOrganizationsByIDs: func(_ context.Context, ids []string) (map[string]models.Organization, error) {
-			return map[string]models.Organization{
-				"org1": {ID: "org1", Name: "Acme Corp", AvatarURL: "https://example.com/acme.png"},
-			}, nil
-		},
-	}
-
-	result := projectDonationSummaries(context.Background(), repo, donations)
-
-	if len(result) != 1 {
-		t.Fatalf("expected 1 summary, got %d", len(result))
-	}
-	s := result[0]
-	if s.DonorType != donorTypeOrganization {
-		t.Errorf("DonorType = %q, want %q", s.DonorType, donorTypeOrganization)
-	}
-	if s.DonorName != "Acme Corp" {
-		t.Errorf("DonorName = %q, want Acme Corp", s.DonorName)
 	}
 }
 
@@ -203,30 +170,6 @@ func TestProjectDonationSummaries_UserLookupError_DegradeGracefully(t *testing.T
 	}
 	if s.DonorType != donorTypeIndividual {
 		t.Errorf("DonorType = %q, want %q", s.DonorType, donorTypeIndividual)
-	}
-}
-
-func TestProjectDonationSummaries_OrgLookupError_DegradeGracefully(t *testing.T) {
-	donations := []models.Donation{
-		{ID: "d1", OrganizationID: "org1", CurrentAmountCents: 999},
-	}
-	repo := &summaryInitiativeRepo{
-		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
-			return nil, errors.New("connection reset")
-		},
-	}
-
-	result := projectDonationSummaries(context.Background(), repo, donations)
-
-	if len(result) != 1 {
-		t.Fatalf("expected 1 summary even on lookup error, got %d", len(result))
-	}
-	s := result[0]
-	if s.DonorType != donorTypeOrganization {
-		t.Errorf("DonorType = %q, want %q", s.DonorType, donorTypeOrganization)
-	}
-	if s.DonorName != "" {
-		t.Errorf("DonorName should be empty on lookup error, got %q", s.DonorName)
 	}
 }
 
@@ -1003,83 +946,6 @@ func TestOrgClaim(t *testing.T) {
 	}
 }
 
-// --- legacy organization_id fallback (mixed-version deploys) ---
-
-func TestResolveOrgClaim_LegacyOrgID(t *testing.T) {
-	const orgID = "11111111-1111-1111-1111-111111111111"
-	const blankID = "22222222-2222-2222-2222-222222222222"
-	const newlineID = "33333333-3333-3333-3333-333333333333"
-	repo := &summaryInitiativeRepo{
-		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
-			return map[string]models.Organization{
-				orgID:     {ID: orgID, OwnerID: "owner", Name: " Acme "},
-				blankID:   {ID: blankID, OwnerID: "owner", Name: "  "},
-				newlineID: {ID: newlineID, OwnerID: "owner", Name: "Acme\nCorp"},
-			}, nil
-		},
-	}
-	tests := []struct {
-		name    string
-		in      *models.OrgClaim
-		orgID   string
-		userID  string
-		want    models.OrgClaim
-		wantErr error
-	}{
-		{"individual", nil, "", "owner", models.OrgClaim{}, nil},
-		{"own org", nil, orgID, "owner", models.OrgClaim{Name: "Acme"}, nil},
-		{"own org uppercase", nil, strings.ToUpper(orgID), "owner", models.OrgClaim{Name: "Acme"}, nil},
-		{"foreign org", nil, orgID, "someone-else", models.OrgClaim{}, domain.ErrOrganizationNotFound},
-		{"not a uuid", nil, "not-a-uuid", "owner", models.OrgClaim{}, domain.ErrOrganizationNotFound},
-		{"blank stored name", nil, blankID, "owner", models.OrgClaim{}, domain.ErrInvalidInput},
-		{"control char in stored name", nil, newlineID, "owner", models.OrgClaim{}, domain.ErrInvalidInput},
-		{"claim wins over legacy id", &models.OrgClaim{Name: "Other", Domain: "other.com"}, orgID, "someone-else", models.OrgClaim{Name: "Other", Domain: "other.com"}, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveOrgClaim(context.Background(), repo, tt.in, tt.orgID, tt.userID)
-			if !errors.Is(err, tt.wantErr) || got != tt.want {
-				t.Errorf("resolveOrgClaim() = %+v, %v; want %+v, %v", got, err, tt.want, tt.wantErr)
-			}
-		})
-	}
-}
-
-// A lookup failure must fail closed with a real error, not be mistaken for "not found".
-func TestOwnedOrg_RepoErrorFailsClosed(t *testing.T) {
-	repoErr := errors.New("db down")
-	repo := &summaryInitiativeRepo{
-		onGetOrganizationsByIDs: func(_ context.Context, _ []string) (map[string]models.Organization, error) {
-			return nil, repoErr
-		},
-	}
-	_, _, err := ownedOrg(context.Background(), repo, "11111111-1111-1111-1111-111111111111", "owner")
-	if !errors.Is(err, repoErr) || errors.Is(err, domain.ErrOrganizationNotFound) {
-		t.Errorf("error = %v, want wrapped %v and not ErrOrganizationNotFound", err, repoErr)
-	}
-}
-
-func TestDonationService_Create_ForeignLegacyOrgRejectedBeforeStripe(t *testing.T) {
-	stripeCalled := false
-	stripe := &configStripeClient{
-		onCreateCustomer: func(_ context.Context, _, _ string) (string, error) {
-			stripeCalled = true
-			return "cus_1", nil
-		},
-	}
-	svc := newDonationSvc(&testDonationRepo{}, acceptingInitiative(), &testUserRepo{}, stripe)
-
-	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
-		AmountCents: 1000, StripePaymentMethodID: "pm_test", IdempotencyKey: "idem", OrganizationID: "11111111-1111-1111-1111-111111111111",
-	})
-	if !errors.Is(err, domain.ErrOrganizationNotFound) {
-		t.Fatalf("error = %v, want ErrOrganizationNotFound", err)
-	}
-	if stripeCalled {
-		t.Error("Stripe must not be called for a foreign organization")
-	}
-}
-
 func TestDonationService_Create_StoresOrgClaim(t *testing.T) {
 	var saved *models.Donation
 	var stripeOrgName string
@@ -1108,8 +974,8 @@ func TestDonationService_Create_StoresOrgClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if saved.OrgName != "Acme" || saved.OrgDomain != "acme.com" || saved.OrganizationID != "" {
-		t.Errorf("stored org = %q, %q, id %q; want Acme, acme.com, empty id", saved.OrgName, saved.OrgDomain, saved.OrganizationID)
+	if saved.OrgName != "Acme" || saved.OrgDomain != "acme.com" {
+		t.Errorf("stored org = %q, %q; want Acme, acme.com", saved.OrgName, saved.OrgDomain)
 	}
 	if stripeOrgName != "Acme" {
 		t.Errorf("Stripe OrganizationName = %q, want Acme", stripeOrgName)

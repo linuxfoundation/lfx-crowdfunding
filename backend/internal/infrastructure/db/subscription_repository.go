@@ -32,7 +32,7 @@ func NewSubscriptionRepository(pool *pgxpool.Pool) *SubscriptionRepository {
 }
 
 const subscriptionColumns = `
-	id, user_id, initiative_id, organization_id, org_name, org_domain, category,
+	id, user_id, initiative_id, org_name, org_domain, category,
 	current_amount_in_cents, frequency, status,
 	stripe_subscription_id, stripe_subscription_item_id, stripe_price_id,
 	created_on, updated_on`
@@ -40,14 +40,14 @@ const subscriptionColumns = `
 func scanSubscription(row scanner) (*models.Subscription, error) {
 	s := &models.Subscription{}
 	var (
-		initiativeID, organizationID, category                        *string
+		initiativeID, category                                        *string
 		orgName, orgDomain                                            *string
 		frequency, status                                             *string
 		stripeSubscriptionID, stripeSubscriptionItemID, stripePriceID *string
 		createdOn, updatedOn                                          *time.Time
 	)
 	err := row.Scan(
-		&s.ID, &s.UserID, &initiativeID, &organizationID, &orgName, &orgDomain, &category,
+		&s.ID, &s.UserID, &initiativeID, &orgName, &orgDomain, &category,
 		&s.CurrentAmountCents, &frequency, &status,
 		&stripeSubscriptionID, &stripeSubscriptionItemID, &stripePriceID,
 		&createdOn, &updatedOn,
@@ -59,7 +59,6 @@ func scanSubscription(row scanner) (*models.Subscription, error) {
 		return nil, err
 	}
 	s.InitiativeID = derefString(initiativeID)
-	s.OrganizationID = derefString(organizationID)
 	s.OrgName = derefString(orgName)
 	s.OrgDomain = derefString(orgDomain)
 	s.Category = derefString(category)
@@ -106,7 +105,7 @@ func (r *SubscriptionRepository) GetByIDForUser(ctx context.Context, id, userID 
 	)
 
 	const q = `
-		SELECT s.id, s.user_id, s.initiative_id, s.organization_id, s.org_name, s.org_domain, s.category,
+		SELECT s.id, s.user_id, s.initiative_id, s.org_name, s.org_domain, s.category,
 		       s.current_amount_in_cents, s.frequency, s.status,
 		       s.stripe_subscription_id, s.stripe_subscription_item_id, s.stripe_price_id,
 		       s.created_on, s.updated_on,
@@ -176,14 +175,14 @@ func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string, 
 func scanSubscriptionWithInitiative(row scanner) (*models.Subscription, error) {
 	s := &models.Subscription{}
 	var (
-		initiativeID, organizationID, category                        *string
+		initiativeID, category                                        *string
 		orgName, orgDomain                                            *string
 		frequency, status                                             *string
 		stripeSubscriptionID, stripeSubscriptionItemID, stripePriceID *string
 		createdOn, updatedOn                                          *time.Time
 	)
 	err := row.Scan(
-		&s.ID, &s.UserID, &initiativeID, &organizationID, &orgName, &orgDomain, &category,
+		&s.ID, &s.UserID, &initiativeID, &orgName, &orgDomain, &category,
 		&s.CurrentAmountCents, &frequency, &status,
 		&stripeSubscriptionID, &stripeSubscriptionItemID, &stripePriceID,
 		&createdOn, &updatedOn,
@@ -196,7 +195,6 @@ func scanSubscriptionWithInitiative(row scanner) (*models.Subscription, error) {
 		return nil, err
 	}
 	s.InitiativeID = derefString(initiativeID)
-	s.OrganizationID = derefString(organizationID)
 	s.OrgName = derefString(orgName)
 	s.OrgDomain = derefString(orgDomain)
 	s.Category = derefString(category)
@@ -241,7 +239,7 @@ func (r *SubscriptionRepository) listSubsForUser(ctx context.Context, userID str
 
 	dataArgs := append(args, limit, offset) //nolint:gocritic // intentional re-slice
 	q := fmt.Sprintf(`
-		SELECT s.id, s.user_id, s.initiative_id, s.organization_id, s.org_name, s.org_domain, s.category,
+		SELECT s.id, s.user_id, s.initiative_id, s.org_name, s.org_domain, s.category,
 		       s.current_amount_in_cents, s.frequency, s.status,
 		       s.stripe_subscription_id, s.stripe_subscription_item_id, s.stripe_price_id,
 		       s.created_on, s.updated_on,
@@ -327,18 +325,18 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 
 	const q = `
 		INSERT INTO subscriptions
-		       (user_id, initiative_id, organization_id, org_name, org_domain, category,
+		       (user_id, initiative_id, org_name, org_domain, category,
 		        current_amount_in_cents, frequency, status,
 		        stripe_subscription_id, stripe_subscription_item_id, stripe_price_id,
 		        first_paid_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
 		        -- Created active: Stripe charged the first invoice without 3DS. The
 		        -- invoice webhook can land before this INSERT and is not retried.
-		        CASE WHEN $13 THEN NOW() END)
+		        CASE WHEN $12 THEN NOW() END)
 		RETURNING ` + subscriptionColumns
 
 	row := r.pool.QueryRow(ctx, q,
-		s.UserID, s.InitiativeID, nullableString(s.OrganizationID),
+		s.UserID, s.InitiativeID,
 		nullableString(s.OrgName), nullableString(s.OrgDomain),
 		nullableString(s.Category), s.CurrentAmountCents, s.Frequency,
 		nullableString(s.Status), nullableString(s.StripeSubscriptionID),

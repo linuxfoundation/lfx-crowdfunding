@@ -838,8 +838,8 @@ func TestSubscriptionService_Create_StoresOrgClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if saved.OrgName != "Acme" || saved.OrgDomain != "acme.com" || saved.OrganizationID != "" {
-		t.Errorf("stored org = %q, %q, id %q; want Acme, acme.com, empty id", saved.OrgName, saved.OrgDomain, saved.OrganizationID)
+	if saved.OrgName != "Acme" || saved.OrgDomain != "acme.com" {
+		t.Errorf("stored org = %q, %q; want Acme, acme.com", saved.OrgName, saved.OrgDomain)
 	}
 	if gotReq.OrganizationName != "Acme" || gotReq.OrganizationDomain != "acme.com" {
 		t.Errorf("Stripe org = %q / %q, want Acme / acme.com", gotReq.OrganizationName, gotReq.OrganizationDomain)

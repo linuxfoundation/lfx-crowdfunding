@@ -9,20 +9,9 @@ import (
 	"time"
 )
 
-// Organization maps to the crowdfunding.organizations table.
-type Organization struct {
-	ID        string    `json:"id"`
-	OwnerID   string    `json:"owner_id"`
-	Name      string    `json:"name"`
-	AvatarURL string    `json:"avatar_url,omitempty"`
-	Status    string    `json:"status,omitempty"`
-	CreatedOn time.Time `json:"created_on"`
-	UpdatedOn time.Time `json:"updated_on"`
-}
-
 // OrgClaim is the organization a donor gives on behalf of, as the donor stated it.
-// It is stored on the donation or subscription itself, not as a reference to an
-// organizations row. Domain is normalized by the service before it is stored.
+// It is stored on the donation or subscription itself. Domain is normalized by
+// the service before it is stored.
 type OrgClaim struct {
 	Name   string `json:"name"`
 	Domain string `json:"domain"`

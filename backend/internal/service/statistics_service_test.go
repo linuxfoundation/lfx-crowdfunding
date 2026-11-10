@@ -19,7 +19,6 @@ import (
 
 type testStatisticsRepo struct {
 	stats        *models.PlatformStatistics
-	orgs         map[string]models.Organization
 	users        map[string]models.User
 	projectNames map[string]string
 	err          error
@@ -33,19 +32,6 @@ func (r *testStatisticsRepo) GetPlatformStatistics(_ context.Context) (*models.P
 		return r.stats, nil
 	}
 	return &models.PlatformStatistics{}, nil
-}
-
-func (r *testStatisticsRepo) GetOrganizationsByIDs(_ context.Context, ids []string) (map[string]models.Organization, error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-	result := make(map[string]models.Organization)
-	for _, id := range ids {
-		if o, ok := r.orgs[id]; ok {
-			result[id] = o
-		}
-	}
-	return result, nil
 }
 
 func (r *testStatisticsRepo) GetUsersByIDs(_ context.Context, ids []string) (map[string]models.User, error) {
@@ -127,9 +113,6 @@ func newStatsSvc(repo *testStatisticsRepo, ledger *testLedgerClient) *Statistics
 
 func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs: map[string]models.Organization{
-			"org-1": {ID: "org-1", Name: "Acme Corp", AvatarURL: "https://example.com/acme.png"},
-		},
 		users: map[string]models.User{
 			"user-1": {ID: "user-1", Name: "Alice Smith", AvatarURL: "https://example.com/alice.png"},
 		},
@@ -140,7 +123,7 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 			IndividualsCents:   200_000,
 			TotalSupporters:    10,
 			TopOrganizations: []clients.LedgerSponsorRaw{
-				{ID: "org-1", Total: 500_000},
+				{ID: "acme.com", Name: "Acme Corp", Total: 500_000},
 			},
 			TopIndividuals: []clients.LedgerSponsorRaw{
 				{ID: "user-1", Total: 200_000},
@@ -160,8 +143,8 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 	if details.TopOrganizations[0].Name != "Acme Corp" {
 		t.Errorf("org name: want Acme Corp, got %s", details.TopOrganizations[0].Name)
 	}
-	if details.TopOrganizations[0].AvatarURL != "https://example.com/acme.png" {
-		t.Errorf("org avatar: want https://example.com/acme.png, got %s", details.TopOrganizations[0].AvatarURL)
+	if details.TopOrganizations[0].AvatarURL != "" {
+		t.Errorf("org avatar: want empty, got %s", details.TopOrganizations[0].AvatarURL)
 	}
 
 	if len(details.TopIndividuals) != 1 {
@@ -172,17 +155,14 @@ func TestGetPlatformDetails_EnrichesOrgsAndUsers(t *testing.T) {
 	}
 }
 
-func TestGetPlatformDetails_LedgerOrgNameWins(t *testing.T) {
-	repo := &testStatisticsRepo{
-		orgs: map[string]models.Organization{
-			"org-1": {ID: "org-1", Name: "CF Name", AvatarURL: "https://example.com/cf.png"},
-		},
-	}
+// Every org bucket takes its name from Ledger, including a legacy CF org UUID bucket.
+func TestGetPlatformDetails_LedgerOrgNames(t *testing.T) {
+	repo := &testStatisticsRepo{}
 	ledger := &testLedgerClient{
 		platformBalance: &clients.LedgerPlatformBalance{
 			TopOrganizations: []clients.LedgerSponsorRaw{
 				{ID: "acme.com", Name: "Acme Inc.", Total: 300},
-				{ID: "org-1", Total: 200},
+				{ID: "c64448e2-0000-0000-0000-000000000000", Name: "Legacy Org", Total: 200},
 			},
 		},
 	}
@@ -194,15 +174,14 @@ func TestGetPlatformDetails_LedgerOrgNameWins(t *testing.T) {
 	if got := details.TopOrganizations[0]; got.ID != "acme.com" || got.Name != "Acme Inc." {
 		t.Errorf("domain bucket: want acme.com/Acme Inc., got %+v", got)
 	}
-	if got := details.TopOrganizations[1]; got.Name != "CF Name" || got.AvatarURL != "https://example.com/cf.png" {
-		t.Errorf("legacy UUID bucket: want CF name and logo, got %+v", got)
+	if got := details.TopOrganizations[1]; got.Name != "Legacy Org" || got.AvatarURL != "" {
+		t.Errorf("legacy UUID bucket: want Ledger name and no logo, got %+v", got)
 	}
 }
 
 func TestGetPlatformDetails_MissingEnrichmentUsesFallbackName(t *testing.T) {
-	// Ledger has an org/user that doesn't exist in CF DB — falls back to placeholder names.
+	// Ledger has an unnamed org and a user that doesn't exist in CF DB — falls back to placeholder names.
 	repo := &testStatisticsRepo{
-		orgs:  map[string]models.Organization{},
 		users: map[string]models.User{},
 	}
 	ledger := &testLedgerClient{
@@ -230,9 +209,6 @@ func TestGetPlatformDetails_DoesNotExposeIndividualID(t *testing.T) {
 	// Ledger keys individuals by the donor's Auth0 subject, which must not reach
 	// the public response — whether or not the user is found in CF DB.
 	repo := &testStatisticsRepo{
-		orgs: map[string]models.Organization{
-			"org-1": {ID: "org-1", Name: "Acme Corp"},
-		},
 		users: map[string]models.User{
 			"auth0|jdoe": {ID: "user-1", Name: "Jane Doe"},
 		},
@@ -307,7 +283,6 @@ func TestGetPlatformDetails_LedgerUnavailableReturnsEmpty(t *testing.T) {
 
 func TestGetPlatformDetails_MapsFields(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs:  map[string]models.Organization{},
 		users: map[string]models.User{},
 	}
 	ledger := &testLedgerClient{
@@ -343,16 +318,14 @@ func TestGetPlatformDetails_MapsFields(t *testing.T) {
 
 // --- GetRecentDonations ---
 
-func TestGetRecentDonations_OrgDonor(t *testing.T) {
+// A Ledger org row with an ID but no name falls back to the submitter's name.
+func TestGetRecentDonations_UnnamedOrgDonor(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs: map[string]models.Organization{
-			"org-1": {ID: "org-1", Name: "BigCorp", AvatarURL: "https://example.com/logo.png"},
-		},
 		users: map[string]models.User{},
 	}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
-			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", Amount: 100_000, TxnDate: 1_700_000_000, TxnCategory: "Development", SourceType: domain.LedgerSourceTypeStripe},
+			{TxnID: "txn-1", ProjectID: "proj-1", OrganizationID: "org-1", SubmitterName: "Jane Doe", Amount: 100_000, TxnDate: 1_700_000_000, TxnCategory: "Development", SourceType: domain.LedgerSourceTypeStripe},
 		},
 	}
 
@@ -368,11 +341,11 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 	if d.DonorType != donorTypeOrganization {
 		t.Errorf("DonorType: want %q, got %s", donorTypeOrganization, d.DonorType)
 	}
-	if d.DonorName != "BigCorp" {
-		t.Errorf("DonorName: want BigCorp, got %s", d.DonorName)
+	if d.DonorName != "Jane Doe" {
+		t.Errorf("DonorName: want Jane Doe, got %s", d.DonorName)
 	}
-	if d.DonorAvatarURL != "https://example.com/logo.png" {
-		t.Errorf("DonorAvatarURL: want https://example.com/logo.png, got %s", d.DonorAvatarURL)
+	if d.DonorAvatarURL != "" {
+		t.Errorf("DonorAvatarURL: want empty, got %s", d.DonorAvatarURL)
 	}
 	if d.AmountCents != 100_000 {
 		t.Errorf("AmountCents: want 100000, got %d", d.AmountCents)
@@ -383,7 +356,7 @@ func TestGetRecentDonations_OrgDonor(t *testing.T) {
 }
 
 func TestGetRecentDonations_NameOnlyOrgDonor(t *testing.T) {
-	repo := &testStatisticsRepo{orgs: map[string]models.Organization{}, users: map[string]models.User{}}
+	repo := &testStatisticsRepo{users: map[string]models.User{}}
 	ledger := &testLedgerClient{
 		recentDonations: []clients.LedgerRecentDonation{
 			{TxnID: "txn-1", ProjectID: "proj-1", UserID: "auth0|jdoe", SubmitterName: "Jane Doe", OrganizationName: "Acme Inc.", OrganizationDomain: "acme.com", Amount: 5_000, SourceType: domain.LedgerSourceTypeStripe},
@@ -412,7 +385,6 @@ func TestGetRecentDonations_NameOnlyOrgDonor(t *testing.T) {
 
 func TestGetRecentDonations_EnrichesProjectName(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs:         map[string]models.Organization{"org-1": {ID: "org-1", Name: "BigCorp"}},
 		users:        map[string]models.User{},
 		projectNames: map[string]string{"proj-1": "Kubernetes"},
 	}
@@ -438,7 +410,6 @@ func TestGetRecentDonations_EnrichesProjectName(t *testing.T) {
 
 func TestGetRecentDonations_IndividualDonor(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs:  map[string]models.Organization{},
 		users: map[string]models.User{"user-1": {ID: "user-1", Name: "Bob"}},
 	}
 	ledger := &testLedgerClient{
@@ -464,7 +435,6 @@ func TestGetRecentDonations_IndividualDonor(t *testing.T) {
 func TestGetRecentDonations_FallsBackToSubmitterName(t *testing.T) {
 	// No CF DB record — use SubmitterName from Ledger.
 	repo := &testStatisticsRepo{
-		orgs:  map[string]models.Organization{},
 		users: map[string]models.User{},
 	}
 	ledger := &testLedgerClient{
@@ -486,7 +456,6 @@ func TestGetRecentDonations_FallsBackToSubmitterName(t *testing.T) {
 func TestGetRecentDonations_AnonymousFallback(t *testing.T) {
 	// No CF record and no SubmitterName — falls back to "Anonymous".
 	repo := &testStatisticsRepo{
-		orgs:  map[string]models.Organization{},
 		users: map[string]models.User{},
 	}
 	ledger := &testLedgerClient{
@@ -507,7 +476,6 @@ func TestGetRecentDonations_AnonymousFallback(t *testing.T) {
 
 func TestGetRecentDonations_DeduplicatesByTxnID(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs:  map[string]models.Organization{},
 		users: map[string]models.User{"user-1": {ID: "user-1", Name: "Bob"}},
 	}
 	ledger := &testLedgerClient{
@@ -538,7 +506,6 @@ func TestGetRecentDonations_DeduplicatesByTxnID(t *testing.T) {
 func TestGetRecentDonations_FiltersNonStripeSourceType(t *testing.T) {
 	// Only "stripe" entries should appear; "expensify" allocations are filtered out.
 	repo := &testStatisticsRepo{
-		orgs:  map[string]models.Organization{"org-1": {ID: "org-1", Name: "LFDT"}},
 		users: map[string]models.User{},
 	}
 	ledger := &testLedgerClient{

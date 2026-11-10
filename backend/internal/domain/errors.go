@@ -11,7 +11,6 @@ var (
 	ErrInitiativeNotFound    = errors.New("initiative not found")
 	ErrDonationNotFound      = errors.New("donation not found")
 	ErrSubscriptionNotFound  = errors.New("subscription not found")
-	ErrOrganizationNotFound  = errors.New("organization not found")
 	ErrUserNotFound          = errors.New("user not found")
 	ErrPaymentMethodNotFound = errors.New("payment method not found")
 	// ErrProfileNotSynced signals that the user row exists but is missing required

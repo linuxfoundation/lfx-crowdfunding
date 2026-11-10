@@ -123,63 +123,6 @@ func (r *LedgerStatsRepository) BulkUpsertLedgerStats(ctx context.Context, stats
 	return len(stats), nil
 }
 
-// GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs
-// provided.  IDs not present in the database are simply absent from the map.
-// An empty input slice returns an empty map without querying the database.
-func (r *LedgerStatsRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
-	ctx, span := ledgerStatsTracer.Start(ctx, "db.ledger_stats.GetOrganizationsByIDs")
-	defer span.End()
-	span.SetAttributes(attribute.Int("db.id_count", len(ids)))
-
-	result := make(map[string]models.Organization, len(ids))
-	ids = filterValidUUIDs(ids) // Ledger keys newer org buckets by domain, not CF UUID
-	if len(ids) == 0 {
-		return result, nil
-	}
-
-	const q = `
-		SELECT id, owner_id, name, avatar_url, status, created_on, updated_on
-		FROM organizations
-		WHERE id = ANY($1::uuid[])`
-
-	rows, err := r.pool.Query(ctx, q, ids)
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("get organizations by IDs: %w", err)
-	}
-	defer rows.Close() //nolint:errcheck
-
-	for rows.Next() {
-		var (
-			o         models.Organization
-			avatarURL *string
-			status    *string
-			createdOn *time.Time
-			updatedOn *time.Time
-		)
-		if err := rows.Scan(&o.ID, &o.OwnerID, &o.Name, &avatarURL, &status, &createdOn, &updatedOn); err != nil {
-			return nil, fmt.Errorf("scan organization: %w", err)
-		}
-		if avatarURL != nil {
-			o.AvatarURL = *avatarURL
-		}
-		if status != nil {
-			o.Status = *status
-		}
-		if createdOn != nil {
-			o.CreatedOn = *createdOn
-		}
-		if updatedOn != nil {
-			o.UpdatedOn = *updatedOn
-		}
-		result[o.ID] = o
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate organizations: %w", err)
-	}
-	return result, nil
-}
-
 // GetUsersByIDs returns a map of legacy_user_id → User for all IDs provided.
 // The Ledger service identifies users by their Auth0 subject (legacy_user_id),
 // so we look up by that column rather than the internal UUID primary key.

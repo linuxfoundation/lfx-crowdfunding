@@ -70,9 +70,6 @@ func (r *stubInitiativeRepoForListForUser) GetOwnerInfoBySlug(_ context.Context,
 func (r *stubInitiativeRepoForListForUser) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
 	return nil, nil
 }
-func (r *stubInitiativeRepoForListForUser) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	return nil, nil
-}
 func (r *stubInitiativeRepoForListForUser) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil
 }

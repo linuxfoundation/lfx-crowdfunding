@@ -99,9 +99,6 @@ func (m *mockInitiativeRepoForAnn) GetUsersByIDs(_ context.Context, _ []string) 
 func (m *mockInitiativeRepoForAnn) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return nil, nil
 }
-func (m *mockInitiativeRepoForAnn) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	return nil, nil
-}
 func (m *mockInitiativeRepoForAnn) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil
 }
