@@ -32,7 +32,11 @@ func (m *mockSender) Send(_ context.Context, msg EmailMessage) error {
 // --- helpers ---
 
 func newSvc(sender EmailSender, emails []string) *emailService {
-	return NewEmailService(sender, "https://example.com", emails).(*emailService)
+	return NewEmailService(sender, "https://example.com", emails, "", nil).(*emailService)
+}
+
+func newSvcWithCopy(sender EmailSender, emails []string, copyInbox string) *emailService {
+	return NewEmailService(sender, "https://example.com", emails, copyInbox, nil).(*emailService)
 }
 
 // --- tests ---
@@ -140,7 +144,7 @@ func TestSendProjectApprovedEmail_NoInboxes(t *testing.T) {
 }
 
 func TestSendEmail_NotConfigured(t *testing.T) {
-	svc := NewEmailService(nil, "https://example.com", nil)
+	svc := NewEmailService(nil, "https://example.com", nil, "copies@example.org", nil)
 
 	err := svc.SendProjectApprovedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url")
 	if !errors.Is(err, ErrEmailNotConfigured) {
@@ -191,5 +195,82 @@ func TestTemplates_RenderAndEscape(t *testing.T) {
 		if !strings.Contains(msg.HTML, "http://url") {
 			t.Errorf("send %d: initiative link missing from html", i)
 		}
+	}
+}
+
+func TestSendEmail_CopiesEachSendToCopyInbox(t *testing.T) {
+	m := &mockSender{}
+	svc := newSvcWithCopy(m, []string{"reviewer@example.com"}, "copies@example.org")
+
+	if err := svc.SendProjectApprovedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	subject := "Your submission for LFX Crowdfunding has been approved."
+	want := []struct{ to, subject string }{
+		{"owner@example.com", subject},
+		{"copies@example.org", "[Sent to owner@example.com] " + subject},
+		{"reviewer@example.com", subject},
+		{"copies@example.org", "[Sent to reviewer@example.com] " + subject},
+	}
+	if len(m.calls) != len(want) {
+		t.Fatalf("expected %d Send calls, got %d: %+v", len(want), len(m.calls), m.calls)
+	}
+	for i, w := range want {
+		if m.calls[i].To != w.to || m.calls[i].Subject != w.subject {
+			t.Errorf("call %d: got (%q, %q), want (%q, %q)", i, m.calls[i].To, m.calls[i].Subject, w.to, w.subject)
+		}
+	}
+	if m.calls[1].HTML != m.calls[0].HTML || m.calls[1].Text != m.calls[0].Text {
+		t.Error("copy body differs from the original")
+	}
+}
+
+func TestSendEmail_CopyFailureDoesNotFailSend(t *testing.T) {
+	m := &mockSender{errs: []error{nil, errors.New("copy failed")}}
+	svc := newSvcWithCopy(m, nil, "copies@example.org")
+
+	if err := svc.SendProjectDeclinedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url"); err != nil {
+		t.Fatalf("copy failure must not fail the send, got %v", err)
+	}
+	if len(m.calls) != 2 {
+		t.Fatalf("expected original + copy, got %d calls", len(m.calls))
+	}
+}
+
+func TestSendEmail_NoCopyWhenOriginalFails(t *testing.T) {
+	sendErr := errors.New("send failed")
+	m := &mockSender{errs: []error{sendErr}}
+	svc := newSvcWithCopy(m, nil, "copies@example.org")
+
+	err := svc.SendDonationConfirmationEmail(context.Background(), "d@example.com", "Donor", "My Project", "http://url", "$50.00", "Travel", "", "Credit Card", "One-time")
+	if !errors.Is(err, sendErr) {
+		t.Fatalf("expected sendErr, got %v", err)
+	}
+	if len(m.calls) != 1 {
+		t.Fatalf("expected no copy after a failed send, got %d calls", len(m.calls))
+	}
+}
+
+func TestSendEmail_NoCopyToCopyInboxItself(t *testing.T) {
+	m := &mockSender{}
+	svc := newSvcWithCopy(m, []string{"Copies@Example.org"}, "copies@example.org")
+
+	if err := svc.SendProjectForReviewEmail(context.Background(), "owner", "owner@example.com", "My Project", "http://url", "http://approve", "http://decline"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(m.calls) != 1 {
+		t.Fatalf("expected no self-copy, got %d calls", len(m.calls))
+	}
+}
+
+func TestSendEmail_NoCopyWhenUnset(t *testing.T) {
+	m := &mockSender{}
+	svc := newSvc(m, nil)
+
+	if err := svc.SendProjectDeclinedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(m.calls) != 1 {
+		t.Fatalf("expected no copy when the copy inbox is unset, got %d calls", len(m.calls))
 	}
 }

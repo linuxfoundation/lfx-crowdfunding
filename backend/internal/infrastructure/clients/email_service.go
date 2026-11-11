@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	htmltemplate "html/template"
+	"log/slog"
 	"net/url"
 	"strings"
 	texttemplate "text/template"
@@ -65,19 +66,31 @@ type emailTemplateData struct {
 	Year           int
 }
 
+// copySubjectPrefix starts a copy's subject, followed by the original recipient and "] ".
+// Matches lfx-v2-mentorship so both archives read the same way.
+const copySubjectPrefix = "[Sent to "
+
 type emailService struct {
 	sender             EmailSender // nil when email is not configured
 	frontendBase       string      // e.g. "https://crowdfunding.lfx.linuxfoundation.org"
 	notificationEmails []string    // reviewer inboxes for new-submission alerts
+	copyInbox          string      // archive inbox sent a copy of every email; empty disables copies
+	logger             *slog.Logger
 }
 
 // NewEmailService returns a domain.EmailService that renders in-repo templates
 // and sends them through sender. A nil sender makes every send return ErrEmailNotConfigured.
-func NewEmailService(sender EmailSender, frontendBase string, notificationEmails []string) domain.EmailService {
+// When copyInbox is set, every accepted send is followed by a best-effort copy to it.
+func NewEmailService(sender EmailSender, frontendBase string, notificationEmails []string, copyInbox string, logger *slog.Logger) domain.EmailService {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &emailService{
 		sender:             sender,
 		frontendBase:       strings.TrimRight(frontendBase, "/"),
 		notificationEmails: notificationEmails,
+		copyInbox:          copyInbox,
+		logger:             logger,
 	}
 }
 
@@ -94,7 +107,25 @@ func (s *emailService) sendEmail(ctx context.Context, to, subject, name string, 
 	if err := textEmailTemplates.ExecuteTemplate(&text, name+".txt.tmpl", data); err != nil {
 		return fmt.Errorf("render %s text: %w", name, err)
 	}
-	return s.sender.Send(ctx, EmailMessage{To: to, Subject: subject, HTML: html.String(), Text: text.String()})
+	msg := EmailMessage{To: to, Subject: subject, HTML: html.String(), Text: text.String()}
+	if err := s.sender.Send(ctx, msg); err != nil {
+		return err
+	}
+	s.sendCopy(ctx, msg, name)
+	return nil
+}
+
+// sendCopy sends msg to the copy inbox, naming the original recipient in the subject.
+// SES keeps no copies, so this is the only record of what was sent. Best effort: a
+// failure is logged and never fails the original send, which was already accepted.
+func (s *emailService) sendCopy(ctx context.Context, msg EmailMessage, template string) {
+	if s.copyInbox == "" || strings.EqualFold(msg.To, s.copyInbox) {
+		return
+	}
+	cp := EmailMessage{To: s.copyInbox, Subject: copySubjectPrefix + msg.To + "] " + msg.Subject, HTML: msg.HTML, Text: msg.Text}
+	if err := s.sender.Send(ctx, cp); err != nil {
+		s.logger.WarnContext(ctx, "failed to send email copy", "template", template, "error", err)
+	}
 }
 
 // InitiativeURL composes a full frontend deep-link for an initiative slug.

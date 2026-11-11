@@ -88,3 +88,37 @@ func TestLoadConfig_HeimdallAudienceAndIssuerRequired(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_EmailCopyInbox(t *testing.T) {
+	cases := map[string]struct {
+		value   string
+		want    string
+		wantErr bool
+	}{
+		"unset":          {value: "", want: ""},
+		"bare address":   {value: " copies@linuxfoundation.org ", want: "copies@linuxfoundation.org"},
+		"display name":   {value: "Copies <copies@linuxfoundation.org>", wantErr: true},
+		"list":           {value: "a@linuxfoundation.org,b@linuxfoundation.org", wantErr: true},
+		"not an address": {value: "copies", wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setRequiredEnv(t)
+			t.Setenv("EMAIL_COPY_INBOX", tc.value)
+
+			cfg, err := LoadConfig()
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "EMAIL_COPY_INBOX") {
+					t.Fatalf("expected EMAIL_COPY_INBOX error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.Email.CopyInbox != tc.want {
+				t.Fatalf("CopyInbox = %q, want %q", cfg.Email.CopyInbox, tc.want)
+			}
+		})
+	}
+}

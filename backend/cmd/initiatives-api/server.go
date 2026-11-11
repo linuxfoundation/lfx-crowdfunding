@@ -123,7 +123,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	if fgaConn != nil {
 		emailSender = clients.NewEmailClient(fgaConn, cfg.Email.FromDisplayName)
 	}
-	emailSvc := clients.NewEmailService(emailSender, cfg.Email.FrontendBase, cfg.Email.NotificationEmails)
+	emailSvc := clients.NewEmailService(emailSender, cfg.Email.FrontendBase, cfg.Email.NotificationEmails, cfg.Email.CopyInbox, logger)
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
