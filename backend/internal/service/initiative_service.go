@@ -1603,8 +1603,8 @@ func (s *InitiativeService) syncFGADelete(ctx context.Context, id string) {
 	}
 }
 
-// enrichTransactionsFromDB batch-looks up users and organizations from the CF DB
-// and merges name + avatar_url onto each transaction.
+// enrichTransactionsFromDB batch-looks up users from the CF DB and merges
+// name + avatar_url onto each transaction. Org rows carry their name from Ledger.
 // Falls back to a deterministic generated avatar when no DB record is found.
 // With maskAnonymous set, rows flagged Anonymous keep only their org (#466):
 // the person, including the ledger's submitter name, shows as "Anonymous".
@@ -1614,18 +1614,12 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 	}
 	// Collect unique IDs to look up.
 	userIDs := make([]string, 0, len(txns))
-	orgIDs := make([]string, 0, len(txns))
 	seenUsers := map[string]bool{}
-	seenOrgs := map[string]bool{}
 	for _, t := range txns {
 		hide := maskAnonymous && t.Anonymous
 		if !hide && t.LedgerUserID != "" && !seenUsers[t.LedgerUserID] {
 			userIDs = append(userIDs, t.LedgerUserID)
 			seenUsers[t.LedgerUserID] = true
-		}
-		if t.LedgerOrgName == "" && t.LedgerOrgID != "" && !seenOrgs[t.LedgerOrgID] {
-			orgIDs = append(orgIDs, t.LedgerOrgID)
-			seenOrgs[t.LedgerOrgID] = true
 		}
 	}
 
@@ -1634,12 +1628,6 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
 		users = map[string]models.User{}
 	}
-	orgs, err := repo.GetOrganizationsByIDs(ctx, orgIDs)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to look up donor organizations", "error", err)
-		orgs = map[string]models.Organization{}
-	}
-
 	for i := range txns {
 		t := &txns[i]
 		hide := maskAnonymous && t.Anonymous
@@ -1654,10 +1642,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 			t.DonorName = t.LedgerOrgName
 			t.DonorLogoURL = generatedAvatarURL(cmp.Or(t.LedgerOrgDomain, t.LedgerOrgName), t.DonorName)
 		} else if t.LedgerOrgID != "" {
-			if org, ok := orgs[t.LedgerOrgID]; ok {
-				t.DonorName = org.Name
-				t.DonorLogoURL = org.AvatarURL
-			}
+			// An unnamed Ledger org row; the #408 backfill named every legacy one.
 			if t.DonorName == "" {
 				t.DonorName = anonymousName
 			}

@@ -117,7 +117,6 @@ func TestMarkOwnLedgerRows_AttachesToggleIDs(t *testing.T) {
 func TestEnrichTransactionsFromDB_MasksAnonymousDonors(t *testing.T) {
 	repo := &mockRepoForEnrich{
 		users: map[string]models.User{"u1": {Name: "Alice", AvatarURL: "https://example.com/alice.png"}},
-		orgs:  map[string]models.Organization{},
 	}
 	txns := []models.Transaction{
 		{ID: "person", LedgerUserID: "u1", DonorName: "Alice (submitter)", Anonymous: true},
@@ -144,7 +143,7 @@ func TestEnrichTransactionsFromDB_MasksAnonymousDonors(t *testing.T) {
 }
 
 func TestEnrichTransactionsFromDB_OwnRowsKeepName(t *testing.T) {
-	repo := &mockRepoForEnrich{users: map[string]models.User{"u1": {Name: "Alice"}}, orgs: map[string]models.Organization{}}
+	repo := &mockRepoForEnrich{users: map[string]models.User{"u1": {Name: "Alice"}}}
 	txns := []models.Transaction{{ID: "t1", LedgerUserID: "u1", Anonymous: true}}
 	enrichTransactionsFromDB(context.Background(), repo, txns, false)
 	if txns[0].DonorName != "Alice" || !txns[0].Anonymous {
@@ -195,7 +194,6 @@ func TestSetSponsors_LookupFailureHidesIndividuals(t *testing.T) {
 
 func TestGetRecentDonations_HidesAnonymousDonors(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs:         map[string]models.Organization{},
 		users:        map[string]models.User{"u1": {Name: "Alice", AvatarURL: "https://example.com/alice.png"}},
 		projectNames: map[string]string{"p1": "One", "p2": "Two"},
 	}
@@ -232,7 +230,6 @@ func TestGetRecentDonations_HidesAnonymousDonors(t *testing.T) {
 
 func TestGetRecentDonations_LookupFailureHidesRowsWithoutUserID(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs:         map[string]models.Organization{},
 		users:        map[string]models.User{},
 		projectNames: map[string]string{"p1": "One"},
 	}
@@ -256,7 +253,6 @@ func TestGetRecentDonations_LookupFailureHidesRowsWithoutUserID(t *testing.T) {
 
 func TestGetRecentDonations_HidesDonorsOfDeletedInitiatives(t *testing.T) {
 	repo := &testStatisticsRepo{
-		orgs:         map[string]models.Organization{},
 		users:        map[string]models.User{"u1": {Name: "Alice"}},
 		projectNames: map[string]string{"live": "Live"},
 	}

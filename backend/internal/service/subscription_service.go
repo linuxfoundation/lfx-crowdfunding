@@ -237,7 +237,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	}
 
 	// The org is stored as the donor stated it; there is no affiliation check (doc 13 §5.1).
-	org, err := resolveOrgClaim(ctx, s.initiativeRepo, input.Organization, input.OrganizationID, user.ID)
+	org, err := orgClaim(input.Organization)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

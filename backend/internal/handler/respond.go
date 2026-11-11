@@ -57,7 +57,6 @@ func mapError(err error) (int, string) {
 	case errors.Is(err, domain.ErrInitiativeNotFound),
 		errors.Is(err, domain.ErrDonationNotFound),
 		errors.Is(err, domain.ErrSubscriptionNotFound),
-		errors.Is(err, domain.ErrOrganizationNotFound),
 		errors.Is(err, domain.ErrUserNotFound),
 		errors.Is(err, domain.ErrPaymentMethodNotFound),
 		errors.Is(err, domain.ErrExpenseReportNotFound),

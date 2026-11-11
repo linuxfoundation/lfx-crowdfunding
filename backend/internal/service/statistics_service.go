@@ -73,7 +73,7 @@ func (s *StatisticsService) GetPlatformStatistics(ctx context.Context) (*models.
 }
 
 // GetPlatformDetails returns category totals, donor split, and top sponsors
-// by fetching from the Ledger service and enriching sponsor names/avatars from CF DB.
+// by fetching from the Ledger service and enriching individual sponsors from CF DB.
 func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int) (*models.PlatformDetails, error) {
 	ctx, span := statisticsSvcTracer.Start(ctx, "StatisticsService.GetPlatformDetails")
 	defer span.End()
@@ -91,14 +91,8 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		return nil, fmt.Errorf("get platform balance: %w", err)
 	}
 
-	// Collect IDs for enrichment. Org IDs are a domain or a legacy CF UUID;
-	// individual IDs from Ledger are Auth0 subjects (legacy_user_id), not internal UUIDs.
-	orgIDs := make([]string, 0, len(raw.TopOrganizations))
-	for _, o := range raw.TopOrganizations {
-		if o.ID != "" {
-			orgIDs = append(orgIDs, o.ID)
-		}
-	}
+	// Collect IDs for enrichment. Individual IDs from Ledger are Auth0 subjects
+	// (legacy_user_id), not internal UUIDs. Orgs carry their name from Ledger.
 	userIDs := make([]string, 0, len(raw.TopIndividuals))
 	for _, u := range raw.TopIndividuals {
 		if u.ID != "" {
@@ -106,11 +100,6 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		}
 	}
 
-	orgs, err := s.repo.GetOrganizationsByIDs(ctx, orgIDs)
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("enrich sponsor organizations: %w", err)
-	}
 	users, err := s.repo.GetUsersByLegacyIDs(ctx, userIDs)
 	if err != nil {
 		span.RecordError(err)
@@ -134,12 +123,7 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		})
 	}
 	for _, o := range raw.TopOrganizations {
-		entry := models.SponsorEntry{ID: o.ID, Name: o.Name, TotalCents: o.Total}
-		if org, ok := orgs[o.ID]; ok { // legacy CF org UUID bucket
-			entry.Name = cmp.Or(entry.Name, org.Name)
-			entry.AvatarURL = org.AvatarURL
-		}
-		entry.Name = cmp.Or(entry.Name, unknownOrgName)
+		entry := models.SponsorEntry{ID: o.ID, Name: cmp.Or(o.Name, unknownOrgName), TotalCents: o.Total}
 		out.TopOrganizations = append(out.TopOrganizations, entry)
 	}
 	// The top-donor totals span every initiative, so a donor who hid their name
@@ -274,18 +258,13 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	}
 
 	// Collect unique IDs for enrichment to avoid redundant DB work.
-	orgIDs := make([]string, 0, len(uniqueRaw))
 	userIDs := make([]string, 0, len(uniqueRaw))
 	projectIDs := make([]string, 0, len(uniqueRaw))
-	seenOrgs := map[string]bool{}
 	seenUsers := map[string]bool{}
 	seenProjects := map[string]bool{}
 	for _, d := range uniqueRaw {
-		if d.OrganizationName != "" {
-			// Org as the donor stated it (#365); nothing to look up.
-		} else if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
-			orgIDs = append(orgIDs, d.OrganizationID)
-			seenOrgs[d.OrganizationID] = true
+		if d.OrganizationName != "" || d.OrganizationID != "" {
+			// Org donation: the name comes from the Ledger row; nothing to look up.
 		} else if d.UserID != "" && !seenUsers[d.UserID] {
 			userIDs = append(userIDs, d.UserID)
 			seenUsers[d.UserID] = true
@@ -296,11 +275,6 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		}
 	}
 
-	orgs, err := s.repo.GetOrganizationsByIDs(ctx, orgIDs)
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("enrich donor organizations: %w", err)
-	}
 	users, err := s.repo.GetUsersByLegacyIDs(ctx, userIDs)
 	if err != nil {
 		span.RecordError(err)
@@ -340,11 +314,9 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 			entry.DonorName = d.OrganizationName
 			entry.DonorAvatarURL = generatedAvatarURL(cmp.Or(d.OrganizationDomain, d.OrganizationName), d.OrganizationName)
 		} else if d.OrganizationID != "" {
+			// An unnamed Ledger org row; the #408 backfill named every legacy one.
 			entry.DonorType = donorTypeOrganization
-			if org, ok := orgs[d.OrganizationID]; ok {
-				entry.DonorName = org.Name
-				entry.DonorAvatarURL = org.AvatarURL
-			} else if !hide {
+			if !hide {
 				entry.DonorName = d.SubmitterName
 			}
 		} else {

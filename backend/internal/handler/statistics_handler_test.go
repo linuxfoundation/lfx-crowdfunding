@@ -23,9 +23,6 @@ type statsRepo struct{}
 func (r *statsRepo) GetPlatformStatistics(_ context.Context) (*models.PlatformStatistics, error) {
 	return &models.PlatformStatistics{}, nil
 }
-func (r *statsRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	return map[string]models.Organization{}, nil
-}
 func (r *statsRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return map[string]models.User{}, nil
 }

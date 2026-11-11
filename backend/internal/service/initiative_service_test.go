@@ -85,9 +85,6 @@ func (m *mockInitiativeRepo) GetUsersByIDs(_ context.Context, _ []string) (map[s
 func (m *mockInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return map[string]models.User{}, nil
 }
-func (m *mockInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	return map[string]models.Organization{}, nil
-}
 func (m *mockInitiativeRepo) GetInitiativesByIDs(ctx context.Context, ids []string) (map[string]*models.Initiative, error) {
 	if m.onGetInitiativesByIDs != nil {
 		return m.onGetInitiativesByIDs(ctx, ids)
@@ -478,7 +475,6 @@ func TestEnrichGoalsFromLedger_NoGoalsIsNoop(_ *testing.T) {
 
 type mockRepoForEnrich struct {
 	users map[string]models.User
-	orgs  map[string]models.Organization
 	err   error
 }
 
@@ -493,12 +489,6 @@ func (m *mockRepoForEnrich) GetUsersByLegacyIDs(_ context.Context, _ []string) (
 		return nil, m.err
 	}
 	return m.users, nil
-}
-func (m *mockRepoForEnrich) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.orgs, nil
 }
 func (m *mockRepoForEnrich) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil
@@ -538,13 +528,11 @@ func (m *mockRepoForEnrich) ListPublished(_ context.Context) ([]models.Initiativ
 	return nil, nil
 }
 
+// An org row never borrows the submitting user's name or avatar.
 func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 	repo := &mockRepoForEnrich{
 		users: map[string]models.User{
 			"user-1": {ID: "user-1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
-		},
-		orgs: map[string]models.Organization{
-			"org-1": {ID: "org-1", Name: "Acme Corp", AvatarURL: "https://example.com/acme.png"},
 		},
 	}
 
@@ -554,20 +542,16 @@ func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 
 	enrichTransactionsFromDB(context.Background(), repo, txns, true)
 
-	if txns[0].DonorName != "Acme Corp" {
-		t.Errorf("expected org name to take priority, got %q", txns[0].DonorName)
+	if txns[0].DonorName != "Anonymous" {
+		t.Errorf("expected Anonymous for an unnamed org row, got %q", txns[0].DonorName)
 	}
-	if txns[0].DonorLogoURL != "https://example.com/acme.png" {
-		t.Errorf("expected org logo, got %q", txns[0].DonorLogoURL)
+	if want := generatedAvatarURL("org-1", "Anonymous"); txns[0].DonorLogoURL != want {
+		t.Errorf("expected generated org avatar %q, got %q", want, txns[0].DonorLogoURL)
 	}
 }
 
-func TestEnrichTransactionsFromDB_StatedOrgNameSkipsCFLookup(t *testing.T) {
-	repo := &mockRepoForEnrich{
-		orgs: map[string]models.Organization{
-			"org-1": {ID: "org-1", Name: "Stale CF Name", AvatarURL: "https://example.com/stale.png"},
-		},
-	}
+func TestEnrichTransactionsFromDB_StatedOrgName(t *testing.T) {
+	repo := &mockRepoForEnrich{}
 
 	txns := []models.Transaction{
 		{ID: "t1", LedgerUserID: "user-1", LedgerOrgID: "org-1", LedgerOrgName: "Acme Inc.", LedgerOrgDomain: "acme.com"},
@@ -588,7 +572,6 @@ func TestEnrichTransactionsFromDB_UserFallback(t *testing.T) {
 		users: map[string]models.User{
 			"user-1": {ID: "user-1", Name: "Alice", AvatarURL: "https://example.com/alice.png"},
 		},
-		orgs: map[string]models.Organization{},
 	}
 
 	txns := []models.Transaction{
@@ -608,7 +591,6 @@ func TestEnrichTransactionsFromDB_UserFallback(t *testing.T) {
 func TestEnrichTransactionsFromDB_GeneratesAvatarWhenNoDBMatch(t *testing.T) {
 	repo := &mockRepoForEnrich{
 		users: map[string]models.User{},
-		orgs:  map[string]models.Organization{},
 	}
 
 	txns := []models.Transaction{
@@ -622,10 +604,9 @@ func TestEnrichTransactionsFromDB_GeneratesAvatarWhenNoDBMatch(t *testing.T) {
 	}
 }
 
-func TestEnrichTransactionsFromDB_OrgMissingFromDB_FallsBackToAnonymous(t *testing.T) {
+func TestEnrichTransactionsFromDB_UnnamedOrg_FallsBackToAnonymous(t *testing.T) {
 	repo := &mockRepoForEnrich{
 		users: map[string]models.User{},
-		orgs:  map[string]models.Organization{}, // org-1 not in DB
 	}
 
 	txns := []models.Transaction{
@@ -635,10 +616,10 @@ func TestEnrichTransactionsFromDB_OrgMissingFromDB_FallsBackToAnonymous(t *testi
 	enrichTransactionsFromDB(context.Background(), repo, txns, true)
 
 	if txns[0].DonorName != "Anonymous" {
-		t.Errorf("expected Anonymous fallback for missing org, got %q", txns[0].DonorName)
+		t.Errorf("expected Anonymous fallback for an unnamed org, got %q", txns[0].DonorName)
 	}
 	if txns[0].DonorLogoURL == "" {
-		t.Error("expected generated avatar URL for missing org")
+		t.Error("expected generated avatar URL for an unnamed org")
 	}
 }
 

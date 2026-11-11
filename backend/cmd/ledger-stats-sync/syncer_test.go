@@ -28,8 +28,6 @@ func (m *mockLedgerSource) GetAllBalances(_ context.Context) ([]models.LedgerRaw
 type mockLedgerStatsRepo struct {
 	initiativeIDs []string
 	listErr       error
-	orgMap        map[string]models.Organization
-	orgErr        error
 	userMap       map[string]models.User
 	userErr       error
 	upsertErr     error
@@ -39,13 +37,6 @@ type mockLedgerStatsRepo struct {
 
 func (m *mockLedgerStatsRepo) ListActiveSyncIDs(_ context.Context) ([]string, error) {
 	return m.initiativeIDs, m.listErr
-}
-
-func (m *mockLedgerStatsRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	if m.orgMap == nil {
-		return map[string]models.Organization{}, m.orgErr
-	}
-	return m.orgMap, m.orgErr
 }
 
 func (m *mockLedgerStatsRepo) GetUsersByIDs(_ context.Context, _ []string) (map[string]models.User, error) {
@@ -120,21 +111,19 @@ func TestBuildBalanceIndex(t *testing.T) {
 	}
 }
 
-// ─── collectSponsorIDs ───────────────────────────────────────────────────────
+// ─── collectSponsorUserIDs ───────────────────────────────────────────────────────
 
-func TestCollectSponsorIDs(t *testing.T) {
+func TestCollectSponsorUserIDs(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name          string
 		balances      []models.LedgerRawBalance
-		wantOrgCount  int
 		wantUserCount int
 	}{
 		{
-			name:          "empty balances returns empty slices",
+			name:          "empty balances returns an empty slice",
 			balances:      nil,
-			wantOrgCount:  0,
 			wantUserCount: 0,
 		},
 		{
@@ -145,7 +134,6 @@ func TestCollectSponsorIDs(t *testing.T) {
 					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}},
 				}},
 			},
-			wantOrgCount:  2,
 			wantUserCount: 1,
 		},
 		{
@@ -156,7 +144,6 @@ func TestCollectSponsorIDs(t *testing.T) {
 					Individuals: []models.LedgerRawSponsor{{ID: ""}},
 				}},
 			},
-			wantOrgCount:  1,
 			wantUserCount: 0,
 		},
 		{
@@ -171,7 +158,6 @@ func TestCollectSponsorIDs(t *testing.T) {
 					Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1"}},
 				}},
 			},
-			wantOrgCount:  1,
 			wantUserCount: 1,
 		},
 	}
@@ -179,11 +165,8 @@ func TestCollectSponsorIDs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			orgIDs, userIDs := collectSponsorIDs(tc.balances)
+			userIDs := collectSponsorUserIDs(tc.balances)
 
-			if len(orgIDs) != tc.wantOrgCount {
-				t.Errorf("org count: got %d, want %d", len(orgIDs), tc.wantOrgCount)
-			}
 			if len(userIDs) != tc.wantUserCount {
 				t.Errorf("user count: got %d, want %d", len(userIDs), tc.wantUserCount)
 			}
@@ -380,7 +363,7 @@ func TestMapBalance(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := mapBalance(tc.raw, nil, nil)
+			got := mapBalance(tc.raw, nil)
 
 			if got.TotalRaisedCents != tc.wantTotalRaised {
 				t.Errorf("TotalRaisedCents: got %d, want %d", got.TotalRaisedCents, tc.wantTotalRaised)
@@ -409,9 +392,6 @@ func TestMapBalance(t *testing.T) {
 func TestEnrichSponsors(t *testing.T) {
 	t.Parallel()
 
-	orgMap := map[string]models.Organization{
-		"org-1": {ID: "org-1", Name: "Linux Foundation", AvatarURL: "http://lf.org/logo.png"},
-	}
 	userMap := map[string]models.User{
 		"auth0|u1": {ID: "auth0|u1", Name: "Jane Doe", AvatarURL: "http://avatar.io/jane.png"},
 	}
@@ -428,13 +408,13 @@ func TestEnrichSponsors(t *testing.T) {
 			raw:  models.LedgerRawSponsors{},
 		},
 		{
-			name: "known org and user are enriched",
+			name: "org keeps its Ledger name and known user is enriched",
 			raw: models.LedgerRawSponsors{
-				Orgs:        []models.LedgerRawSponsor{{ID: "org-1", Total: 5000}},
+				Orgs:        []models.LedgerRawSponsor{{ID: "lf.org", Name: "Linux Foundation", Total: 5000}},
 				Individuals: []models.LedgerRawSponsor{{ID: "auth0|u1", Total: 200}},
 			},
 			wantOrgNames:      []string{"Linux Foundation"},
-			wantOrgAvatarURLs: []string{"http://lf.org/logo.png"},
+			wantOrgAvatarURLs: []string{""},
 			wantUserNames:     []string{"Jane Doe"},
 		},
 		{
@@ -447,7 +427,7 @@ func TestEnrichSponsors(t *testing.T) {
 			wantUserNames: []string{""},
 		},
 		{
-			name: "domain bucket keeps the Ledger name; legacy UUID bucket keeps its Ledger name and gets the CF logo",
+			name: "domain and legacy UUID buckets both keep the Ledger name and get no logo",
 			raw: models.LedgerRawSponsors{
 				Orgs: []models.LedgerRawSponsor{
 					{ID: "acme.com", Name: "Acme Inc.", Total: 100},
@@ -455,12 +435,12 @@ func TestEnrichSponsors(t *testing.T) {
 				},
 			},
 			wantOrgNames:      []string{"Acme Inc.", "LF as sent"},
-			wantOrgAvatarURLs: []string{"", "http://lf.org/logo.png"},
+			wantOrgAvatarURLs: []string{"", ""},
 		},
 		{
 			name: "empty ID strings are dropped",
 			raw: models.LedgerRawSponsors{
-				Orgs:        []models.LedgerRawSponsor{{ID: ""}, {ID: "org-1"}},
+				Orgs:        []models.LedgerRawSponsor{{ID: ""}, {ID: "org-1", Name: "Linux Foundation"}},
 				Individuals: []models.LedgerRawSponsor{{ID: ""}},
 			},
 			wantOrgNames: []string{"Linux Foundation"},
@@ -470,7 +450,7 @@ func TestEnrichSponsors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := enrichSponsors(tc.raw, orgMap, userMap)
+			got := enrichSponsors(tc.raw, userMap)
 
 			if len(got.Orgs) != len(tc.wantOrgNames) {
 				t.Fatalf("orgs count: got %d, want %d", len(got.Orgs), len(tc.wantOrgNames))
@@ -559,9 +539,6 @@ func TestSyncer_Run_upsertsWithEnrichedSponsors(t *testing.T) {
 
 	repo := &mockLedgerStatsRepo{
 		initiativeIDs: []string{"init-1"},
-		orgMap: map[string]models.Organization{
-			"org-1": {ID: "org-1", Name: "CNCF", AvatarURL: "http://cncf.io/logo.png"},
-		},
 		userMap: map[string]models.User{
 			"auth0|user1": {ID: "auth0|user1", Name: "Alice", AvatarURL: "http://img.io/alice.png"},
 		},
@@ -577,7 +554,7 @@ func TestSyncer_Run_upsertsWithEnrichedSponsors(t *testing.T) {
 				FeeBalance:       -20,
 				Backers:          3,
 				Sponsors: models.LedgerRawSponsors{
-					Orgs:        []models.LedgerRawSponsor{{ID: "org-1", Total: 700}},
+					Orgs:        []models.LedgerRawSponsor{{ID: "cncf.io", Name: "CNCF", Total: 700}},
 					Individuals: []models.LedgerRawSponsor{{ID: "auth0|user1", Total: 100}},
 				},
 			},
@@ -618,8 +595,8 @@ func TestSyncer_Run_upsertsWithEnrichedSponsors(t *testing.T) {
 	if got.Sponsors.Orgs[0].Name != "CNCF" {
 		t.Errorf("sponsors.orgs[0].Name: got %q, want CNCF", got.Sponsors.Orgs[0].Name)
 	}
-	if got.Sponsors.Orgs[0].AvatarURL != "http://cncf.io/logo.png" {
-		t.Errorf("sponsors.orgs[0].AvatarURL: got %q", got.Sponsors.Orgs[0].AvatarURL)
+	if got.Sponsors.Orgs[0].AvatarURL != "" {
+		t.Errorf("sponsors.orgs[0].AvatarURL: got %q, want empty", got.Sponsors.Orgs[0].AvatarURL)
 	}
 
 	if len(got.Sponsors.Individuals) != 1 {
@@ -725,19 +702,18 @@ func TestSyncer_Run_multipleInitiativesAllMatched(t *testing.T) {
 	}
 }
 
-// TestSyncer_Run_sponsorIDsCollectedForBulkLookup verifies that all unique
+// TestSyncer_Run_sponsorUserIDsCollectedForBulkLookup verifies that all unique
 // sponsor IDs across multiple balances are passed to the repo lookups.
-func TestSyncer_Run_sponsorIDsCollectedForBulkLookup(t *testing.T) {
+func TestSyncer_Run_sponsorUserIDsCollectedForBulkLookup(t *testing.T) {
 	t.Parallel()
 
-	// Track which org/user IDs were requested.
-	var gotOrgIDs, gotUserIDs []string
+	// Track which user IDs were requested; org sponsors are not looked up.
+	var gotUserIDs []string
 
 	repo := &mockCapturingRepo{
 		base: &mockLedgerStatsRepo{
 			initiativeIDs: []string{"i1", "i2"},
 		},
-		captureOrgIDs:  &gotOrgIDs,
 		captureUserIDs: &gotUserIDs,
 	}
 	ledger := &mockLedgerSource{
@@ -756,25 +732,19 @@ func TestSyncer_Run_sponsorIDsCollectedForBulkLookup(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	sort.Strings(gotOrgIDs)
 	sort.Strings(gotUserIDs)
 
-	wantOrgs := []string{"org-a", "org-b"}
 	wantUsers := []string{"u1", "u2"}
 
-	if fmt.Sprint(gotOrgIDs) != fmt.Sprint(wantOrgs) {
-		t.Errorf("org IDs: got %v, want %v", gotOrgIDs, wantOrgs)
-	}
 	if fmt.Sprint(gotUserIDs) != fmt.Sprint(wantUsers) {
 		t.Errorf("user IDs: got %v, want %v", gotUserIDs, wantUsers)
 	}
 }
 
 // mockCapturingRepo wraps mockLedgerStatsRepo and captures the IDs passed to
-// the org/user lookup calls for assertion in tests.
+// the user lookup calls for assertion in tests.
 type mockCapturingRepo struct {
 	base           *mockLedgerStatsRepo
-	captureOrgIDs  *[]string
 	captureUserIDs *[]string
 }
 
@@ -787,21 +757,6 @@ func (r *mockCapturingRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (mod
 }
 func (r *mockCapturingRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
 	return nil, nil
-}
-func (r *mockCapturingRepo) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
-	*r.captureOrgIDs = append(*r.captureOrgIDs, ids...)
-	sort.Strings(*r.captureOrgIDs)
-	// deduplicate
-	deduped := make([]string, 0, len(*r.captureOrgIDs))
-	seen := map[string]struct{}{}
-	for _, id := range *r.captureOrgIDs {
-		if _, ok := seen[id]; !ok {
-			deduped = append(deduped, id)
-			seen[id] = struct{}{}
-		}
-	}
-	*r.captureOrgIDs = deduped
-	return r.base.GetOrganizationsByIDs(ctx, ids)
 }
 
 func (r *mockCapturingRepo) GetUsersByIDs(ctx context.Context, userIDs []string) (map[string]models.User, error) {

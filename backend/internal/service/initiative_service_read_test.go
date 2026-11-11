@@ -78,9 +78,6 @@ func (r *listInitiativeRepo) GetUsersByIDs(ctx context.Context, ids []string) (m
 func (r *listInitiativeRepo) GetUsersByLegacyIDs(_ context.Context, _ []string) (map[string]models.User, error) {
 	return map[string]models.User{}, nil
 }
-func (r *listInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	return map[string]models.Organization{}, nil
-}
 func (r *listInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil
 }

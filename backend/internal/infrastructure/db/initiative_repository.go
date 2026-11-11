@@ -1641,44 +1641,6 @@ func (r *InitiativeRepository) GetInitiativesByIDs(ctx context.Context, ids []st
 	return result, nil
 }
 
-// GetOrganizationsByIDs returns a map of org UUID → Organization for all IDs provided.
-// Missing IDs are absent from the map.
-func (r *InitiativeRepository) GetOrganizationsByIDs(ctx context.Context, ids []string) (map[string]models.Organization, error) {
-	ctx, span := initiativeTracer.Start(ctx, "db.initiative.GetOrganizationsByIDs")
-	defer span.End()
-
-	result := make(map[string]models.Organization, len(ids))
-	if len(ids) == 0 {
-		return result, nil
-	}
-
-	const q = `SELECT id, owner_id, name, avatar_url FROM organizations WHERE id = ANY($1::uuid[])`
-	rows, err := r.pool.Query(ctx, q, ids)
-	if err != nil {
-		span.RecordError(err)
-		return nil, fmt.Errorf("get organizations by IDs: %w", err)
-	}
-	defer rows.Close() //nolint:errcheck
-
-	for rows.Next() {
-		var o models.Organization
-		var avatarURL *string
-		if err := rows.Scan(&o.ID, &o.OwnerID, &o.Name, &avatarURL); err != nil {
-			span.RecordError(err)
-			return nil, fmt.Errorf("scan organization: %w", err)
-		}
-		if avatarURL != nil {
-			o.AvatarURL = *avatarURL
-		}
-		result[o.ID] = o
-	}
-	if err := rows.Err(); err != nil {
-		span.RecordError(err)
-		return result, fmt.Errorf("iterate organizations: %w", err)
-	}
-	return result, nil
-}
-
 func derefString(s *string) string {
 	if s == nil {
 		return ""

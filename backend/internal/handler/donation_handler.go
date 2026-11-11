@@ -226,12 +226,12 @@ func (h *DonationHandler) ExportOrgCSV(w http.ResponseWriter, r *http.Request) {
 	switch csvType {
 	case "detail":
 		_ = wr.Write([]string{
-			"organization_id", "organization_name", "initiative_name", "initiative_id",
+			"organization_domain", "organization_name", "initiative_name", "initiative_id",
 			"amount_usd", "donor_user_id", "donor_name", "donated_at", "status",
 		})
 		for _, row := range rows {
 			_ = wr.Write([]string{
-				row.OrganizationID,
+				sanitizeCSVField(row.OrganizationDomain),
 				sanitizeCSVField(row.OrganizationName),
 				sanitizeCSVField(row.InitiativeName),
 				row.InitiativeID,
@@ -245,25 +245,25 @@ func (h *DonationHandler) ExportOrgCSV(w http.ResponseWriter, r *http.Request) {
 
 	case "summary":
 		type orgEntry struct {
-			id    string
-			count int
-			total int64
+			domain string
+			count  int
+			total  int64
 		}
 		order := make([]string, 0)
 		sumsByName := make(map[string]*orgEntry)
 		for _, row := range rows {
 			if _, seen := sumsByName[row.OrganizationName]; !seen {
-				sumsByName[row.OrganizationName] = &orgEntry{id: row.OrganizationID}
+				sumsByName[row.OrganizationName] = &orgEntry{domain: row.OrganizationDomain}
 				order = append(order, row.OrganizationName)
 			}
 			sumsByName[row.OrganizationName].count++
 			sumsByName[row.OrganizationName].total += row.AmountCents
 		}
-		_ = wr.Write([]string{"organization_id", "organization_name", "donation_count", "total_donated_usd"})
+		_ = wr.Write([]string{"organization_domain", "organization_name", "donation_count", "total_donated_usd"})
 		for _, name := range order {
 			e := sumsByName[name]
 			_ = wr.Write([]string{
-				e.id,
+				sanitizeCSVField(e.domain),
 				sanitizeCSVField(name),
 				strconv.Itoa(e.count),
 				fmt.Sprintf("%.2f", float64(e.total)/100.0),

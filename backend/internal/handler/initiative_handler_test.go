@@ -113,9 +113,6 @@ func (r *initiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ string) (models
 func (r *initiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
 	return r.listPublishedResult, r.listPublishedErr
 }
-func (r *initiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	return nil, nil
-}
 func (r *initiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil
 }

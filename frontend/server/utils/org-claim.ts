@@ -12,7 +12,6 @@ export const toOrgClaimBody = (org: OrgClaim | undefined): { organization?: OrgC
 /**
  * A drawer loaded before #409 still sends `organizationId`, which the routes no longer
  * forward; reject it so the donation isn't silently recorded as individual.
- * ponytail: drop with the backend organization_id bridge.
  */
 export const rejectLegacyOrgId = (body: object): void => {
   if (

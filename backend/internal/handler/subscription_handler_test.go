@@ -95,7 +95,6 @@ type subscriptionInitiativeRepo struct {
 	initiative *models.Initiative
 	getErr     error
 	usersByIDs map[string]models.User
-	orgsByIDs  map[string]models.Organization
 }
 
 func (r *subscriptionInitiativeRepo) GetByID(_ context.Context, _ string) (*models.Initiative, error) {
@@ -140,12 +139,6 @@ func (r *subscriptionInitiativeRepo) GetOwnerInfoBySlug(_ context.Context, _ str
 }
 func (r *subscriptionInitiativeRepo) ListPublished(_ context.Context) ([]models.InitiativeSummary, error) {
 	return nil, nil
-}
-func (r *subscriptionInitiativeRepo) GetOrganizationsByIDs(_ context.Context, _ []string) (map[string]models.Organization, error) {
-	if r.orgsByIDs != nil {
-		return r.orgsByIDs, nil
-	}
-	return make(map[string]models.Organization), nil
 }
 func (r *subscriptionInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []string) (map[string]*models.Initiative, error) {
 	return map[string]*models.Initiative{}, nil

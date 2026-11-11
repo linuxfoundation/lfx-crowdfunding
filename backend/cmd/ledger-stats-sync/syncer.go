@@ -4,7 +4,6 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -43,8 +42,9 @@ func newSyncer(repo domain.LedgerStatsRepository, ledger ledgerSource, logger *s
 //  1. Load all non-archived/non-draft initiative IDs from CF DB.
 //  2. Fetch the full bulk balance snapshot from the Ledger service.
 //  3. Build an O(1) lookup index keyed by projectID.
-//  4. Collect unique org/user sponsor IDs for bulk enrichment.
-//  5. Enrich sponsor entries with names and avatar/logo URLs from CF DB.
+//  4. Collect unique individual sponsor IDs for bulk enrichment.
+//  5. Enrich individual sponsors with names and avatar URLs from CF DB.
+//     Org sponsors carry their name from Ledger.
 //  6. Upsert matching rows into initiative_ledger_stats.
 //  7. Return per-run counters for summary logging.
 func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
@@ -69,14 +69,10 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 	// Step 3 — build O(1) lookup map
 	balanceIndex := buildBalanceIndex(rawBalances)
 
-	// Step 4 — collect unique org/user IDs across all balances for bulk DB lookup
-	orgIDs, userIDs := collectSponsorIDs(rawBalances)
+	// Step 4 — collect unique user IDs across all balances for bulk DB lookup
+	userIDs := collectSponsorUserIDs(rawBalances)
 
-	// Step 5 — bulk lookup org and user details for sponsor enrichment
-	orgMap, err := s.repo.GetOrganizationsByIDs(ctx, orgIDs)
-	if err != nil {
-		return syncResult{}, fmt.Errorf("fetch organization details for sponsors: %w", err)
-	}
+	// Step 5 — bulk lookup user details for sponsor enrichment
 	userMap, err := s.repo.GetUsersByIDs(ctx, userIDs)
 	if err != nil {
 		return syncResult{}, fmt.Errorf("fetch user details for sponsors: %w", err)
@@ -90,7 +86,7 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 			result.skipped++
 			continue
 		}
-		toUpsert = append(toUpsert, mapBalance(raw, orgMap, userMap))
+		toUpsert = append(toUpsert, mapBalance(raw, userMap))
 		result.matched++
 	}
 
@@ -119,19 +115,13 @@ func buildBalanceIndex(balances []models.LedgerRawBalance) map[string]models.Led
 	return idx
 }
 
-// collectSponsorIDs extracts unique, non-empty org and user IDs from the
-// sponsors field of every balance entry.  These are used for a single bulk
+// collectSponsorUserIDs extracts unique, non-empty individual sponsor IDs from
+// the sponsors field of every balance entry.  These are used for a single bulk
 // SQL lookup to enrich the sponsors JSONB before writing.
-func collectSponsorIDs(balances []models.LedgerRawBalance) (orgIDs, userIDs []string) {
-	orgSet := make(map[string]struct{})
+func collectSponsorUserIDs(balances []models.LedgerRawBalance) (userIDs []string) {
 	userSet := make(map[string]struct{})
 
 	for i := range balances {
-		for _, s := range balances[i].Sponsors.Orgs {
-			if s.ID != "" {
-				orgSet[s.ID] = struct{}{}
-			}
-		}
 		for _, s := range balances[i].Sponsors.Individuals {
 			if s.ID != "" {
 				userSet[s.ID] = struct{}{}
@@ -139,15 +129,11 @@ func collectSponsorIDs(balances []models.LedgerRawBalance) (orgIDs, userIDs []st
 		}
 	}
 
-	orgIDs = make([]string, 0, len(orgSet))
-	for id := range orgSet {
-		orgIDs = append(orgIDs, id)
-	}
 	userIDs = make([]string, 0, len(userSet))
 	for id := range userSet {
 		userIDs = append(userIDs, id)
 	}
-	return orgIDs, userIDs
+	return userIDs
 }
 
 // mapBalance converts a LedgerRawBalance into a LedgerStats row ready for
@@ -168,7 +154,6 @@ func collectSponsorIDs(balances []models.LedgerRawBalance) (orgIDs, userIDs []st
 //     no overlap with raw.TotalDebit and no double-counting.
 func mapBalance(
 	raw models.LedgerRawBalance,
-	orgMap map[string]models.Organization,
 	userMap map[string]models.User,
 ) models.LedgerStats {
 	totalDebit := raw.TotalDebit
@@ -208,7 +193,7 @@ func mapBalance(
 	// count stays consistent with the sponsors JSONB column.
 	// Only entries with a positive total are counted as supporters — negative
 	// totals represent expense payouts to recipients, not donor contributions.
-	enriched := enrichSponsors(raw.Sponsors, orgMap, userMap)
+	enriched := enrichSponsors(raw.Sponsors, userMap)
 	seen := make(map[string]struct{}, len(enriched.Orgs)+len(enriched.Individuals))
 	for _, o := range enriched.Orgs {
 		if o.Total > 0 {
@@ -233,12 +218,12 @@ func mapBalance(
 	}
 }
 
-// enrichSponsors replaces raw org/user ID slices with name + logo/avatar data
-// fetched from CF DB. Orgs Ledger keys by domain already carry their name.  Entries whose IDs are not found in the DB are included
-// with an empty Name so no sponsor data is silently dropped.
+// enrichSponsors adds name + avatar data from CF DB to individual sponsors.
+// Org sponsors carry the name Ledger returns. Individuals whose IDs are not
+// found in the DB are included with an empty Name so no sponsor data is
+// silently dropped.
 func enrichSponsors(
 	raw models.LedgerRawSponsors,
-	orgMap map[string]models.Organization,
 	userMap map[string]models.User,
 ) models.LedgerSponsorList {
 	orgs := make([]models.LedgerSponsorOrg, 0, len(raw.Orgs))
@@ -246,12 +231,7 @@ func enrichSponsors(
 		if s.ID == "" {
 			continue
 		}
-		entry := models.LedgerSponsorOrg{ID: s.ID, Name: s.Name, Total: s.Total}
-		if org, ok := orgMap[s.ID]; ok { // legacy CF org UUID bucket
-			entry.Name = cmp.Or(entry.Name, org.Name)
-			entry.AvatarURL = org.AvatarURL
-		}
-		orgs = append(orgs, entry)
+		orgs = append(orgs, models.LedgerSponsorOrg{ID: s.ID, Name: s.Name, Total: s.Total})
 	}
 
 	individuals := make([]models.LedgerSponsorUser, 0, len(raw.Individuals))

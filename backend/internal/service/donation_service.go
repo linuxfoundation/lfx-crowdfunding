@@ -117,17 +117,11 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 
 	// Collect unique IDs for batch lookup.
 	userIDs := make([]string, 0, len(donations))
-	orgIDs := make([]string, 0, len(donations))
 	seenUsers := map[string]bool{}
-	seenOrgs := map[string]bool{}
 	for _, d := range donations {
 		if d.UserID != "" && !seenUsers[d.UserID] {
 			userIDs = append(userIDs, d.UserID)
 			seenUsers[d.UserID] = true
-		}
-		if d.OrganizationID != "" && !seenOrgs[d.OrganizationID] {
-			orgIDs = append(orgIDs, d.OrganizationID)
-			seenOrgs[d.OrganizationID] = true
 		}
 	}
 
@@ -139,12 +133,6 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 		span.RecordError(err)
 		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
 		users = map[string]models.User{}
-	}
-	orgs, err := repo.GetOrganizationsByIDs(ctx, orgIDs)
-	if err != nil {
-		span.RecordError(err)
-		slog.WarnContext(ctx, "failed to look up donor organizations", "error", err)
-		orgs = map[string]models.Organization{}
 	}
 
 	summaries := make([]models.DonationSummary, 0, len(donations))
@@ -161,12 +149,6 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 		if d.OrgName != "" {
 			s.DonorType = donorTypeOrganization
 			s.DonorName = d.OrgName
-		} else if d.OrganizationID != "" {
-			s.DonorType = donorTypeOrganization
-			if org, ok := orgs[d.OrganizationID]; ok {
-				s.DonorName = org.Name
-				s.DonorAvatarURL = org.AvatarURL
-			}
 		} else {
 			s.DonorType = donorTypeIndividual
 			if d.Anonymous {
@@ -349,7 +331,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 	}
 
 	// The org is stored as the donor stated it; there is no affiliation check (doc 13 §5.1).
-	org, err := resolveOrgClaim(ctx, s.initiativeRepo, input.Organization, input.OrganizationID, user.ID)
+	org, err := orgClaim(input.Organization)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -469,49 +451,4 @@ func orgName(raw string) (string, error) {
 		return "", fmt.Errorf("%w: organization.name must be 1-255 characters with no control characters", domain.ErrInvalidInput)
 	}
 	return name, nil
-}
-
-// resolveOrgClaim is orgClaim plus the legacy organization_id input: when no
-// claim is sent, a caller-owned org ID resolves to a name-only claim, so a BFF
-// and backend on different versions keep the org attribution. Legacy orgs have
-// no domain, so this claim gets orgClaim's name check but not its domain requirement. The FK is not stored.
-// ponytail: mixed-version deploy bridge; drop with OrganizationID once this BFF is everywhere.
-func resolveOrgClaim(ctx context.Context, repo domain.InitiativeRepository, in *models.OrgClaim, legacyID, userID string) (models.OrgClaim, error) {
-	if in == nil && legacyID != "" {
-		_, stored, err := ownedOrg(ctx, repo, legacyID, userID)
-		if err != nil {
-			return models.OrgClaim{}, err
-		}
-		name, err := orgName(stored)
-		if err != nil {
-			return models.OrgClaim{}, err
-		}
-		return models.OrgClaim{Name: name}, nil
-	}
-	return orgClaim(in)
-}
-
-// ownedOrg returns the canonical ID and name of orgID when it belongs to userID,
-// empty strings when orgID is empty, and ErrOrganizationNotFound when the org is
-// missing or owned by someone else (featured-company org IDs are public, so
-// ownership must be checked).
-func ownedOrg(ctx context.Context, repo domain.InitiativeRepository, orgID, userID string) (id, name string, err error) {
-	if orgID == "" {
-		return "", "", nil
-	}
-	parsed, err := uuid.Parse(orgID)
-	if err != nil {
-		return "", "", domain.ErrOrganizationNotFound
-	}
-	// Postgres returns UUIDs lowercase; canonicalize so uppercase input still matches.
-	id = parsed.String()
-	orgs, err := repo.GetOrganizationsByIDs(ctx, []string{id})
-	if err != nil {
-		return "", "", fmt.Errorf("resolve organization: %w", err)
-	}
-	org, ok := orgs[id]
-	if !ok || org.OwnerID != userID {
-		return "", "", domain.ErrOrganizationNotFound
-	}
-	return id, org.Name, nil
 }

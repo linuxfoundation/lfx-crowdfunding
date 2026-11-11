@@ -46,20 +46,6 @@ INSERT INTO users (id, username, legacy_user_id, email, given_name, family_name,
 ON CONFLICT DO NOTHING;
 
 -- ============================================
--- Organizations
--- owner_id references users.id (UUID)
--- ============================================
-INSERT INTO organizations (id, owner_id, name, avatar_url, status) VALUES
-  ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Acme Corp',       'https://i.pravatar.cc/150?u=acme',  'active'),
-  ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'Open Source Inc', 'https://i.pravatar.cc/150?u=ossinc','active'),
-  -- Real Ledger dev org UUID — matches organizationID on Kubernetes transactions from auth0|kelo.
-  ('09b68fe3-12ae-4a7f-b021-7b522e87ae3d', 'a0000000-0000-0000-0000-000000000012', 'Google Cloud',    'https://ui-avatars.com/api/?name=Google+Cloud&background=4285F4&color=fff&size=128&bold=true', 'active'),
-  -- Real Ledger dev org UUIDs — match organizationID on Prometheus transactions.
-  ('a5df9992-9374-445c-8b88-545f6178bb11', 'a0000000-0000-0000-0000-000000000001', 'Grafana Labs',     'https://ui-avatars.com/api/?name=Grafana+Labs&background=F46800&color=fff&size=128&bold=true', 'active'),
-  ('da78ebed-3c32-49ca-80db-234761b01979', 'a0000000-0000-0000-0000-000000000001', 'Weaveworks',       'https://ui-avatars.com/api/?name=Weaveworks&background=0077CC&color=fff&size=128&bold=true',   'active')
-ON CONFLICT DO NOTHING;
-
--- ============================================
 -- Initiatives — Projects
 -- Real Ledger project IDs so ledger-stats-sync can pull live financials.
 -- IDs sourced from GET /balance on the dev Ledger instance.
@@ -336,58 +322,58 @@ ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Donations
--- user_id and organization_id reference users.id / organizations.id (UUID)
+-- user_id references users.id (UUID); org donations carry org_name/org_domain
 -- ============================================
 INSERT INTO donations (
-  id, user_id, initiative_id, organization_id,
+  id, user_id, initiative_id, org_name, org_domain,
   category, current_amount_in_cents, payment_method, status, stripe_charge_id,
   cached_details
 ) VALUES
   (
     'd0000000-0000-0000-0000-000000000001',
-    'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
+    'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL, NULL,
     'development', 10000, 'card', 'succeeded', 'ch_dev_001',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000002',
-    'a0000000-0000-0000-0000-000000000003', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
+    'a0000000-0000-0000-0000-000000000003', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL, NULL,
     'travel', 5000, 'card', 'succeeded', 'ch_dev_002',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000003',
-    'a0000000-0000-0000-0000-000000000004', '57135156-cb73-4896-bbd3-8d503b568b3b', NULL,
+    'a0000000-0000-0000-0000-000000000004', '57135156-cb73-4896-bbd3-8d503b568b3b', NULL, NULL,
     'development', 2500, 'card', 'succeeded', 'ch_dev_003',
     '{"initiative_name": "Prometheus", "initiative_slug": "prometheus"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000004',
-    'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000010', 'b0000000-0000-0000-0000-000000000001',
+    'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000010', 'Acme Corp', 'acme.com',
     'Diversity Scholarships', 50000, 'invoice', 'succeeded', NULL,
     '{"initiative_name": "KubeCon NA 2026", "initiative_slug": "kubecon-na-2026"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000005',
-    'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
+    'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL, NULL,
     'mentee', 7500, 'card', 'pending', NULL,
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000006',
-    'a0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000020', NULL,
+    'a0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000020', NULL, NULL,
     'stipends', 15000, 'card', 'succeeded', 'ch_dev_006',
     '{"initiative_name": "Linux Kernel Bug Fixing", "initiative_slug": "linux-kernel-bug-fixing"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000007',
-    'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000002',
+    'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000030', 'Open Source Inc', 'opensource.example',
     'audit', 100000, 'invoice', 'succeeded', NULL,
     '{"initiative_name": "Kubernetes Security Audit", "initiative_slug": "kubernetes-security-audit"}'
   ),
   (
     'd0000000-0000-0000-0000-000000000008',
-    'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000040', NULL,
+    'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000040', NULL, NULL,
     'infrastructure', 25000, 'card', 'succeeded', 'ch_dev_008',
     '{"initiative_name": "CNCF General Fund", "initiative_slug": "cncf-general-fund"}'
   )
@@ -395,38 +381,38 @@ ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Subscriptions
--- user_id and organization_id reference users.id / organizations.id (UUID)
+-- user_id references users.id (UUID); org donations carry org_name/org_domain
 -- ============================================
 INSERT INTO subscriptions (
-  id, user_id, initiative_id, organization_id,
+  id, user_id, initiative_id, org_name, org_domain,
   category, current_amount_in_cents, frequency, status,
   stripe_subscription_id, stripe_subscription_item_id,
   cached_details
 ) VALUES
   (
     'e0000000-0000-0000-0000-000000000001',
-    'a0000000-0000-0000-0000-000000000003', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL,
+    'a0000000-0000-0000-0000-000000000003', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', NULL, NULL,
     'development', 1000, 'monthly', 'active',
     'sub_dev_001', 'si_dev_001',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'e0000000-0000-0000-0000-000000000002',
-    'a0000000-0000-0000-0000-000000000004', '57135156-cb73-4896-bbd3-8d503b568b3b', NULL,
+    'a0000000-0000-0000-0000-000000000004', '57135156-cb73-4896-bbd3-8d503b568b3b', NULL, NULL,
     'development', 500, 'monthly', 'active',
     'sub_dev_002', 'si_dev_002',
     '{"initiative_name": "Prometheus", "initiative_slug": "prometheus"}'
   ),
   (
     'e0000000-0000-0000-0000-000000000003',
-    'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'b0000000-0000-0000-0000-000000000002',
+    'a0000000-0000-0000-0000-000000000002', 'c3ca17ca-edbc-4f26-aad0-d119e0af4c8b', 'Open Source Inc', 'opensource.example',
     'travel', 2500, 'monthly', 'canceled',
     'sub_dev_003', 'si_dev_003',
     '{"initiative_name": "Kubernetes", "initiative_slug": "kubernetes"}'
   ),
   (
     'e0000000-0000-0000-0000-000000000004',
-    'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000040', NULL,
+    'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000040', NULL, NULL,
     'infrastructure', 5000, 'monthly', 'active',
     'sub_dev_004', 'si_dev_004',
     '{"initiative_name": "CNCF General Fund", "initiative_slug": "cncf-general-fund"}'
