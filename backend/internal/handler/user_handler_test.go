@@ -518,6 +518,29 @@ func TestSyncProfile_HeimdallIssued_BindsAuth0Subject(t *testing.T) {
 	}
 }
 
+// A new account's first token can carry its Auth0 subject as the username.
+// auth-service would hash it into a subject nobody owns, so none is bound.
+func TestSyncProfile_HeimdallIssued_SubjectShapedUsernameBindsNothing(t *testing.T) {
+	repo := &testUserRepo{}
+	lookup := &testProfileLookup{sub: "auth0|5Ha62PeKvXAk", md: &clients.UserMetadata{}}
+	h := NewUserHandler(repo, &testUserInfoFetcher{err: errors.New("must not be called")}, lookup, slog.Default())
+
+	principal := heimdallSyncPrincipal()
+	principal.Username = "auth0|jdoe"
+	w := httptest.NewRecorder()
+	h.SyncProfile(w, newSyncProfileRequest(principal))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if lookup.subCalled {
+		t.Error("UsernameToSub called for a subject-shaped username")
+	}
+	if got := repo.lastUpserted; got == nil || got.LegacyUserID != "" {
+		t.Errorf("upserted = %+v, want no LegacyUserID", got)
+	}
+}
+
 func TestSyncProfile_MockBypass_NeverLooksUpSubject(t *testing.T) {
 	repo := &testUserRepo{}
 	lookup := &testProfileLookup{sub: "auth0|dev-user-001", md: &clients.UserMetadata{}}
