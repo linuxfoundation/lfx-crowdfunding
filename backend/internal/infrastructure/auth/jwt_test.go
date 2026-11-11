@@ -726,6 +726,23 @@ func TestNewJWTAuthenticator_HeimdallOnly(t *testing.T) {
 		}
 	})
 
+	t.Run("first-login Heimdall token resolves the username from the Auth0 subject", func(t *testing.T) {
+		// A new account's first token has no username claim, so Heimdall's
+		// principal is the Auth0 subject.
+		code := serve(mustPS256(map[string]any{
+			"principal": "auth0|newuser",
+			"iss":       testIssuer,
+			"aud":       testAudience,
+			"exp":       time.Now().Add(time.Hour).Unix(),
+		}))
+		if code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", code)
+		}
+		if got == nil || got.UserID != "auth0|newuser" || got.Username != "newuser" {
+			t.Fatalf("principal = %+v, want UserID %q and Username %q", got, "auth0|newuser", "newuser")
+		}
+	})
+
 	t.Run("rejects Auth0-style RS256 token", func(t *testing.T) {
 		signed, err := signRS256(map[string]any{
 			"sub": "auth0|testuser",
@@ -826,3 +843,28 @@ func TestAuthFailureCategory(t *testing.T) {
 // Scope-isolation coverage lives in TestRequireScope_RejectsWrongScope above,
 // which verifies that a token carrying only "access:me" is rejected (HTTP 403)
 // by any handler that requires "access:manage".
+
+func TestUsernameFromAuth0Subject(t *testing.T) {
+	tests := []struct {
+		sub    string
+		want   string
+		wantOK bool
+	}{
+		{"auth0|jdoe", "jdoe", true},
+		{"auth0|first.last-2_x", "first.last-2_x", true},
+		// Hashed by username_to_sub (unsafe username): can't be inverted.
+		{"auth0|5Ha62PeKvXAkNmNAzkQQJsrHm7PgbBNrdT7Xxmk5TvzCxCVb3bCq9onPSPCcxpJtL6CT7FqrLQGuQiiZiWqUQiiC", "", false},
+		// A hex-looking name is hashed too, so its subject never looks like this.
+		{"auth0|0123456789abcdef01234567", "", false},
+		{"auth0|-jdoe", "", false},
+		{"auth0|", "", false},
+		{"github|123", "", false},
+		{"jdoe", "", false},
+	}
+	for _, tt := range tests {
+		got, ok := usernameFromAuth0Subject(tt.sub)
+		if got != tt.want || ok != tt.wantOK {
+			t.Errorf("usernameFromAuth0Subject(%q) = %q, %v; want %q, %v", tt.sub, got, ok, tt.want, tt.wantOK)
+		}
+	}
+}

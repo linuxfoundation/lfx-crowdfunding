@@ -3,6 +3,7 @@
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { CardDetails } from '#shared/types/payment.types';
+import { PROFILE_NOT_SYNCED_MESSAGE } from '~/utils/payment-error';
 
 const mockGetStripe = vi.fn();
 const mockShowError = vi.fn();
@@ -296,6 +297,23 @@ describe('usePaymentAccount', () => {
       const { saveCard, error } = usePaymentAccount();
       await expect(saveCard(fakeCardElement)).rejects.toThrow('Method save failed');
       expect(error.value).toBe('Method save failed');
+    });
+
+    it('shows friendly copy, not the raw FetchError line, when the profile is not synced', async () => {
+      mockFetch.mockRejectedValueOnce({
+        message: '[POST] "/api/payment/setup-intent": 400',
+        statusCode: 400,
+        data: {
+          error: true,
+          message:
+            'account id not set  call PATCH /crowdfunding/me to sync your profile before using payment features',
+        },
+      });
+
+      const { saveCard, error } = usePaymentAccount();
+      await expect(saveCard(fakeCardElement)).rejects.toBeTruthy();
+      expect(error.value).toBe(PROFILE_NOT_SYNCED_MESSAGE);
+      expect(mockShowError).toHaveBeenCalledWith(PROFILE_NOT_SYNCED_MESSAGE);
     });
 
     it('uses default message when saveCard error has no message', async () => {

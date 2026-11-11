@@ -143,11 +143,13 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 // already-bound legacy_user_id is never replaced: Upsert would reject a
 // different value as a takeover and fail the sync.
 //
-// A brand-new account's first token can carry its Auth0 subject (e.g.
-// "auth0|jdoe") as the username, before Auth0 sets the username claim. That is
-// not an LF username: auth-service maps it to a hash-based subject that belongs
-// to nobody, so no lookup is made and nothing is bound. The next login carries
-// the real username and binds the subject on that row.
+// A brand-new account's first token can carry its Auth0 subject as the
+// username, before Auth0 sets the username claim. The auth middleware recovers
+// the username from an auth0|<username> subject; a hashed one (auth0|<base58>,
+// for usernames auth-service doesn't pass through) still arrives here. That is
+// not an LF username: auth-service would map it to yet another hash-based
+// subject that belongs to nobody, so no lookup is made and nothing is bound.
+// The next login carries the real username and binds the subject on that row.
 func (h *UserHandler) heimdallLegacyUserID(ctx context.Context, username string) string {
 	if strings.Contains(username, "|") {
 		h.logger.InfoContext(ctx, "token username is an Auth0 subject; syncing without legacy user id")

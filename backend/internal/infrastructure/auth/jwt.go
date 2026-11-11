@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -93,11 +94,41 @@ func (c *JWTClaims) effectiveEmail() string {
 // from "principal" (doc backend/docs/rewrite/12-fga-authorization-model.md,
 // "Heimdall/CF principals are plain usernames, no auth0| prefix") — fall
 // back to Subject so user resolution doesn't silently break for those tokens.
+//
+// A brand-new account's first Heimdall token carries its Auth0 subject
+// ("auth0|jdoe") as the principal, before Auth0 sets the username claim. For
+// those, the username is recovered from the subject (see
+// usernameFromAuth0Subject), so the first login resolves to the same row as
+// every later login.
 func (c *JWTClaims) effectiveUsername() string {
 	if v := strings.TrimSpace(c.Username); v != "" {
 		return v
 	}
-	return strings.TrimSpace(c.Subject)
+	sub := strings.TrimSpace(c.Subject)
+	if username, ok := usernameFromAuth0Subject(sub); ok {
+		return username
+	}
+	return sub
+}
+
+// LF SSO usernames that auth-service's username_to_sub passes through as-is
+// (lfx-v2-auth-service internal/service/username_mapping.go): it maps a
+// "safe" username to auth0|<username> and hashes every other one.
+var (
+	safeUsernameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,58}[A-Za-z0-9]$`)
+	hexUsernameRE  = regexp.MustCompile(`^[0-9a-f]{24,60}$`)
+)
+
+// usernameFromAuth0Subject inverts username_to_sub for safe usernames:
+// "auth0|jdoe" yields "jdoe". It reports false for any other subject, including
+// the hashed auth0|<base58> form, which can't be inverted, and other
+// connections' subjects (e.g. github|123).
+func usernameFromAuth0Subject(sub string) (string, bool) {
+	name, ok := strings.CutPrefix(sub, "auth0|")
+	if !ok || !safeUsernameRE.MatchString(name) || hexUsernameRE.MatchString(name) {
+		return "", false
+	}
+	return name, true
 }
 
 const (
