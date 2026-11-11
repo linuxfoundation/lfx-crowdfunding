@@ -11,7 +11,7 @@ Answers to the most common questions about fundraising initiatives on LFX Crowdf
 
 ## Who can create an initiative?
 
-Any open source project related to or affiliated with the Linux Foundation can apply. If you are unsure whether your project qualifies, contact your Linux Foundation programme manager before applying.
+Any open source project, event or community can apply. The Linux Foundation reviews every initiative before it's published.
 
 ## What types of initiatives are supported?
 

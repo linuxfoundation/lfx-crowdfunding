@@ -11,7 +11,7 @@ Answers to general questions about LFX Crowdfunding.
 
 ## What is LFX Crowdfunding?
 
-LFX Crowdfunding is the Linux Foundation's platform for funding open source initiatives. Projects, events, and communities affiliated with the Linux Foundation can raise funds from donors and sponsors worldwide.
+LFX Crowdfunding is the Linux Foundation's platform for funding open source initiatives. Any open source project, event or community can raise funds from donors and sponsors worldwide. The Linux Foundation reviews every initiative before it's published.
 
 ## Do I need an account to use LFX Crowdfunding?
 

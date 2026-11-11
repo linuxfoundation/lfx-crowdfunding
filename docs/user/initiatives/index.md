@@ -7,7 +7,7 @@ display_order: 2
 intercom_collection: LFX Crowdfunding
 ---
 
-Initiatives are fundraising campaigns created by open source projects, events, and organisations affiliated with the Linux Foundation. Each initiative has a goal, a description of how funds will be used, and a transparent record of donations received.
+Initiatives are fundraising campaigns created by open source projects, events, and communities. The Linux Foundation reviews every initiative before it's published. Each initiative has a goal, a description of how funds will be used, and a transparent record of donations received.
 
 ## Initiative types
 

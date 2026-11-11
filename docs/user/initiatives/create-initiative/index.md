@@ -11,7 +11,7 @@ intercom_collection: LFX Crowdfunding
 
 ## Eligibility
 
-Your project must be related to or affiliated with the Linux Foundation. If you are unsure whether your project qualifies, contact your Linux Foundation programme manager.
+Any open source project, event or community can apply. The Linux Foundation reviews every initiative before it's published.
 
 ## Starting the form
 
