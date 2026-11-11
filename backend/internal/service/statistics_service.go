@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/config"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
@@ -30,11 +31,32 @@ const (
 type StatisticsService struct {
 	repo         domain.StatisticsRepository
 	ledgerClient clients.LedgerClient
+	privacy      domain.DonorPrivacyRepository // nil in tests; nil hides no donor
 }
 
 // NewStatisticsService returns a StatisticsService.
 func NewStatisticsService(repo domain.StatisticsRepository, ledgerClient clients.LedgerClient) *StatisticsService {
 	return &StatisticsService{repo: repo, ledgerClient: ledgerClient}
+}
+
+// SetDonorPrivacyRepo wires the anonymous-donor lookups used to hide donors on
+// platform-wide donor lists (#466).
+func (s *StatisticsService) SetDonorPrivacyRepo(r domain.DonorPrivacyRepository) {
+	s.privacy = r
+}
+
+// anonymousLedgerUsers returns a check for "has this ledger user hidden their
+// name anywhere". A nil repo hides nobody; a failed lookup hides everyone.
+func (s *StatisticsService) anonymousLedgerUsers(ctx context.Context, ledgerUserIDs []string) func(string) bool {
+	if s.privacy == nil || len(ledgerUserIDs) == 0 {
+		return func(string) bool { return false }
+	}
+	hidden, err := s.privacy.AnonymousLedgerUsers(ctx, ledgerUserIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "anonymous donor lookup failed; hiding every individual donor", "error", err)
+		return func(string) bool { return true }
+	}
+	return func(id string) bool { return hidden[id] }
 }
 
 // GetPlatformStatistics returns platform-wide aggregates for the landing page.
@@ -120,10 +142,16 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 		entry.Name = cmp.Or(entry.Name, unknownOrgName)
 		out.TopOrganizations = append(out.TopOrganizations, entry)
 	}
+	// The top-donor totals span every initiative, so a donor who hid their name
+	// on any donation is hidden here (#466).
+	hidden := s.anonymousLedgerUsers(ctx, userIDs)
 	for _, u := range raw.TopIndividuals {
 		// ID is omitted: for individuals it is the donor's Auth0 subject.
 		entry := models.SponsorEntry{TotalCents: u.Total}
-		if user, ok := users[u.ID]; ok {
+		if hidden(u.ID) {
+			entry.Name = anonymousName
+			entry.AvatarURL = anonymousAvatarURL()
+		} else if user, ok := users[u.ID]; ok {
 			entry.Name = user.Name
 			entry.AvatarURL = user.AvatarURL
 		} else {
@@ -284,8 +312,21 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		return nil, fmt.Errorf("enrich project names: %w", err)
 	}
 
+	// The ledger's recent list carries no Stripe IDs to match a row to its CF
+	// donation, so a donor with any anonymous donation to the initiative is
+	// hidden on all their rows for it (#466).
+	hidden := anonymousDonorFilter(ctx, s.privacy, projectIDs)
+
 	donations := make([]models.RecentDonation, 0, len(uniqueRaw))
 	for _, d := range uniqueRaw {
+		// A failed lookup hides every row, including ones without a ledger user ID.
+		hide := hidden(d.ProjectID, d.UserID)
+		// Deleting an initiative nulls initiative_id on its donations and
+		// subscriptions, so their anonymity flags can no longer be found for it.
+		// Hide the donor on rows whose initiative is gone rather than risk showing them.
+		if _, exists := projectNames[d.ProjectID]; s.privacy != nil && d.ProjectID != "" && !exists {
+			hide = true
+		}
 		entry := models.RecentDonation{
 			TxnID:       d.TxnID,
 			ProjectID:   d.ProjectID,
@@ -303,12 +344,15 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 			if org, ok := orgs[d.OrganizationID]; ok {
 				entry.DonorName = org.Name
 				entry.DonorAvatarURL = org.AvatarURL
-			} else {
+			} else if !hide {
 				entry.DonorName = d.SubmitterName
 			}
 		} else {
 			entry.DonorType = donorTypeIndividual
-			if user, ok := users[d.UserID]; ok {
+			if hide {
+				entry.DonorName = anonymousName
+				entry.DonorAvatarURL = anonymousAvatarURL()
+			} else if user, ok := users[d.UserID]; ok {
 				entry.DonorName = user.Name
 				entry.DonorAvatarURL = user.AvatarURL
 			} else {

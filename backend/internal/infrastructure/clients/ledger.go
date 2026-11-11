@@ -178,6 +178,7 @@ type ledgerTransactionRaw struct {
 	Amount             int64  `json:"amount"`         // cents
 	TxnDate            int64  `json:"txnDate"`        // unix seconds
 	SubscriptionID     string `json:"subscriptionID"` // non-empty for recurring charges
+	SourceTxnID        string `json:"sourceTxnID"`    // Stripe charge (or PaymentIntent) ID for Stripe rows
 }
 
 type ledgerTransactionsResponse struct {
@@ -275,6 +276,9 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			LedgerOrgName:   raw.OrganizationName,
 			LedgerOrgDomain: raw.OrganizationDomain,
 			LedgerProjectID: raw.ProjectID,
+
+			LedgerSourceTxnID:    raw.SourceTxnID,
+			LedgerSubscriptionID: raw.SubscriptionID,
 		})
 	}
 

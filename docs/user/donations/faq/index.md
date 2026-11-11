@@ -1,8 +1,8 @@
 ---
 title: Donations FAQ
 description: Answers to frequently asked questions about making and managing donations on LFX Crowdfunding.
-tags: [donations, faq, payment, recurring, cancel, refund, credit card, invoice, organization, company]
-last_updated: 2026-11-06
+tags: [donations, faq, payment, recurring, cancel, refund, credit card, invoice, organization, company, anonymous]
+last_updated: 2026-11-10
 display_order: 3
 intercom_collection: LFX Crowdfunding
 ---
@@ -27,7 +27,7 @@ Yes. In the donate drawer, under **I'm donating as**, select **An organization**
 
 ## Who can see that I donated on behalf of an organization?
 
-The initiative's backer list shows the organization's name publicly, with donor type **Company**. Your own name isn't shown there. People who can view the organization in LFX see your name and email next to the donation on its LFX organization page.
+The initiative's backer list shows the organization's name publicly, with donor type **Company**. Your own name isn't shown there. People who can view the organization in LFX see your name and email next to the donation on its LFX organization page, unless you check **Donate anonymously**; then they see **Anonymous**.
 
 ## Do I need to work at the organization to donate on its behalf?
 
@@ -47,7 +47,7 @@ No. The Linux Foundation underwrites all transaction fees, so 100% of your donat
 
 ## Can I donate anonymously?
 
-LFX Crowdfunding does not currently offer a donor-selectable anonymous option. Your name and avatar, or the organization's name if you donated on behalf of one, will appear on the initiative's backer list. If your donor information is unavailable at the time of processing, your name will appear as **Anonymous**.
+Yes. You still sign in, but in the donate drawer you can check **Donate anonymously**. Your donation then appears with its amount but your name shows as **Anonymous** to everyone else, including the initiative's owner. If you donate on behalf of an organization, the organization's name still shows. You can change this later from [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations). See **Anonymous donations** in [Making a Donation](../make-donation/) for details.
 
 ## How do I cancel a monthly donation?
 

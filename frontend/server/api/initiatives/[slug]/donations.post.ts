@@ -35,6 +35,7 @@ export default defineEventHandler(async (event): Promise<DonationResult> => {
         ...(body.category ? { category: body.category } : {}),
         ...toOrgClaimBody(body.organization),
         ...(body.donationTier ? { donation_tier: body.donationTier } : {}),
+        ...(body.anonymous ? { anonymous: true } : {}),
       },
       headers: { 'Idempotency-Key': idempotencyKey },
     },

@@ -56,7 +56,30 @@ type InitiativeService struct {
 	projectLookup projectLookup                 // nil when LFX_API_BASE_URL is unset
 	roleResolver  fga.EntityRoleResolver        // nil when FGA_NATS_URL is unset
 	subRepo       domain.SubscriptionRepository // nil in tests that don't exercise cancellation
+	privacy       domain.DonorPrivacyRepository // nil in tests; nil hides no donor
 	logger        *slog.Logger
+}
+
+// SetDonorPrivacyRepo wires the anonymous-donor lookups used to hide donors on
+// sponsor and transaction lists (#466).
+func (s *InitiativeService) SetDonorPrivacyRepo(r domain.DonorPrivacyRepository) {
+	s.privacy = r
+}
+
+// setSponsors flattens each initiative's cached sponsors, hiding donors who
+// chose to donate anonymously to it.
+func (s *InitiativeService) setSponsors(ctx context.Context, initiatives ...*models.Initiative) {
+	ids := make([]string, 0, len(initiatives))
+	for _, i := range initiatives {
+		if len(i.RawSponsors.Individuals) > 0 {
+			ids = append(ids, i.ID)
+		}
+	}
+	hidden := anonymousDonorFilter(ctx, s.privacy, ids)
+	for _, i := range initiatives {
+		id := i.ID
+		i.Sponsors = flattenSponsors(i.RawSponsors, func(ledgerUserID string) bool { return hidden(id, ledgerUserID) })
+	}
 }
 
 // SetFGAPublisher wires the fga-sync tuple publisher in after construction
@@ -166,7 +189,7 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 		return nil, fmt.Errorf("get initiative: %w", err)
 	}
 
-	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
+	s.setSponsors(ctx, initiative)
 	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
 }
@@ -174,7 +197,9 @@ func (s *InitiativeService) GetByID(ctx context.Context, id string) (*models.Ini
 // flattenSponsors merges orgs and individuals from the cached sponsor list into a
 // single flat slice sorted by total descending.  Entries with a non-positive
 // total are expense-payout recipients, not donors, and are excluded.
-func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
+// Individuals for which hidden returns true show as "Anonymous" (#466); a nil
+// hidden hides nobody.
+func flattenSponsors(list models.LedgerSponsorList, hidden func(ledgerUserID string) bool) []models.Sponsor {
 	sponsors := make([]models.Sponsor, 0, len(list.Orgs)+len(list.Individuals))
 	for _, o := range list.Orgs {
 		if o.Total <= 0 {
@@ -193,6 +218,10 @@ func flattenSponsors(list models.LedgerSponsorList) []models.Sponsor {
 		avatarURL := u.AvatarURL
 		if avatarURL == "" {
 			avatarURL = generatedAvatarURL(u.ID, u.Name)
+		}
+		if hidden != nil && hidden(u.ID) {
+			sponsors = append(sponsors, models.Sponsor{Name: anonymousName, AvatarURL: anonymousAvatarURL(), TotalCents: u.Total})
+			continue
 		}
 		// ID is omitted: for individuals it is the donor's Auth0 subject.
 		sponsors = append(sponsors, models.Sponsor{Name: u.Name, AvatarURL: avatarURL, TotalCents: u.Total})
@@ -264,7 +293,7 @@ func (s *InitiativeService) GetBySlug(ctx context.Context, slug string) (*models
 		return nil, fmt.Errorf("get initiative by slug: %w", err)
 	}
 
-	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
+	s.setSponsors(ctx, initiative)
 	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
 }
@@ -346,7 +375,7 @@ func (s *InitiativeService) GetForUser(ctx context.Context, idOrSlug, callerUser
 
 	initiative.IsOwner = initiative.OwnerID == caller.ID
 	initiative.Creator = s.creatorName(ctx, initiative.OwnerID, caller)
-	initiative.Sponsors = flattenSponsors(initiative.RawSponsors)
+	s.setSponsors(ctx, initiative)
 	enrichGoalsFromLedger(ctx, s.ledger, initiative)
 	return initiative, nil
 }
@@ -450,9 +479,7 @@ func (s *InitiativeService) List(ctx context.Context, filter models.InitiativeFi
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list initiatives: %w", err)
 	}
-	for _, i := range initiatives {
-		i.Sponsors = flattenSponsors(i.RawSponsors)
-	}
+	s.setSponsors(ctx, initiatives...)
 	return initiatives, meta, nil
 }
 
@@ -522,9 +549,7 @@ func (s *InitiativeService) ListForUser(ctx context.Context, ownerUsername strin
 		span.RecordError(err)
 		return nil, nil, fmt.Errorf("list initiatives for user: %w", err)
 	}
-	for _, i := range initiatives {
-		i.Sponsors = flattenSponsors(i.RawSponsors)
-	}
+	s.setSponsors(ctx, initiatives...)
 	return initiatives, meta, nil
 }
 
@@ -1256,7 +1281,8 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 		list.TotalCount = clampFilteredTotalCount(list.TotalCount, dropped, offset, limit, len(kept), hasMorePages)
 	}
 
-	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	markOwnLedgerRows(ctx, s.privacy, list.Data)
+	enrichTransactionsFromDB(ctx, s.repo, list.Data, false)
 	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
 		if ini, ok := initiatives[initiativeID]; ok {
 			for i := range list.Data {
@@ -1305,7 +1331,8 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 		list.TotalCount = clampFilteredTotalCount(list.TotalCount, dropped, offset, limit, len(kept), hasMorePages)
 	}
 
-	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	markPublicLedgerRows(ctx, s.privacy, list.Data)
+	enrichTransactionsFromDB(ctx, s.repo, list.Data, true)
 	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
 		if ini, ok := initiatives[initiativeID]; ok {
 			for i := range list.Data {
@@ -1337,7 +1364,8 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 		return nil, err
 	}
 
-	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	markPublicLedgerRows(ctx, s.privacy, list.Data)
+	enrichTransactionsFromDB(ctx, s.repo, list.Data, true)
 	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
 		if ini, ok := initiatives[initiativeID]; ok {
 			for i := range list.Data {
@@ -1440,7 +1468,8 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 		list.TotalCount = clampFilteredTotalCount(list.TotalCount, dropped, offset, limit, len(kept), hasMorePages)
 	}
 
-	enrichTransactionsFromDB(ctx, s.repo, list.Data)
+	markOwnLedgerRows(ctx, s.privacy, list.Data)
+	enrichTransactionsFromDB(ctx, s.repo, list.Data, false)
 
 	for i := range list.Data {
 		list.Data[i].InitiativeID = list.Data[i].LedgerProjectID
@@ -1577,7 +1606,9 @@ func (s *InitiativeService) syncFGADelete(ctx context.Context, id string) {
 // enrichTransactionsFromDB batch-looks up users and organizations from the CF DB
 // and merges name + avatar_url onto each transaction.
 // Falls back to a deterministic generated avatar when no DB record is found.
-func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeRepository, txns []models.Transaction) {
+// With maskAnonymous set, rows flagged Anonymous keep only their org (#466):
+// the person, including the ledger's submitter name, shows as "Anonymous".
+func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeRepository, txns []models.Transaction, maskAnonymous bool) {
 	if len(txns) == 0 {
 		return
 	}
@@ -1587,7 +1618,8 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 	seenUsers := map[string]bool{}
 	seenOrgs := map[string]bool{}
 	for _, t := range txns {
-		if t.LedgerUserID != "" && !seenUsers[t.LedgerUserID] {
+		hide := maskAnonymous && t.Anonymous
+		if !hide && t.LedgerUserID != "" && !seenUsers[t.LedgerUserID] {
 			userIDs = append(userIDs, t.LedgerUserID)
 			seenUsers[t.LedgerUserID] = true
 		}
@@ -1610,6 +1642,13 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 
 	for i := range txns {
 		t := &txns[i]
+		hide := maskAnonymous && t.Anonymous
+		if hide {
+			// DonorName starts as the ledger's submitter name: drop it so an
+			// unmatched org or user can't fall back to the person's name.
+			t.DonorName = ""
+			t.DonorUsername = ""
+		}
 		if t.LedgerOrgName != "" {
 			// The org as the donor stated it (#365); no CF row to look up.
 			t.DonorName = t.LedgerOrgName
@@ -1620,11 +1659,14 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 				t.DonorLogoURL = org.AvatarURL
 			}
 			if t.DonorName == "" {
-				t.DonorName = "Anonymous"
+				t.DonorName = anonymousName
 			}
 			if t.DonorLogoURL == "" {
 				t.DonorLogoURL = generatedAvatarURL(t.LedgerOrgID, t.DonorName)
 			}
+		} else if hide {
+			t.DonorName = anonymousName
+			t.DonorLogoURL = anonymousAvatarURL()
 		} else if t.LedgerUserID != "" {
 			if user, ok := users[t.LedgerUserID]; ok {
 				if user.Name != "" {
@@ -1633,7 +1675,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 				t.DonorLogoURL = user.AvatarURL
 			}
 			if t.DonorName == "" {
-				t.DonorName = "Anonymous"
+				t.DonorName = anonymousName
 			}
 			if t.DonorLogoURL == "" {
 				t.DonorLogoURL = generatedAvatarURL(t.LedgerUserID, t.DonorName)

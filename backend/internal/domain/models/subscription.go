@@ -28,6 +28,8 @@ type Subscription struct {
 	NextChargeDate     *time.Time `json:"next_charge_date,omitempty"`
 	Frequency          string     `json:"frequency,omitempty"`
 	Status             string     `json:"status,omitempty"`
+	// Anonymous hides the donor's name and email on every charge of this subscription (#466).
+	Anonymous bool `json:"anonymous"`
 	// Stripe IDs are internal operational fields used by webhook reconciliation.
 	// They are never serialised to API consumers.
 	StripeSubscriptionID     string    `json:"-"`
@@ -53,6 +55,8 @@ type SubscriptionCreateInput struct {
 	// OrganizationID is the legacy per-user org ID, used only when Organization is absent. Remove after #409.
 	OrganizationID        string `json:"organization_id,omitempty"`
 	StripePaymentMethodID string `json:"stripe_payment_method_id"`
+	// Anonymous hides the donor's name and email on donor lists (#466).
+	Anonymous bool `json:"anonymous,omitempty"`
 	// IdempotencyKey is set by the handler from the Idempotency-Key HTTP header.
 	// Not decoded from the JSON body (json:"-").
 	IdempotencyKey string `json:"-"`

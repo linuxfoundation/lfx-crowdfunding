@@ -27,6 +27,8 @@ export type DonorType = 'individual' | 'organization';
 export interface DonateContactForm {
   donorType: DonorType;
   organization: OrgClaim | null;
+  // Hide the donor's name and email on donor lists (#466).
+  anonymous: boolean;
 }
 
 export interface DonateSubmission {

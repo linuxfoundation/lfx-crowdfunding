@@ -39,6 +39,8 @@ type Donation struct {
 	Status             string `json:"status,omitempty"`
 	// DonationTier is the sponsorship tier the donor selected, or empty if no tier was chosen.
 	DonationTier string `json:"donation_tier,omitempty"`
+	// Anonymous hides the donor's name and email from everyone but the donor (#466).
+	Anonymous bool `json:"anonymous"`
 	// Stripe IDs are internal operational fields used by the webhook reconciliation
 	// flow. They are never serialised to API consumers.
 	StripePaymentIntentID string    `json:"-"`
@@ -67,6 +69,21 @@ type DonationCreateInput struct {
 	// DonationTier is the sponsorship tier name the donor wishes to donate under.
 	// Optional — if set the donation amount must meet that tier's minimum.
 	DonationTier string `json:"donation_tier,omitempty"`
+	// Anonymous hides the donor's name and email on donor lists (#466).
+	Anonymous bool `json:"anonymous,omitempty"`
+}
+
+// AnonymityUpdateInput is the body of PATCH /crowdfunding/me/donations/{id} and
+// PATCH /crowdfunding/me/subscriptions/{id}. Anonymous is a pointer so a body
+// without the field is rejected instead of silently turning anonymity off.
+type AnonymityUpdateInput struct {
+	Anonymous *bool `json:"anonymous"`
+}
+
+// AnonymityState is the response of the anonymity PATCH endpoints.
+type AnonymityState struct {
+	ID        string `json:"id"`
+	Anonymous bool   `json:"anonymous"`
 }
 
 // DonationSummary is the public-facing projection returned by the initiative
@@ -82,6 +99,7 @@ type DonationSummary struct {
 	DonorType      string    `json:"donor_type,omitempty"` // "organization" | "individual"
 	DonorAvatarURL string    `json:"donor_avatar_url,omitempty"`
 	DonationTier   string    `json:"donation_tier,omitempty"`
+	Anonymous      bool      `json:"anonymous,omitempty"`
 	CreatedOn      time.Time `json:"created_on"`
 }
 
@@ -98,6 +116,7 @@ type OrgDonationRow struct {
 	DonorName        string
 	DonatedAt        time.Time
 	Status           string
+	Anonymous        bool
 }
 
 // Donation kinds on the Org lens list.
@@ -117,11 +136,13 @@ type OrgLensDonation struct {
 	// InitiativeSlug builds the link to the initiative's public page.
 	InitiativeSlug string `json:"initiative_slug,omitempty"`
 	// InitiativeCreator is the initiative owner's display name (never an email).
-	InitiativeCreator string    `json:"initiative_creator,omitempty"`
-	DonorName         string    `json:"donor_name"`
-	DonorEmail        string    `json:"donor_email"`
-	AmountCents       int64     `json:"amount_cents"`
-	Frequency         string    `json:"frequency,omitempty"`
-	Status            string    `json:"status"`
-	CreatedOn         time.Time `json:"created_on"`
+	InitiativeCreator string `json:"initiative_creator,omitempty"`
+	// DonorName and DonorEmail are "Anonymous" and "" when Anonymous is set (#466).
+	DonorName   string    `json:"donor_name"`
+	DonorEmail  string    `json:"donor_email"`
+	Anonymous   bool      `json:"anonymous"`
+	AmountCents int64     `json:"amount_cents"`
+	Frequency   string    `json:"frequency,omitempty"`
+	Status      string    `json:"status"`
+	CreatedOn   time.Time `json:"created_on"`
 }

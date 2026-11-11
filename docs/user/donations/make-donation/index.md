@@ -1,8 +1,8 @@
 ---
 title: Making a Donation
 description: How to make a one-time or monthly donation to an open source initiative on LFX Crowdfunding.
-tags: [donations, one-time, monthly, payment, stripe, organization]
-last_updated: 2026-10-23
+tags: [donations, one-time, monthly, payment, stripe, organization, anonymous]
+last_updated: 2026-11-10
 display_order: 1
 intercom_collection: LFX Crowdfunding
 ---
@@ -49,9 +49,13 @@ Click **Search instead** to go back to the search.
 A few things to know:
 
 - The organization is shown publicly as you entered or selected it. There is no check that you work there.
-- People who can view the organization in LFX see your name and email next to the donation on its LFX organization page. The donate drawer reminds you of this once you pick an organization.
+- People who can view the organization in LFX see your name and email next to the donation on its LFX organization page, unless you donate anonymously. The donate drawer reminds you of this once you pick an organization.
 - You can't change the organization after the donation is made. Your confirmation email shows it.
 - For a monthly donation, every charge is credited to the organization you chose when you subscribed.
+
+### Donate anonymously
+
+Below the donor choice, check **Donate anonymously** to hide your name and email. See **Anonymous donations** below for what that changes.
 
 ## Step 3 — Payment
 
@@ -73,7 +77,22 @@ Click **Donate** to process your payment. For cards that require additional veri
 
 ## Anonymous donations
 
-LFX Crowdfunding does not currently offer a donor-selectable anonymous option. Your name and avatar, or the organization's name if you donated on behalf of one, will be displayed publicly on the initiative's backer list. If your donor information is unavailable at the time of processing, your name will appear as **Anonymous** on the initiative page.
+![Donate anonymously option](/images/docs/screenshots/donations/make-donation-anonymous.png)
+
+You still sign in to donate, and payment works the same way. When you check **Donate anonymously**:
+
+- Your donation still appears on the initiative page with its amount, but you are shown as **Anonymous** in the recent donations, the donations table and the sponsors list.
+- If you donate on behalf of an organization, the organization's name and logo still show. Only your own name is hidden, including on the organization's LFX organization page, which shows **Anonymous** with no email.
+- Nobody else sees your name or email with the donation, including the initiative's owner and managers. Their new-donation email shows **Anonymous** too.
+- You still see your own name and the donation in [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations), and your confirmation email is unchanged.
+- For a monthly donation, the choice applies to every charge.
+- The donation still counts toward the initiative's totals.
+
+On the sponsors list and the platform-wide recent donations, amounts from the same person are grouped together. If you donated to an initiative both anonymously and with your name, you show as **Anonymous** in those places for that initiative.
+
+You can turn this on or off later. See **Hide or show your name** in [Managing Your Donations](../manage-donations/).
+
+If your donor information is unavailable when a donation is processed, your name may also appear as **Anonymous**.
 
 ## After donating
 

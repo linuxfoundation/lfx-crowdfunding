@@ -35,6 +35,7 @@ export default defineEventHandler(async (event): Promise<SubscriptionResult> => 
         stripe_payment_method_id: body.stripePaymentMethodId,
         ...(body.category ? { category: body.category } : {}),
         ...toOrgClaimBody(body.organization),
+        ...(body.anonymous ? { anonymous: true } : {}),
       },
       headers: { 'Idempotency-Key': idempotencyKey },
     },
