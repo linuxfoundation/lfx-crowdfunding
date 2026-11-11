@@ -26,9 +26,17 @@ type testUserRepo struct {
 	upsertResult *models.User
 	upsertErr    error
 	lastUpserted *models.User
+	existing     *models.User // returned by GetByUsername; nil means not found
+	getErr       error
 }
 
 func (r *testUserRepo) GetByUsername(_ context.Context, _ string) (*models.User, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	if r.existing != nil {
+		return r.existing, nil
+	}
 	return nil, domain.ErrUserNotFound
 }
 func (r *testUserRepo) GetByID(_ context.Context, _ string) (*models.User, error) {
@@ -155,6 +163,14 @@ type testProfileLookup struct {
 	email       string
 	emailErr    error
 	emailCalled bool
+	sub         string
+	subErr      error
+	subCalled   bool
+}
+
+func (l *testProfileLookup) UsernameToSub(_ context.Context, _ string) (string, error) {
+	l.subCalled = true
+	return l.sub, l.subErr
 }
 
 func (l *testProfileLookup) UserMetadata(_ context.Context, _ string) (*clients.UserMetadata, error) {
@@ -465,5 +481,53 @@ func TestSyncProfile_RowBoundToOtherIdentity_Returns403(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", w.Code)
+	}
+}
+
+func TestSyncProfile_HeimdallIssued_BindsAuth0Subject(t *testing.T) {
+	cases := []struct {
+		name     string
+		repo     *testUserRepo
+		lookup   *testProfileLookup
+		want     string
+		wantCall bool
+	}{
+		{"new user", &testUserRepo{}, &testProfileLookup{sub: "auth0|jdoe", md: &clients.UserMetadata{}}, "auth0|jdoe", true},
+		{"row without one", &testUserRepo{existing: &models.User{Username: "jdoe"}}, &testProfileLookup{sub: "auth0|jdoe", md: &clients.UserMetadata{}}, "auth0|jdoe", true},
+		// A bound id is kept: sending another would make Upsert reject the sync.
+		{"row already bound", &testUserRepo{existing: &models.User{Username: "jdoe", LegacyUserID: "auth0|legacy"}}, &testProfileLookup{sub: "auth0|jdoe", md: &clients.UserMetadata{}}, "", false},
+		{"lookup fails", &testUserRepo{}, &testProfileLookup{subErr: errors.New("nats timeout"), md: &clients.UserMetadata{}}, "", true},
+		{"user read fails", &testUserRepo{getErr: errors.New("db down")}, &testProfileLookup{sub: "auth0|jdoe", md: &clients.UserMetadata{}}, "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := NewUserHandler(c.repo, &testUserInfoFetcher{err: errors.New("must not be called")}, c.lookup, slog.Default())
+			w := httptest.NewRecorder()
+			h.SyncProfile(w, newSyncProfileRequest(heimdallSyncPrincipal()))
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", w.Code)
+			}
+			if got := c.repo.lastUpserted; got == nil || got.LegacyUserID != c.want {
+				t.Errorf("upserted = %+v, want LegacyUserID %q", got, c.want)
+			}
+			if c.lookup.subCalled != c.wantCall {
+				t.Errorf("UsernameToSub called = %v, want %v", c.lookup.subCalled, c.wantCall)
+			}
+		})
+	}
+}
+
+func TestSyncProfile_MockBypass_NeverLooksUpSubject(t *testing.T) {
+	repo := &testUserRepo{}
+	lookup := &testProfileLookup{sub: "auth0|dev-user-001", md: &clients.UserMetadata{}}
+	h := NewUserHandler(repo, &testUserInfoFetcher{err: errors.New("must not be called")}, lookup, slog.Default())
+
+	principal := &models.Principal{UserID: "dev-user-001", Username: "dev-user-001", Scope: auth.ScopeMe, IsMockBypass: true}
+	w := httptest.NewRecorder()
+	h.SyncProfile(w, newSyncProfileRequest(principal))
+
+	if lookup.subCalled || repo.lastUpserted == nil || repo.lastUpserted.LegacyUserID != "" {
+		t.Errorf("mock bypass bound a subject: called=%v upserted=%+v", lookup.subCalled, repo.lastUpserted)
 	}
 }

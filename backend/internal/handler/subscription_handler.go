@@ -148,3 +148,25 @@ func (h *SubscriptionHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// SetAnonymous handles PATCH /crowdfunding/me/subscriptions/{id} — requires JWT.
+// Body {"anonymous": bool} hides or shows the caller's name and email on donor
+// lists for every charge of their own subscription (#466).
+func (h *SubscriptionHandler) SetAnonymous(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil || principal.Username == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	var input models.AnonymityUpdateInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Anonymous == nil {
+		Error(w, fmt.Errorf("%w: anonymous (boolean) is required", domain.ErrInvalidInput))
+		return
+	}
+	state, err := h.svc.SetAnonymous(r.Context(), chi.URLParam(r, "id"), principal.Username, *input.Anonymous)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, state)
+}

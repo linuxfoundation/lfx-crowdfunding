@@ -2,7 +2,7 @@
 title: Backers
 description: Understand how supporters are listed on initiative pages on LFX Crowdfunding.
 tags: [backers, supporters, donors, donations, anonymous, organization]
-last_updated: 2026-10-28
+last_updated: 2026-11-10
 display_order: 6
 intercom_collection: LFX Crowdfunding
 ---
@@ -36,11 +36,15 @@ If someone donated on behalf of an organization, the backer entry shows the orga
 
 ## Anonymous donations
 
-If a donor's information is not available, their name is shown as **Anonymous**. There is no way to filter or exclude anonymous donations from the list.
+Donors can choose to donate anonymously. Their donation is still listed with its amount, but the person is shown as **Anonymous**. For an organization donation the organization's name and logo still show; only the person behind it is hidden. A donor's name is also shown as **Anonymous** if their information is not available.
+
+On the sponsors list, a donor's amounts for the initiative are added together. If any of their donations to the initiative is anonymous, the whole entry shows as **Anonymous**.
+
+There is no way to filter or exclude anonymous donations from the list. See **Anonymous donations** in [Making a Donation](../donations/make-donation/) for how to donate anonymously.
 
 ## After donating
 
-Once your payment is processed your name and avatar, or the organization's name if you donated on behalf of one, appear on the initiative's backer list. See [Making a Donation](../donations/make-donation/) for the full payment steps.
+Once your payment is processed your name and avatar, or the organization's name if you donated on behalf of one, appear on the initiative's backer list. If you donated anonymously, you appear as **Anonymous**. See [Making a Donation](../donations/make-donation/) for the full payment steps.
 
 ## Related sections
 

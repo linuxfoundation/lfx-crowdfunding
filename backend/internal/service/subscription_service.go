@@ -14,6 +14,7 @@ import (
 
 	stripe "github.com/stripe/stripe-go/v85"
 
+	"github.com/google/uuid"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/infrastructure/clients"
@@ -30,6 +31,43 @@ type SubscriptionService struct {
 	userRepo       domain.UserRepository
 	stripe         clients.StripeClient
 	b2bOrgResolver B2BOrgResolver
+	privacy        domain.DonorPrivacyRepository
+}
+
+// SetDonorPrivacyRepo wires the store for the donor's anonymity choice (#466).
+func (s *SubscriptionService) SetDonorPrivacyRepo(r domain.DonorPrivacyRepository) {
+	s.privacy = r
+}
+
+// SetAnonymous turns anonymity on or off for the caller's own subscription; it
+// covers every charge, past and future (#466). Returns ErrSubscriptionNotFound
+// when the subscription is missing or someone else's.
+func (s *SubscriptionService) SetAnonymous(ctx context.Context, id, username string, anonymous bool) (*models.AnonymityState, error) {
+	ctx, span := subscriptionSvcTracer.Start(ctx, "SubscriptionService.SetAnonymous")
+	defer span.End()
+	span.SetAttributes(attribute.String("subscription.id", id))
+
+	if s.privacy == nil {
+		return nil, fmt.Errorf("donor privacy store not configured")
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, domain.ErrSubscriptionNotFound
+	}
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrSubscriptionNotFound
+		}
+		span.RecordError(err)
+		return nil, fmt.Errorf("resolve user: %w", err)
+	}
+	if err := s.privacy.SetSubscriptionAnonymous(ctx, id, user.ID, anonymous); err != nil {
+		if !errors.Is(err, domain.ErrSubscriptionNotFound) {
+			span.RecordError(err)
+		}
+		return nil, err
+	}
+	return &models.AnonymityState{ID: id, Anonymous: anonymous}, nil
 }
 
 // NewSubscriptionService returns a SubscriptionService.
@@ -192,6 +230,11 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 	if user.Email == "" {
 		return nil, fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
 	}
+	// Stripe metadata and the Ledger key donors by the Auth0 subject; without it
+	// the payment would succeed but never reach the Ledger (#468).
+	if user.LegacyUserID == "" {
+		return nil, fmt.Errorf("%w: account id not set — call PATCH /crowdfunding/me to sync your profile before subscribing", domain.ErrProfileNotSynced)
+	}
 
 	// The org is stored as the donor stated it; there is no affiliation check (doc 13 §5.1).
 	org, err := orgClaim(input.Organization)
@@ -295,6 +338,7 @@ func (s *SubscriptionService) Create(ctx context.Context, initiativeID, username
 		StripeSubscriptionID:     result.SubscriptionID,
 		StripeSubscriptionItemID: result.SubscriptionItemID,
 		StripePriceID:            result.PriceID,
+		Anonymous:                input.Anonymous,
 	}
 
 	created, err := s.repo.Create(ctx, sub)

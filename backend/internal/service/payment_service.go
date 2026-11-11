@@ -49,6 +49,11 @@ func (s *PaymentService) ensureCustomer(ctx context.Context, username string) (u
 	if user.Email == "" {
 		return "", "", fmt.Errorf("%w: email not set — call PATCH /crowdfunding/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
 	}
+	// The customer's user_id metadata is how ledger-service attributes recurring
+	// charges; a customer created without it loses them (#468).
+	if user.LegacyUserID == "" {
+		return "", "", fmt.Errorf("%w: account id not set — call PATCH /crowdfunding/me to sync your profile before using payment features", domain.ErrProfileNotSynced)
+	}
 	newCustomerID, err := s.stripe.CreateCustomer(ctx, user.LegacyUserID, user.Email)
 	if err != nil {
 		return "", "", fmt.Errorf("create stripe customer: %w", err)

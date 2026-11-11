@@ -6,7 +6,7 @@
 <p style="font-size:15px;color:#374151;margin:0 0 24px 0;line-height:1.9;font-family:Inter,Arial,'Helvetica Neue',Helvetica,sans-serif;">
 {{.DonationType}}: <strong style="color:#111827;">{{.InitiativeName}}</strong><br>
 {{with .Category}}Category: {{.}}<br>{{end}}
-Donor: {{.DonorName}} &lt;{{.DonorEmail}}&gt;<br>
+Donor: {{.DonorName}}{{with .DonorEmail}} &lt;{{.}}&gt;{{end}}<br>
 {{with .OrgName}}Organization: {{.}}<br>{{end}}
 Payment Type: {{.Payment}}<br>
 Amount: <strong style="color:#111827;">{{.Amount}}</strong>

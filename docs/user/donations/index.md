@@ -1,8 +1,8 @@
 ---
 title: Donations
 description: Learn how to donate to open source initiatives and manage your giving history on LFX Crowdfunding.
-tags: [donations, giving, payments, recurring, organization, company]
-last_updated: 2026-11-06
+tags: [donations, giving, payments, recurring, organization, company, anonymous]
+last_updated: 2026-11-10
 display_order: 3
 intercom_collection: LFX Crowdfunding
 ---
@@ -17,7 +17,7 @@ Donating to an initiative supports open source projects directly. All payments a
 2. Click the **Donate** button
 3. Choose a donation amount or enter a custom amount
 4. Select **One-time** or **Monthly** recurring
-5. Under **I'm donating as**, choose **Individual** or **An organization**
+5. Under **I'm donating as**, choose **Individual** or **An organization**, and optionally check **Donate anonymously**
 6. Enter your payment details and confirm
 
 For a detailed walkthrough, see [Making a Donation](./make-donation/).
@@ -29,11 +29,15 @@ You can donate on behalf of a company or organization instead of as an individua
 The donation is then credited to the organization: its name appears on the initiative's backer list with donor type **Company**. A few things to know:
 
 - There is no check that you work at the organization you pick.
-- People who can view the organization in LFX see your name and email next to the donation on its LFX organization page.
+- People who can view the organization in LFX see your name and email next to the donation on its LFX organization page, unless you donate anonymously.
 - You can't change the organization after the donation is made.
 - For a monthly donation, every charge is credited to the organization you chose when you subscribed.
 
 Payment is still by credit card. For full details, see **Step 2 — Choose who you're donating as** in [Making a Donation](./make-donation/).
+
+## Donating anonymously
+
+Check **Donate anonymously** in the donate drawer to hide your name and email. The donation still appears with its amount, shown as **Anonymous**; an organization donation keeps the organization's name. You can change this later from [My Donations on LFX](https://app.lfx.dev/crowdfunding/donations). See **Anonymous donations** in [Making a Donation](./make-donation/).
 
 ## One-time vs. monthly donations
 

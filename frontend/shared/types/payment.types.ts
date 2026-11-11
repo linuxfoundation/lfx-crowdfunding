@@ -21,6 +21,7 @@ export interface DonationRequest {
   category?: string;
   organization?: OrgClaim;
   donationTier?: string;
+  anonymous?: boolean;
 }
 
 export interface DonationResult {
@@ -37,6 +38,7 @@ export interface SubscriptionRequest {
   stripePaymentMethodId: string;
   category?: string;
   organization?: OrgClaim;
+  anonymous?: boolean;
 }
 
 export interface SubscriptionResult {

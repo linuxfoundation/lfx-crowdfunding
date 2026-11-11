@@ -94,6 +94,31 @@ type SubscriptionRepository interface {
 	SetB2BOrgSFID(ctx context.Context, id, sfid string) error
 }
 
+// DonorPrivacyRepository answers which donations hide the donor's identity and
+// stores that choice (#466). Ledger rows are matched back to CF records by
+// their Stripe IDs; ledger user IDs are users.legacy_user_id.
+type DonorPrivacyRepository interface {
+	// MatchLedgerRefs maps Stripe charge or PaymentIntent IDs to CF donations and
+	// Stripe subscription IDs to CF subscriptions. Unmatched IDs are absent.
+	MatchLedgerRefs(ctx context.Context, sourceTxnIDs, stripeSubscriptionIDs []string) (*models.LedgerRefMatches, error)
+	// AnonymousDonors returns, per initiative ID, the ledger user IDs of donors
+	// with any anonymous donation or subscription to that initiative.
+	AnonymousDonors(ctx context.Context, initiativeIDs []string) (map[string]map[string]bool, error)
+	// AnonymousLedgerUsers returns which of the given ledger user IDs have any
+	// anonymous donation or subscription, on any initiative.
+	AnonymousLedgerUsers(ctx context.Context, ledgerUserIDs []string) (map[string]bool, error)
+	// IsPaymentIntentAnonymous reports whether the donation for a PaymentIntent is anonymous.
+	IsPaymentIntentAnonymous(ctx context.Context, paymentIntentID string) (bool, error)
+	// IsStripeSubscriptionAnonymous reports whether the subscription for a Stripe subscription ID is anonymous.
+	IsStripeSubscriptionAnonymous(ctx context.Context, stripeSubscriptionID string) (bool, error)
+	// SetDonationAnonymous updates a donation owned by userID (users.id).
+	// Returns ErrDonationNotFound when the donation is missing or someone else's.
+	SetDonationAnonymous(ctx context.Context, id, userID string, anonymous bool) error
+	// SetSubscriptionAnonymous updates a subscription owned by userID (users.id).
+	// Returns ErrSubscriptionNotFound when the subscription is missing or someone else's.
+	SetSubscriptionAnonymous(ctx context.Context, id, userID string, anonymous bool) error
+}
+
 // UserRepository defines persistence operations for users.
 type UserRepository interface {
 	// GetByUsername retrieves a user by their LF SSO username.

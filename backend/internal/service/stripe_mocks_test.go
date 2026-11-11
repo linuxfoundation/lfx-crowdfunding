@@ -145,7 +145,7 @@ func (r *testUserRepo) GetByUsername(ctx context.Context, username string) (*mod
 	if r.onGetByUsername != nil {
 		return r.onGetByUsername(ctx, username)
 	}
-	return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: username, Email: username + "@test.example"}, nil
+	return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: username, LegacyUserID: "auth0|" + username, Email: username + "@test.example"}, nil
 }
 func (r *testUserRepo) GetByID(ctx context.Context, id string) (*models.User, error) {
 	if r.onGetByID != nil {
@@ -180,6 +180,7 @@ type testDonationRepo struct {
 	onListByUser              func(context.Context, string, models.DonationFilter) ([]models.Donation, *models.PaginationMeta, error)
 	onListOrgDonations        func(context.Context) ([]models.OrgDonationRow, error)
 	onSetB2BOrgSFID           func(context.Context, string, string) error
+	onListByB2BOrg            func(context.Context, string, int, int) ([]models.OrgLensDonation, *models.PaginationMeta, error)
 }
 
 func (r *testDonationRepo) GetByID(_ context.Context, _ string) (*models.Donation, error) {
@@ -216,7 +217,10 @@ func (r *testDonationRepo) SetB2BOrgSFID(ctx context.Context, id, sfid string) e
 	return nil
 }
 
-func (r *testDonationRepo) ListByB2BOrg(_ context.Context, _ string, _, _ int) ([]models.OrgLensDonation, *models.PaginationMeta, error) {
+func (r *testDonationRepo) ListByB2BOrg(ctx context.Context, sfid string, limit, offset int) ([]models.OrgLensDonation, *models.PaginationMeta, error) {
+	if r.onListByB2BOrg != nil {
+		return r.onListByB2BOrg(ctx, sfid, limit, offset)
+	}
 	return nil, nil, nil
 }
 

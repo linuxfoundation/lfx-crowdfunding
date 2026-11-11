@@ -35,7 +35,7 @@ const subscriptionColumns = `
 	id, user_id, initiative_id, org_name, org_domain, category,
 	current_amount_in_cents, frequency, status,
 	stripe_subscription_id, stripe_subscription_item_id, stripe_price_id,
-	created_on, updated_on`
+	created_on, updated_on, anonymous`
 
 func scanSubscription(row scanner) (*models.Subscription, error) {
 	s := &models.Subscription{}
@@ -50,7 +50,7 @@ func scanSubscription(row scanner) (*models.Subscription, error) {
 		&s.ID, &s.UserID, &initiativeID, &orgName, &orgDomain, &category,
 		&s.CurrentAmountCents, &frequency, &status,
 		&stripeSubscriptionID, &stripeSubscriptionItemID, &stripePriceID,
-		&createdOn, &updatedOn,
+		&createdOn, &updatedOn, &s.Anonymous,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -108,7 +108,7 @@ func (r *SubscriptionRepository) GetByIDForUser(ctx context.Context, id, userID 
 		SELECT s.id, s.user_id, s.initiative_id, s.org_name, s.org_domain, s.category,
 		       s.current_amount_in_cents, s.frequency, s.status,
 		       s.stripe_subscription_id, s.stripe_subscription_item_id, s.stripe_price_id,
-		       s.created_on, s.updated_on,
+		       s.created_on, s.updated_on, s.anonymous,
 		       COALESCE(i.name, ''), COALESCE(i.logo_url, '')
 		FROM subscriptions s
 		LEFT JOIN initiatives i ON i.id = s.initiative_id
@@ -185,7 +185,7 @@ func scanSubscriptionWithInitiative(row scanner) (*models.Subscription, error) {
 		&s.ID, &s.UserID, &initiativeID, &orgName, &orgDomain, &category,
 		&s.CurrentAmountCents, &frequency, &status,
 		&stripeSubscriptionID, &stripeSubscriptionItemID, &stripePriceID,
-		&createdOn, &updatedOn,
+		&createdOn, &updatedOn, &s.Anonymous,
 		&s.InitiativeName, &s.InitiativeLogoURL,
 	)
 	if err != nil {
@@ -242,7 +242,7 @@ func (r *SubscriptionRepository) listSubsForUser(ctx context.Context, userID str
 		SELECT s.id, s.user_id, s.initiative_id, s.org_name, s.org_domain, s.category,
 		       s.current_amount_in_cents, s.frequency, s.status,
 		       s.stripe_subscription_id, s.stripe_subscription_item_id, s.stripe_price_id,
-		       s.created_on, s.updated_on,
+		       s.created_on, s.updated_on, s.anonymous,
 		       COALESCE(i.name, ''), COALESCE(i.logo_url, '')
 		FROM subscriptions s
 		LEFT JOIN initiatives i ON i.id = s.initiative_id
@@ -328,11 +328,11 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 		       (user_id, initiative_id, org_name, org_domain, category,
 		        current_amount_in_cents, frequency, status,
 		        stripe_subscription_id, stripe_subscription_item_id, stripe_price_id,
-		        first_paid_at)
+		        first_paid_at, anonymous)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
 		        -- Created active: Stripe charged the first invoice without 3DS. The
 		        -- invoice webhook can land before this INSERT and is not retried.
-		        CASE WHEN $12 THEN NOW() END)
+		        CASE WHEN $12 THEN NOW() END, $13)
 		RETURNING ` + subscriptionColumns
 
 	row := r.pool.QueryRow(ctx, q,
@@ -341,7 +341,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *models.Subscript
 		nullableString(s.Category), s.CurrentAmountCents, s.Frequency,
 		nullableString(s.Status), nullableString(s.StripeSubscriptionID),
 		nullableString(s.StripeSubscriptionItemID), nullableString(s.StripePriceID),
-		s.Status == models.SubscriptionStatusActive,
+		s.Status == models.SubscriptionStatusActive, s.Anonymous,
 	)
 	created, err := scanSubscription(row)
 	if err != nil {

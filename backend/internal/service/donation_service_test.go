@@ -474,7 +474,7 @@ func TestDonationService_Create_NewCustomerImmediateSuccess(t *testing.T) {
 	}
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", LegacyUserID: "auth0|u1", Email: "u1@test.example", StripeCustomerID: ""}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -529,7 +529,7 @@ func TestDonationService_Create_ExistingCustomer3DS(t *testing.T) {
 
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, _ string) (*models.User, error) {
-			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", Email: "u1@test.example", StripeCustomerID: existingCustomerID}, nil
+			return &models.User{ID: "00000000-0000-0000-0000-000000000001", Username: "u1", LegacyUserID: "auth0|u1", Email: "u1@test.example", StripeCustomerID: existingCustomerID}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -786,7 +786,7 @@ func TestDonationService_Create_TierBelowMinimum(t *testing.T) {
 func TestDonationService_Create_TierAtMinimum_Succeeds(t *testing.T) {
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, u string) (*models.User, error) {
-			return &models.User{ID: "u1", Username: u, Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
+			return &models.User{ID: "u1", Username: u, LegacyUserID: "auth0|u1", Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -817,7 +817,7 @@ func TestDonationService_Create_DonationTierStoredOnDonation(t *testing.T) {
 	}
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, u string) (*models.User, error) {
-			return &models.User{ID: "u1", Username: u, Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
+			return &models.User{ID: "u1", Username: u, LegacyUserID: "auth0|u1", Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
 		},
 	}
 	stripe := &configStripeClient{
@@ -844,7 +844,7 @@ func TestDonationService_Create_DonationTierStoredOnDonation(t *testing.T) {
 func TestDonationService_Create_NoTier_Succeeds(t *testing.T) {
 	userRepo := &testUserRepo{
 		onGetByUsername: func(_ context.Context, u string) (*models.User, error) {
-			return &models.User{ID: "u1", Username: u, Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
+			return &models.User{ID: "u1", Username: u, LegacyUserID: "auth0|u1", Email: u + "@test.example", StripeCustomerID: "cus_existing"}, nil
 		},
 	}
 	stripe := &configStripeClient{
