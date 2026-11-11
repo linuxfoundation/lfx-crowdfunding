@@ -289,10 +289,11 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		})
 
 		// Slug-to-UID resolver — requires a valid bearer token (any scope); no
-		// specific scope is enforced because it's called via Heimdall's
-		// crowdfunding_slug_resolver_contextualizer forwarding the original
-		// caller's token, which may hold any scope. Internal-only: not meant for
-		// direct end-user use, mirroring lfx-v2-project-service's equivalent.
+		// specific scope is enforced because its callers (the Self Serve BFF and
+		// Heimdall's crowdfunding_slug_resolver_contextualizer) forward the
+		// end user's token, which may hold any scope, and Ledger sends an M2M
+		// token. Service-to-service: not meant for browsers, mirroring
+		// lfx-v2-project-service's equivalent.
 		r.With(jwtAuth.Middleware).Get("/initiatives/slug-to-uid/{slug}", initiativeH.ResolveSlugToUID)
 
 		// Protected API — requires a valid bearer token with access:me scope.

@@ -42,7 +42,7 @@
 Base URL (production): `https://api-gw.platform.linuxfoundation.org`  
 Public reads are under `/crowdfunding/initiatives`; authenticated writes are under `/crowdfunding/me/initiatives`.
 
-The public list returns only `published` initiatives (`status` and `owner_id` query parameters are ignored). The public detail omits `beneficiaries`, `contributors`, `mentors` and `contacts`, which hold third-party contact details; managers read them from `GET /crowdfunding/initiatives/{slug-or-uuid}/manage`.
+The public list returns only `published` initiatives (`status` and `owner_id` query parameters are ignored). The public detail omits `beneficiaries`, `contributors`, `mentors` and `contacts`, which hold third-party contact details; managers read them from `GET /crowdfunding/initiatives/{uuid}/manage` (UUID only; resolve a slug with `GET /crowdfunding/initiatives/slug-to-uid/{slug}` first, which 404s for an unknown slug. `/manage` returns 403 both for a non-writer and for an initiative that doesn't exist, intentionally).
 
 ---
 

@@ -204,13 +204,13 @@ spec:
     # Manager reads: an initiative in any status, with contacts, and its
     # transactions. Authorized here with openfga_check writer, not in the service
     # behind allow_all (the service's canManage check stays as defense in depth).
-    # Callers may pass a slug, but crowdfunding_initiative tuples are keyed by
-    # UUID, so a slug goes through crowdfunding_slug_resolver_contextualizer first.
-    # That resolver 404s on a UUID and continue_pipeline_on_error is false, so it
-    # is skipped for UUID captures, and the UUID branch checks the raw capture,
-    # never the skipped contextualizer's Outputs. Hence two mutually exclusive
-    # openfga_check entries. $uuidRe is defined once so the branches stay exact
-    # negations. Same pattern as lfx-v2-campaign-service's project-api rule.
+    # UUID only: crowdfunding_initiative tuples are keyed by UUID, and there is
+    # deliberately no slug resolver here, because Heimdall turns a resolver 404
+    # for an unknown slug into a 502 (#363). Callers resolve a slug with
+    # slug-to-uid first; its 404 is the not-found signal. With openfga.enabled,
+    # a slug or unknown UUID gets 403 here, the same as a non-writer: a 403
+    # means "doesn't exist" or "not a writer", and we intentionally don't
+    # distinguish them.
     - id: "rule:lfx:lfx-crowdfunding-backend:initiative-manage-read"
       allow_encoded_slashes: "off"
       match:
@@ -225,20 +225,7 @@ spec:
         - contextualizer: oidc_contextualizer
         {{- end }}
         {{- if .Values.openfga.enabled }}
-        {{- $uuidRe := "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" }}
-        - contextualizer: crowdfunding_slug_resolver_contextualizer
-          if: '!Request.URL.Captures.id.matches("{{ $uuidRe }}")'
-          config:
-            values:
-              slug: "{{ "{{- .Request.URL.Captures.id -}}" }}"
         - authorizer: openfga_check
-          if: '!Request.URL.Captures.id.matches("{{ $uuidRe }}")'
-          config:
-            values:
-              relation: writer
-              object: "crowdfunding_initiative:{{ "{{- .Outputs.crowdfunding_slug_resolver_contextualizer.uid -}}" }}"
-        - authorizer: openfga_check
-          if: 'Request.URL.Captures.id.matches("{{ $uuidRe }}")'
           config:
             values:
               relation: writer
@@ -273,11 +260,13 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Internal-only: called by lfx-v2-helm's crowdfunding_slug_resolver_contextualizer
-    # (from other services' Heimdall pipelines, e.g. lfx-self-serve), never
-    # directly by an end user. No anonymous_authenticator pairing here — the
-    # oidc authenticator accepts the raw end-user token the contextualizer
-    # forwards. Pairing it with anonymous_authenticator would let
+    # Service-to-service: called by the Self Serve BFF with the user's token
+    # (to resolve a route slug before the UUID-only /manage reads; its 404 is
+    # the not-found signal, #363), by Ledger with an M2M token, and by
+    # lfx-v2-helm's crowdfunding_slug_resolver_contextualizer. Not called by
+    # browsers directly. No anonymous_authenticator pairing here — the
+    # oidc authenticator accepts the raw end-user token those callers
+    # forward. Pairing it with anonymous_authenticator would let
     # unauthenticated callers reach allow_all and get a free create_jwt token
     # that then satisfies this endpoint's own auth check — i.e. anonymous
     # slug-to-UID enumeration. Do not add it back. Mirrors
@@ -287,8 +276,8 @@ spec:
     # still hit this directly and learn a non-published initiative's slug
     # resolves to a real UUID (ResolveSlugToUID ignores status). The UUID
     # alone doesn't grant access — GetByID still denies non-approvers — but
-    # it does confirm existence. Tighten with a dedicated M2M scope or
-    # network boundary once the contextualizer integration is wired up.
+    # it does confirm existence. Tighten with a network boundary; an M2M-only
+    # scope would break the Self Serve BFF, which forwards the user's token.
     - id: "rule:lfx:lfx-crowdfunding-backend:slug-to-uid"
       allow_encoded_slashes: "off"
       match:

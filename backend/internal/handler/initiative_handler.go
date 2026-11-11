@@ -242,10 +242,11 @@ func (h *InitiativeHandler) GetForUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // ResolveSlugToUID handles GET /crowdfunding/initiatives/slug-to-uid/{slug} — requires
-// a valid JWT (any scope). Internal-only: called by lfx-v2-helm's
-// crowdfunding_slug_resolver_contextualizer from other services' Heimdall
-// pipelines (e.g. lfx-self-serve's slug-based reads), never directly by an
-// end user. Resolves regardless of initiative status, mirroring
+// a valid JWT (any scope). Service-to-service: the Self Serve BFF calls it to
+// resolve a route slug before the UUID-only /manage reads (a 404 here is its
+// not-found signal), Ledger calls it with an M2M token, and lfx-v2-helm's
+// crowdfunding_slug_resolver_contextualizer calls it from Heimdall pipelines.
+// Not meant for browsers. Resolves regardless of initiative status, mirroring
 // lfx-v2-project-service's slug-to-uid endpoint.
 func (h *InitiativeHandler) ResolveSlugToUID(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
