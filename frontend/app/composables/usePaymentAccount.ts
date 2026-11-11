@@ -4,6 +4,7 @@
 import { ref } from 'vue';
 import type { StripeCardNumberElement } from '@stripe/stripe-js';
 import type { CardDetails, SetupIntentResult } from '#shared/types/payment.types';
+import { paymentErrorMessage } from '~/utils/payment-error';
 
 // Module-level singleton — card state is shared across all components that call usePaymentAccount().
 const card = ref<CardDetails | null>(null);
@@ -77,8 +78,7 @@ export const usePaymentAccount = () => {
         body: { paymentMethodId },
       });
     } catch (e: unknown) {
-      const err = e as { message?: string };
-      const message = err?.message ?? 'Failed to save your card.';
+      const message = paymentErrorMessage(e, 'Failed to save your card.');
       error.value = message;
       showError(message);
       throw e;

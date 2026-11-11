@@ -3,6 +3,7 @@
 
 import { ref } from 'vue';
 import type { DonationRequest, DonationResult } from '#shared/types/payment.types';
+import { paymentErrorMessage } from '~/utils/payment-error';
 
 // Module-level — loading/error reflect the current donation in progress.
 // Disable the donate button while loading.value is true to prevent double-charges.
@@ -32,8 +33,7 @@ export const useDonate = () => {
 
       return result;
     } catch (e: unknown) {
-      const err = e as { data?: { message?: string }; message?: string };
-      const message = err?.data?.message ?? err?.message ?? 'Donation failed. Please try again.';
+      const message = paymentErrorMessage(e, 'Donation failed. Please try again.');
       error.value = message;
       showError(message);
       throw e;

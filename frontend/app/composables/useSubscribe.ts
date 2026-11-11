@@ -3,6 +3,7 @@
 
 import { ref } from 'vue';
 import type { SubscriptionRequest, SubscriptionResult } from '#shared/types/payment.types';
+import { paymentErrorMessage } from '~/utils/payment-error';
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -36,20 +37,12 @@ export const useSubscribe = () => {
 
       return result;
     } catch (e: unknown) {
-      const err = e as {
-        statusCode?: number;
-        status?: number;
-        data?: { error?: string; message?: string };
-        message?: string;
-      };
+      const err = e as { statusCode?: number; status?: number };
       const statusCode = err?.statusCode ?? err?.status;
       const message =
         statusCode === 409
           ? 'You are already subscribed to this initiative.'
-          : (err?.data?.error ??
-            err?.data?.message ??
-            err?.message ??
-            'Subscription failed. Please try again.');
+          : paymentErrorMessage(e, 'Subscription failed. Please try again.');
       error.value = message;
       showError(message);
       throw e;
