@@ -33,6 +33,8 @@ type Server struct {
 	logger  *slog.Logger
 	httpSrv *http.Server
 	fgaConn *nats.Conn
+	// emailCopies drains background email copies on shutdown; nil when unsupported.
+	emailCopies interface{ WaitCopies(context.Context) error }
 }
 
 // NewServer wires up all dependencies and builds the Chi router.
@@ -124,6 +126,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		emailSender = clients.NewEmailClient(fgaConn, cfg.Email.FromDisplayName)
 	}
 	emailSvc := clients.NewEmailService(emailSender, cfg.Email.FrontendBase, cfg.Email.NotificationEmails, cfg.Email.CopyInbox, logger)
+	emailCopies, _ := emailSvc.(interface{ WaitCopies(context.Context) error })
 
 	// Services
 	initiativeSvc := service.NewInitiativeService(initiativeRepo, userRepo, ledgerClient, stripeClient, emailSvc, reimbursementClient, logger)
@@ -382,12 +385,13 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	}
 
 	return &Server{
-		router:  r,
-		pool:    pool,
-		cfg:     cfg,
-		logger:  logger,
-		httpSrv: httpSrv,
-		fgaConn: fgaConn,
+		router:      r,
+		pool:        pool,
+		cfg:         cfg,
+		logger:      logger,
+		httpSrv:     httpSrv,
+		fgaConn:     fgaConn,
+		emailCopies: emailCopies,
 	}, nil
 }
 
@@ -403,6 +407,12 @@ func (s *Server) Shutdown() {
 	defer cancel()
 	if err := s.httpSrv.Shutdown(ctx); err != nil {
 		s.logger.Error("graceful shutdown error", "error", err)
+	}
+	// Drain background email copies before closing the NATS connection they use.
+	if s.emailCopies != nil {
+		if err := s.emailCopies.WaitCopies(ctx); err != nil {
+			s.logger.Warn("email copies still in flight at shutdown", "error", err)
+		}
 	}
 	if s.fgaConn != nil {
 		s.fgaConn.Close()

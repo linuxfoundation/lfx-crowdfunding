@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	texttemplate "text/template"
 	"time"
 
@@ -71,16 +72,18 @@ type emailTemplateData struct {
 const copySubjectPrefix = "[Sent to "
 
 type emailService struct {
-	sender             EmailSender // nil when email is not configured
-	frontendBase       string      // e.g. "https://crowdfunding.lfx.linuxfoundation.org"
-	notificationEmails []string    // reviewer inboxes for new-submission alerts
-	copyInbox          string      // archive inbox sent a copy of every email; empty disables copies
+	sender             EmailSender    // nil when email is not configured
+	frontendBase       string         // e.g. "https://crowdfunding.lfx.linuxfoundation.org"
+	notificationEmails []string       // reviewer inboxes for new-submission alerts
+	copyInbox          string         // archive inbox sent a copy of every email; empty disables copies
+	copies             sync.WaitGroup // in-flight background copies, drained by WaitCopies
 	logger             *slog.Logger
 }
 
 // NewEmailService returns a domain.EmailService that renders in-repo templates
 // and sends them through sender. A nil sender makes every send return ErrEmailNotConfigured.
-// When copyInbox is set, every accepted send is followed by a best-effort copy to it.
+// When copyInbox is set, every accepted send is followed by a best-effort copy to it,
+// sent in the background (see sendCopy). Call WaitCopies on shutdown to drain them.
 func NewEmailService(sender EmailSender, frontendBase string, notificationEmails []string, copyInbox string, logger *slog.Logger) domain.EmailService {
 	if logger == nil {
 		logger = slog.Default()
@@ -118,13 +121,38 @@ func (s *emailService) sendEmail(ctx context.Context, to, subject, name string, 
 // sendCopy sends msg to the copy inbox, naming the original recipient in the subject.
 // SES keeps no copies, so this is the only record of what was sent. Best effort: a
 // failure is logged and never fails the original send, which was already accepted.
+//
+// The copy goes out in a background goroutine so it adds no latency to the caller
+// (the Stripe webhook, the reviewer-notification loops). It uses a detached context
+// so it survives the request; the sender's own emailSendTimeout bounds it.
 func (s *emailService) sendCopy(ctx context.Context, msg EmailMessage, template string) {
 	if s.copyInbox == "" || strings.EqualFold(msg.To, s.copyInbox) {
 		return
 	}
 	cp := EmailMessage{To: s.copyInbox, Subject: copySubjectPrefix + msg.To + "] " + msg.Subject, HTML: msg.HTML, Text: msg.Text}
-	if err := s.sender.Send(ctx, cp); err != nil {
-		s.logger.WarnContext(ctx, "failed to send email copy", "template", template, "error", err)
+	detached := context.WithoutCancel(ctx)
+	s.copies.Add(1)
+	go func() {
+		defer s.copies.Done()
+		if err := s.sender.Send(detached, cp); err != nil {
+			s.logger.WarnContext(detached, "failed to send email copy", "template", template, "error", err)
+		}
+	}()
+}
+
+// WaitCopies blocks until every in-flight background copy has finished, or ctx is
+// done. Called on shutdown before the email transport is closed.
+func (s *emailService) WaitCopies(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.copies.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

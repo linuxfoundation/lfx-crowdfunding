@@ -7,17 +7,22 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // --- mock ---
 
 type mockSender struct {
+	mu    sync.Mutex // copies are sent from background goroutines
 	calls []EmailMessage
 	errs  []error // returned in order; nil after exhausted (empty slice always returns nil)
 }
 
 func (m *mockSender) Send(_ context.Context, msg EmailMessage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.calls = append(m.calls, msg)
 	idx := len(m.calls) - 1
 	if idx >= len(m.errs) {
@@ -37,6 +42,30 @@ func newSvc(sender EmailSender, emails []string) *emailService {
 
 func newSvcWithCopy(sender EmailSender, emails []string, copyInbox string) *emailService {
 	return NewEmailService(sender, "https://example.com", emails, copyInbox, nil).(*emailService)
+}
+
+// waitCopies drains the background copies so tests can inspect every Send call.
+func waitCopies(t *testing.T, svc *emailService) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := svc.WaitCopies(ctx); err != nil {
+		t.Fatalf("background copies did not finish: %v", err)
+	}
+}
+
+// splitCalls separates the originals (in send order) from the copies, keyed by subject.
+// Copies run in the background, so their order relative to the originals is not fixed.
+func splitCalls(calls []EmailMessage, copyInbox string) (originals []EmailMessage, copies map[string]EmailMessage) {
+	copies = map[string]EmailMessage{}
+	for _, c := range calls {
+		if c.To == copyInbox {
+			copies[c.Subject] = c
+		} else {
+			originals = append(originals, c)
+		}
+	}
+	return originals, copies
 }
 
 // --- tests ---
@@ -205,23 +234,68 @@ func TestSendEmail_CopiesEachSendToCopyInbox(t *testing.T) {
 	if err := svc.SendProjectApprovedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	waitCopies(t, svc)
 	subject := "Your submission for LFX Crowdfunding has been approved."
-	want := []struct{ to, subject string }{
-		{"owner@example.com", subject},
-		{"copies@example.org", "[Sent to owner@example.com] " + subject},
-		{"reviewer@example.com", subject},
-		{"copies@example.org", "[Sent to reviewer@example.com] " + subject},
+	if len(m.calls) != 4 {
+		t.Fatalf("expected 4 Send calls, got %d: %+v", len(m.calls), m.calls)
 	}
-	if len(m.calls) != len(want) {
-		t.Fatalf("expected %d Send calls, got %d: %+v", len(want), len(m.calls), m.calls)
+	originals, copies := splitCalls(m.calls, "copies@example.org")
+	if len(originals) != 2 || originals[0].To != "owner@example.com" || originals[1].To != "reviewer@example.com" {
+		t.Fatalf("unexpected originals: %+v", originals)
 	}
-	for i, w := range want {
-		if m.calls[i].To != w.to || m.calls[i].Subject != w.subject {
-			t.Errorf("call %d: got (%q, %q), want (%q, %q)", i, m.calls[i].To, m.calls[i].Subject, w.to, w.subject)
+	for _, o := range originals {
+		cp, ok := copies["[Sent to "+o.To+"] "+subject]
+		if !ok {
+			t.Errorf("no copy for %s; copies: %+v", o.To, copies)
+			continue
+		}
+		if cp.HTML != o.HTML || cp.Text != o.Text {
+			t.Errorf("copy body for %s differs from the original", o.To)
 		}
 	}
-	if m.calls[1].HTML != m.calls[0].HTML || m.calls[1].Text != m.calls[0].Text {
-		t.Error("copy body differs from the original")
+}
+
+// blockingCopySender accepts originals at once and holds every copy until released.
+type blockingCopySender struct {
+	mockSender
+	copyInbox string
+	release   chan struct{}
+}
+
+func (b *blockingCopySender) Send(ctx context.Context, msg EmailMessage) error {
+	if msg.To == b.copyInbox {
+		<-b.release
+	}
+	return b.mockSender.Send(ctx, msg)
+}
+
+func TestSendEmail_StalledCopyDoesNotBlockSend(t *testing.T) {
+	b := &blockingCopySender{copyInbox: "copies@example.org", release: make(chan struct{})}
+	svc := newSvcWithCopy(b, nil, "copies@example.org")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.SendDonationConfirmationEmail(context.Background(), "d@example.com", "Donor", "My Project", "http://url", "$50.00", "Travel", "", "Credit Card", "One-time")
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	case <-time.After(time.Second):
+		close(b.release)
+		t.Fatal("send waited on the stalled copy")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := svc.WaitCopies(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitCopies should time out while the copy is stalled, got %v", err)
+	}
+	close(b.release)
+	waitCopies(t, svc)
+	if len(b.calls) != 2 || b.calls[1].To != "copies@example.org" {
+		t.Fatalf("expected original then copy once released, got %+v", b.calls)
 	}
 }
 
@@ -232,6 +306,7 @@ func TestSendEmail_CopyFailureDoesNotFailSend(t *testing.T) {
 	if err := svc.SendProjectDeclinedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url"); err != nil {
 		t.Fatalf("copy failure must not fail the send, got %v", err)
 	}
+	waitCopies(t, svc)
 	if len(m.calls) != 2 {
 		t.Fatalf("expected original + copy, got %d calls", len(m.calls))
 	}
@@ -246,6 +321,7 @@ func TestSendEmail_NoCopyWhenOriginalFails(t *testing.T) {
 	if !errors.Is(err, sendErr) {
 		t.Fatalf("expected sendErr, got %v", err)
 	}
+	waitCopies(t, svc)
 	if len(m.calls) != 1 {
 		t.Fatalf("expected no copy after a failed send, got %d calls", len(m.calls))
 	}
@@ -258,6 +334,7 @@ func TestSendEmail_NoCopyToCopyInboxItself(t *testing.T) {
 	if err := svc.SendProjectForReviewEmail(context.Background(), "owner", "owner@example.com", "My Project", "http://url", "http://approve", "http://decline"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	waitCopies(t, svc)
 	if len(m.calls) != 1 {
 		t.Fatalf("expected no self-copy, got %d calls", len(m.calls))
 	}
@@ -270,6 +347,7 @@ func TestSendEmail_NoCopyWhenUnset(t *testing.T) {
 	if err := svc.SendProjectDeclinedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	waitCopies(t, svc)
 	if len(m.calls) != 1 {
 		t.Fatalf("expected no copy when the copy inbox is unset, got %d calls", len(m.calls))
 	}
