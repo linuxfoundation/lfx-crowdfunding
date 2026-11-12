@@ -55,8 +55,10 @@ export default {
     // Datadog RUM — leave empty locally; set via NUXT_PUBLIC_DATADOG_RUM_* in k8s secrets.
     datadogRumAppId: process.env.NUXT_PUBLIC_DATADOG_RUM_APP_ID || '',
     datadogRumClientToken: process.env.NUXT_PUBLIC_DATADOG_RUM_CLIENT_TOKEN || '',
-    // Version is injected from the git tag at deploy time (e.g. "0.1.12").
-    datadogRumVersion: process.env.NUXT_PUBLIC_APP_VERSION || '',
+    // Release version from the git tag (e.g. "0.1.12"), set on the pod by the Helm chart.
+    // The key must be appVersion so Nuxt re-reads NUXT_PUBLIC_APP_VERSION at server start;
+    // under any other key it is only read at build time, where it's unset.
+    appVersion: process.env.NUXT_PUBLIC_APP_VERSION || '',
     // LaunchDarkly client-side ID — leave empty locally to disable feature flags.
     ldClientId: process.env.NUXT_PUBLIC_LD_CLIENT_ID || '',
   },

@@ -20,10 +20,12 @@ export const formatTimeAgo = (dateStr: string): string => {
   return `${Math.floor(months / 12)}y ago`;
 };
 
-// Formats a date string as "Jan 5, 2025"
+// Formats a date string as "Jan 5, 2025". Pinned to UTC: the server renders in UTC, so a
+// browser-local day would differ near midnight and fail hydration.
 export const formatShortDate = (dateStr: string): string =>
   new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'UTC',
   });

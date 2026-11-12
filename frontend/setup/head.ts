@@ -9,6 +9,8 @@ export default {
   meta: [
     { charset: 'utf-8' },
     { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+    // Stop iOS Safari turning number runs into tel: links before hydration (DOM mismatch).
+    { name: 'format-detection', content: 'telephone=no' },
     { name: 'description', content: defaultDescription },
     // Open Graph defaults — overridden per-page via useSeoMeta.
     // og:url/og:image/twitter:image are set at runtime in app/plugins/canonical.ts

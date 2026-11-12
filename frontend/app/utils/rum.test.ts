@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { RumEvent } from '@datadog/browser-rum';
-import { isInjectedEvalCspReport } from './rum';
+import { hydrationWarningMessage, isInjectedEvalCspReport } from './rum';
 
 const EVAL = "csp_violation: 'eval' blocked by 'script-src' directive";
 
@@ -27,5 +27,31 @@ describe('isInjectedEvalCspReport', () => {
 
   it('keeps errors that are not reports', () => {
     expect(isInjectedEvalCspReport(errorEvent({ source: 'source' }))).toBe(false);
+  });
+});
+
+describe('hydrationWarningMessage', () => {
+  // Shape of Vue's prod console.warn for an attribute mismatch (string, element, string).
+  const element = { outerHTML: '<img src="/_nuxt/logo.svg" alt="Jenkins"><span>child</span>' };
+  const detail =
+    '\n  - rendered on server: src="/_nuxt/logo.svg"\n  - expected on client: src="https://x/_nuxt/logo.svg"';
+
+  it('flattens a hydration warning, keeping only the element opening tag', () => {
+    const message = hydrationWarningMessage([
+      '[Vue warn]: Hydration attribute mismatch on',
+      element,
+      detail,
+    ]);
+    expect(message).toContain(
+      '[Vue warn]: Hydration attribute mismatch on <img src="/_nuxt/logo.svg" alt="Jenkins">',
+    );
+    expect(message).toContain('expected on client: src="https://x/_nuxt/logo.svg"');
+    expect(message).not.toContain('child');
+  });
+
+  it('ignores other warnings', () => {
+    expect(hydrationWarningMessage(['[Vue warn]: Extraneous non-props attributes'])).toBeNull();
+    expect(hydrationWarningMessage([element])).toBeNull();
+    expect(hydrationWarningMessage([])).toBeNull();
   });
 });

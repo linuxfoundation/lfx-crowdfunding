@@ -14,13 +14,9 @@ export const setCspHeader = (event: H3Event) => {
   // No nonce means the page wasn't rendered by the app (e.g. dev, or an early error).
   if (!nonce) return;
 
-  const { appEnv, datadogRumClientToken, datadogRumVersion } = useRuntimeConfig(event).public;
+  const { appEnv, datadogRumClientToken, appVersion } = useRuntimeConfig(event).public;
   const reportUri = datadogRumClientToken
-    ? datadogCspReportUri(
-        datadogRumClientToken as string,
-        appEnv as string,
-        datadogRumVersion as string,
-      )
+    ? datadogCspReportUri(datadogRumClientToken as string, appEnv as string, appVersion as string)
     : undefined;
   setResponseHeader(event, 'Content-Security-Policy', buildCspPolicy(nonce, reportUri));
 };
