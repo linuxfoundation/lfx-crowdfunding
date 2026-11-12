@@ -31,27 +31,92 @@ describe('isInjectedEvalCspReport', () => {
 });
 
 describe('hydrationWarningMessage', () => {
+  // Duck-typed DOM nodes: the suite runs in the node environment.
+  const node = (nodeName: string, attrs: Record<string, string> = {}) => ({
+    nodeName,
+    attributes: Object.entries(attrs).map(([name, value]) => ({ name, value })),
+  });
   // Shape of Vue's prod console.warn for an attribute mismatch (string, element, string).
-  const element = { outerHTML: '<img src="/_nuxt/logo.svg" alt="Jenkins"><span>child</span>' };
+  const img = node('IMG', { src: '/_nuxt/logo.svg', alt: 'Jenkins' });
   const detail =
     '\n  - rendered on server: src="/_nuxt/logo.svg"\n  - expected on client: src="https://x/_nuxt/logo.svg"';
 
-  it('flattens a hydration warning, keeping only the element opening tag', () => {
+  it('flattens a hydration warning, keeping the src mismatch and redacting other attributes', () => {
     const message = hydrationWarningMessage([
       '[Vue warn]: Hydration attribute mismatch on',
-      element,
+      img,
       detail,
     ]);
     expect(message).toContain(
-      '[Vue warn]: Hydration attribute mismatch on <img src="/_nuxt/logo.svg" alt="Jenkins">',
+      '[Vue warn]: Hydration attribute mismatch on <img src="/_nuxt/logo.svg" alt="[redacted]">',
     );
+    expect(message).toContain('rendered on server: src="/_nuxt/logo.svg"');
     expect(message).toContain('expected on client: src="https://x/_nuxt/logo.svg"');
-    expect(message).not.toContain('child');
+    expect(message).not.toContain('Jenkins');
+  });
+
+  it('redacts the server and client text of a text-content mismatch', () => {
+    const message = hydrationWarningMessage([
+      '[Vue warn]: Hydration text content mismatch on',
+      node('SPAN', { class: 'donor-name' }),
+      '\n  - rendered on server: Jane Doe <jane.doe@example.com>\n  - expected on client: Jane',
+    ]);
+    expect(message).toBe(
+      '[Vue warn]: Hydration text content mismatch on <span class="donor-name"> \n' +
+        '  - rendered on server: [redacted]\n  - expected on client: [redacted]',
+    );
+  });
+
+  it('redacts multi-line text from a text-node mismatch', () => {
+    const message = hydrationWarningMessage([
+      '[Vue warn]: Hydration text mismatch in',
+      node('P'),
+      '\n  - rendered on server: "Thanks,\\nJane Doe"\n  - expected on client: "Thanks,\nJane Doe\njane@example.com"',
+    ]);
+    expect(message).not.toMatch(/Jane|jane|Thanks/);
+    expect(message).toContain('- rendered on server: [redacted]');
+  });
+
+  it('redacts the value of a populated input', () => {
+    const message = hydrationWarningMessage([
+      '[Vue warn]: Hydration attribute mismatch on',
+      node('INPUT', { type: 'email', value: 'jane.doe@example.com' }),
+      '\n  - rendered on server: value="jane.doe@example.com"\n  - expected on client: (not rendered)',
+    ]);
+    expect(message).not.toContain('jane.doe@example.com');
+    expect(message).toContain('<input type="email" value="[redacted]">');
+    expect(message).toContain('- rendered on server: value="[redacted]"');
+    expect(message).toContain('- expected on client: (not rendered)');
+  });
+
+  it("keeps a node mismatch's tag names and Vue's fixed wording", () => {
+    const message = hydrationWarningMessage([
+      '[Vue warn]: Hydration node mismatch:\n- rendered on server:',
+      { nodeName: '#text' },
+      '(text)',
+      '\n- expected on client:',
+      'div',
+    ]);
+    expect(message).toBe(
+      '[Vue warn]: Hydration node mismatch:\n- rendered on server: #text (text) \n- expected on client: div',
+    );
+  });
+
+  it('names a component vnode type without its contents', () => {
+    const message = hydrationWarningMessage([
+      '[Vue warn]: Hydration node mismatch:\n- rendered on server:',
+      node('DIV'),
+      '',
+      '\n- expected on client:',
+      { __name: 'DonorList', props: { secret: 'jane@example.com' } },
+    ]);
+    expect(message).toContain('- expected on client: <DonorList>');
+    expect(message).not.toContain('jane');
   });
 
   it('ignores other warnings', () => {
     expect(hydrationWarningMessage(['[Vue warn]: Extraneous non-props attributes'])).toBeNull();
-    expect(hydrationWarningMessage([element])).toBeNull();
+    expect(hydrationWarningMessage([img])).toBeNull();
     expect(hydrationWarningMessage([])).toBeNull();
   });
 });
