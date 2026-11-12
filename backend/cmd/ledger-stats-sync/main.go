@@ -62,6 +62,7 @@ func run(logger *slog.Logger) error {
 	// Repository and syncer.
 	repo := db.NewLedgerStatsRepository(pool)
 	syncer := newSyncer(repo, ledgerClient, logger)
+	syncer.logos = db.NewOrgLogoRepository(pool)
 
 	logger.Info("ledger-stats-sync starting")
 

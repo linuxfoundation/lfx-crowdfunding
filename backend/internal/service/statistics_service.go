@@ -32,6 +32,12 @@ type StatisticsService struct {
 	repo         domain.StatisticsRepository
 	ledgerClient clients.LedgerClient
 	privacy      domain.DonorPrivacyRepository // nil in tests; nil hides no donor
+	orgLogos     domain.OrgLogoRepository      // nil in tests; nil shows generated org avatars
+}
+
+// SetOrgLogoRepo wires the b2b_org logos shown for org donors (#472).
+func (s *StatisticsService) SetOrgLogoRepo(r domain.OrgLogoRepository) {
+	s.orgLogos = r
 }
 
 // NewStatisticsService returns a StatisticsService.
@@ -122,8 +128,14 @@ func (s *StatisticsService) GetPlatformDetails(ctx context.Context, topLimit int
 			Count:      c.Count,
 		})
 	}
+	// Ledger keys org buckets by domain, so the IDs map straight to logos (#472).
+	orgKeys := make([]string, 0, len(raw.TopOrganizations))
 	for _, o := range raw.TopOrganizations {
-		entry := models.SponsorEntry{ID: o.ID, Name: cmp.Or(o.Name, unknownOrgName), TotalCents: o.Total}
+		orgKeys = append(orgKeys, o.ID)
+	}
+	logos := orgLogos(ctx, s.orgLogos, orgKeys)
+	for _, o := range raw.TopOrganizations {
+		entry := models.SponsorEntry{ID: o.ID, Name: cmp.Or(o.Name, unknownOrgName), AvatarURL: logos[o.ID], TotalCents: o.Total}
 		out.TopOrganizations = append(out.TopOrganizations, entry)
 	}
 	// The top-donor totals span every initiative, so a donor who hid their name
@@ -262,7 +274,11 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	projectIDs := make([]string, 0, len(uniqueRaw))
 	seenUsers := map[string]bool{}
 	seenProjects := map[string]bool{}
+	orgDomains := make([]string, 0, len(uniqueRaw))
 	for _, d := range uniqueRaw {
+		if d.OrganizationName != "" {
+			orgDomains = append(orgDomains, d.OrganizationDomain)
+		}
 		if d.OrganizationName != "" || d.OrganizationID != "" {
 			// Org donation: the name comes from the Ledger row; nothing to look up.
 		} else if d.UserID != "" && !seenUsers[d.UserID] {
@@ -290,6 +306,7 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 	// donation, so a donor with any anonymous donation to the initiative is
 	// hidden on all their rows for it (#466).
 	hidden := anonymousDonorFilter(ctx, s.privacy, projectIDs)
+	logos := orgLogos(ctx, s.orgLogos, orgDomains)
 
 	donations := make([]models.RecentDonation, 0, len(uniqueRaw))
 	for _, d := range uniqueRaw {
@@ -312,7 +329,7 @@ func (s *StatisticsService) GetRecentDonations(ctx context.Context) (*models.Rec
 		if d.OrganizationName != "" {
 			entry.DonorType = donorTypeOrganization
 			entry.DonorName = d.OrganizationName
-			entry.DonorAvatarURL = generatedAvatarURL(cmp.Or(d.OrganizationDomain, d.OrganizationName), d.OrganizationName)
+			entry.DonorAvatarURL = cmp.Or(logos[d.OrganizationDomain], generatedAvatarURL(cmp.Or(d.OrganizationDomain, d.OrganizationName), d.OrganizationName))
 		} else if d.OrganizationID != "" {
 			// An unnamed Ledger org row; the #408 backfill named every legacy one.
 			entry.DonorType = donorTypeOrganization

@@ -17,6 +17,13 @@ type OrgClaim struct {
 	Domain string `json:"domain"`
 }
 
+// B2BOrgMatch is the member-service b2b_org an org domain resolves to (#411):
+// its Salesforce Account SFID and logo URL (#472). A zero value means no match.
+type B2BOrgMatch struct {
+	SFID    string
+	LogoURL string
+}
+
 // User maps to the crowdfunding.users table.
 // users.id (UUID) is the FK target throughout the schema.
 // username is the LF SSO username used as the application-level identity input.

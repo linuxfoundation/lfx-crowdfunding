@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/stripe/stripe-go/v85"
+
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
 type fakeStore struct {
@@ -36,13 +38,36 @@ func (s *fakeStore) SetSubscriptionSFID(_ context.Context, id, sfid string) erro
 	return nil
 }
 
-type fakeResolver map[string]string // domain -> sfid; "ERR" means a failed lookup
+// fakeResolver maps a domain to its SFID, or an SFID to its logo; "ERR" means a
+// failed lookup and "GONE" an org member-service no longer knows.
+type fakeResolver map[string]string
 
-func (r fakeResolver) LookupB2BOrgByWebsite(_ context.Context, domain string) (string, error) {
+func (r fakeResolver) LookupB2BOrgByWebsite(_ context.Context, domain string) (models.B2BOrgMatch, error) {
 	if r[domain] == "ERR" {
-		return "", errors.New("b2b org lookup failed")
+		return models.B2BOrgMatch{}, errors.New("b2b org lookup failed")
 	}
-	return r[domain], nil
+	return models.B2BOrgMatch{SFID: r[domain]}, nil
+}
+
+func (r fakeResolver) GetB2BOrgLogo(_ context.Context, sfid string) (string, bool, error) {
+	switch r[sfid] {
+	case "ERR":
+		return "", false, errors.New("b2b org lookup failed")
+	case "GONE":
+		return "", false, nil
+	}
+	return r[sfid], true, nil
+}
+
+type fakeLogos struct {
+	sfids []string
+	set   map[string]string // sfid -> logo written ("" = removed)
+}
+
+func (l *fakeLogos) MatchedSFIDs(_ context.Context) ([]string, error) { return l.sfids, nil }
+func (l *fakeLogos) SetOrgLogo(_ context.Context, sfid, logoURL string) error {
+	l.set[sfid] = logoURL
+	return nil
 }
 
 type fakeStripe struct {
@@ -158,5 +183,48 @@ func TestWriteMatches(t *testing.T) {
 	}
 	if n != 2 || fmt.Sprint(conflicts) != "[split.org]" {
 		t.Errorf("exported %d, conflicts %v; want 2, [split.org]", n, conflicts)
+	}
+}
+
+func TestBackfillerRefreshLogos(t *testing.T) {
+	logos := &fakeLogos{sfids: []string{"001LOGO", "001NOLOGO", "001GONE", "001ERR"}, set: map[string]string{}}
+	b := &backfiller{
+		logos: logos,
+		lookup: fakeResolver{
+			"001LOGO": "https://cdn.example/logo.png",
+			"001GONE": "GONE",
+			"001ERR":  "ERR",
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	res, err := b.RefreshLogos(context.Background())
+	if err != nil {
+		t.Fatalf("RefreshLogos: %v", err)
+	}
+	if res != (logoResult{orgs: 4, stored: 1, cleared: 2, lookupFailed: 1}) {
+		t.Errorf("result = %+v", res)
+	}
+	// A failed lookup keeps the stored logo; no logo or a gone org removes it.
+	want := map[string]string{"001LOGO": "https://cdn.example/logo.png", "001NOLOGO": "", "001GONE": ""}
+	if fmt.Sprint(logos.set) != fmt.Sprint(want) {
+		t.Errorf("logos written = %v, want %v", logos.set, want)
+	}
+}
+
+func TestBackfillerRefreshLogos_DryRunWritesNothing(t *testing.T) {
+	logos := &fakeLogos{sfids: []string{"001LOGO"}, set: map[string]string{}}
+	b := &backfiller{
+		logos:  logos,
+		lookup: fakeResolver{"001LOGO": "https://cdn.example/logo.png"},
+		dryRun: true,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	res, err := b.RefreshLogos(context.Background())
+	if err != nil {
+		t.Fatalf("RefreshLogos: %v", err)
+	}
+	if res.stored != 1 || len(logos.set) != 0 {
+		t.Errorf("result = %+v, written = %v; want 1 counted and nothing written", res, logos.set)
 	}
 }

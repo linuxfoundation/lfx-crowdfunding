@@ -151,7 +151,8 @@ spec:
 
     # Authenticated user routes with no initiative object to check — self-scoped
     # by the caller's own principal (profile, payment methods, own donation/
-    # subscription/organization lists, own initiative list/create).
+    # subscription/organization lists, own initiative list/create), plus the
+    # stored b2b_org logos for the donate drawer's org typeahead (#472).
     - id: "rule:lfx:lfx-crowdfunding-backend:me-self"
       allow_encoded_slashes: "off"
       match:
@@ -188,6 +189,7 @@ spec:
           - path: /crowdfunding/me/payment-method
           - path: /crowdfunding/me/payment-account
           - path: /crowdfunding/me/presigned-url
+          - path: /crowdfunding/me/org-logos
           - path: /crowdfunding/me/initiatives
       execute:
         - authenticator: oidc

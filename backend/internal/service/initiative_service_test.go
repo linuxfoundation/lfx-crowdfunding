@@ -540,7 +540,7 @@ func TestEnrichTransactionsFromDB_OrgTakesPriority(t *testing.T) {
 		{ID: "t1", LedgerUserID: "user-1", LedgerOrgID: "org-1"},
 	}
 
-	enrichTransactionsFromDB(context.Background(), repo, txns, true)
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, true)
 
 	if txns[0].DonorName != "Anonymous" {
 		t.Errorf("expected Anonymous for an unnamed org row, got %q", txns[0].DonorName)
@@ -557,7 +557,7 @@ func TestEnrichTransactionsFromDB_StatedOrgName(t *testing.T) {
 		{ID: "t1", LedgerUserID: "user-1", LedgerOrgID: "org-1", LedgerOrgName: "Acme Inc.", LedgerOrgDomain: "acme.com"},
 	}
 
-	enrichTransactionsFromDB(context.Background(), repo, txns, true)
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, true)
 
 	if txns[0].DonorName != "Acme Inc." {
 		t.Errorf("expected stated org name, got %q", txns[0].DonorName)
@@ -578,7 +578,7 @@ func TestEnrichTransactionsFromDB_UserFallback(t *testing.T) {
 		{ID: "t1", LedgerUserID: "user-1"},
 	}
 
-	enrichTransactionsFromDB(context.Background(), repo, txns, true)
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, true)
 
 	if txns[0].DonorName != "Alice" {
 		t.Errorf("expected user name, got %q", txns[0].DonorName)
@@ -597,7 +597,7 @@ func TestEnrichTransactionsFromDB_GeneratesAvatarWhenNoDBMatch(t *testing.T) {
 		{ID: "t1", LedgerUserID: "user-unknown", DonorName: "Anonymous"},
 	}
 
-	enrichTransactionsFromDB(context.Background(), repo, txns, true)
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, true)
 
 	if txns[0].DonorLogoURL == "" {
 		t.Error("expected generated avatar URL when no DB match found")
@@ -613,7 +613,7 @@ func TestEnrichTransactionsFromDB_UnnamedOrg_FallsBackToAnonymous(t *testing.T) 
 		{ID: "t1", LedgerOrgID: "org-unknown"},
 	}
 
-	enrichTransactionsFromDB(context.Background(), repo, txns, true)
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, true)
 
 	if txns[0].DonorName != "Anonymous" {
 		t.Errorf("expected Anonymous fallback for an unnamed org, got %q", txns[0].DonorName)
@@ -631,7 +631,7 @@ func TestEnrichTransactionsFromDB_DBErrorStillGeneratesAvatar(t *testing.T) {
 	}
 
 	// Should not panic; should fall back to generated avatar
-	enrichTransactionsFromDB(context.Background(), repo, txns, true)
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, true)
 
 	if txns[0].DonorLogoURL == "" {
 		t.Error("expected generated avatar even when DB lookup fails")

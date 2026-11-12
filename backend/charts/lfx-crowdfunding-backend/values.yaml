@@ -275,6 +275,7 @@ fgaReconcileCronJob:
 # (lfx-crowdfunding#412), looking up each unmatched domain once on member-service
 # over FGA_NATS_URL. Only empty SFIDs are filled, so daily re-runs are safe and
 # retry failed lookups. Ledger rows are filled separately (see cmd/b2b-org-backfill).
+# Each run then refreshes the logos of matched b2b_orgs (lfx-crowdfunding#472).
 b2bOrgBackfillCronJob:
   enabled: false
   schedule: "0 8 * * *"    # daily at 08:00 UTC

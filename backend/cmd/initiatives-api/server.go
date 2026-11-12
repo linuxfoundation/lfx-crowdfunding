@@ -142,10 +142,15 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	initiativeSvc.SetSubscriptionRepo(subscriptionRepo)
 	donorPrivacyRepo := db.NewDonorPrivacyRepository(pool)
 	initiativeSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
+	// b2b_org logos for org donors (#472): filled on save and by b2b-org-backfill.
+	orgLogoRepo := db.NewOrgLogoRepository(pool)
+	initiativeSvc.SetOrgLogoRepo(orgLogoRepo)
 	donationSvc := service.NewDonationService(donationRepo, initiativeRepo, userRepo, stripeClient)
 	donationSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
+	donationSvc.SetOrgLogoRepo(orgLogoRepo)
 	subscriptionSvc := service.NewSubscriptionService(subscriptionRepo, initiativeRepo, userRepo, stripeClient)
 	subscriptionSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
+	subscriptionSvc.SetOrgLogoRepo(orgLogoRepo)
 	if fgaConn != nil {
 		memberClient := clients.NewMemberClient(fgaConn)
 		donationSvc.SetB2BOrgResolver(memberClient)
@@ -154,6 +159,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 	statisticsSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
+	statisticsSvc.SetOrgLogoRepo(orgLogoRepo)
 	announcementSvc := service.NewAnnouncementService(announcementRepo, initiativeRepo, userRepo)
 	if roleResolver != nil {
 		announcementSvc.SetEntityRoleResolver(roleResolver)
@@ -189,6 +195,7 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 	uploadH := handler.NewUploadHandler(s3Client)
 	expenseH := handler.NewExpenseHandler(reimbursementClient, userRepo)
 	announcementH := handler.NewAnnouncementHandler(announcementSvc)
+	orgLogoH := handler.NewOrgLogoHandler(orgLogoRepo)
 
 	// UserInfo client — fetches full profile from Auth0 on login sync.
 	// In bypass mode (local dev) there is no real Auth0, so use a mock fetcher.
@@ -326,6 +333,10 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 
 			// Logo uploads (used during initiative creation by the owning user).
 			r.Post("/presigned-url", uploadH.CreatePresignedURL)
+
+			// Stored b2b_org logos for the donate drawer's org typeahead (#472).
+			// Not the caller's own data, but signed-in only: only donors need it.
+			r.Get("/org-logos", orgLogoH.List)
 
 			// Caller's own donor history on an initiative, and initiative create
 			// (the owner is always the caller). Manager reads and writes live

@@ -39,6 +39,7 @@ SPDX-License-Identifier: MIT
           <lfx-avatar
             type="organization"
             size="normal"
+            :src="form.organization?.logoUrl"
           />
           <div class="flex-1 min-w-0">
             <p class="text-sm font-semibold text-neutral-900 truncate">
@@ -105,6 +106,7 @@ SPDX-License-Identifier: MIT
                   <lfx-avatar
                     type="organization"
                     size="xsmall"
+                    :src="org.logoUrl"
                   />
                   <span class="truncate">{{ org.name }}</span>
                   <span class="text-xs text-neutral-500 truncate">{{ org.domain }}</span>

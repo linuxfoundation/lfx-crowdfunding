@@ -172,6 +172,7 @@ backend/
 | `POST` | `/crowdfunding/me/payment-method` | `access:me` | Attach payment method |
 | `DELETE` | `/crowdfunding/me/payment-method` | `access:me` | Remove payment method |
 | `POST` | `/crowdfunding/me/presigned-url` | `access:me` | S3 presigned URL for logo upload |
+| `GET` | `/crowdfunding/me/org-logos?domains=…` | `access:me` | Stored b2b_org logos for org domains (donate drawer typeahead) |
 | `POST` | `/crowdfunding/me/initiatives/{id}/donations` | `access:me` | Create one-time donation |
 | `POST` | `/crowdfunding/me/initiatives/{id}/subscriptions` | `access:me` | Create recurring subscription |
 | `POST` | `/crowdfunding/initiatives/{id}/process-approval/{action}` | `access:me` (approver list) | Approve or decline initiative |

@@ -33,7 +33,7 @@ describe('GET /api/orgs/suggest BFF handler', () => {
     vi.clearAllMocks();
   });
 
-  it('maps query-service suggestions to org claims, without the logo', async () => {
+  it('maps query-service suggestions to org claims, without the Clearbit logo', async () => {
     mockGetQuery.mockReturnValue({ query: ' acme ' });
     mockUseBackendFetch.mockResolvedValue({
       suggestions: [
@@ -93,5 +93,40 @@ describe('GET /api/orgs/suggest BFF handler', () => {
     mockUseBackendFetch.mockResolvedValue({ suggestions: null });
 
     await expect(run()).resolves.toEqual([]);
+    // No suggestions, no logo lookup.
+    expect(mockUseBackendFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('adds the logos CF has stored for the suggested domains (#472)', async () => {
+    mockGetQuery.mockReturnValue({ query: 'acme' });
+    mockUseBackendFetch
+      .mockResolvedValueOnce({
+        suggestions: [
+          { name: 'Acme Inc.', domain: 'acme.com' },
+          { name: 'Acme Labs', domain: 'acmelabs.io' },
+          { name: 'Acme Inc. (dup)', domain: 'acme.com' },
+        ],
+      })
+      .mockResolvedValueOnce({ logos: { 'acme.com': 'https://cdn.example/acme.png' } });
+
+    await expect(run()).resolves.toEqual([
+      { name: 'Acme Inc.', domain: 'acme.com', logoUrl: 'https://cdn.example/acme.png' },
+      { name: 'Acme Labs', domain: 'acmelabs.io' },
+      { name: 'Acme Inc. (dup)', domain: 'acme.com', logoUrl: 'https://cdn.example/acme.png' },
+    ]);
+    // One lookup on the CF backend (not the platform API), each domain once.
+    expect(mockUseBackendFetch).toHaveBeenLastCalledWith(
+      mockEvent,
+      `/crowdfunding/me/org-logos?domains=${encodeURIComponent('acme.com,acmelabs.io')}`,
+    );
+  });
+
+  it('keeps the suggestions when the logo lookup fails', async () => {
+    mockGetQuery.mockReturnValue({ query: 'acme' });
+    mockUseBackendFetch
+      .mockResolvedValueOnce({ suggestions: [{ name: 'Acme Inc.', domain: 'acme.com' }] })
+      .mockRejectedValueOnce(new Error('Upstream error'));
+
+    await expect(run()).resolves.toEqual([{ name: 'Acme Inc.', domain: 'acme.com' }]);
   });
 });
