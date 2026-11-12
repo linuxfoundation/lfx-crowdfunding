@@ -31,7 +31,8 @@ overrides:
   postcss-selector-parser@^6.1.1: ">=7.1.6"
   postcss-selector-parser@^7.0.0: ">=7.1.6"
   seroval: ">=1.6.11"
-  node-forge: ">=1.4.1 <2"
+  node-forge: ">=1.4.3 <2"
+  fast-xml-parser: ">=5.12.0 <6"
   source-map-js: ">=1.2.2"
   vue: ">=3.5.42"
   "@vue/server-renderer": ">=3.5.42"
@@ -1475,10 +1476,10 @@ packages:
         integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==,
       }
 
-  "@nodable/entities@2.2.0":
+  "@nodable/entities@3.1.0":
     resolution:
       {
-        integrity: sha512-9uGyhaQavEUMC8AIddIjau4NsnsXhou+j5sBAGojCM1oxmQpVKTWR/9JxABD6UAv12vpIms55fPZKFQEhG6uBg==,
+        integrity: sha512-LsS/DjHr+uDM647Gru/cA8+J3a3HfhttwCKLyuoyN7yXTFCxKBtSgMQBvrW9yNPa2/zDRUNuGPaH5QUFoa4arQ==,
       }
 
   "@nodelib/fs.scandir@2.1.5":
@@ -4441,10 +4442,10 @@ packages:
       }
     engines: { node: ">= 8" }
 
-  anynum@1.0.0:
+  anynum@1.0.1:
     resolution:
       {
-        integrity: sha512-xjR9/zBVnUOP6ztMIIgShjsxui80nQUQH+5xJnvrYLs+90bF25/KJqaAi8mk+B4RDtX1Nspi6fmp4YTEts8SfA==,
+        integrity: sha512-N6//FLET/tXYNM/F6ABca1oH6fWB+KlTt909Le28WMDBk8oaT4vY17DCrwg2MvmuqUKt3Ni4N5dGJ/EoBgcO6A==,
       }
 
   archiver-utils@5.0.2:
@@ -6435,16 +6436,16 @@ packages:
         integrity: sha512-rLV8JHxTyhVmFYhBJuMujcrHqOT2cnO5Zxj37qROj23CP39GXubJRBUFF0z8KFK77Uc0SukZUf7JZhsVEQ6n8w==,
       }
 
-  fast-xml-builder@1.2.0:
+  fast-xml-builder@1.3.1:
     resolution:
       {
-        integrity: sha512-00aAWieqff+ZJhsXA4g1g7M8k+7AYoMUUHF+/zFb5U6Uv/P0Vl4QZo84/IcufzYalLuEj9928bXN9PbbFzMF0Q==,
+        integrity: sha512-pIM/1n3ntFXKYrUZwW7QCK0gAW7XY+wzj1YMIV3tLDvPj/V+zTGJK5e3/4WJfwj0qWw2ElNXiTixda/R+3YSug==,
       }
 
-  fast-xml-parser@5.9.2:
+  fast-xml-parser@5.12.0:
     resolution:
       {
-        integrity: sha512-DYPkXnVSJHAGAkSBeVYhEo/seIpz2SLr9OQcX7m6lXaX3gvoB+DCKzFdZIEhZGI3I1DUhObBAUOT/v2xfoXz/w==,
+        integrity: sha512-/pXxRBtwxY9w8z7YbgsvIPPcPvFDsTbIkWwTQJhzNJPokj+TbN6ftmcv4j/pEQDvOCNnKGDzuk5Bo2oogIOiFg==,
       }
     hasBin: true
 
@@ -7500,10 +7501,10 @@ packages:
       }
     engines: { node: ">= 0.4" }
 
-  is-unsafe@1.0.1:
+  is-unsafe@2.0.3:
     resolution:
       {
-        integrity: sha512-CLK2+VdgERgD96EYm5lUQssZYlRg2tkZnbsxZoacmSiRxiFJ4Nk4SzjCl+Ur+v3kXIY9dTIdb3IH22y1mZ56LA==,
+        integrity: sha512-ZBllczCCO267vgdFb6Tq3pv+LhHaCiGMdr+ZsuL+OopruAg7S+3ZDs1vD0RPC0uSrkjzbraxaGjtX1YBxjPeFQ==,
       }
 
   is-weakmap@2.0.2:
@@ -8692,10 +8693,10 @@ packages:
       encoding:
         optional: true
 
-  node-forge@1.4.2:
+  node-forge@1.4.3:
     resolution:
       {
-        integrity: sha512-rRtAR5XLJ8gCKd9du4qrKAsgCG1ObGP4gLeNJMa4vYSeq4bmBMOJk5IHkrviBV0q7uoAJlVd8HEQYQSVUb4FGQ==,
+        integrity: sha512-P6wzfh6t70avmV8FrVEAd/36sOPJQ+hkaJVX1Laap9J/77m7M0eyozDvc8SwnDf4P7MP94gwbAAo0rg3YVXT+g==,
       }
     engines: { node: ">= 6.13.0" }
 
@@ -9173,10 +9174,10 @@ packages:
       }
     engines: { node: ^12.20.0 || ^14.13.1 || >=16.0.0 }
 
-  path-expression-matcher@1.5.0:
+  path-expression-matcher@1.6.2:
     resolution:
       {
-        integrity: sha512-cbrerZV+6rvdQrrD+iGMcZFEiiSrbv9Tfdkvnusy6y0x0GKBXREFg/Y65GhIfm0tnLntThhzCnfKwp1WRjeCyQ==,
+        integrity: sha512-enSlaiat05iasnzmgNxRj8reFdj3puY2QpNgP1aPIaVfT6nn9ICuPoFlKHk8EN22HcwewshO+mN2DGbkCEOtqQ==,
       }
     engines: { node: ">=14.0.0" }
 
@@ -10512,10 +10513,10 @@ packages:
         integrity: sha512-PaqAvfUZKBwc/SLmNZtHmzK+v19Z4O4eS3cKPeGvbIv/U3pnyEq4Tuw3/4v/FwfM8VQaEawsyCcOQ0P+kpwWWw==,
       }
 
-  strnum@2.4.0:
+  strnum@2.5.1:
     resolution:
       {
-        integrity: sha512-sHrVyWWdq28RbhjuJdZsA1SnGRJV6NiXbk6AXBxDOsgAcA+lmpUZCYjOdLBxkXMwis6RRe7dlZt4VlIWFVzkmg==,
+        integrity: sha512-UM4nTLWzQiDBseVxUGxN0wJzIk0UU89Qi7pKXz9qISo+lhviJikTuikBsK/oFRlpvYHvSdz0TVoLyQ+sEpYwxA==,
       }
 
   structured-clone-es@2.0.1:
@@ -12037,10 +12038,10 @@ packages:
       }
     engines: { node: ">=18" }
 
-  xml-naming@0.1.0:
+  xml-naming@0.3.0:
     resolution:
       {
-        integrity: sha512-k8KO9hrMyNk6tUWqUfkTEZbezRRpONVOzUTnc97VnCvyj6Tf9lyUR9EDAIeiVLv56jsMcoXEwjW8Kv5yPY52lw==,
+        integrity: sha512-ghig2TBE/H11aOVgmahA3MhimvkBr6JIYknH/Dhdk10nXwdbIqBJsbfMxpvFPG8bAw77gN29aQWvKpmVoPlvPQ==,
       }
     engines: { node: ">=16.0.0" }
 
@@ -12993,7 +12994,7 @@ snapshots:
       "@tybys/wasm-util": 0.10.2
     optional: true
 
-  "@nodable/entities@2.2.0": {}
+  "@nodable/entities@3.1.0": {}
 
   "@nodelib/fs.scandir@2.1.5":
     dependencies:
@@ -14008,7 +14009,7 @@ snapshots:
       "@nuxt/kit": 4.4.8(magicast@0.5.5)
       consola: 3.4.2
       defu: 6.1.7
-      fast-xml-parser: 5.9.2
+      fast-xml-parser: 5.12.0
       nuxt-site-config: 4.1.0(cbe25684df883205efbf33bfb0b82eb8)
       nuxtseo-shared: 5.3.0(a32cbcc85e505f55acee5373b5fdb56f)
       ofetch: 1.5.1
@@ -15610,7 +15611,7 @@ snapshots:
       normalize-path: 3.0.0
       picomatch: 2.3.2
 
-  anynum@1.0.0: {}
+  anynum@1.0.1: {}
 
   archiver-utils@5.0.2:
     dependencies:
@@ -16847,19 +16848,19 @@ snapshots:
     dependencies:
       fast-string-width: 3.0.2
 
-  fast-xml-builder@1.2.0:
+  fast-xml-builder@1.3.1:
     dependencies:
-      path-expression-matcher: 1.5.0
-      xml-naming: 0.1.0
+      path-expression-matcher: 1.6.2
+      xml-naming: 0.3.0
 
-  fast-xml-parser@5.9.2:
+  fast-xml-parser@5.12.0:
     dependencies:
-      "@nodable/entities": 2.2.0
-      fast-xml-builder: 1.2.0
-      is-unsafe: 1.0.1
-      path-expression-matcher: 1.5.0
-      strnum: 2.4.0
-      xml-naming: 0.1.0
+      "@nodable/entities": 3.1.0
+      fast-xml-builder: 1.3.1
+      is-unsafe: 2.0.3
+      path-expression-matcher: 1.6.2
+      strnum: 2.5.1
+      xml-naming: 0.3.0
 
   fastq@1.20.1:
     dependencies:
@@ -17510,7 +17511,7 @@ snapshots:
     dependencies:
       which-typed-array: 1.1.20
 
-  is-unsafe@1.0.1: {}
+  is-unsafe@2.0.3: {}
 
   is-weakmap@2.0.2: {}
 
@@ -17862,7 +17863,7 @@ snapshots:
       h3: 1.15.11
       http-shutdown: 1.2.2
       jiti: 2.7.0
-      node-forge: 1.4.2
+      node-forge: 1.4.3
       pathe: 2.0.3
       std-env: 4.3.0
       tinyclip: 0.1.15
@@ -18273,7 +18274,7 @@ snapshots:
     dependencies:
       whatwg-url: 5.0.0
 
-  node-forge@1.4.2: {}
+  node-forge@1.4.3: {}
 
   node-gyp-build@4.8.4: {}
 
@@ -18896,7 +18897,7 @@ snapshots:
 
   path-exists@5.0.0: {}
 
-  path-expression-matcher@1.5.0: {}
+  path-expression-matcher@1.6.2: {}
 
   path-is-absolute@1.0.1: {}
 
@@ -19734,9 +19735,9 @@ snapshots:
     dependencies:
       js-tokens: 10.0.0
 
-  strnum@2.4.0:
+  strnum@2.5.1:
     dependencies:
-      anynum: 1.0.0
+      anynum: 1.0.1
 
   structured-clone-es@2.0.1: {}
 
@@ -20794,7 +20795,7 @@ snapshots:
 
   xml-name-validator@5.0.0: {}
 
-  xml-naming@0.1.0: {}
+  xml-naming@0.3.0: {}
 
   xmlchars@2.2.0: {}
 
