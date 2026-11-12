@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { RumEvent } from '@datadog/browser-rum';
-import { hydrationWarningMessage, isInjectedEvalCspReport } from './rum';
+import { hydrationWarningMessage, isInjectedEvalCspReport, isTranslatedPage } from './rum';
 
 const EVAL = "csp_violation: 'eval' blocked by 'script-src' directive";
 
@@ -53,5 +53,28 @@ describe('hydrationWarningMessage', () => {
     expect(hydrationWarningMessage(['[Vue warn]: Extraneous non-props attributes'])).toBeNull();
     expect(hydrationWarningMessage([element])).toBeNull();
     expect(hydrationWarningMessage([])).toBeNull();
+  });
+});
+
+describe('isTranslatedPage', () => {
+  const root = (lang: string | null, classes: string[] = []) => ({
+    classList: { contains: (name: string) => classes.includes(name) } as DOMTokenList,
+    getAttribute: () => lang,
+  });
+
+  it('detects the Chrome Translate class', () => {
+    expect(isTranslatedPage(root('en', ['translated-ltr']))).toBe(true);
+    expect(isTranslatedPage(root('en', ['translated-rtl']))).toBe(true);
+  });
+
+  it('detects a non-English lang', () => {
+    expect(isTranslatedPage(root('ms'))).toBe(true);
+    expect(isTranslatedPage(root('ar'))).toBe(true);
+  });
+
+  it('treats English as untranslated', () => {
+    expect(isTranslatedPage(root('en'))).toBe(false);
+    expect(isTranslatedPage(root('en-US'))).toBe(false);
+    expect(isTranslatedPage(root(null))).toBe(false);
   });
 });

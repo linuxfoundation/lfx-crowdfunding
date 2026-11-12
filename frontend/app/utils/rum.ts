@@ -17,6 +17,20 @@ export function isInjectedEvalCspReport(event: RumEvent): boolean {
   );
 }
 
+const PAGE_LANG = 'en';
+const TRANSLATED_CLASSES = ['translated-ltr', 'translated-rtl'];
+
+/**
+ * True when the browser has machine-translated the page. Chrome Translate adds a
+ * translated-ltr/-rtl class to <html> and sets its lang to the target language; other
+ * translators change lang too. The page itself is always rendered in English.
+ */
+export function isTranslatedPage(root: Pick<Element, 'classList' | 'getAttribute'>): boolean {
+  if (TRANSLATED_CLASSES.some((name) => root.classList.contains(name))) return true;
+  const lang = root.getAttribute('lang')?.toLowerCase();
+  return !!lang && lang !== PAGE_LANG && !lang.startsWith(`${PAGE_LANG}-`);
+}
+
 const HYDRATION_WARNING_PREFIX = '[Vue warn]: Hydration';
 const MAX_ELEMENT_HTML = 300;
 
