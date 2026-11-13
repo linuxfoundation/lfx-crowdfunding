@@ -37,9 +37,9 @@ describe('dollar amounts', () => {
 });
 
 describe('offlineCategoryOptions', () => {
-  it('puts the default first and drops duplicates', () => {
-    expect(offlineCategoryOptions('project', ['Development', 'Donation', ''])).toEqual([
-      'Donation',
+  it('puts the default first and drops duplicates, ignoring case', () => {
+    expect(offlineCategoryOptions('project', ['Development', 'General Fund', ''])).toEqual([
+      'general fund',
       'Development',
     ]);
   });
@@ -78,7 +78,7 @@ describe('form → request', () => {
       organization: { name: 'Dell Corporation', domain: 'dell.com' },
       amount: '8000',
       receivedOn: '2026-10-20',
-      category: 'Donation',
+      category: 'general fund',
       sourceTxnId: 'SPDK Dell 2026-10',
     });
   });

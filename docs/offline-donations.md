@@ -31,8 +31,9 @@ else gets a 403 and doesn't see the button.
      record (b2b_org), which is what puts it on the organization's Self Serve page.
    - **Amount (USD)**: dollars, e.g. `1300` or `1300.50`. It is converted to cents for you.
    - **Date received**: the day LF finance received the money. It becomes the Ledger transaction date.
-   - **Category**: the initiative's funding goals, or `Donation` (`mentorship` for mentorship
-     programs).
+   - **Category**: defaults to `general fund` (`mentorship` for mentorship programs), as finance
+     records them. Pick one of the initiative's funding goals instead to count the donation toward
+     that goal's progress.
    - **Source reference**: the reference finance uses for this payment, e.g. an invoice number or
      `LFX Mentorship CNCF Fall 2026 Row 52`. It must be unique, see below.
 4. Click **Review**, check the summary, then **Record donation**.

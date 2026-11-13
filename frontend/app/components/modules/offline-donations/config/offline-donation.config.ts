@@ -12,15 +12,19 @@ export const OFFLINE_DONATIONS_PATH = '/approvals/offline-donations';
 export const offlineDonationLink = (slug: string) =>
   `${OFFLINE_DONATIONS_PATH}?initiative=${encodeURIComponent(slug)}`;
 
-/** Ledger txnCategory used when the initiative has no funding goal to pick. */
-export const DEFAULT_OFFLINE_CATEGORY = 'Donation';
+/**
+ * Ledger txnCategory finance uses for offline CF donations. Picking a funding goal
+ * instead credits that goal's progress (goals match Ledger categories by name).
+ */
+export const DEFAULT_OFFLINE_CATEGORY = 'general fund';
 export const MENTORSHIP_OFFLINE_CATEGORY = 'mentorship';
 
 /** The initiative's funding goals plus the default category, default first. */
 export const offlineCategoryOptions = (initiativeType: string, goalNames: string[]): string[] => {
   const fallback =
     initiativeType === 'mentorship' ? MENTORSHIP_OFFLINE_CATEGORY : DEFAULT_OFFLINE_CATEGORY;
-  return [fallback, ...goalNames.filter((n) => n && n !== fallback)];
+  // The Ledger lowercases categories, so "General Fund" and "general fund" are one.
+  return [fallback, ...goalNames.filter((n) => n && n.toLowerCase() !== fallback)];
 };
 
 /** Same rule as the backend: up to $9,999,999.99, at most two decimals. */
