@@ -160,6 +160,17 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		subscriptionSvc.SetB2BOrgResolver(memberClient)
 	}
 	paymentSvc := service.NewPaymentService(userRepo, stripeClient)
+	// Offline org donations recorded by approvers (#464).
+	offlineLedger, ok := ledgerClient.(service.OfflineLedgerPoster)
+	if !ok {
+		return nil, fmt.Errorf("ledger client does not support offline donation posts")
+	}
+	offlineDonationSvc := service.NewOfflineDonationService(donationRepo, initiativeRepo, userRepo, offlineLedger)
+	offlineDonationSvc.SetOrgLogoRepo(orgLogoRepo)
+	if fgaConn != nil {
+		offlineDonationSvc.SetB2BOrgResolver(clients.NewMemberClient(fgaConn))
+	}
+	offlineDonationH := handler.NewOfflineDonationHandler(offlineDonationSvc, cfg.Approval.AllowedApprovers)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 	statisticsSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
 	statisticsSvc.SetOrgLogoRepo(orgLogoRepo)
@@ -341,6 +352,9 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 			// Not the caller's own data, but signed-in only: only donors need it.
 			r.Get("/org-logos", orgLogoH.List)
 
+			// Whether the caller is an approver, so the UI shows approver actions (#464).
+			r.Get("/approver", offlineDonationH.GetApproverStatus)
+
 			// Caller's own donor history on an initiative, and initiative create
 			// (the owner is always the caller). Manager reads and writes live
 			// outside /me under /initiatives/{id} (lfx-crowdfunding#341).
@@ -362,6 +376,13 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		// For now all callers hold user tokens with access:me, so that scope is used.
 		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), subjectBinding).
 			Post("/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
+
+		// Offline org donations (#464) — approvers only, checked like process-approval:
+		// the approvers team at Heimdall and ALLOWED_APPROVERS in the handler.
+		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), subjectBinding).Group(func(r chi.Router) {
+			r.Get("/offline-donations", offlineDonationH.List)
+			r.Post("/offline-donations", offlineDonationH.Create)
+		})
 
 		// M2M routes — require a valid bearer token with access:manage scope.
 		// These endpoints are for service-to-service callers, not end users.

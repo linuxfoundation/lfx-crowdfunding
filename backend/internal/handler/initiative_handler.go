@@ -721,10 +721,16 @@ func (h *InitiativeHandler) ListPublished(w http.ResponseWriter, r *http.Request
 // Identity is matched solely against Principal.Username — the LF SSO username
 // claim.
 func (h *InitiativeHandler) isApprover(principal *models.Principal) bool {
+	return isApproverIn(h.allowedApprovers, principal)
+}
+
+// isApproverIn reports whether the principal's username is in approvers
+// (ALLOWED_APPROVERS), case-insensitively.
+func isApproverIn(approvers []string, principal *models.Principal) bool {
 	if principal == nil || principal.Username == "" {
 		return false
 	}
-	for _, a := range h.allowedApprovers {
+	for _, a := range approvers {
 		if strings.EqualFold(a, principal.Username) {
 			return true
 		}

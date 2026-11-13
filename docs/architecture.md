@@ -173,9 +173,12 @@ backend/
 | `DELETE` | `/crowdfunding/me/payment-method` | `access:me` | Remove payment method |
 | `POST` | `/crowdfunding/me/presigned-url` | `access:me` | S3 presigned URL for logo upload |
 | `GET` | `/crowdfunding/me/org-logos?domains=…` | `access:me` | Stored b2b_org logos for org domains (donate drawer typeahead) |
+| `GET` | `/crowdfunding/me/approver` | `access:me` | Whether the caller is an approver (shows approver-only UI) |
 | `POST` | `/crowdfunding/me/initiatives/{id}/donations` | `access:me` | Create one-time donation |
 | `POST` | `/crowdfunding/me/initiatives/{id}/subscriptions` | `access:me` | Create recurring subscription |
 | `POST` | `/crowdfunding/initiatives/{id}/process-approval/{action}` | `access:me` (approver list) | Approve or decline initiative |
+| `POST` | `/crowdfunding/offline-donations` | `access:me` (approver list) | Record an offline org donation (invoice/wire): stored in CF and posted once to the Ledger |
+| `GET` | `/crowdfunding/offline-donations?initiative_id=` | `access:me` (approver list) | Recorded offline org donations |
 | `POST` | `/crowdfunding/stripe/webhook` | Stripe HMAC | Stripe event receiver |
 | `GET` | `/crowdfunding/initiatives/{slug}/owner-info` | `access:manage` | Reimbursement Service: initiative owner info |
 
