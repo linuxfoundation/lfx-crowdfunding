@@ -29,6 +29,12 @@ var emailTracer = otel.Tracer("email-client")
 // ErrEmailRejected marks a send the email service refused; the relay does not retry it.
 var ErrEmailRejected = errors.New("email service rejected send")
 
+// ErrRecipientBlocked marks a send the non-production allowlist suppressed: the email
+// service replied without error but delivered nothing. Callers that only need to know
+// the send is finished treat it as success; callers that act on real delivery (such as
+// the archive copy) must not.
+var ErrRecipientBlocked = errors.New("email recipient blocked by the non-production allowlist")
+
 // EmailRequester is the subset of *nats.Conn the email client needs.
 type EmailRequester interface {
 	RequestMsgWithContext(ctx context.Context, msg *nats.Msg) (*nats.Msg, error)
@@ -61,6 +67,7 @@ func NewEmailClient(conn EmailRequester, fromDisplayName string) *EmailClient {
 
 // Send delivers msg to the email service and returns once it is accepted.
 // Acceptance is not delivery: bounces arrive later on a separate subject.
+// A recipient blocked by the non-production allowlist returns ErrRecipientBlocked.
 func (c *EmailClient) Send(ctx context.Context, msg EmailMessage) error {
 	data, err := json.Marshal(emailapi.SendEmailRequest{
 		To:              msg.To,
@@ -90,6 +97,10 @@ func (c *EmailClient) Send(ctx context.Context, msg EmailMessage) error {
 		return err
 	}
 	span.SetAttributes(attribute.String("email.email_id", emailID))
+	if emailID == "" {
+		span.SetAttributes(attribute.Bool("email.recipient_blocked", true))
+		return ErrRecipientBlocked
+	}
 	return nil
 }
 
@@ -116,7 +127,8 @@ func (c *EmailClient) request(ctx context.Context, data []byte) (string, error) 
 		return "", fmt.Errorf("%w: %s", ErrEmailRejected, errResp.Error)
 	}
 	// Decode email_id as a pointer: a recipient blocked by the non-prod allowlist
-	// gets "" (counted as sent), but a reply without the field is not a send reply.
+	// gets "" (Send maps it to ErrRecipientBlocked), but a reply without the field
+	// is not a send reply.
 	var resp struct {
 		EmailID *string `json:"email_id"`
 	}

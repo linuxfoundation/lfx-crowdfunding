@@ -56,11 +56,11 @@ func TestEmailClientSend_Success(t *testing.T) {
 	}
 }
 
-func TestEmailClientSend_BlockedRecipientCountsAsSent(t *testing.T) {
+func TestEmailClientSend_BlockedRecipient(t *testing.T) {
 	stub := &requesterStub{reply: []byte(`{"email_id":"","group_id":""}`)}
 
-	if err := NewEmailClient(stub, "").Send(context.Background(), EmailMessage{}); err != nil {
-		t.Fatalf("Send: %v", err)
+	if err := NewEmailClient(stub, "").Send(context.Background(), EmailMessage{}); !errors.Is(err, ErrRecipientBlocked) {
+		t.Fatalf("err = %v, want ErrRecipientBlocked", err)
 	}
 }
 

@@ -82,7 +82,8 @@ type emailService struct {
 
 // NewEmailService returns a domain.EmailService that renders in-repo templates
 // and sends them through sender. A nil sender makes every send return ErrEmailNotConfigured.
-// When copyInbox is set, every accepted send is followed by a best-effort copy to it,
+// When copyInbox is set, every delivered send (not one the non-prod allowlist blocked)
+// is followed by a best-effort copy to it,
 // sent in the background (see sendCopy). Call WaitCopies on shutdown to drain them.
 func NewEmailService(sender EmailSender, frontendBase string, notificationEmails []string, copyInbox string, logger *slog.Logger) domain.EmailService {
 	if logger == nil {
@@ -112,6 +113,13 @@ func (s *emailService) sendEmail(ctx context.Context, to, subject, name string, 
 	}
 	msg := EmailMessage{To: to, Subject: subject, HTML: html.String(), Text: text.String()}
 	if err := s.sender.Send(ctx, msg); err != nil {
+		if errors.Is(err, ErrRecipientBlocked) {
+			// The non-prod allowlist suppressed it: finished for the caller, but nothing
+			// was delivered, so there is nothing to archive (and the copy would carry
+			// the blocked recipient's details).
+			s.logger.DebugContext(ctx, "email recipient blocked by allowlist, skipping copy", "template", name)
+			return nil
+		}
 		return err
 	}
 	s.sendCopy(ctx, msg, name)
@@ -134,7 +142,7 @@ func (s *emailService) sendCopy(ctx context.Context, msg EmailMessage, template 
 	s.copies.Add(1)
 	go func() {
 		defer s.copies.Done()
-		if err := s.sender.Send(detached, cp); err != nil {
+		if err := s.sender.Send(detached, cp); err != nil && !errors.Is(err, ErrRecipientBlocked) {
 			s.logger.WarnContext(detached, "failed to send email copy", "template", template, "error", err)
 		}
 	}()

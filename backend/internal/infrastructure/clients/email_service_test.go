@@ -352,3 +352,39 @@ func TestSendEmail_NoCopyWhenUnset(t *testing.T) {
 		t.Fatalf("expected no copy when the copy inbox is unset, got %d calls", len(m.calls))
 	}
 }
+
+func TestSendEmail_NoCopyWhenRecipientBlocked(t *testing.T) {
+	m := &mockSender{errs: []error{ErrRecipientBlocked}}
+	svc := newSvcWithCopy(m, nil, "copies@example.org")
+
+	err := svc.SendDonationConfirmationEmail(context.Background(), "d@example.com", "Donor", "My Project", "http://url", "$50.00", "Travel", "", "Credit Card", "One-time")
+	if err != nil {
+		t.Fatalf("a blocked recipient must count as finished, got %v", err)
+	}
+	waitCopies(t, svc)
+	if len(m.calls) != 1 {
+		t.Fatalf("expected no copy for an allowlist-blocked original, got %d calls", len(m.calls))
+	}
+}
+
+func TestSendEmail_BlockedRecipientInLoopDoesNotFail(t *testing.T) {
+	m := &mockSender{errs: []error{ErrRecipientBlocked, nil}}
+	svc := newSvcWithCopy(m, []string{"review@example.org"}, "copies@example.org")
+
+	if err := svc.SendProjectApprovedEmail(context.Background(), "owner@example.com", "Owner", "My Project", "http://url"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	waitCopies(t, svc)
+	originals, copies := splitCalls(m.calls, "copies@example.org")
+	if len(originals) != 2 {
+		t.Fatalf("expected both originals attempted, got %d", len(originals))
+	}
+	if len(copies) != 1 {
+		t.Fatalf("expected a copy only for the delivered original, got %d", len(copies))
+	}
+	for subj := range copies {
+		if !strings.Contains(subj, "review@example.org") {
+			t.Errorf("copy should be for the delivered review inbox, got subject %q", subj)
+		}
+	}
+}
