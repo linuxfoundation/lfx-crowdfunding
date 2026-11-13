@@ -73,7 +73,8 @@ export default defineNuxtPlugin(() => {
     if (authState.value.isAuthenticated) {
       await $fetch('/api/me', { method: 'PATCH', credentials: 'include' }).catch((err) => {
         console.error('Profile sync error:', err);
-        showError(profileSyncErrorMessage(err));
+        // The toast component (in the layout) drops messages sent before it has mounted.
+        onNuxtReady(() => showError(profileSyncErrorMessage(err)));
       });
     }
   };
