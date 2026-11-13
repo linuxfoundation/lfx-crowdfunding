@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"net/mail"
 	"os"
 	"strconv"
 	"strings"
@@ -173,6 +174,7 @@ type EmailConfig struct {
 	FromDisplayName    string   // sender name shown in the inbox; the address is the platform default
 	FrontendBase       string   // base URL for initiative deep-links in emails
 	NotificationEmails []string // inboxes that receive new-submission alerts
+	CopyInbox          string   // archive inbox sent a copy of every email; empty disables copies
 }
 
 // LoadConfig reads all configuration from environment variables.
@@ -270,6 +272,13 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	emailCopyInbox := strings.TrimSpace(getEnv("EMAIL_COPY_INBOX", ""))
+	if emailCopyInbox != "" {
+		if addr, err := mail.ParseAddress(emailCopyInbox); err != nil || addr.Address != emailCopyInbox {
+			return nil, fmt.Errorf("EMAIL_COPY_INBOX must be a bare email address")
+		}
+	}
+
 	s3BucketName := getEnv("S3_UPLOAD_BUCKET", "")
 	if s3BucketName == "" {
 		return nil, fmt.Errorf("S3_UPLOAD_BUCKET is required")
@@ -344,6 +353,7 @@ func LoadConfig() (*Config, error) {
 			FromDisplayName:    getEnv("EMAIL_FROM_DISPLAY_NAME", "LFX Crowdfunding"),
 			FrontendBase:       frontendBaseURL,
 			NotificationEmails: parseCommaList(getEnv("EMAIL_REVIEW_INBOX", "")),
+			CopyInbox:          emailCopyInbox,
 		},
 		Reimbursement: ReimbursementConfig{
 			APIURL:                getEnv("REIMBURSEMENTS_API_URL", ""),
