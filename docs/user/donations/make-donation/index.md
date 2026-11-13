@@ -1,8 +1,8 @@
 ---
 title: Making a Donation
 description: How to make a one-time or monthly donation to an open source initiative on LFX Crowdfunding.
-tags: [donations, one-time, monthly, payment, stripe, organization, anonymous]
-last_updated: 2026-11-10
+tags: [donations, one-time, monthly, payment, stripe, organization, anonymous, logo]
+last_updated: 2026-11-12
 display_order: 1
 intercom_collection: LFX Crowdfunding
 ---
@@ -37,7 +37,7 @@ Under **I'm donating as**, pick one:
 - **Individual** — the donation is credited to you, with your name and avatar.
 - **An organization** — the donation is credited to a company or organization.
 
-To donate on behalf of an organization, select **An organization** and search for it by name. Results show each organization's name and website. Pick the right one; its name and website then appear in the organization row.
+To donate on behalf of an organization, select **An organization** and search for it by name. Results show each organization's name and website, plus its logo if the organization has already donated on LFX Crowdfunding and is matched to its LFX organization. Other organizations show a placeholder icon. Pick the right one; its name, website and logo then appear in the organization row.
 
 If your organization isn't in the results, click **Can't find it? Enter it manually** and type:
 

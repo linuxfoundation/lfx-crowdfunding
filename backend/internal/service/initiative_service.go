@@ -57,7 +57,13 @@ type InitiativeService struct {
 	roleResolver  fga.EntityRoleResolver        // nil when FGA_NATS_URL is unset
 	subRepo       domain.SubscriptionRepository // nil in tests that don't exercise cancellation
 	privacy       domain.DonorPrivacyRepository // nil in tests; nil hides no donor
+	orgLogos      domain.OrgLogoRepository      // nil in tests; nil shows generated org avatars
 	logger        *slog.Logger
+}
+
+// SetOrgLogoRepo wires the b2b_org logos shown for org donors (#472).
+func (s *InitiativeService) SetOrgLogoRepo(r domain.OrgLogoRepository) {
+	s.orgLogos = r
 }
 
 // SetDonorPrivacyRepo wires the anonymous-donor lookups used to hide donors on
@@ -1282,7 +1288,7 @@ func (s *InitiativeService) GetMyTransactions(ctx context.Context, initiativeID,
 	}
 
 	markOwnLedgerRows(ctx, s.privacy, list.Data)
-	enrichTransactionsFromDB(ctx, s.repo, list.Data, false)
+	enrichTransactionsFromDB(ctx, s.repo, s.orgLogos, list.Data, false)
 	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
 		if ini, ok := initiatives[initiativeID]; ok {
 			for i := range list.Data {
@@ -1332,7 +1338,7 @@ func (s *InitiativeService) GetTransactions(ctx context.Context, initiativeID, t
 	}
 
 	markPublicLedgerRows(ctx, s.privacy, list.Data)
-	enrichTransactionsFromDB(ctx, s.repo, list.Data, true)
+	enrichTransactionsFromDB(ctx, s.repo, s.orgLogos, list.Data, true)
 	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
 		if ini, ok := initiatives[initiativeID]; ok {
 			for i := range list.Data {
@@ -1365,7 +1371,7 @@ func (s *InitiativeService) GetCategoryTransactions(ctx context.Context, initiat
 	}
 
 	markPublicLedgerRows(ctx, s.privacy, list.Data)
-	enrichTransactionsFromDB(ctx, s.repo, list.Data, true)
+	enrichTransactionsFromDB(ctx, s.repo, s.orgLogos, list.Data, true)
 	if initiatives, nameErr := s.repo.GetInitiativesByIDs(ctx, []string{initiativeID}); nameErr == nil {
 		if ini, ok := initiatives[initiativeID]; ok {
 			for i := range list.Data {
@@ -1469,7 +1475,7 @@ func (s *InitiativeService) GetAllMyTransactions(ctx context.Context, userID, tx
 	}
 
 	markOwnLedgerRows(ctx, s.privacy, list.Data)
-	enrichTransactionsFromDB(ctx, s.repo, list.Data, false)
+	enrichTransactionsFromDB(ctx, s.repo, s.orgLogos, list.Data, false)
 
 	for i := range list.Data {
 		list.Data[i].InitiativeID = list.Data[i].LedgerProjectID
@@ -1604,18 +1610,23 @@ func (s *InitiativeService) syncFGADelete(ctx context.Context, id string) {
 }
 
 // enrichTransactionsFromDB batch-looks up users from the CF DB and merges
-// name + avatar_url onto each transaction. Org rows carry their name from Ledger.
+// name + avatar_url onto each transaction. Org rows carry their name from Ledger
+// and the logo of the b2b_org their domain is matched to (#472).
 // Falls back to a deterministic generated avatar when no DB record is found.
 // With maskAnonymous set, rows flagged Anonymous keep only their org (#466):
 // the person, including the ledger's submitter name, shows as "Anonymous".
-func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeRepository, txns []models.Transaction, maskAnonymous bool) {
+func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeRepository, logoRepo orgLogoReader, txns []models.Transaction, maskAnonymous bool) {
 	if len(txns) == 0 {
 		return
 	}
 	// Collect unique IDs to look up.
 	userIDs := make([]string, 0, len(txns))
 	seenUsers := map[string]bool{}
+	orgDomains := make([]string, 0, len(txns))
 	for _, t := range txns {
+		if t.LedgerOrgName != "" {
+			orgDomains = append(orgDomains, t.LedgerOrgDomain)
+		}
 		hide := maskAnonymous && t.Anonymous
 		if !hide && t.LedgerUserID != "" && !seenUsers[t.LedgerUserID] {
 			userIDs = append(userIDs, t.LedgerUserID)
@@ -1628,6 +1639,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
 		users = map[string]models.User{}
 	}
+	logos := orgLogos(ctx, logoRepo, orgDomains)
 	for i := range txns {
 		t := &txns[i]
 		hide := maskAnonymous && t.Anonymous
@@ -1640,7 +1652,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 		if t.LedgerOrgName != "" {
 			// The org as the donor stated it (#365); no CF row to look up.
 			t.DonorName = t.LedgerOrgName
-			t.DonorLogoURL = generatedAvatarURL(cmp.Or(t.LedgerOrgDomain, t.LedgerOrgName), t.DonorName)
+			t.DonorLogoURL = cmp.Or(logos[t.LedgerOrgDomain], generatedAvatarURL(cmp.Or(t.LedgerOrgDomain, t.LedgerOrgName), t.DonorName))
 		} else if t.LedgerOrgID != "" {
 			// An unnamed Ledger org row; the #408 backfill named every legacy one.
 			if t.DonorName == "" {

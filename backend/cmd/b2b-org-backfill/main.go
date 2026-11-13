@@ -12,6 +12,9 @@
 // are filled, so it's safe to re-run; it's deployed as the b2b-org-backfill
 // CronJob (charts/lfx-crowdfunding-backend/templates/cronjob-b2b-org-backfill.yaml).
 //
+// It then refreshes the logo of every matched b2b_org (#472) with
+// lfx.member.b2b_org_lookup, into b2b_org_logos, which donor lists read.
+//
 // Ledger rows are filled separately: --export writes domain,sfid for every
 // matched domain, the input for ledger-service's
 // scripts/backfill-organization-claim --sfid-csv.
@@ -22,7 +25,7 @@
 //
 // Flags:
 //
-//	--dry-run  Look up domains and report matches without writing anything.
+//	--dry-run  Look up domains and logos and report them without writing anything.
 //	--export   After the run, write domain,sfid for every matched domain to this path.
 //	           Can't be combined with --dry-run, which saves no matches to export.
 //
@@ -93,6 +96,7 @@ func run(logger *slog.Logger, dryRun bool, exportPath string) error {
 	st := &pgStore{pool: pool}
 	b := &backfiller{
 		store:  st,
+		logos:  db.NewOrgLogoRepository(pool),
 		lookup: clients.NewMemberClient(conn),
 		stripe: stripePatcher{api: stripe.NewClient(cfg.StripeSecretKey)},
 		dryRun: dryRun,
@@ -116,6 +120,18 @@ func run(logger *slog.Logger, dryRun bool, exportPath string) error {
 		"stripe_patched", res.stripePatched,
 		"stripe_skipped", res.stripeSkipped,
 		"stripe_failed", res.stripeFailed,
+	)
+
+	logos, err := b.RefreshLogos(ctx)
+	if err != nil {
+		return fmt.Errorf("logo refresh: %w", err)
+	}
+	logger.Info("b2b_org logo refresh complete",
+		"dry_run", dryRun,
+		"orgs", logos.orgs,
+		"logos_stored", logos.stored,
+		"logos_cleared", logos.cleared,
+		"lookup_failed", logos.lookupFailed,
 	)
 
 	if exportPath == "" {

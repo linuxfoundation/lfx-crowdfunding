@@ -9,3 +9,12 @@ export interface OrgClaim {
   name: string;
   domain: string;
 }
+
+/**
+ * An org search result: the claim plus the b2b_org logo CF has stored for that
+ * domain, when an org donation for it was matched before (#472). Only name and
+ * domain are sent when donating.
+ */
+export interface OrgSuggestion extends OrgClaim {
+  logoUrl?: string;
+}

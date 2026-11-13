@@ -119,6 +119,19 @@ type DonorPrivacyRepository interface {
 	SetSubscriptionAnonymous(ctx context.Context, id, userID string, anonymous bool) error
 }
 
+// OrgLogoRepository holds the logos of the b2b_orgs matched to org donations
+// (#472), copied from member-service so donor lists never call it.
+type OrgLogoRepository interface {
+	// SetOrgLogo stores the logo of the b2b_org sfid; an empty logoURL removes it.
+	SetOrgLogo(ctx context.Context, sfid, logoURL string) error
+	// LogosByDomains maps org domains (Ledger's org key) to the logo of the
+	// b2b_org their donations and subscriptions are matched to. A domain whose
+	// rows carry more than one SFID, or whose org has no logo, is absent.
+	LogosByDomains(ctx context.Context, domains []string) (map[string]string, error)
+	// MatchedSFIDs returns every b2b_org SFID on a donation or subscription.
+	MatchedSFIDs(ctx context.Context) ([]string, error)
+}
+
 // UserRepository defines persistence operations for users.
 type UserRepository interface {
 	// GetByUsername retrieves a user by their LF SSO username.

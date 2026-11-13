@@ -30,7 +30,16 @@ type store interface {
 }
 
 type resolver interface {
-	LookupB2BOrgByWebsite(ctx context.Context, domain string) (string, error)
+	LookupB2BOrgByWebsite(ctx context.Context, domain string) (models.B2BOrgMatch, error)
+	// GetB2BOrgLogo returns the org's current logo; found is false when
+	// member-service no longer knows the org.
+	GetB2BOrgLogo(ctx context.Context, sfid string) (logoURL string, found bool, err error)
+}
+
+// logoStore holds the logos of matched b2b_orgs (#472); domain.OrgLogoRepository.
+type logoStore interface {
+	MatchedSFIDs(ctx context.Context) ([]string, error)
+	SetOrgLogo(ctx context.Context, sfid, logoURL string) error
 }
 
 type subscriptionPatcher interface {
@@ -47,8 +56,14 @@ type result struct {
 	stripeFailed                            int
 }
 
+// logoResult counts one logo refresh.
+type logoResult struct {
+	orgs, stored, cleared, lookupFailed int
+}
+
 type backfiller struct {
 	store  store
+	logos  logoStore
 	lookup resolver
 	stripe subscriptionPatcher
 	dryRun bool
@@ -66,16 +81,17 @@ func (b *backfiller) Run(ctx context.Context) (result, error) {
 	res.domains = len(domains)
 
 	for _, domain := range domains {
-		sfid, err := b.lookup.LookupB2BOrgByWebsite(ctx, domain)
+		match, err := b.lookup.LookupB2BOrgByWebsite(ctx, domain)
 		switch {
 		case err != nil:
 			res.lookupFailed++
 			b.logger.Warn("b2b_org lookup failed", "org_domain", domain, "error", err)
 			continue
-		case sfid == "":
+		case match.SFID == "":
 			res.noMatch++
 			continue
 		}
+		sfid := match.SFID
 		res.matched++
 		b.logger.Info("b2b_org matched", "org_domain", domain, "b2b_org_sfid", sfid, "dry_run", b.dryRun)
 		if b.dryRun {
@@ -100,6 +116,44 @@ func (b *backfiller) Run(ctx context.Context) (result, error) {
 				return res, err
 			}
 			res.subscriptions++
+		}
+	}
+	return res, nil
+}
+
+// RefreshLogos re-reads the logo of every matched b2b_org from member-service
+// and stores it (#472), so logos changed in Self Serve reach donor lists within
+// a day. Run it after Run, which matches new domains. A failed lookup keeps the
+// stored logo; an org member-service no longer knows, or one without a logo,
+// loses its row and shows initials.
+func (b *backfiller) RefreshLogos(ctx context.Context) (logoResult, error) {
+	var res logoResult
+	sfids, err := b.logos.MatchedSFIDs(ctx)
+	if err != nil {
+		return res, err
+	}
+	res.orgs = len(sfids)
+
+	for _, sfid := range sfids {
+		logoURL, found, err := b.lookup.GetB2BOrgLogo(ctx, sfid)
+		if err != nil {
+			res.lookupFailed++
+			b.logger.Warn("b2b_org logo lookup failed, keeping stored logo", "b2b_org_sfid", sfid, "error", err)
+			continue
+		}
+		if !found {
+			logoURL = ""
+		}
+		if logoURL == "" {
+			res.cleared++
+		} else {
+			res.stored++
+		}
+		if b.dryRun {
+			continue
+		}
+		if err := b.logos.SetOrgLogo(ctx, sfid, logoURL); err != nil {
+			return res, err
 		}
 	}
 	return res, nil

@@ -1,7 +1,7 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import type { OrgClaim } from './organization.types';
+import type { OrgSuggestion } from './organization.types';
 
 export interface SponsorshipTier {
   id: string;
@@ -26,7 +26,7 @@ export type DonorType = 'individual' | 'organization';
 
 export interface DonateContactForm {
   donorType: DonorType;
-  organization: OrgClaim | null;
+  organization: OrgSuggestion | null;
   // Hide the donor's name and email on donor lists (#466).
   anonymous: boolean;
 }

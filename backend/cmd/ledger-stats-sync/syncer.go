@@ -18,6 +18,11 @@ type ledgerSource interface {
 	GetAllBalances(ctx context.Context) ([]models.LedgerRawBalance, error)
 }
 
+// orgLogoSource maps org domains to their b2b_org logo (#472); domain.OrgLogoRepository.
+type orgLogoSource interface {
+	LogosByDomains(ctx context.Context, domains []string) (map[string]string, error)
+}
+
 // syncResult carries the per-run counters logged on completion.
 type syncResult struct {
 	total    int // initiatives in CF DB eligible for sync
@@ -30,6 +35,8 @@ type syncResult struct {
 type Syncer struct {
 	repo   domain.LedgerStatsRepository
 	ledger ledgerSource
+	// logos is optional: nil leaves org sponsors on generated avatars.
+	logos  orgLogoSource
 	logger *slog.Logger
 }
 
@@ -44,7 +51,8 @@ func newSyncer(repo domain.LedgerStatsRepository, ledger ledgerSource, logger *s
 //  3. Build an O(1) lookup index keyed by projectID.
 //  4. Collect unique individual sponsor IDs for bulk enrichment.
 //  5. Enrich individual sponsors with names and avatar URLs from CF DB.
-//     Org sponsors carry their name from Ledger.
+//     Org sponsors carry their name from Ledger, and the logo of the
+//     b2b_org their domain is matched to (#472).
 //  6. Upsert matching rows into initiative_ledger_stats.
 //  7. Return per-run counters for summary logging.
 func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
@@ -78,6 +86,10 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 		return syncResult{}, fmt.Errorf("fetch user details for sponsors: %w", err)
 	}
 
+	// Step 5b — logos of the b2b_orgs matched to org sponsors' domains. A
+	// failure only costs the logos: sponsors keep their generated avatars.
+	orgLogos := s.orgSponsorLogos(ctx, rawBalances)
+
 	// Step 6 — map and enrich each matching initiative
 	toUpsert := make([]models.LedgerStats, 0, len(initiativeIDs))
 	for _, id := range initiativeIDs {
@@ -86,7 +98,7 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 			result.skipped++
 			continue
 		}
-		toUpsert = append(toUpsert, mapBalance(raw, userMap))
+		toUpsert = append(toUpsert, mapBalance(raw, userMap, orgLogos))
 		result.matched++
 	}
 
@@ -136,6 +148,30 @@ func collectSponsorUserIDs(balances []models.LedgerRawBalance) (userIDs []string
 	return userIDs
 }
 
+// orgSponsorLogos returns the logo for each org sponsor key that has one. Ledger
+// keys org buckets by domain; legacy CF org UUID keys simply never match.
+func (s *Syncer) orgSponsorLogos(ctx context.Context, balances []models.LedgerRawBalance) map[string]string {
+	if s.logos == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	keys := []string{}
+	for i := range balances {
+		for _, o := range balances[i].Sponsors.Orgs {
+			if _, ok := seen[o.ID]; o.ID != "" && !ok {
+				seen[o.ID] = struct{}{}
+				keys = append(keys, o.ID)
+			}
+		}
+	}
+	logos, err := s.logos.LogosByDomains(ctx, keys)
+	if err != nil {
+		s.logger.WarnContext(ctx, "org sponsor logo lookup failed, using generated avatars", "error", err)
+		return nil
+	}
+	return logos
+}
+
 // mapBalance converts a LedgerRawBalance into a LedgerStats row ready for
 // upsert, normalising Ledger fields and enriching sponsors.
 //
@@ -155,6 +191,7 @@ func collectSponsorUserIDs(balances []models.LedgerRawBalance) (userIDs []string
 func mapBalance(
 	raw models.LedgerRawBalance,
 	userMap map[string]models.User,
+	orgLogos map[string]string,
 ) models.LedgerStats {
 	totalDebit := raw.TotalDebit
 	if totalDebit < 0 {
@@ -193,7 +230,7 @@ func mapBalance(
 	// count stays consistent with the sponsors JSONB column.
 	// Only entries with a positive total are counted as supporters — negative
 	// totals represent expense payouts to recipients, not donor contributions.
-	enriched := enrichSponsors(raw.Sponsors, userMap)
+	enriched := enrichSponsors(raw.Sponsors, userMap, orgLogos)
 	seen := make(map[string]struct{}, len(enriched.Orgs)+len(enriched.Individuals))
 	for _, o := range enriched.Orgs {
 		if o.Total > 0 {
@@ -219,19 +256,21 @@ func mapBalance(
 }
 
 // enrichSponsors adds name + avatar data from CF DB to individual sponsors.
-// Org sponsors carry the name Ledger returns. Individuals whose IDs are not
-// found in the DB are included with an empty Name so no sponsor data is
+// Org sponsors carry the name Ledger returns and their b2b_org logo from
+// orgLogos, keyed by sponsor ID, when there is one. Individuals whose IDs are
+// not found in the DB are included with an empty Name so no sponsor data is
 // silently dropped.
 func enrichSponsors(
 	raw models.LedgerRawSponsors,
 	userMap map[string]models.User,
+	orgLogos map[string]string,
 ) models.LedgerSponsorList {
 	orgs := make([]models.LedgerSponsorOrg, 0, len(raw.Orgs))
 	for _, s := range raw.Orgs {
 		if s.ID == "" {
 			continue
 		}
-		orgs = append(orgs, models.LedgerSponsorOrg{ID: s.ID, Name: s.Name, Total: s.Total})
+		orgs = append(orgs, models.LedgerSponsorOrg{ID: s.ID, Name: s.Name, AvatarURL: orgLogos[s.ID], Total: s.Total})
 	}
 
 	individuals := make([]models.LedgerSponsorUser, 0, len(raw.Individuals))

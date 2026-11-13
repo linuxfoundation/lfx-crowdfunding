@@ -363,7 +363,7 @@ func TestMapBalance(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := mapBalance(tc.raw, nil)
+			got := mapBalance(tc.raw, nil, nil)
 
 			if got.TotalRaisedCents != tc.wantTotalRaised {
 				t.Errorf("TotalRaisedCents: got %d, want %d", got.TotalRaisedCents, tc.wantTotalRaised)
@@ -450,7 +450,7 @@ func TestEnrichSponsors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := enrichSponsors(tc.raw, userMap)
+			got := enrichSponsors(tc.raw, userMap, nil)
 
 			if len(got.Orgs) != len(tc.wantOrgNames) {
 				t.Fatalf("orgs count: got %d, want %d", len(got.Orgs), len(tc.wantOrgNames))
@@ -788,3 +788,79 @@ func discardLogger() *slog.Logger {
 type nopWriter struct{}
 
 func (nopWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+type fakeOrgLogos struct {
+	logos map[string]string
+	err   error
+	asked []string
+}
+
+func (f *fakeOrgLogos) LogosByDomains(_ context.Context, domains []string) (map[string]string, error) {
+	f.asked = append(f.asked, domains...)
+	return f.logos, f.err
+}
+
+func orgLogoBalances() []models.LedgerRawBalance {
+	return []models.LedgerRawBalance{
+		{ProjectID: "init-1", TotalCredit: 300, Sponsors: models.LedgerRawSponsors{
+			Orgs: []models.LedgerRawSponsor{{ID: "cncf.io", Name: "CNCF", Total: 200}, {ID: "nologo.org", Name: "No Logo", Total: 100}},
+		}},
+		{ProjectID: "init-2", TotalCredit: 50, Sponsors: models.LedgerRawSponsors{
+			Orgs: []models.LedgerRawSponsor{{ID: "cncf.io", Name: "CNCF", Total: 50}},
+		}},
+	}
+}
+
+func TestSyncer_Run_orgSponsorLogos(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockLedgerStatsRepo{initiativeIDs: []string{"init-1", "init-2"}}
+	logos := &fakeOrgLogos{logos: map[string]string{"cncf.io": "https://cdn.example/cncf.png"}}
+	s := newSyncer(repo, &mockLedgerSource{balances: orgLogoBalances()}, discardLogger())
+	s.logos = logos
+
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Each org key is looked up once across all initiatives.
+	if len(logos.asked) != 2 {
+		t.Errorf("asked = %v, want cncf.io and nologo.org once each", logos.asked)
+	}
+	got := map[string]string{}
+	for _, st := range repo.capturedUpserts {
+		for _, o := range st.Sponsors.Orgs {
+			got[st.InitiativeID+"/"+o.ID] = o.AvatarURL
+		}
+	}
+	want := map[string]string{
+		"init-1/cncf.io":    "https://cdn.example/cncf.png",
+		"init-1/nologo.org": "",
+		"init-2/cncf.io":    "https://cdn.example/cncf.png",
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("org avatars = %v, want %v", got, want)
+	}
+}
+
+func TestSyncer_Run_orgSponsorLogoFailureKeepsSyncing(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockLedgerStatsRepo{initiativeIDs: []string{"init-1", "init-2"}}
+	s := newSyncer(repo, &mockLedgerSource{balances: orgLogoBalances()}, discardLogger())
+	s.logos = &fakeOrgLogos{err: errors.New("db down")}
+
+	result, err := s.Run(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.upserted != 2 {
+		t.Errorf("upserted = %d, want 2", result.upserted)
+	}
+	for _, st := range repo.capturedUpserts {
+		for _, o := range st.Sponsors.Orgs {
+			if o.AvatarURL != "" {
+				t.Errorf("%s/%s avatar = %q, want none", st.InitiativeID, o.ID, o.AvatarURL)
+			}
+		}
+	}
+}

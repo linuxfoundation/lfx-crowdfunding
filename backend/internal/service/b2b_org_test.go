@@ -6,46 +6,101 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
 
-type b2bOrgResolverFunc func(ctx context.Context, domain string) (string, error)
+type b2bOrgResolverFunc func(ctx context.Context, domain string) (models.B2BOrgMatch, error)
 
-func (f b2bOrgResolverFunc) LookupB2BOrgByWebsite(ctx context.Context, domain string) (string, error) {
+func (f b2bOrgResolverFunc) LookupB2BOrgByWebsite(ctx context.Context, domain string) (models.B2BOrgMatch, error) {
 	return f(ctx, domain)
+}
+
+// recordingLogos records SetOrgLogo calls; err fails them.
+type recordingLogos struct {
+	domain.OrgLogoRepository
+	set map[string]string
+	err error
+}
+
+func (l *recordingLogos) SetOrgLogo(_ context.Context, sfid, logoURL string) error {
+	if l.err != nil {
+		return l.err
+	}
+	l.set[sfid] = logoURL
+	return nil
 }
 
 func TestLookupAndStoreB2BOrg(t *testing.T) {
 	tests := []struct {
 		name      string
-		sfid      string
+		match     models.B2BOrgMatch
 		lookupErr error
+		storeErr  error
 		wantStore string
+		wantLogos map[string]string
 	}{
-		{name: "match is stored", sfid: "0012M00002qnukOQAQ", wantStore: "0012M00002qnukOQAQ"},
-		{name: "no match stores nothing"},
-		{name: "lookup error stores nothing", lookupErr: errors.New("b2b org lookup failed")},
+		{
+			name:      "match and logo are stored",
+			match:     models.B2BOrgMatch{SFID: "0012M00002qnukOQAQ", LogoURL: "https://cdn.example/logo.png"},
+			wantStore: "0012M00002qnukOQAQ",
+			wantLogos: map[string]string{"0012M00002qnukOQAQ": "https://cdn.example/logo.png"},
+		},
+		{
+			name:      "match without a logo clears a stored one",
+			match:     models.B2BOrgMatch{SFID: "0012M00002qnukOQAQ"},
+			wantStore: "0012M00002qnukOQAQ",
+			wantLogos: map[string]string{"0012M00002qnukOQAQ": ""},
+		},
+		{name: "no match stores nothing", wantLogos: map[string]string{}},
+		{name: "lookup error stores nothing", lookupErr: errors.New("b2b org lookup failed"), wantLogos: map[string]string{}},
+		{
+			name:      "failed SFID store skips the logo",
+			match:     models.B2BOrgMatch{SFID: "0012M00002qnukOQAQ", LogoURL: "https://cdn.example/logo.png"},
+			storeErr:  errors.New("db down"),
+			wantStore: "0012M00002qnukOQAQ",
+			wantLogos: map[string]string{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := b2bOrgResolverFunc(func(_ context.Context, domain string) (string, error) {
+			r := b2bOrgResolverFunc(func(_ context.Context, domain string) (models.B2BOrgMatch, error) {
 				if domain != "acme.com" {
 					t.Errorf("domain = %q, want acme.com", domain)
 				}
-				return tt.sfid, tt.lookupErr
+				return tt.match, tt.lookupErr
 			})
+			logos := &recordingLogos{set: map[string]string{}}
 			var stored string
-			lookupAndStoreB2BOrg(context.Background(), r, "donation", "d1", "acme.com", func(_ context.Context, sfid string) error {
+			lookupAndStoreB2BOrg(context.Background(), r, logos, "donation", "d1", "acme.com", func(_ context.Context, sfid string) error {
 				stored = sfid
-				return nil
+				return tt.storeErr
 			})
 			if stored != tt.wantStore {
 				t.Errorf("stored = %q, want %q", stored, tt.wantStore)
 			}
+			if fmt.Sprint(logos.set) != fmt.Sprint(tt.wantLogos) {
+				t.Errorf("logos = %v, want %v", logos.set, tt.wantLogos)
+			}
 		})
+	}
+}
+
+func TestLookupAndStoreB2BOrg_NilLogoRepo(t *testing.T) {
+	r := b2bOrgResolverFunc(func(_ context.Context, _ string) (models.B2BOrgMatch, error) {
+		return models.B2BOrgMatch{SFID: "001A", LogoURL: "https://cdn.example/logo.png"}, nil
+	})
+	var stored string
+	lookupAndStoreB2BOrg(context.Background(), r, nil, "donation", "d1", "acme.com", func(_ context.Context, sfid string) error {
+		stored = sfid
+		return nil
+	})
+	if stored != "001A" {
+		t.Errorf("stored = %q, want 001A", stored)
 	}
 }
 
@@ -83,8 +138,8 @@ func TestDonationService_Create_ResolvesB2BOrg(t *testing.T) {
 		},
 	}
 	svc := newDonationSvc(donRepo, acceptingInitiative(), &testUserRepo{}, stripe)
-	svc.SetB2BOrgResolver(b2bOrgResolverFunc(func(_ context.Context, _ string) (string, error) {
-		return "0012M00002qnukOQAQ", nil
+	svc.SetB2BOrgResolver(b2bOrgResolverFunc(func(_ context.Context, _ string) (models.B2BOrgMatch, error) {
+		return models.B2BOrgMatch{SFID: "0012M00002qnukOQAQ"}, nil
 	}))
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", models.DonationCreateInput{
@@ -126,8 +181,8 @@ func TestSubscriptionService_Create_ResolvesB2BOrg(t *testing.T) {
 		},
 	}
 	svc := newSubscriptionSvc(subRepo, acceptingInitiative(), &testUserRepo{}, stripe)
-	svc.SetB2BOrgResolver(b2bOrgResolverFunc(func(_ context.Context, _ string) (string, error) {
-		return "0012M00002qnukOQAQ", nil
+	svc.SetB2BOrgResolver(b2bOrgResolverFunc(func(_ context.Context, _ string) (models.B2BOrgMatch, error) {
+		return models.B2BOrgMatch{SFID: "0012M00002qnukOQAQ"}, nil
 	}))
 
 	_, err := svc.Create(context.Background(), "init-1", "u1", models.SubscriptionCreateInput{

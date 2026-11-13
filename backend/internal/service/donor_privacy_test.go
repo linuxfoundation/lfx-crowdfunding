@@ -124,7 +124,7 @@ func TestEnrichTransactionsFromDB_MasksAnonymousDonors(t *testing.T) {
 		{ID: "unknown-org", LedgerUserID: "u1", LedgerOrgID: "org-gone", DonorName: "Alice (submitter)", Anonymous: true},
 		{ID: "no-ids", DonorName: "Alice (submitter)", Anonymous: true},
 	}
-	enrichTransactionsFromDB(context.Background(), repo, txns, true)
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, true)
 
 	for _, tx := range txns {
 		if tx.DonorName == "Alice" || tx.DonorName == "Alice (submitter)" || tx.DonorLogoURL == "https://example.com/alice.png" {
@@ -145,7 +145,7 @@ func TestEnrichTransactionsFromDB_MasksAnonymousDonors(t *testing.T) {
 func TestEnrichTransactionsFromDB_OwnRowsKeepName(t *testing.T) {
 	repo := &mockRepoForEnrich{users: map[string]models.User{"u1": {Name: "Alice"}}}
 	txns := []models.Transaction{{ID: "t1", LedgerUserID: "u1", Anonymous: true}}
-	enrichTransactionsFromDB(context.Background(), repo, txns, false)
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, false)
 	if txns[0].DonorName != "Alice" || !txns[0].Anonymous {
 		t.Errorf("own row = %+v", txns[0])
 	}
@@ -348,7 +348,7 @@ func TestProjectDonationSummaries_HidesAnonymousIndividual(t *testing.T) {
 			return map[string]models.User{"u1": {Name: "Alice"}}, nil
 		},
 	}
-	got := projectDonationSummaries(context.Background(), repo, []models.Donation{
+	got := projectDonationSummaries(context.Background(), repo, nil, []models.Donation{
 		{ID: "hidden", UserID: "u1", Anonymous: true},
 		{ID: "org", UserID: "u1", OrgName: "Acme", Anonymous: true},
 	})

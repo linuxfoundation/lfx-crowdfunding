@@ -30,6 +30,7 @@ type DonationService struct {
 	userRepo       domain.UserRepository
 	stripe         clients.StripeClient
 	b2bOrgResolver B2BOrgResolver
+	orgLogos       domain.OrgLogoRepository
 	privacy        domain.DonorPrivacyRepository
 }
 
@@ -84,6 +85,11 @@ func (s *DonationService) SetB2BOrgResolver(r B2BOrgResolver) {
 	s.b2bOrgResolver = r
 }
 
+// SetOrgLogoRepo wires the store for the matched b2b_org's logo (#472).
+func (s *DonationService) SetOrgLogoRepo(r domain.OrgLogoRepository) {
+	s.orgLogos = r
+}
+
 // ListByInitiative returns a paginated public summary of donations for an
 // initiative. Each entry is enriched with donor name and avatar from the CF DB;
 // Stripe IDs and user_id are never included in the summary.
@@ -103,14 +109,15 @@ func (s *DonationService) ListByInitiative(ctx context.Context, initiativeID str
 		return nil, nil, fmt.Errorf("list donations: %w", err)
 	}
 
-	summaries := projectDonationSummaries(ctx, s.initiativeRepo, donations)
+	summaries := projectDonationSummaries(ctx, s.initiativeRepo, s.orgLogos, donations)
 	return summaries, meta, nil
 }
 
 // projectDonationSummaries converts raw donation rows into public-facing
 // DonationSummary values, enriching each with donor name and avatar from the
-// CF DB. No Stripe IDs or user_id values are included in the output.
-func projectDonationSummaries(ctx context.Context, repo domain.InitiativeRepository, donations []models.Donation) []models.DonationSummary {
+// CF DB; org donors get their b2b_org's logo (#472). No Stripe IDs or user_id
+// values are included in the output.
+func projectDonationSummaries(ctx context.Context, repo domain.InitiativeRepository, logoRepo orgLogoReader, donations []models.Donation) []models.DonationSummary {
 	if len(donations) == 0 {
 		return []models.DonationSummary{}
 	}
@@ -118,7 +125,11 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 	// Collect unique IDs for batch lookup.
 	userIDs := make([]string, 0, len(donations))
 	seenUsers := map[string]bool{}
+	orgDomains := make([]string, 0, len(donations))
 	for _, d := range donations {
+		if d.OrgName != "" {
+			orgDomains = append(orgDomains, d.OrgDomain)
+		}
 		if d.UserID != "" && !seenUsers[d.UserID] {
 			userIDs = append(userIDs, d.UserID)
 			seenUsers[d.UserID] = true
@@ -134,6 +145,7 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
 		users = map[string]models.User{}
 	}
+	logos := orgLogos(ctx, logoRepo, orgDomains)
 
 	summaries := make([]models.DonationSummary, 0, len(donations))
 	for _, d := range donations {
@@ -149,6 +161,7 @@ func projectDonationSummaries(ctx context.Context, repo domain.InitiativeReposit
 		if d.OrgName != "" {
 			s.DonorType = donorTypeOrganization
 			s.DonorName = d.OrgName
+			s.DonorAvatarURL = logos[d.OrgDomain]
 		} else {
 			s.DonorType = donorTypeIndividual
 			if d.Anonymous {
@@ -411,7 +424,7 @@ func (s *DonationService) Create(ctx context.Context, initiativeID, username str
 		span.RecordError(err)
 		return nil, fmt.Errorf("record donation: %w", err)
 	}
-	resolveB2BOrg(ctx, s.b2bOrgResolver, "donation", created.ID, created.OrgDomain, func(ctx context.Context, sfid string) error {
+	resolveB2BOrg(ctx, s.b2bOrgResolver, s.orgLogos, "donation", created.ID, created.OrgDomain, func(ctx context.Context, sfid string) error {
 		return s.repo.SetB2BOrgSFID(ctx, created.ID, sfid)
 	})
 

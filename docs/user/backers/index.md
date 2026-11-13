@@ -1,8 +1,8 @@
 ---
 title: Backers
 description: Understand how supporters are listed on initiative pages on LFX Crowdfunding.
-tags: [backers, supporters, donors, donations, anonymous, organization]
-last_updated: 2026-11-10
+tags: [backers, supporters, donors, donations, anonymous, organization, logo]
+last_updated: 2026-11-12
 display_order: 6
 intercom_collection: LFX Crowdfunding
 ---
@@ -32,7 +32,11 @@ Select **Load more** at the bottom of the table to see older donations.
 
 ## Organization donations
 
-If someone donated on behalf of an organization, the backer entry shows the organization's name as the donor entered or selected it, with donor type **Company**. There is no check that the donor works at the organization. See [Making a Donation](../donations/make-donation/) for how to donate on behalf of an organization.
+If someone donated on behalf of an organization, the backer entry shows the organization's name as the donor entered or selected it, with donor type **Company**. There is no check that the donor works at the organization.
+
+The organization's avatar is its logo from its LFX organization when the donation is matched to one (by the organization's website domain), and a generated avatar with its initials otherwise. The same logo shows in the sponsor list, the recent donations sidebar, the **Financials** tab, and the platform statistics. Logos are refreshed once a day, so a logo changed on the LFX organization page can take up to a day to appear.
+
+See [Making a Donation](../donations/make-donation/) for how to donate on behalf of an organization.
 
 ## Anonymous donations
 

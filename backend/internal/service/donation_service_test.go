@@ -70,7 +70,7 @@ func (r *summaryInitiativeRepo) GetInitiativesByIDs(_ context.Context, _ []strin
 // --- projectDonationSummaries ---
 
 func TestProjectDonationSummaries_Empty(t *testing.T) {
-	result := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, nil)
+	result := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, nil, nil)
 	if len(result) != 0 {
 		t.Errorf("expected empty slice, got %d elements", len(result))
 	}
@@ -92,7 +92,7 @@ func TestProjectDonationSummaries_IndividualDonor(t *testing.T) {
 		},
 	}
 
-	result := projectDonationSummaries(context.Background(), repo, donations)
+	result := projectDonationSummaries(context.Background(), repo, nil, donations)
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 summary, got %d", len(result))
@@ -131,7 +131,7 @@ func TestProjectDonationSummaries_DeduplicatesUserIDs(t *testing.T) {
 		},
 	}
 
-	result := projectDonationSummaries(context.Background(), repo, donations)
+	result := projectDonationSummaries(context.Background(), repo, nil, donations)
 
 	if lookupCount != 1 {
 		t.Errorf("GetUsersByIDs called %d times, want 1", lookupCount)
@@ -156,7 +156,7 @@ func TestProjectDonationSummaries_UserLookupError_DegradeGracefully(t *testing.T
 		},
 	}
 
-	result := projectDonationSummaries(context.Background(), repo, donations)
+	result := projectDonationSummaries(context.Background(), repo, nil, donations)
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 summary even on lookup error, got %d", len(result))
@@ -183,7 +183,7 @@ func TestProjectDonationSummaries_UnknownUserID_NoName(t *testing.T) {
 		},
 	}
 
-	result := projectDonationSummaries(context.Background(), repo, donations)
+	result := projectDonationSummaries(context.Background(), repo, nil, donations)
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 summary, got %d", len(result))
@@ -903,7 +903,7 @@ func TestProjectDonationSummaries_PreservesDonationTier(t *testing.T) {
 		{ID: "d2", UserID: "u2", CurrentAmountCents: 500, DonationTier: ""},
 	}
 
-	result := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, donations)
+	result := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, nil, donations)
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 summaries, got %d", len(result))
@@ -1006,7 +1006,7 @@ func TestDonationService_Create_InvalidOrgRejectedBeforeStripe(t *testing.T) {
 
 func TestProjectDonationSummaries_StoredOrgName(t *testing.T) {
 	donations := []models.Donation{{ID: "d1", UserID: "u1", OrgName: "Acme", OrgDomain: "acme.com"}}
-	got := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, donations)
+	got := projectDonationSummaries(context.Background(), &summaryInitiativeRepo{}, nil, donations)
 	if got[0].DonorType != donorTypeOrganization || got[0].DonorName != "Acme" {
 		t.Errorf("summary = %q / %q, want organization / Acme", got[0].DonorType, got[0].DonorName)
 	}
