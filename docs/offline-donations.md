@@ -58,8 +58,10 @@ Crowdfunding checks it first, so:
   as *Not in the Ledger yet* in the list. Submit the same details again later to finish it. This
   can't create a duplicate.
 - **"Already recorded"**: check the reference against the list below the form and the Ledger.
-- **Wrong details after recording**: there is no edit or reverse in the UI. Correct the Ledger
-  transaction with the Ledger team (the Ledger has `PUT /transactions`), and the CF row by hand.
+- **Wrong details after recording**: there is no edit or reverse in the UI. As with other manual
+  corrections, post an offsetting `debit` with a negative amount to the Ledger (by hand until #489
+  adds adjustments to this page), then record the correct donation under a new reference. The CF row
+  for the wrong entry has to be fixed by hand.
 
 ## What gets stored
 
