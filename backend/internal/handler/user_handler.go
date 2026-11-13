@@ -23,6 +23,10 @@ type ProfileLookup interface {
 	UsernameToSub(ctx context.Context, username string) (string, error)
 }
 
+// subjectUsernameMessage is the 403 body when the token's username is an Auth0
+// subject. The frontend shows it as is after login.
+const subjectUsernameMessage = "Your sign-in didn't finish setting up your account. Please sign out and sign in again."
+
 // UserHandler holds Chi handlers for the /crowdfunding/me resource.
 type UserHandler struct {
 	userRepo        domain.UserRepository
@@ -58,6 +62,18 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
+		return
+	}
+
+	// A brand-new account's first token can carry its Auth0 subject as the
+	// username (lfx-crowdfunding#485). The auth middleware recovers the
+	// username from auth0|<username>, but a hashed auth0|<base58> subject
+	// still arrives here. It is not an LF username: a row keyed on it would
+	// split the user in two on their next login, so none is created. The
+	// next login carries the real username.
+	if strings.Contains(principal.Username, "|") {
+		h.logger.WarnContext(r.Context(), "token username is an Auth0 subject; refusing profile sync", "principal", principal.Username)
+		JSON(w, http.StatusForbidden, errorBody{Error: subjectUsernameMessage})
 		return
 	}
 
@@ -141,20 +157,9 @@ func (h *UserHandler) SyncProfile(w http.ResponseWriter, r *http.Request) {
 // carry only the username, but Stripe metadata and Ledger rows key donors by
 // the Auth0 subject; without it every donation skips the Ledger (#468). An
 // already-bound legacy_user_id is never replaced: Upsert would reject a
-// different value as a takeover and fail the sync.
-//
-// A brand-new account's first token can carry its Auth0 subject as the
-// username, before Auth0 sets the username claim. The auth middleware recovers
-// the username from an auth0|<username> subject; a hashed one (auth0|<base58>,
-// for usernames auth-service doesn't pass through) still arrives here. That is
-// not an LF username: auth-service would map it to yet another hash-based
-// subject that belongs to nobody, so no lookup is made and nothing is bound.
-// The next login carries the real username and binds the subject on that row.
+// different value as a takeover and fail the sync. SyncProfile has already
+// refused a username that is an Auth0 subject.
 func (h *UserHandler) heimdallLegacyUserID(ctx context.Context, username string) string {
-	if strings.Contains(username, "|") {
-		h.logger.InfoContext(ctx, "token username is an Auth0 subject; syncing without legacy user id")
-		return ""
-	}
 	existing, err := h.userRepo.GetByUsername(ctx, username)
 	switch {
 	case err == nil && existing.LegacyUserID != "":

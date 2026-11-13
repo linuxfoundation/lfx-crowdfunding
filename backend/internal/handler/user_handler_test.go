@@ -518,26 +518,40 @@ func TestSyncProfile_HeimdallIssued_BindsAuth0Subject(t *testing.T) {
 	}
 }
 
-// A new account's first token can carry its Auth0 subject as the username.
-// auth-service would hash it into a subject nobody owns, so none is bound.
-func TestSyncProfile_HeimdallIssued_SubjectShapedUsernameBindsNothing(t *testing.T) {
-	repo := &testUserRepo{}
-	lookup := &testProfileLookup{sub: "auth0|5Ha62PeKvXAk", md: &clients.UserMetadata{}}
-	h := NewUserHandler(repo, &testUserInfoFetcher{err: errors.New("must not be called")}, lookup, slog.Default())
-
-	principal := heimdallSyncPrincipal()
-	principal.Username = "auth0|jdoe"
-	w := httptest.NewRecorder()
-	h.SyncProfile(w, newSyncProfileRequest(principal))
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
+// A new account's first token can carry its Auth0 subject as the username
+// (#485). No row is created for it, on either sync path.
+func TestSyncProfile_SubjectShapedUsername_Returns403WithoutRow(t *testing.T) {
+	cases := []struct {
+		name      string
+		principal *models.Principal
+	}{
+		{"heimdall hashed subject", &models.Principal{UserID: "auth0|5Ha62PeKvXAk", Username: "auth0|5Ha62PeKvXAk", Scope: auth.ScopeMe, IsHeimdallIssued: true}},
+		{"heimdall plain subject", &models.Principal{UserID: "auth0|jdoe", Username: "auth0|jdoe", Scope: auth.ScopeMe, IsHeimdallIssued: true}},
+		{"userinfo path", &models.Principal{UserID: "auth0|x", Username: "auth0|x", Scope: auth.ScopeMe}},
 	}
-	if lookup.subCalled {
-		t.Error("UsernameToSub called for a subject-shaped username")
-	}
-	if got := repo.lastUpserted; got == nil || got.LegacyUserID != "" {
-		t.Errorf("upserted = %+v, want no LegacyUserID", got)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			repo := &testUserRepo{}
+			lookup := &testProfileLookup{sub: "auth0|other", md: &clients.UserMetadata{}}
+			h := NewUserHandler(repo, &testUserInfoFetcher{err: errors.New("must not be called")}, lookup, slog.Default())
+
+			w := httptest.NewRecorder()
+			h.SyncProfile(w, newSyncProfileRequest(c.principal))
+
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403", w.Code)
+			}
+			var body errorBody
+			if err := json.NewDecoder(w.Body).Decode(&body); err != nil || body.Error != subjectUsernameMessage {
+				t.Errorf("body = %+v (decode err %v), want %q", body, err, subjectUsernameMessage)
+			}
+			if repo.lastUpserted != nil {
+				t.Errorf("upserted %+v, want no row", repo.lastUpserted)
+			}
+			if lookup.subCalled {
+				t.Error("UsernameToSub called for a subject-shaped username")
+			}
+		})
 	}
 }
 

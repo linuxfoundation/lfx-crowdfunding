@@ -11,6 +11,7 @@ import {
   setRefreshAuth,
 } from '~/composables/useAuth';
 import { useErrorToast } from '~/composables/useErrorToast';
+import { profileSyncErrorMessage } from '~/utils/profile-sync-error';
 import type { AuthState } from '~/composables/useAuth';
 
 export default defineNuxtPlugin(() => {
@@ -72,7 +73,8 @@ export default defineNuxtPlugin(() => {
     if (authState.value.isAuthenticated) {
       await $fetch('/api/me', { method: 'PATCH', credentials: 'include' }).catch((err) => {
         console.error('Profile sync error:', err);
-        showError('We could not update your profile. Please try again later.');
+        // The toast component (in the layout) drops messages sent before it has mounted.
+        onNuxtReady(() => showError(profileSyncErrorMessage(err)));
       });
     }
   };
