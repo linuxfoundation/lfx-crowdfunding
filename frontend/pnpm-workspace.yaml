@@ -7,6 +7,9 @@ packages:
 overrides:
   "@nuxt/ui": "4.11.1"
   "@nuxt/schema": ">=4.6.4"
+  # @nuxt/schema 4.6.4 resolves an unset devServer.host to {}; @nuxt/cli < 4.0.3
+  # crashes on it (options.hostname.toLowerCase is not a function).
+  "@nuxt/cli": ">=4.0.3"
   "@tiptap/core": ">=3.30.4"
   dompurify: ">=3.4.17"
   immutable: ">=5.1.8"
