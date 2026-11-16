@@ -79,8 +79,13 @@ type OfflineDonationRepository interface {
 	// CreateOffline inserts d as pending. When a donation with the same
 	// SourceTxnID already exists it returns that one and created=false.
 	CreateOffline(ctx context.Context, d *models.OfflineDonation) (stored *models.OfflineDonation, created bool, err error)
+	// LockOfflineReference serializes Record calls for one SourceTxnID across
+	// replicas until unlock is called.
+	LockOfflineReference(ctx context.Context, sourceTxnID string) (unlock func(), err error)
+	// SetOfflineB2BOrg fills the SFID of a pending offline donation that has none.
+	SetOfflineB2BOrg(ctx context.Context, id, sfid string) error
 	// MarkOfflineSucceeded flips a pending offline donation to succeeded once
-	// the Ledger has it.
+	// the Ledger has it; it fails when no pending row with that id exists.
 	MarkOfflineSucceeded(ctx context.Context, id string) error
 	// DeleteOfflinePending removes a pending offline donation the Ledger
 	// rejected, so its reference can be reused.

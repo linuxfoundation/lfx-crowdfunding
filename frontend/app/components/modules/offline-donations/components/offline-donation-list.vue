@@ -59,13 +59,32 @@ SPDX-License-Identifier: MIT
         </div>
       </li>
     </ul>
+
+    <div
+      v-if="hasNextPage"
+      class="flex justify-center"
+    >
+      <lfx-button
+        :label="`Load more (${rows.length} of ${total})`"
+        type="outline"
+        size="small"
+        button-style="pill"
+        :loading="isFetchingNextPage"
+        @click="fetchNextPage()"
+      />
+    </div>
   </lfx-card>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useQuery } from '@tanstack/vue-query';
-import { formatCents } from '../config/offline-donation.config';
+import { useInfiniteQuery } from '@tanstack/vue-query';
+import {
+  OFFLINE_DONATIONS_PAGE_SIZE,
+  formatCents,
+  nextOfflineDonationsOffset,
+} from '../config/offline-donation.config';
+import LfxButton from '~/components/uikit/button/button.vue';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxChip from '~/components/uikit/chip/chip.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
@@ -73,12 +92,19 @@ import type { OfflineDonationList } from '#shared/types/offline-donation.types';
 
 const props = defineProps<{ initiativeId: string }>();
 
-const { data, isLoading, isError } = useQuery<OfflineDonationList>({
+// Paged so every recorded donation stays reachable, newest received first.
+const { data, isLoading, isError, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery({
   queryKey: ['offline-donations', computed(() => props.initiativeId)] as const,
-  queryFn: () => $fetch<OfflineDonationList>('/api/offline-donations', { query: { initiativeId: props.initiativeId } }),
+  queryFn: ({ pageParam }) =>
+    $fetch<OfflineDonationList>('/api/offline-donations', {
+      query: { initiativeId: props.initiativeId, limit: OFFLINE_DONATIONS_PAGE_SIZE, offset: pageParam },
+    }),
+  initialPageParam: 0,
+  getNextPageParam: (lastPage, allPages) => nextOfflineDonationsOffset(allPages, lastPage.total),
 });
 
-const rows = computed(() => data.value?.data ?? []);
+const rows = computed(() => data.value?.pages.flatMap((p) => p.data) ?? []);
+const total = computed(() => data.value?.pages.at(-1)?.total ?? 0);
 </script>
 
 <script lang="ts">

@@ -6,6 +6,7 @@ import {
   emptyOfflineDonationForm,
   isOfflineDonationFormComplete,
   isValidDollarAmount,
+  nextOfflineDonationsOffset,
   normalizeDollarAmount,
   offlineCategoryOptions,
   offlineDonationErrorMessage,
@@ -58,16 +59,16 @@ describe('toIsoDate', () => {
 describe('form → request', () => {
   const complete = {
     ...emptyOfflineDonationForm(),
-    organization: { name: 'Dell Corporation', domain: 'dell.com' },
-    amount: '$8,000',
+    organization: { name: 'Example Corp', domain: 'example.com' },
+    amount: '$1,000',
     receivedOn: new Date(2026, 9, 20),
-    sourceTxnId: '  SPDK Dell 2026-10 ',
+    sourceTxnId: '  TEST-REF-001 ',
   };
 
   it('needs every field', () => {
     expect(isOfflineDonationFormComplete(complete)).toBe(true);
     expect(isOfflineDonationFormComplete({ ...complete, organization: null })).toBe(false);
-    expect(isOfflineDonationFormComplete({ ...complete, amount: '8,000.123' })).toBe(false);
+    expect(isOfflineDonationFormComplete({ ...complete, amount: '1,000.123' })).toBe(false);
     expect(isOfflineDonationFormComplete({ ...complete, receivedOn: null })).toBe(false);
     expect(isOfflineDonationFormComplete({ ...complete, sourceTxnId: ' ' })).toBe(false);
   });
@@ -75,11 +76,11 @@ describe('form → request', () => {
   it('normalizes the values sent', () => {
     expect(toOfflineDonationRequest('i1', complete)).toEqual({
       initiativeId: 'i1',
-      organization: { name: 'Dell Corporation', domain: 'dell.com' },
-      amount: '8000',
+      organization: { name: 'Example Corp', domain: 'example.com' },
+      amount: '1000',
       receivedOn: '2026-10-20',
       category: 'general fund',
-      sourceTxnId: 'SPDK Dell 2026-10',
+      sourceTxnId: 'TEST-REF-001',
     });
   });
 });
@@ -102,4 +103,19 @@ describe('offlineDonationErrorMessage', () => {
 
 it('links to the page with the initiative filled in', () => {
   expect(offlineDonationLink('a b')).toBe('/approvals/offline-donations?initiative=a%20b');
+});
+
+describe('nextOfflineDonationsOffset', () => {
+  const page = (n: number) => ({ data: Array.from({ length: n }) });
+
+  it('asks for the rows after the ones loaded', () => {
+    expect(nextOfflineDonationsOffset([page(50)], 120)).toBe(50);
+    expect(nextOfflineDonationsOffset([page(50), page(50)], 120)).toBe(100);
+  });
+
+  it('stops once every row is loaded, or a page comes back empty', () => {
+    expect(nextOfflineDonationsOffset([page(50), page(50), page(20)], 120)).toBeUndefined();
+    expect(nextOfflineDonationsOffset([page(50)], 50)).toBeUndefined();
+    expect(nextOfflineDonationsOffset([page(50), page(0)], 120)).toBeUndefined();
+  });
 });

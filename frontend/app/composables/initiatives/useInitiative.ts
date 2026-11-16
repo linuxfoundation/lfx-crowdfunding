@@ -16,6 +16,9 @@ export function useInitiative(slug: MaybeRef<string>) {
   });
 
   onServerPrefetch(async () => {
+    // suspense() waits for the query to be enabled, so with no slug (the
+    // offline-donations search entry point) it would never settle and hang SSR.
+    if (!toValue(slug)) return;
     await query.suspense().catch(() => {});
   });
 

@@ -601,6 +601,42 @@ func (c *ledgerHTTPClient) PostOfflineTransaction(ctx context.Context, txn Ledge
 	return resp.DuplicatesRemoved > 0, nil
 }
 
+// offlineLookupPageSize and offlineLookupMaxPages bound FindOfflineTransaction:
+// the Ledger GET has no sourceTxnID filter, so it pages the initiative's
+// offline credits (5,000 at most, far more than any initiative has).
+const (
+	offlineLookupPageSize = 100
+	offlineLookupMaxPages = 50
+)
+
+// FindOfflineTransaction returns the initiative's offline credit (userID
+// auth0|communitybridge) with sourceTxnID, or nil when there is none in the
+// first offlineLookupMaxPages pages.
+func (c *ledgerHTTPClient) FindOfflineTransaction(ctx context.Context, projectID, sourceTxnID string) (*models.Transaction, error) {
+	for page := 0; page < offlineLookupMaxPages; page++ {
+		list, err := c.GetTransactions(ctx, TransactionFilter{
+			ProjectID: projectID,
+			TxnType:   models.TransactionTypeDonation,
+			UserID:    domain.LedgerOfflineUserID,
+			Limit:     offlineLookupPageSize,
+			Offset:    page * offlineLookupPageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for i := range list.Data {
+			if list.Data[i].LedgerSourceTxnID == sourceTxnID {
+				return &list.Data[i], nil
+			}
+		}
+		if len(list.Data) < offlineLookupPageSize || (page+1)*offlineLookupPageSize >= list.TotalCount {
+			return nil, nil
+		}
+	}
+	// Past the bound it counts as not found: the caller can't verify the row.
+	return nil, nil
+}
+
 // postTransaction POSTs one transaction; dest (nil to discard) receives the reply.
 func (c *ledgerHTTPClient) postTransaction(ctx context.Context, txn LedgerTransaction, dest *ledgerPostTransactionsResponse) error {
 	ctx, span := ledgerTracer.Start(ctx, "ledger.PostTransaction")

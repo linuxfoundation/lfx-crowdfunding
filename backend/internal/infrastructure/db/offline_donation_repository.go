@@ -71,17 +71,78 @@ func (r *DonationRepository) CreateOffline(ctx context.Context, d *models.Offlin
 	return stored, created, nil
 }
 
-// MarkOfflineSucceeded flips a pending offline donation to succeeded.
+// offlineUnlockTimeout bounds releasing the advisory lock after the request's
+// context is done.
+const offlineUnlockTimeout = 5 * time.Second
+
+// LockOfflineReference takes a Postgres advisory lock on sourceTxnID, so the
+// create, Ledger post and finalize of one reference run one at a time across
+// replicas. unlock releases it; call it exactly once.
+func (r *DonationRepository) LockOfflineReference(ctx context.Context, sourceTxnID string) (func(), error) {
+	ctx, span := donationTracer.Start(ctx, "db.donations.LockOfflineReference")
+	defer span.End()
+
+	conn, err := r.pool.Acquire(ctx)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("lock offline reference: acquire: %w", err)
+	}
+	const key = `hashtextextended('offline-donation:' || $1, 0)`
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(`+key+`)`, sourceTxnID); err != nil {
+		span.RecordError(err)
+		// The lock may or may not be held: close the session so it's freed.
+		_ = conn.Conn().Close(context.WithoutCancel(ctx))
+		conn.Release()
+		return nil, fmt.Errorf("lock offline reference: %w", err)
+	}
+	unlock := func() {
+		uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), offlineUnlockTimeout)
+		defer cancel()
+		if _, err := conn.Exec(uctx, `SELECT pg_advisory_unlock(`+key+`)`, sourceTxnID); err != nil {
+			// Closing the session releases every lock it holds.
+			_ = conn.Conn().Close(uctx)
+		}
+		conn.Release()
+	}
+	return unlock, nil
+}
+
+// SetOfflineB2BOrg fills the b2b_org SFID of a pending offline donation that
+// has none, for a retry whose org lookup succeeded where the first one failed.
+func (r *DonationRepository) SetOfflineB2BOrg(ctx context.Context, id, sfid string) error {
+	ctx, span := donationTracer.Start(ctx, "db.donations.SetOfflineB2BOrg")
+	defer span.End()
+
+	if _, err := r.pool.Exec(ctx, `
+		UPDATE donations SET b2b_org_sfid = $2, updated_on = NOW()
+		WHERE id = $1 AND payment_method = $3 AND status = $4
+		  AND (b2b_org_sfid IS NULL OR b2b_org_sfid = '')`,
+		id, sfid, models.PaymentMethodOffline, models.DonationStatusPending); err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("set offline donation b2b_org: %w", err)
+	}
+	return nil
+}
+
+// MarkOfflineSucceeded flips a pending offline donation to succeeded. It fails
+// when no pending row with that id exists, so a caller never reports success
+// for a row that isn't there.
 func (r *DonationRepository) MarkOfflineSucceeded(ctx context.Context, id string) error {
 	ctx, span := donationTracer.Start(ctx, "db.donations.MarkOfflineSucceeded")
 	defer span.End()
 
-	if _, err := r.pool.Exec(ctx, `
+	tag, err := r.pool.Exec(ctx, `
 		UPDATE donations SET status = $2, updated_on = NOW()
-		WHERE id = $1 AND payment_method = $3`,
-		id, models.DonationStatusSucceeded, models.PaymentMethodOffline); err != nil {
+		WHERE id = $1 AND payment_method = $3 AND status = $4`,
+		id, models.DonationStatusSucceeded, models.PaymentMethodOffline, models.DonationStatusPending)
+	if err != nil {
 		span.RecordError(err)
 		return fmt.Errorf("mark offline donation succeeded: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		err := fmt.Errorf("mark offline donation succeeded: no pending offline donation %s", id)
+		span.RecordError(err)
+		return err
 	}
 	return nil
 }

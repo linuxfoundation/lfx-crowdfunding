@@ -29,14 +29,34 @@ func (r *offlineUserRepo) GetByUsername(_ context.Context, username string) (*mo
 }
 
 // fakeOfflineRepo keeps offline donations in memory, keyed by source_txn_id.
+// locked tracks LockOfflineReference, so tests can check what ran under it.
 type fakeOfflineRepo struct {
 	bySource  map[string]*models.OfflineDonation
 	succeeded []string
 	deleted   []string
+	locked    map[string]bool
+	unlocks   int
 }
 
 func newFakeOfflineRepo() *fakeOfflineRepo {
-	return &fakeOfflineRepo{bySource: map[string]*models.OfflineDonation{}}
+	return &fakeOfflineRepo{bySource: map[string]*models.OfflineDonation{}, locked: map[string]bool{}}
+}
+
+func (r *fakeOfflineRepo) LockOfflineReference(_ context.Context, ref string) (func(), error) {
+	if r.locked[ref] {
+		return nil, errors.New("fake: reference already locked")
+	}
+	r.locked[ref] = true
+	return func() { r.locked[ref] = false; r.unlocks++ }, nil
+}
+
+func (r *fakeOfflineRepo) SetOfflineB2BOrg(_ context.Context, id, sfid string) error {
+	for _, d := range r.bySource {
+		if d.ID == id && d.Status == models.DonationStatusPending && d.B2BOrgSFID == "" {
+			d.B2BOrgSFID = sfid
+		}
+	}
+	return nil
 }
 
 func (r *fakeOfflineRepo) CreateOffline(_ context.Context, d *models.OfflineDonation) (*models.OfflineDonation, bool, error) {
@@ -53,13 +73,14 @@ func (r *fakeOfflineRepo) CreateOffline(_ context.Context, d *models.OfflineDona
 }
 
 func (r *fakeOfflineRepo) MarkOfflineSucceeded(_ context.Context, id string) error {
-	r.succeeded = append(r.succeeded, id)
 	for _, d := range r.bySource {
-		if d.ID == id {
+		if d.ID == id && d.Status == models.DonationStatusPending {
 			d.Status = models.DonationStatusSucceeded
+			r.succeeded = append(r.succeeded, id)
+			return nil
 		}
 	}
-	return nil
+	return errors.New("fake: no pending offline donation " + id)
 }
 
 func (r *fakeOfflineRepo) DeleteOfflinePending(_ context.Context, id string) error {
@@ -77,14 +98,20 @@ func (r *fakeOfflineRepo) ListOffline(_ context.Context, _ string, _, _ int) ([]
 }
 
 // fakeOfflineLedger records posts; it reports a duplicate for any sourceTxnID
-// it already holds, like the Ledger does.
+// it already holds, like the Ledger does, and keeps the first row per
+// sourceTxnID for FindOfflineTransaction.
 type fakeOfflineLedger struct {
-	posts []clients.LedgerTransaction
-	have  map[string]bool
-	err   error
+	posts  []clients.LedgerTransaction
+	have   map[string]bool
+	rows   map[string]clients.LedgerTransaction
+	err    error
+	onPost func(clients.LedgerTransaction)
 }
 
 func (l *fakeOfflineLedger) PostOfflineTransaction(_ context.Context, txn clients.LedgerTransaction) (bool, error) {
+	if l.onPost != nil {
+		l.onPost(txn)
+	}
 	if l.err != nil {
 		return false, l.err
 	}
@@ -94,7 +121,33 @@ func (l *fakeOfflineLedger) PostOfflineTransaction(_ context.Context, txn client
 	}
 	dup := l.have[txn.SourceTxnID]
 	l.have[txn.SourceTxnID] = true
+	if !dup {
+		l.addRow(txn)
+	}
 	return dup, nil
+}
+
+// addRow stores txn as the Ledger's row for its sourceTxnID (e.g. a Postman entry).
+func (l *fakeOfflineLedger) addRow(txn clients.LedgerTransaction) {
+	if l.rows == nil {
+		l.rows = map[string]clients.LedgerTransaction{}
+	}
+	if l.have == nil {
+		l.have = map[string]bool{}
+	}
+	l.rows[txn.SourceTxnID] = txn
+	l.have[txn.SourceTxnID] = true
+}
+
+func (l *fakeOfflineLedger) FindOfflineTransaction(_ context.Context, projectID, ref string) (*models.Transaction, error) {
+	txn, ok := l.rows[ref]
+	if !ok || txn.ProjectID != projectID {
+		return nil, nil
+	}
+	return &models.Transaction{
+		AmountCents: int64(txn.Amount), LedgerProjectID: txn.ProjectID,
+		LedgerOrgDomain: txn.OrganizationDomain, LedgerSourceTxnID: txn.SourceTxnID,
+	}, nil
 }
 
 type offlineFixture struct {
@@ -116,8 +169,8 @@ func newOfflineFixture(t *testing.T) *offlineFixture {
 	f.svc.now = func() time.Time { return time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC) }
 	f.svc.SetOrgLogoRepo(f.logos)
 	f.svc.SetB2BOrgResolver(b2bOrgResolverFunc(func(_ context.Context, d string) (models.B2BOrgMatch, error) {
-		if d == "dell.com" {
-			return models.B2BOrgMatch{SFID: "001DELL", LogoURL: "https://logo/dell.png"}, nil
+		if d == "example.com" {
+			return models.B2BOrgMatch{SFID: "001EXAMPLE", LogoURL: "https://logo.example.com/example.png"}, nil
 		}
 		return models.B2BOrgMatch{}, nil
 	}))
@@ -127,11 +180,11 @@ func newOfflineFixture(t *testing.T) *offlineFixture {
 func validOfflineInput() models.OfflineDonationInput {
 	return models.OfflineDonationInput{
 		InitiativeID: "init-1",
-		Organization: &models.OrgClaim{Name: "Dell Corporation", Domain: "https://www.Dell.com/"},
-		Amount:       "8000",
+		Organization: &models.OrgClaim{Name: "Example Corp", Domain: "https://www.Example.com/"},
+		Amount:       "1000",
 		ReceivedOn:   "2026-10-20",
 		Category:     "Donation",
-		SourceTxnID:  "SPDK Dell 2026-10",
+		SourceTxnID:  "TEST-REF-001",
 	}
 }
 
@@ -145,8 +198,8 @@ func TestOfflineDonationRecord_PostsTheManualLedgerRow(t *testing.T) {
 	if !created || got.Status != models.DonationStatusSucceeded {
 		t.Errorf("created=%v status=%q, want true/succeeded", created, got.Status)
 	}
-	stored := f.repo.bySource["SPDK Dell 2026-10"]
-	if stored.UserID != "offline-user" || stored.RecordedByID != "approver-1" || stored.B2BOrgSFID != "001DELL" {
+	stored := f.repo.bySource["TEST-REF-001"]
+	if stored.UserID != "offline-user" || stored.RecordedByID != "approver-1" || stored.B2BOrgSFID != "001EXAMPLE" {
 		t.Errorf("stored user=%q recorded_by=%q sfid=%q", stored.UserID, stored.RecordedByID, stored.B2BOrgSFID)
 	}
 	if len(f.ledger.posts) != 1 {
@@ -156,21 +209,21 @@ func TestOfflineDonationRecord_PostsTheManualLedgerRow(t *testing.T) {
 		ProjectID:          "init-1",
 		UserID:             "auth0|communitybridge",
 		AccountEmail:       "admin@communitybridge.org",
-		OrganizationName:   "Dell Corporation",
-		OrganizationDomain: "dell.com",
-		OrganizationSFID:   "001DELL",
+		OrganizationName:   "Example Corp",
+		OrganizationDomain: "example.com",
+		OrganizationSFID:   "001EXAMPLE",
 		SourceType:         "expensify",
-		SourceTxnID:        "SPDK Dell 2026-10",
+		SourceTxnID:        "TEST-REF-001",
 		SourceAccountID:    "manual_from_lf",
 		TxnType:            "credit",
 		TxnCategory:        "Donation",
-		Amount:             800000,
+		Amount:             100000,
 		TxnDate:            time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC).Unix(),
 	}
 	if f.ledger.posts[0] != want {
 		t.Errorf("ledger txn =\n%+v\nwant\n%+v", f.ledger.posts[0], want)
 	}
-	if f.logos.set["001DELL"] != "https://logo/dell.png" {
+	if f.logos.set["001EXAMPLE"] != "https://logo.example.com/example.png" {
 		t.Errorf("logo not stored: %v", f.logos.set)
 	}
 }
@@ -213,7 +266,7 @@ func TestOfflineDonationRecord_ReusedReferenceIsAConflict(t *testing.T) {
 func TestOfflineDonationRecord_ReferenceAlreadyInLedgerFreesTheRow(t *testing.T) {
 	f := newOfflineFixture(t)
 	// Posted by hand before CF recorded offline donations.
-	f.ledger.have = map[string]bool{"SPDK Dell 2026-10": true}
+	f.ledger.addRow(clients.LedgerTransaction{ProjectID: "init-1", SourceTxnID: "TEST-REF-001", Amount: 100000})
 
 	_, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput())
 	if !errors.Is(err, ErrSourceTxnIDTaken) {
@@ -222,7 +275,7 @@ func TestOfflineDonationRecord_ReferenceAlreadyInLedgerFreesTheRow(t *testing.T)
 	if len(f.repo.deleted) != 1 || len(f.repo.succeeded) != 0 {
 		t.Errorf("deleted=%v succeeded=%v, want the pending row deleted", f.repo.deleted, f.repo.succeeded)
 	}
-	if _, ok := f.repo.bySource["SPDK Dell 2026-10"]; ok {
+	if _, ok := f.repo.bySource["TEST-REF-001"]; ok {
 		t.Error("reference still taken in CF")
 	}
 }
@@ -235,7 +288,7 @@ func TestOfflineDonationRecord_LedgerFailureKeepsPendingAndRetrySucceeds(t *test
 	if !errors.Is(err, domain.ErrUpstreamUnavailable) {
 		t.Fatalf("err = %v, want ErrUpstreamUnavailable", err)
 	}
-	if got := f.repo.bySource["SPDK Dell 2026-10"].Status; got != models.DonationStatusPending {
+	if got := f.repo.bySource["TEST-REF-001"].Status; got != models.DonationStatusPending {
 		t.Fatalf("status after failure = %q, want pending", got)
 	}
 
@@ -253,12 +306,14 @@ func TestOfflineDonationRecord_RetryAfterLostLedgerReplyIsNotADuplicate(t *testi
 	f := newOfflineFixture(t)
 	// The first post reached the Ledger but CF never marked the row succeeded.
 	if _, _, err := f.repo.CreateOffline(context.Background(), &models.OfflineDonation{
-		InitiativeID: "init-1", OrganizationDomain: "dell.com", AmountCents: 800000,
-		ReceivedOn: "2026-10-20", SourceTxnID: "SPDK Dell 2026-10",
+		InitiativeID: "init-1", OrganizationName: "Example Corp", OrganizationDomain: "example.com",
+		AmountCents: 100000, Category: "Donation", ReceivedOn: "2026-10-20", SourceTxnID: "TEST-REF-001",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	f.ledger.have = map[string]bool{"SPDK Dell 2026-10": true}
+	f.ledger.addRow(clients.LedgerTransaction{
+		ProjectID: "init-1", OrganizationDomain: "example.com", Amount: 100000, SourceTxnID: "TEST-REF-001",
+	})
 
 	got, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput())
 	if err != nil {
@@ -266,6 +321,127 @@ func TestOfflineDonationRecord_RetryAfterLostLedgerReplyIsNotADuplicate(t *testi
 	}
 	if got.Status != models.DonationStatusSucceeded || len(f.repo.deleted) != 0 {
 		t.Errorf("status=%q deleted=%v, want succeeded and nothing deleted", got.Status, f.repo.deleted)
+	}
+}
+
+func TestOfflineDonationRecord_ResubmitWithChangedDetailsIsAConflict(t *testing.T) {
+	for name, mutate := range map[string]func(*models.OfflineDonationInput){
+		"category":          func(in *models.OfflineDonationInput) { in.Category = "general fund" },
+		"organization name": func(in *models.OfflineDonationInput) { in.Organization.Name = "Example Corp Foundation" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newOfflineFixture(t)
+			if _, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput()); err != nil {
+				t.Fatalf("first Record: %v", err)
+			}
+			changed := validOfflineInput()
+			mutate(&changed)
+			if _, _, err := f.svc.Record(context.Background(), "approver", changed); !errors.Is(err, ErrSourceTxnIDTaken) {
+				t.Fatalf("err = %v, want ErrSourceTxnIDTaken", err)
+			}
+			if len(f.ledger.posts) != 1 {
+				t.Errorf("ledger posts = %d, want 1", len(f.ledger.posts))
+			}
+		})
+	}
+}
+
+func TestOfflineDonationRecord_PendingRetryWithChangedCategoryIsAConflict(t *testing.T) {
+	f := newOfflineFixture(t)
+	f.ledger.err = domain.ErrUpstreamUnavailable
+	if _, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput()); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Fatalf("first Record err = %v", err)
+	}
+	f.ledger.err = nil
+	changed := validOfflineInput()
+	changed.Category = "general fund"
+
+	if _, _, err := f.svc.Record(context.Background(), "approver", changed); !errors.Is(err, ErrSourceTxnIDTaken) {
+		t.Fatalf("err = %v, want ErrSourceTxnIDTaken", err)
+	}
+	if len(f.ledger.posts) != 0 {
+		t.Errorf("posted %d rows with the stored category, want none", len(f.ledger.posts))
+	}
+}
+
+func TestOfflineDonationRecord_RetryUsesARecoveredOrgMatch(t *testing.T) {
+	f := newOfflineFixture(t)
+	resolver := f.svc.b2bOrgResolver
+	f.svc.SetB2BOrgResolver(b2bOrgResolverFunc(func(context.Context, string) (models.B2BOrgMatch, error) {
+		return models.B2BOrgMatch{}, errors.New("nats timeout")
+	}))
+	f.ledger.err = domain.ErrUpstreamUnavailable
+	if _, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput()); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+		t.Fatalf("first Record err = %v", err)
+	}
+
+	f.svc.SetB2BOrgResolver(resolver)
+	f.ledger.err = nil
+	if _, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput()); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if got := f.ledger.posts[0].OrganizationSFID; got != "001EXAMPLE" {
+		t.Errorf("ledger SFID = %q, want the retry's match 001EXAMPLE", got)
+	}
+	if got := f.repo.bySource["TEST-REF-001"].B2BOrgSFID; got != "001EXAMPLE" {
+		t.Errorf("stored SFID = %q, want 001EXAMPLE", got)
+	}
+}
+
+func TestOfflineDonationRecord_RetryDoesNotAdoptADifferentLedgerRow(t *testing.T) {
+	for name, row := range map[string]*clients.LedgerTransaction{
+		"different amount": {ProjectID: "init-1", OrganizationDomain: "example.com", Amount: 50000, SourceTxnID: "TEST-REF-001"},
+		"different org":    {ProjectID: "init-1", OrganizationDomain: "example.org", Amount: 100000, SourceTxnID: "TEST-REF-001"},
+		"other initiative": {ProjectID: "init-2", OrganizationDomain: "example.com", Amount: 100000, SourceTxnID: "TEST-REF-001"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newOfflineFixture(t)
+			// The first attempt failed before reaching the Ledger...
+			f.ledger.err = domain.ErrUpstreamUnavailable
+			if _, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput()); !errors.Is(err, domain.ErrUpstreamUnavailable) {
+				t.Fatalf("first Record err = %v", err)
+			}
+			// ...and someone posted the same reference by hand meanwhile.
+			f.ledger.err = nil
+			f.ledger.addRow(*row)
+
+			_, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput())
+			if !errors.Is(err, ErrLedgerRowUnverified) || !errors.Is(err, domain.ErrConflict) {
+				t.Fatalf("err = %v, want ErrLedgerRowUnverified (a conflict)", err)
+			}
+			if got := f.repo.bySource["TEST-REF-001"].Status; got != models.DonationStatusPending {
+				t.Errorf("status = %q, want pending", got)
+			}
+			if len(f.repo.deleted) != 0 || len(f.repo.succeeded) != 0 {
+				t.Errorf("deleted=%v succeeded=%v, want the row left alone", f.repo.deleted, f.repo.succeeded)
+			}
+		})
+	}
+}
+
+func TestOfflineDonationRecord_PostsUnderTheReferenceLock(t *testing.T) {
+	f := newOfflineFixture(t)
+	lockedAtPost := false
+	f.ledger.onPost = func(txn clients.LedgerTransaction) { lockedAtPost = f.repo.locked[txn.SourceTxnID] }
+
+	if _, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput()); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if !lockedAtPost {
+		t.Error("ledger post ran without the reference lock")
+	}
+	if f.repo.locked["TEST-REF-001"] || f.repo.unlocks != 1 {
+		t.Errorf("locked=%v unlocks=%d, want released once", f.repo.locked["TEST-REF-001"], f.repo.unlocks)
+	}
+}
+
+func TestOfflineDonationRecord_FinalizeOfAMissingRowFails(t *testing.T) {
+	f := newOfflineFixture(t)
+	// Another request removed the pending row between this one's post and finalize.
+	f.ledger.onPost = func(txn clients.LedgerTransaction) { delete(f.repo.bySource, txn.SourceTxnID) }
+
+	if _, _, err := f.svc.Record(context.Background(), "approver", validOfflineInput()); err == nil {
+		t.Fatal("Record succeeded with no CF row behind it")
 	}
 }
 

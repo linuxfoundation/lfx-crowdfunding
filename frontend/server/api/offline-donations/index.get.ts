@@ -6,6 +6,9 @@ import { listOfflineDonations } from '../../services/offline-donations.services'
 import type { OfflineDonationList } from '#shared/types/offline-donation.types';
 
 export default defineEventHandler((event): Promise<OfflineDonationList> => {
-  const { initiativeId } = getQuery(event);
-  return listOfflineDonations(event, typeof initiativeId === 'string' ? initiativeId : '');
+  const { initiativeId, limit, offset } = getQuery(event);
+  return listOfflineDonations(event, typeof initiativeId === 'string' ? initiativeId : '', {
+    limit,
+    offset,
+  });
 });

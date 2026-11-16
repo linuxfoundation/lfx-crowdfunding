@@ -20,14 +20,14 @@ const event = {} as H3Event;
 const backendRow = {
   id: 'd1',
   initiative_id: 'i1',
-  initiative_name: 'SPDK',
-  initiative_slug: 'spdk',
-  organization_name: 'Dell Corporation',
-  organization_domain: 'dell.com',
-  amount_cents: 800000,
+  initiative_name: 'Example Initiative',
+  initiative_slug: 'example-initiative',
+  organization_name: 'Example Corp',
+  organization_domain: 'example.com',
+  amount_cents: 100000,
   category: 'Donation',
   received_on: '2026-10-20',
-  source_txn_id: 'SPDK Dell 2026-10',
+  source_txn_id: 'TEST-REF-001',
   status: 'succeeded',
   recorded_by: 'approver',
   created_on: '2026-11-13T00:00:00Z',
@@ -35,11 +35,11 @@ const backendRow = {
 
 const request = {
   initiativeId: 'i1',
-  organization: { name: 'Dell Corporation', domain: 'dell.com' },
-  amount: '8000',
+  organization: { name: 'Example Corp', domain: 'example.com' },
+  amount: '1000',
   receivedOn: '2026-10-20',
   category: 'Donation',
-  sourceTxnId: 'SPDK Dell 2026-10',
+  sourceTxnId: 'TEST-REF-001',
 };
 
 beforeEach(() => fetchMock.mockReset());
@@ -54,17 +54,17 @@ describe('recordOfflineDonation', () => {
       method: 'POST',
       body: {
         initiative_id: 'i1',
-        organization: { name: 'Dell Corporation', domain: 'dell.com' },
-        amount: '8000',
+        organization: { name: 'Example Corp', domain: 'example.com' },
+        amount: '1000',
         received_on: '2026-10-20',
         category: 'Donation',
-        source_txn_id: 'SPDK Dell 2026-10',
+        source_txn_id: 'TEST-REF-001',
       },
     });
     expect(got).toMatchObject({
       id: 'd1',
-      amountCents: 800000,
-      sourceTxnId: 'SPDK Dell 2026-10',
+      amountCents: 100000,
+      sourceTxnId: 'TEST-REF-001',
       recordedBy: 'approver',
     });
   });
@@ -79,7 +79,7 @@ describe('recordOfflineDonation', () => {
   });
 
   it('drops non-string fields', () => {
-    const input = toBackendInput({ ...request, amount: 8000 as unknown as string });
+    const input = toBackendInput({ ...request, amount: 1000 as unknown as string });
     expect(input.amount).toBe('');
   });
 });
@@ -95,9 +95,36 @@ describe('listOfflineDonations', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       event,
-      '/crowdfunding/offline-donations?limit=50&initiative_id=i1',
+      '/crowdfunding/offline-donations?limit=50&offset=0&initiative_id=i1',
     );
     expect(got).toEqual({ data: [expect.objectContaining({ id: 'd1' })], total: 1 });
+  });
+
+  it('forwards the page asked for', async () => {
+    fetchMock.mockResolvedValueOnce({ data: [], meta: { total: 120, limit: 50, offset: 100 } });
+
+    await listOfflineDonations(event, 'i1', { limit: '50', offset: '100' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      event,
+      '/crowdfunding/offline-donations?limit=50&offset=100&initiative_id=i1',
+    );
+  });
+
+  it.each([
+    ['a negative offset', { offset: '-5' }],
+    ['a non-numeric offset', { offset: 'abc' }],
+    ['a limit over the backend cap', { limit: '500' }],
+    ['a zero limit', { limit: '0' }],
+  ])('falls back to the defaults for %s', async (_, page) => {
+    fetchMock.mockResolvedValueOnce({ data: [], meta: { total: 0 } });
+
+    await listOfflineDonations(event, 'i1', page);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      event,
+      '/crowdfunding/offline-donations?limit=50&offset=0&initiative_id=i1',
+    );
   });
 });
 

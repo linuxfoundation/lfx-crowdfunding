@@ -39,10 +39,17 @@ var dollarAmount = regexp.MustCompile(`^(\d{1,7})(?:\.(\d{1,2}))?$`)
 // given source reference, so it would have dropped this one.
 var ErrSourceTxnIDTaken = fmt.Errorf("%w: source_txn_id is already recorded", domain.ErrConflict)
 
+// ErrLedgerRowUnverified means a retry found the reference in the Ledger but
+// couldn't confirm the Ledger row is this donation, so the CF row stays pending.
+var ErrLedgerRowUnverified = fmt.Errorf("%w: the Ledger already has a transaction with this source_txn_id "+
+	"that doesn't match this donation; check the Ledger before submitting again", domain.ErrConflict)
+
 // OfflineLedgerPoster posts an offline donation to the Ledger and reports
-// whether the Ledger already had its sourceTxnID.
+// whether the Ledger already had its sourceTxnID. FindOfflineTransaction looks
+// an initiative's offline credit up by sourceTxnID (nil when there is none).
 type OfflineLedgerPoster interface {
 	PostOfflineTransaction(ctx context.Context, txn clients.LedgerTransaction) (duplicate bool, err error)
+	FindOfflineTransaction(ctx context.Context, projectID, sourceTxnID string) (*models.Transaction, error)
 }
 
 // OfflineDonationService records offline org donations for approvers (#464):
@@ -123,6 +130,14 @@ func (s *OfflineDonationService) Record(ctx context.Context, approverUsername st
 	match := s.matchB2BOrg(ctx, want.OrganizationDomain)
 	want.B2BOrgSFID = match.SFID
 
+	// One request at a time per reference, across replicas: without it, two
+	// identical submissions can each post, and one deletes the other's row.
+	unlock, err := s.repo.LockOfflineReference(ctx, want.SourceTxnID)
+	if err != nil {
+		return nil, false, err
+	}
+	defer unlock()
+
 	stored, created, err := s.repo.CreateOffline(ctx, want)
 	if err != nil {
 		return nil, false, err
@@ -136,6 +151,13 @@ func (s *OfflineDonationService) Record(ctx context.Context, approverUsername st
 		}
 		// Pending: an earlier attempt may or may not have reached the Ledger.
 		// Re-posting is safe, since the Ledger keeps one row per sourceTxnID.
+		if stored.B2BOrgSFID == "" && match.SFID != "" {
+			// The first attempt's org lookup failed; this one matched.
+			if err := s.repo.SetOfflineB2BOrg(ctx, stored.ID, match.SFID); err != nil {
+				return nil, false, err
+			}
+			stored.B2BOrgSFID = match.SFID
+		}
 	}
 
 	duplicate, err := s.ledger.PostOfflineTransaction(ctx, offlineLedgerTxn(stored))
@@ -151,6 +173,15 @@ func (s *OfflineDonationService) Record(ctx context.Context, approverUsername st
 			slog.ErrorContext(ctx, "offline donation: delete after ledger duplicate failed", "id", stored.ID, "error", err)
 		}
 		return nil, false, ErrSourceTxnIDTaken
+	}
+	if duplicate {
+		// A retry of a pending row: the duplicate is this donation's earlier
+		// post only if the Ledger row has its details. A hand-posted entry
+		// with the same reference must not mark this one succeeded.
+		if err := s.verifyLedgerRow(ctx, stored); err != nil {
+			span.RecordError(err)
+			return nil, false, err
+		}
 	}
 	if err := s.repo.MarkOfflineSucceeded(ctx, stored.ID); err != nil {
 		return nil, false, err
@@ -180,6 +211,22 @@ func (s *OfflineDonationService) List(ctx context.Context, initiativeID string, 
 		initiativeID = initiative.ID
 	}
 	return s.repo.ListOffline(ctx, initiativeID, limit, offset)
+}
+
+// verifyLedgerRow checks that the Ledger's row for d's reference is d: same
+// initiative, amount and organization domain. The CF row stays pending if not.
+func (s *OfflineDonationService) verifyLedgerRow(ctx context.Context, d *models.OfflineDonation) error {
+	txn, err := s.ledger.FindOfflineTransaction(ctx, d.InitiativeID, d.SourceTxnID)
+	if err != nil {
+		return fmt.Errorf("verify ledger row for offline donation: %w", err)
+	}
+	if txn == nil || txn.LedgerProjectID != d.InitiativeID || txn.AmountCents != d.AmountCents ||
+		!strings.EqualFold(txn.LedgerOrgDomain, d.OrganizationDomain) {
+		slog.WarnContext(ctx, "offline donation: ledger row for reference doesn't match, left pending",
+			"id", d.ID, "source_txn_id", d.SourceTxnID, "found", txn != nil)
+		return ErrLedgerRowUnverified
+	}
+	return nil
 }
 
 // matchB2BOrg looks the org up by domain on this request, since the SFID goes
@@ -271,8 +318,10 @@ func boundedText(field, raw string, max int) (string, error) {
 // submitted again, rather than a different donation reusing its reference.
 func sameOfflineDonation(stored, want *models.OfflineDonation) bool {
 	return stored.InitiativeID == want.InitiativeID &&
+		stored.OrganizationName == want.OrganizationName &&
 		stored.OrganizationDomain == want.OrganizationDomain &&
 		stored.AmountCents == want.AmountCents &&
+		stored.Category == want.Category &&
 		stored.ReceivedOn == want.ReceivedOn
 }
 

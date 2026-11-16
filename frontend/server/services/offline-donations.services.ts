@@ -15,7 +15,15 @@ import type {
   OfflineDonationRequest,
 } from '#shared/types/offline-donation.types';
 
-const LIST_LIMIT = 50;
+/** Page size of the recorded donations list; the backend caps it at 100. */
+export const LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 100;
+
+/** A whole number in [min, max] from a query value, or fallback. */
+const intParam = (v: unknown, fallback: number, min: number, max: number): number => {
+  const n = typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : NaN;
+  return Number.isSafeInteger(n) && n >= min && n <= max ? n : fallback;
+};
 
 export const mapOfflineDonation = (d: BackendOfflineDonation): OfflineDonation => ({
   id: d.id,
@@ -72,8 +80,11 @@ export const recordOfflineDonation = async (
 export const listOfflineDonations = async (
   event: H3Event,
   initiativeId: string,
+  page: { limit?: unknown; offset?: unknown } = {},
 ): Promise<OfflineDonationList> => {
-  const params = new URLSearchParams({ limit: String(LIST_LIMIT) });
+  const limit = intParam(page.limit, LIST_LIMIT, 1, MAX_LIST_LIMIT);
+  const offset = intParam(page.offset, 0, 0, Number.MAX_SAFE_INTEGER);
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (initiativeId) params.set('initiative_id', initiativeId);
   const res = await useBackendFetch<BackendOfflineDonationList>(
     event,

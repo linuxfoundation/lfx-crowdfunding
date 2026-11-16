@@ -38,7 +38,8 @@ else gets a 403 and doesn't see the button.
      `LFX Mentorship CNCF Fall 2026 Row 52`. It must be unique, see below.
 4. Click **Review**, check the summary, then **Record donation**.
 
-The recorded donations for the initiative are listed below the form, with who recorded each one.
+The recorded donations for the initiative are listed below the form, newest received first, with who
+recorded each one. **Load more** shows older ones, 50 at a time.
 The initiative's totals and donor list pick it up within the hour (the hourly Ledger sync).
 
 ## The source reference must be unique
@@ -46,11 +47,15 @@ The initiative's totals and donor list pick it up within the hour (the hourly Le
 The Ledger keeps one transaction per source reference (`sourceTxnID`) and silently drops a second one.
 Crowdfunding checks it first, so:
 
-- Submitting the same donation again (same reference, initiative, organization, amount and date) is
-  safe: it returns the entry already recorded and doesn't create a second Ledger row.
-- The same reference with different details is rejected as already recorded.
+- Submitting the same donation again (same reference, initiative, organization name and domain,
+  amount, category and date) is safe: it returns the entry already recorded and doesn't create a
+  second Ledger row. Two submits at once (two tabs, a double click) are handled one after the other.
+- The same reference with any different detail is rejected as already recorded.
 - A reference that was already posted to the Ledger by hand (e.g. from Postman) is rejected too, and
   nothing is stored.
+- If a submit was saved but didn't reach the Ledger, and someone then posts the same reference to the
+  Ledger by hand, resubmitting is rejected unless that Ledger row has the same initiative, amount and
+  organization domain. The entry stays *Not in the Ledger yet* until someone checks the Ledger.
 
 ## If something goes wrong
 

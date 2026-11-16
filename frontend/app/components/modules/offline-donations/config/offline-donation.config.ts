@@ -78,6 +78,19 @@ export const formatTypedDollars = (raw: string): string =>
     currency: 'USD',
   });
 
+/** Recorded donations fetched per "Load more". */
+export const OFFLINE_DONATIONS_PAGE_SIZE = 50;
+
+/** Offset of the next page of recorded donations, or undefined when all are loaded. */
+export const nextOfflineDonationsOffset = (
+  pages: { data: unknown[] }[],
+  total: number,
+): number | undefined => {
+  const loaded = pages.reduce((n, p) => n + p.data.length, 0);
+  const lastEmpty = pages.length > 0 && pages[pages.length - 1]!.data.length === 0;
+  return loaded < total && !lastEmpty ? loaded : undefined;
+};
+
 export const formatCents = (cents: number): string =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
