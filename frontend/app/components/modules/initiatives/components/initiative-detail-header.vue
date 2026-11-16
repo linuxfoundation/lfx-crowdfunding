@@ -32,6 +32,15 @@ SPDX-License-Identifier: MIT
                 icon-type="brands"
                 @click="openGitHub()"
               />
+              <lfx-button
+                label="Donate"
+                type="primary"
+                icon="hand-heart"
+                icon-position="left"
+                button-style="pill"
+                :disabled="initiative.acceptFunding === false"
+                @click="handleDonate()"
+              />
             </div>
           </div>
 
