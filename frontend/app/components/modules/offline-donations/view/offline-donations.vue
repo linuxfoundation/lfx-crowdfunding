@@ -4,46 +4,34 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <div class="container py-10 flex flex-col gap-8 max-w-3xl">
-    <div class="flex flex-col gap-2">
-      <NuxtLink
-        v-if="initiative"
-        :to="`/initiatives/${initiative.slug}`"
-        class="self-start"
-      >
-        <lfx-link-button
-          :label="`Back to ${initiative.name}`"
-          icon="arrow-left"
-          variant="accent"
-        />
-      </NuxtLink>
-      <h1 class="text-2xl font-semibold text-neutral-900">Record an offline donation</h1>
-      <p class="text-sm text-neutral-600">
-        For organization donations LF finance received by invoice or wire. The donation is added to the initiative's
-        Ledger balance and donor list, and to the organization's donations on its LFX organization page.
-      </p>
-    </div>
-
+    <!-- Non-approvers get the 404 page once the status loads, so they only ever see the spinner here. -->
     <div
-      v-if="approverLoading"
+      v-if="!isApprover"
       class="flex justify-center py-16"
     >
       <lfx-spinner :size="32" />
     </div>
 
-    <lfx-card
-      v-else-if="!isApprover"
-      class="p-8 flex flex-col gap-3 text-center"
-    >
-      <lfx-icon
-        name="lock"
-        type="regular"
-        :size="32"
-        class="text-neutral-400 mx-auto"
-      />
-      <p class="text-sm text-neutral-700">Only approvers can record offline donations.</p>
-    </lfx-card>
-
     <template v-else>
+      <div class="flex flex-col gap-2">
+        <NuxtLink
+          v-if="initiative"
+          :to="`/initiatives/${initiative.slug}`"
+          class="self-start"
+        >
+          <lfx-link-button
+            :label="`Back to ${initiative.name}`"
+            icon="arrow-left"
+            variant="accent"
+          />
+        </NuxtLink>
+        <h1 class="text-2xl font-semibold text-neutral-900">Record an offline donation</h1>
+        <p class="text-sm text-neutral-600">
+          For organization donations LF finance received by invoice or wire. The donation is added to the initiative's
+          Ledger balance and donor list, and to the organization's donations on its LFX organization page.
+        </p>
+      </div>
+
       <!-- Initiative -->
       <lfx-card class="p-6 flex flex-col gap-3">
         <p class="text-sm font-semibold text-neutral-900">Initiative</p>
@@ -128,7 +116,8 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { createError, showError } from 'nuxt/app';
 import { useQueryClient } from '@tanstack/vue-query';
 import OfflineDonationForm from '../components/offline-donation-form.vue';
 import OfflineDonationList from '../components/offline-donation-list.vue';
@@ -137,7 +126,6 @@ import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import LfxCard from '~/components/uikit/card/card.vue';
 import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 import LfxDropdownSearch from '~/components/uikit/dropdown/dropdown-search.vue';
-import LfxIcon from '~/components/uikit/icon/icon.vue';
 import LfxLinkButton from '~/components/uikit/link-button/link-button.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import LfxSpinner from '~/components/uikit/spinner/spinner.vue';
@@ -150,6 +138,19 @@ const router = useRouter();
 const queryClient = useQueryClient();
 
 const { isApprover, isLoading: approverLoading } = useIsApprover();
+
+// Approver-only page (#464): everyone else gets the 404 page, so it doesn't advertise itself.
+// Waits for mount: the status is known only on the client, and showing the error while a
+// direct load is still hydrating causes a hydration mismatch.
+onMounted(() => {
+  watch(
+    [approverLoading, isApprover],
+    ([loading, approver]) => {
+      if (!loading && !approver) showError(createError({ statusCode: 404, statusMessage: 'Page Not Found' }));
+    },
+    { immediate: true },
+  );
+});
 
 const slug = computed(() => (typeof route.query.initiative === 'string' ? route.query.initiative : ''));
 const { data: initiative, isLoading: initiativeLoading, error: initiativeError } = useInitiative(slug);

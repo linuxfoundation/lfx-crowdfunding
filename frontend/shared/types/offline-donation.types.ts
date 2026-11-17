@@ -34,7 +34,10 @@ export interface OfflineDonation {
 }
 
 /** POST /api/offline-donations reply. */
-export type OfflineDonationResult = OfflineDonation;
+export interface OfflineDonationResult extends OfflineDonation {
+  /** False when the same donation was already recorded: this is the stored entry, unchanged. */
+  created: boolean;
+}
 
 export interface OfflineDonationList {
   data: OfflineDonation[];

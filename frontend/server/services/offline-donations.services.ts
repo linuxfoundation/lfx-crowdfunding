@@ -3,7 +3,7 @@
 
 import type { H3Event } from 'h3';
 import { createError } from 'h3';
-import { useBackendFetch } from '../utils/backend-fetch';
+import { useBackendFetch, useBackendFetchWithStatus } from '../utils/backend-fetch';
 import type {
   BackendOfflineDonation,
   BackendOfflineDonationInput,
@@ -13,6 +13,7 @@ import type {
   OfflineDonation,
   OfflineDonationList,
   OfflineDonationRequest,
+  OfflineDonationResult,
 } from '#shared/types/offline-donation.types';
 
 /** Page size of the recorded donations list; the backend caps it at 100. */
@@ -62,11 +63,12 @@ export const toBackendInput = (
   return input;
 };
 
+/** Records the donation. The backend answers 201 for a new entry and 200 with the stored one for a resubmit. */
 export const recordOfflineDonation = async (
   event: H3Event,
   body: Partial<OfflineDonationRequest> | null | undefined,
-): Promise<OfflineDonation> => {
-  const created = await useBackendFetch<BackendOfflineDonation>(
+): Promise<OfflineDonationResult> => {
+  const { status, data } = await useBackendFetchWithStatus<BackendOfflineDonation>(
     event,
     '/crowdfunding/offline-donations',
     {
@@ -74,7 +76,7 @@ export const recordOfflineDonation = async (
       body: toBackendInput(body),
     },
   );
-  return mapOfflineDonation(created);
+  return { ...mapOfflineDonation(data), created: status === 201 };
 };
 
 export const listOfflineDonations = async (

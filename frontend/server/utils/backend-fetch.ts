@@ -3,25 +3,21 @@
 
 import type { H3Event } from 'h3';
 import { createError } from 'h3';
+import type { BackendFetchOptions, BackendFetchResult } from '../types/backend-fetch.types';
 import { getAuthCookie } from './auth-cookies';
 
-export const useBackendFetch = async <T = unknown>(
+/** Calls the backend and returns its reply with the status code, e.g. to tell 201 from 200. */
+export const useBackendFetchWithStatus = async <T = unknown>(
   event: H3Event,
   path: string,
-  options: {
-    method?: 'GET' | 'POST' | 'DELETE' | 'PATCH';
-    body?: unknown;
-    headers?: Record<string, string>;
-    // Platform v2 API (e.g. /query/resources) rather than the CF backend.
-    platform?: boolean;
-  } = {},
-): Promise<T> => {
+  options: BackendFetchOptions = {},
+): Promise<BackendFetchResult<T>> => {
   const config = useRuntimeConfig();
   const baseURL = ((options.platform && config.lfxApiBaseUrl) || config.apiBaseUrl) as string;
   const token = getAuthCookie(event, 'auth_oidc_token') ?? '';
 
   try {
-    return await $fetch<T>(path, {
+    const res = await $fetch.raw<T>(path, {
       baseURL,
       method: options.method ?? 'GET',
       body: options.body,
@@ -30,6 +26,7 @@ export const useBackendFetch = async <T = unknown>(
         ...options.headers,
       },
     });
+    return { status: res.status, data: res._data as T };
   } catch (err: unknown) {
     const e = err as {
       status?: number;
@@ -42,3 +39,9 @@ export const useBackendFetch = async <T = unknown>(
     throw createError({ statusCode: status, statusMessage: message });
   }
 };
+
+export const useBackendFetch = async <T = unknown>(
+  event: H3Event,
+  path: string,
+  options: BackendFetchOptions = {},
+): Promise<T> => (await useBackendFetchWithStatus<T>(event, path, options)).data;

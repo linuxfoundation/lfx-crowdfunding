@@ -4,9 +4,12 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { H3Event } from 'h3';
 
-vi.mock('../utils/backend-fetch', () => ({ useBackendFetch: vi.fn() }));
+vi.mock('../utils/backend-fetch', () => ({
+  useBackendFetch: vi.fn(),
+  useBackendFetchWithStatus: vi.fn(),
+}));
 
-import { useBackendFetch } from '../utils/backend-fetch';
+import { useBackendFetch, useBackendFetchWithStatus } from '../utils/backend-fetch';
 import {
   getApproverStatus,
   listOfflineDonations,
@@ -15,6 +18,7 @@ import {
 } from './offline-donations.services';
 
 const fetchMock = vi.mocked(useBackendFetch);
+const fetchWithStatusMock = vi.mocked(useBackendFetchWithStatus);
 const event = {} as H3Event;
 
 const backendRow = {
@@ -42,15 +46,18 @@ const request = {
   sourceTxnId: 'TEST-REF-001',
 };
 
-beforeEach(() => fetchMock.mockReset());
+beforeEach(() => {
+  fetchMock.mockReset();
+  fetchWithStatusMock.mockReset();
+});
 
 describe('recordOfflineDonation', () => {
   it('posts the snake_case body and maps the reply', async () => {
-    fetchMock.mockResolvedValueOnce(backendRow);
+    fetchWithStatusMock.mockResolvedValueOnce({ status: 201, data: backendRow });
 
     const got = await recordOfflineDonation(event, request);
 
-    expect(fetchMock).toHaveBeenCalledWith(event, '/crowdfunding/offline-donations', {
+    expect(fetchWithStatusMock).toHaveBeenCalledWith(event, '/crowdfunding/offline-donations', {
       method: 'POST',
       body: {
         initiative_id: 'i1',
@@ -70,12 +77,23 @@ describe('recordOfflineDonation', () => {
   });
 
   it.each([
+    ['201 (a new entry)', 201, true],
+    ['200 (the stored entry for an exact resubmit)', 200, false],
+  ])('reports created from the backend status: %s', async (_, status, created) => {
+    fetchWithStatusMock.mockResolvedValueOnce({ status, data: backendRow });
+
+    const got = await recordOfflineDonation(event, request);
+
+    expect(got).toMatchObject({ id: 'd1', createdOn: '2026-11-13T00:00:00Z', created });
+  });
+
+  it.each([
     ['no initiative', { ...request, initiativeId: '' }],
     ['no organization', { ...request, organization: undefined }],
     ['no body', null],
   ])('rejects %s without calling the backend', async (_, body) => {
     await expect(recordOfflineDonation(event, body)).rejects.toMatchObject({ statusCode: 400 });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchWithStatusMock).not.toHaveBeenCalled();
   });
 
   it('drops non-string fields', () => {
