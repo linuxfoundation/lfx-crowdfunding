@@ -1,8 +1,12 @@
 // Copyright The Linux Foundation and each contributor to LFX.
 // SPDX-License-Identifier: MIT
 
-import type { OfflineDonationForm } from '~/types/offline-donation.types';
-import type { OfflineDonationRequest } from '#shared/types/offline-donation.types';
+import type { OfflineDonationForm, RecordedOutcome } from '~/types/offline-donation.types';
+import type {
+  OfflineDonationRequest,
+  OfflineDonationResult,
+} from '#shared/types/offline-donation.types';
+import { formatShortDate } from '~/utils/date';
 
 // Approvers record org donations LF finance received by invoice or wire (#464).
 
@@ -93,6 +97,25 @@ export const nextOfflineDonationsOffset = (
 
 export const formatCents = (cents: number): string =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+/** Heading and text of the done step: a new entry, or a resubmit that returned the stored one. */
+export const recordedOutcome = (
+  d: OfflineDonationResult,
+  initiativeName: string,
+): RecordedOutcome =>
+  d.created
+    ? {
+        title: 'Donation recorded',
+        icon: 'circle-check',
+        iconClass: 'text-green-500',
+        message: `${formatCents(d.amountCents)} from ${d.organizationName} to ${initiativeName}. The initiative's totals and donor list update within the hour.`,
+      }
+    : {
+        title: 'Already recorded',
+        icon: 'circle-info',
+        iconClass: 'text-neutral-400',
+        message: `This donation was already recorded on ${formatShortDate(d.createdOn)}${d.recordedBy ? ` by ${d.recordedBy}` : ''}. No new entry was added to the Ledger.`,
+      };
 
 /** What to tell the approver for a failed submit, by status code. */
 export const offlineDonationErrorMessage = (

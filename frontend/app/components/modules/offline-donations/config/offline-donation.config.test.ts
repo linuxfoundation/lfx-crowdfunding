@@ -11,9 +11,11 @@ import {
   offlineCategoryOptions,
   offlineDonationErrorMessage,
   offlineDonationLink,
+  recordedOutcome,
   toIsoDate,
   toOfflineDonationRequest,
 } from './offline-donation.config';
+import type { OfflineDonationResult } from '#shared/types/offline-donation.types';
 
 describe('dollar amounts', () => {
   it.each([
@@ -117,5 +119,45 @@ describe('nextOfflineDonationsOffset', () => {
     expect(nextOfflineDonationsOffset([page(50), page(50), page(20)], 120)).toBeUndefined();
     expect(nextOfflineDonationsOffset([page(50)], 50)).toBeUndefined();
     expect(nextOfflineDonationsOffset([page(50), page(0)], 120)).toBeUndefined();
+  });
+});
+
+describe('recordedOutcome', () => {
+  const result: OfflineDonationResult = {
+    id: 'd1',
+    initiativeId: 'i1',
+    initiativeName: 'Example Initiative',
+    initiativeSlug: 'example-initiative',
+    organizationName: 'Example Corp',
+    organizationDomain: 'example.com',
+    amountCents: 130050,
+    category: 'general fund',
+    receivedOn: '2026-10-20',
+    sourceTxnId: 'TEST-REF-001',
+    status: 'succeeded',
+    recordedBy: 'approver',
+    createdOn: '2026-11-13T10:42:10Z',
+    created: true,
+  };
+
+  it('confirms a new entry', () => {
+    expect(recordedOutcome(result, 'Example Initiative')).toMatchObject({
+      title: 'Donation recorded',
+      message: expect.stringContaining('$1,300.50 from Example Corp to Example Initiative.'),
+    });
+  });
+
+  it('says when and by whom a resubmitted donation was recorded', () => {
+    expect(recordedOutcome({ ...result, created: false }, 'Example Initiative')).toMatchObject({
+      title: 'Already recorded',
+      message:
+        'This donation was already recorded on Nov 13, 2026 by approver. No new entry was added to the Ledger.',
+    });
+  });
+
+  it('leaves out the approver when it is unknown', () => {
+    expect(recordedOutcome({ ...result, created: false, recordedBy: '' }, 'x').message).toBe(
+      'This donation was already recorded on Nov 13, 2026. No new entry was added to the Ledger.',
+    );
   });
 });

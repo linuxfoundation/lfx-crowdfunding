@@ -148,19 +148,16 @@ SPDX-License-Identifier: MIT
     </template>
 
     <!-- Recorded -->
-    <template v-else-if="recorded">
+    <template v-else-if="outcome">
       <div class="flex flex-col gap-3 items-center text-center py-4">
         <lfx-icon
-          name="circle-check"
+          :name="outcome.icon"
           type="regular"
           :size="40"
-          class="text-green-500"
+          :class="outcome.iconClass"
         />
-        <p class="text-base font-semibold text-neutral-900">Donation recorded</p>
-        <p class="text-sm text-neutral-600">
-          {{ formatCents(recorded.amountCents) }} from {{ recorded.organizationName }} to {{ initiative.name }}. The
-          initiative's totals and donor list update within the hour.
-        </p>
+        <p class="text-base font-semibold text-neutral-900">{{ outcome.title }}</p>
+        <p class="text-sm text-neutral-600">{{ outcome.message }}</p>
         <lfx-button
           label="Record another"
           type="secondary"
@@ -175,12 +172,12 @@ SPDX-License-Identifier: MIT
 import { computed, reactive, ref } from 'vue';
 import {
   emptyOfflineDonationForm,
-  formatCents,
   formatTypedDollars,
   isOfflineDonationFormComplete,
   isValidDollarAmount,
   offlineCategoryOptions,
   offlineDonationErrorMessage,
+  recordedOutcome,
   toIsoDate,
   toOfflineDonationRequest,
 } from '../config/offline-donation.config';
@@ -197,7 +194,7 @@ import LfxInput from '~/components/uikit/input/input.vue';
 import LfxSelect from '~/components/uikit/select/select.vue';
 import type { OfflineDonationForm, OfflineDonationStep } from '~/types/offline-donation.types';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
-import type { OfflineDonation } from '#shared/types/offline-donation.types';
+import type { OfflineDonation, OfflineDonationResult } from '#shared/types/offline-donation.types';
 
 const props = defineProps<{ initiative: InitiativeDetail }>();
 const emit = defineEmits<{ (e: 'recorded', donation: OfflineDonation): void }>();
@@ -213,17 +210,18 @@ const form = reactive<OfflineDonationForm>(emptyOfflineDonationForm(categoryOpti
 const step = ref<OfflineDonationStep>('form');
 const submitting = ref(false);
 const submitError = ref<string | null>(null);
-const recorded = ref<OfflineDonation | null>(null);
+const recorded = ref<OfflineDonationResult | null>(null);
 const today = new Date();
 
 const amountInvalid = computed(() => form.amount.trim() !== '' && !isValidDollarAmount(form.amount));
 const complete = computed(() => isOfflineDonationFormComplete(form));
+const outcome = computed(() => (recorded.value ? recordedOutcome(recorded.value, props.initiative.name) : null));
 
 async function submit() {
   submitting.value = true;
   submitError.value = null;
   try {
-    recorded.value = await $fetch<OfflineDonation>('/api/offline-donations', {
+    recorded.value = await $fetch<OfflineDonationResult>('/api/offline-donations', {
       method: 'POST',
       body: toOfflineDonationRequest(props.initiative.id, form),
     });

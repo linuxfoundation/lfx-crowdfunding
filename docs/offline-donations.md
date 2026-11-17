@@ -17,7 +17,8 @@ this tool.
 Approvers only: usernames in the backend's `ALLOWED_APPROVERS` (set per environment in
 `lfx-v2-argocd` `values/<env>/lfx-crowdfunding-backend.yaml`). Where the Heimdall rule checks OpenFGA
 (`openfga.enabled: true`), the user must also be a member of `team:crowdfunding_approvers`. Everyone
-else gets a 403 and doesn't see the button.
+else gets a 403 and doesn't see the button; opening `/approvals/offline-donations` directly shows the
+"Page not found" page.
 
 ## Recording a donation
 
@@ -47,9 +48,12 @@ The initiative's totals and donor list pick it up within the hour (the hourly Le
 The Ledger keeps one transaction per source reference (`sourceTxnID`) and silently drops a second one.
 Crowdfunding checks it first, so:
 
+- Case doesn't matter: `Invoice 12` and `invoice 12` are the same reference. The entry keeps the
+  case it was first recorded with.
 - Submitting the same donation again (same reference, initiative, organization name and domain,
-  amount, category and date) is safe: it returns the entry already recorded and doesn't create a
-  second Ledger row. Two submits at once (two tabs, a double click) are handled one after the other.
+  amount, category and date) is safe: the page says **Already recorded**, with when and by whom, and
+  no second Ledger row is created. Two submits at once (two tabs, a double click) are handled one
+  after the other.
 - The same reference with any different detail is rejected as already recorded.
 - A reference that was already posted to the Ledger by hand (e.g. from Postman) is rejected too, and
   nothing is stored.
@@ -62,7 +66,8 @@ Crowdfunding checks it first, so:
 - **"The Ledger isn't reachable right now"**: the entry is saved but not in the Ledger yet; it shows
   as *Not in the Ledger yet* in the list. Submit the same details again later to finish it. This
   can't create a duplicate.
-- **"Already recorded"**: check the reference against the list below the form and the Ledger.
+- **"This source reference is already recorded in the Ledger"**: the reference is taken by a
+  different donation. Check it against the list below the form and the Ledger.
 - **Wrong details after recording**: there is no edit or reverse in the UI. As with other manual
   corrections, post an offsetting `debit` with a negative amount to the Ledger (by hand until #489
   adds adjustments to this page), then record the correct donation under a new reference. The CF row

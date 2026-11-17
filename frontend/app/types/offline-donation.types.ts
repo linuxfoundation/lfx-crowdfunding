@@ -14,3 +14,11 @@ export interface OfflineDonationForm {
 }
 
 export type OfflineDonationStep = 'form' | 'review' | 'done';
+
+/** What the done step shows after a submit. */
+export interface RecordedOutcome {
+  title: string;
+  message: string;
+  icon: string;
+  iconClass: string;
+}
