@@ -32,6 +32,15 @@ SPDX-License-Identifier: MIT
                 icon-type="brands"
                 @click="openGitHub()"
               />
+              <lfx-button
+                label="Donate"
+                type="primary"
+                icon="hand-heart"
+                icon-position="left"
+                button-style="pill"
+                :disabled="initiative.acceptFunding === false"
+                @click="handleDonate()"
+              />
             </div>
           </div>
 
@@ -169,13 +178,45 @@ SPDX-License-Identifier: MIT
         </div>
       </div>
 
-      <!-- Tabs -->
-      <lfx-tabs
-        :model-value="activeTab"
-        :tabs="tabs"
-        tab-style="pill"
-        @update:model-value="$emit('update:activeTab', $event)"
-      />
+      <!-- Tabs: pills on desktop; a dropdown on mobile, where the four pills don't fit -->
+      <div class="hidden md:block">
+        <lfx-tabs
+          :model-value="activeTab"
+          :tabs="INITIATIVE_DETAIL_TABS"
+          tab-style="pill"
+          @update:model-value="$emit('update:activeTab', $event)"
+        />
+      </div>
+      <div class="md:hidden block">
+        <lfx-dropdown-select
+          :model-value="activeTab"
+          width="180px"
+          placement="bottom-start"
+          @update:model-value="$emit('update:activeTab', $event)"
+        >
+          <template #trigger>
+            <lfx-button
+              type="outline"
+              button-style="pill"
+              :icon="activeTabConfig.icon"
+              icon-position="left"
+              aria-haspopup="listbox"
+            >
+              {{ activeTabConfig.label }}
+              <lfx-icon
+                name="angle-down"
+                :size="12"
+              />
+            </lfx-button>
+          </template>
+          <lfx-dropdown-item
+            v-for="tab in INITIATIVE_DETAIL_TABS"
+            :key="tab.value"
+            :value="tab.value"
+            :label="tab.label"
+          />
+        </lfx-dropdown-select>
+      </div>
     </div>
   </div>
 </template>
@@ -187,6 +228,7 @@ import {
   initiativeTypeConfigMap,
   defaultInitiativeTypeConfig,
 } from '../../../shared/components/initiative-card/initiative-card.config';
+import { INITIATIVE_DETAIL_TABS } from '../config/initiative-detail-header.config';
 import type { InitiativeDetail } from '#shared/types/initiative-detail.types';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
 import { useSanitize } from '~/composables/useSanitize';
@@ -196,6 +238,8 @@ import LfxButton from '~/components/uikit/button/button.vue';
 import LfxIconButton from '~/components/uikit/icon-button/icon-button.vue';
 import LfxTabs from '~/components/uikit/tabs/tabs.vue';
 import LfxTooltip from '~/components/uikit/tooltip/tooltip.vue';
+import LfxDropdownSelect from '~/components/uikit/dropdown/dropdown-select.vue';
+import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
 import { useShareModalStore } from '~/components/shared/components/share/store/share-modal.store';
 import { useAuth } from '~/composables/useAuth';
@@ -266,12 +310,9 @@ const isScrolled = computed(() => scrollTop.value > 10);
 
 defineEmits<{ (e: 'update:activeTab', value: string): void }>();
 
-const tabs = computed(() => [
-  { value: 'overview', label: 'Overview', icon: 'gauge-high' },
-  { value: 'financials', label: 'Financials', icon: 'money-check-dollar' },
-  { value: 'announcements', label: 'Announcements', icon: 'megaphone' },
-  { value: 'about', label: 'About', icon: 'memo' },
-]);
+const activeTabConfig = computed(
+  () => INITIATIVE_DETAIL_TABS.find((tab) => tab.value === props.activeTab) ?? INITIATIVE_DETAIL_TABS[0]!,
+);
 
 const typeConfig = computed(
   () => initiativeTypeConfigMap[props.initiative.initiativeType] ?? defaultInitiativeTypeConfig,
