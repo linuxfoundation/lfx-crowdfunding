@@ -50,8 +50,11 @@ const clearedLoginCookies = () =>
   setCookie.mock.calls.filter(([, , value]) => value === '').map(([, name]) => name);
 
 describe('GET /auth/callback', () => {
+  let info: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    info = vi.spyOn(console, 'info').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     query = {};
@@ -81,7 +84,7 @@ describe('GET /auth/callback', () => {
     expect(clearAuthCookies).not.toHaveBeenCalled();
     expect(clearedLoginCookies()).toEqual(['auth_pkce', 'auth_redirect_to']);
     expect(sendRedirect).toHaveBeenCalledWith(event, '/initiatives/x?tab=updates&auth=error');
-    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledTimes(1);
     expect(console.error).not.toHaveBeenCalled();
   });
 
@@ -95,7 +98,8 @@ describe('GET /auth/callback', () => {
     expect(sendRedirect).toHaveBeenCalledWith(event, '/?auth=error');
     expect(discovery).not.toHaveBeenCalled();
     // One line from logAuthError; h3 must not add its statusMessage-sanitising warning.
-    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(console.warn).not.toHaveBeenCalled();
   });
 
   it('clears the session and redirects with auth=error on an Auth0 error', async () => {
@@ -105,7 +109,7 @@ describe('GET /auth/callback', () => {
 
     expect(clearAuthCookies).toHaveBeenCalled();
     expect(sendRedirect).toHaveBeenCalledWith(event, '/?auth=error');
-    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledTimes(1);
   });
 
   it('still redirects with auth=success on login_required', async () => {
