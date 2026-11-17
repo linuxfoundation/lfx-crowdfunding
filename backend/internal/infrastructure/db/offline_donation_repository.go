@@ -29,7 +29,9 @@ const offlineDonationFrom = `
 	LEFT JOIN users rb ON rb.id = d.recorded_by`
 
 // CreateOffline inserts an offline donation as pending (#464). A donation with
-// the same source_txn_id is returned as is, with created=false.
+// the same source_txn_id, ignoring case, is returned as is, with created=false.
+// Finance treats "Invoice 12" and "invoice 12" as one reference, so CF does too
+// (migration 020's unique index is on lower(source_txn_id)).
 func (r *DonationRepository) CreateOffline(ctx context.Context, d *models.OfflineDonation) (*models.OfflineDonation, bool, error) {
 	ctx, span := donationTracer.Start(ctx, "db.donations.CreateOffline")
 	defer span.End()
@@ -45,7 +47,7 @@ func (r *DonationRepository) CreateOffline(ctx context.Context, d *models.Offlin
 		        current_amount_in_cents, payment_method, status,
 		        source_txn_id, received_on, recorded_by)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		ON CONFLICT (source_txn_id) WHERE source_txn_id IS NOT NULL DO NOTHING
+		ON CONFLICT ((lower(source_txn_id))) WHERE source_txn_id IS NOT NULL DO NOTHING
 		RETURNING id`,
 		d.UserID, d.InitiativeID, d.OrganizationName, d.OrganizationDomain,
 		nullableString(d.B2BOrgSFID), nullableString(d.Category),
@@ -55,7 +57,7 @@ func (r *DonationRepository) CreateOffline(ctx context.Context, d *models.Offlin
 	created := true
 	if errors.Is(err, pgx.ErrNoRows) {
 		created = false
-		err = r.pool.QueryRow(ctx, `SELECT id FROM donations WHERE source_txn_id = $1`, d.SourceTxnID).Scan(&id)
+		err = r.pool.QueryRow(ctx, `SELECT id FROM donations WHERE lower(source_txn_id) = lower($1)`, d.SourceTxnID).Scan(&id)
 	}
 	if err != nil {
 		span.RecordError(err)
@@ -75,9 +77,10 @@ func (r *DonationRepository) CreateOffline(ctx context.Context, d *models.Offlin
 // context is done.
 const offlineUnlockTimeout = 5 * time.Second
 
-// LockOfflineReference takes a Postgres advisory lock on sourceTxnID, so the
-// create, Ledger post and finalize of one reference run one at a time across
-// replicas. unlock releases it; call it exactly once.
+// LockOfflineReference takes a Postgres advisory lock on sourceTxnID, ignoring
+// case as CreateOffline does, so the create, Ledger post and finalize of one
+// reference run one at a time across replicas. unlock releases it; call it
+// exactly once.
 func (r *DonationRepository) LockOfflineReference(ctx context.Context, sourceTxnID string) (func(), error) {
 	ctx, span := donationTracer.Start(ctx, "db.donations.LockOfflineReference")
 	defer span.End()
@@ -87,7 +90,7 @@ func (r *DonationRepository) LockOfflineReference(ctx context.Context, sourceTxn
 		span.RecordError(err)
 		return nil, fmt.Errorf("lock offline reference: acquire: %w", err)
 	}
-	const key = `hashtextextended('offline-donation:' || $1, 0)`
+	const key = `hashtextextended('offline-donation:' || lower($1), 0)`
 	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(`+key+`)`, sourceTxnID); err != nil {
 		span.RecordError(err)
 		// The lock may or may not be held: close the session so it's freed.

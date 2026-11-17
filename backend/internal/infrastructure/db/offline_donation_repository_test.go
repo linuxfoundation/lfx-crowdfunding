@@ -49,6 +49,12 @@ func TestDonationRepository_OfflineDonations(t *testing.T) {
 		t.Fatalf("same reference: created=%v err=%v got %+v, want the first row back", created, err, again)
 	}
 
+	// References are unique ignoring case ("Testing 1234" vs "testing 1234").
+	recased, created, err := repo.CreateOffline(ctx, donation(initiative.ID, "test-ref-001", "2026-10-20"))
+	if err != nil || created || recased.ID != stored.ID || recased.SourceTxnID != "TEST-REF-001" {
+		t.Fatalf("same reference, other case: created=%v err=%v got %+v, want the first row back", created, err, recased)
+	}
+
 	// A pending row with no SFID gets the one a retry matched; a set one is kept.
 	noSFID := donation(other.ID, "TEST-REF-002", "2026-10-01")
 	noSFID.B2BOrgSFID = ""
@@ -140,10 +146,10 @@ func TestDonationRepository_LockOfflineReference(t *testing.T) {
 		t.Fatalf("LockOfflineReference: %v", err)
 	}
 
-	// Another session waits for the same reference...
+	// Another session waits for the same reference, in any case...
 	acquired := make(chan func(), 1)
 	go func() {
-		u, err := repo.LockOfflineReference(ctx, "TEST-REF-LOCK")
+		u, err := repo.LockOfflineReference(ctx, "test-ref-lock")
 		if err != nil {
 			t.Errorf("second LockOfflineReference: %v", err)
 			close(acquired)
