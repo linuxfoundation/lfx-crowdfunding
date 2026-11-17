@@ -577,10 +577,68 @@ type ledgerPostTransactionsRequest struct {
 	Transactions []LedgerTransaction `json:"transactions"`
 }
 
+// ledgerPostTransactionsResponse is the Ledger's POST /transactions reply.
+// dupsRemoved counts rows it skipped because their sourceTxnID already exists.
+type ledgerPostTransactionsResponse struct {
+	TxnsCreated       int `json:"txnsCreated"`
+	DuplicatesRemoved int `json:"dupsRemoved"`
+}
+
 // PostTransaction records a completed charge in the Ledger service.
 // The request is sent with ?version=v2 so the Ledger service skips its own
 // email notifications — this service is responsible for donor/admin emails.
 func (c *ledgerHTTPClient) PostTransaction(ctx context.Context, txn LedgerTransaction) error {
+	return c.postTransaction(ctx, txn, nil)
+}
+
+// PostOfflineTransaction records an offline donation (#464). duplicate is true
+// when the Ledger already had a row with txn.SourceTxnID and so stored nothing.
+func (c *ledgerHTTPClient) PostOfflineTransaction(ctx context.Context, txn LedgerTransaction) (duplicate bool, err error) {
+	var resp ledgerPostTransactionsResponse
+	if err := c.postTransaction(ctx, txn, &resp); err != nil {
+		return false, err
+	}
+	return resp.DuplicatesRemoved > 0, nil
+}
+
+// offlineLookupPageSize and offlineLookupMaxPages bound FindOfflineTransaction:
+// the Ledger GET has no sourceTxnID filter, so it pages the initiative's
+// offline credits (5,000 at most, far more than any initiative has).
+const (
+	offlineLookupPageSize = 100
+	offlineLookupMaxPages = 50
+)
+
+// FindOfflineTransaction returns the initiative's offline credit (userID
+// auth0|communitybridge) with sourceTxnID, or nil when there is none in the
+// first offlineLookupMaxPages pages.
+func (c *ledgerHTTPClient) FindOfflineTransaction(ctx context.Context, projectID, sourceTxnID string) (*models.Transaction, error) {
+	for page := 0; page < offlineLookupMaxPages; page++ {
+		list, err := c.GetTransactions(ctx, TransactionFilter{
+			ProjectID: projectID,
+			TxnType:   models.TransactionTypeDonation,
+			UserID:    domain.LedgerOfflineUserID,
+			Limit:     offlineLookupPageSize,
+			Offset:    page * offlineLookupPageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for i := range list.Data {
+			if list.Data[i].LedgerSourceTxnID == sourceTxnID {
+				return &list.Data[i], nil
+			}
+		}
+		if len(list.Data) < offlineLookupPageSize || (page+1)*offlineLookupPageSize >= list.TotalCount {
+			return nil, nil
+		}
+	}
+	// Past the bound it counts as not found: the caller can't verify the row.
+	return nil, nil
+}
+
+// postTransaction POSTs one transaction; dest (nil to discard) receives the reply.
+func (c *ledgerHTTPClient) postTransaction(ctx context.Context, txn LedgerTransaction, dest *ledgerPostTransactionsResponse) error {
 	ctx, span := ledgerTracer.Start(ctx, "ledger.PostTransaction")
 	defer span.End()
 	span.SetAttributes(
@@ -592,7 +650,11 @@ func (c *ledgerHTTPClient) PostTransaction(ctx context.Context, txn LedgerTransa
 	headers := map[string]string{"Authorization": "Bearer " + c.apiKey}
 	body := ledgerPostTransactionsRequest{Transactions: []LedgerTransaction{txn}}
 
-	if err := c.httpClient.PostJSON(ctx, endpoint, headers, body, nil, func(r *http.Response) error {
+	var out any
+	if dest != nil {
+		out = dest
+	}
+	if err := c.httpClient.PostJSON(ctx, endpoint, headers, body, out, func(r *http.Response) error {
 		return fmt.Errorf("ledger POST /transactions returned %d: %w", r.StatusCode, domain.ErrUpstreamUnavailable)
 	}); err != nil {
 		span.RecordError(err)

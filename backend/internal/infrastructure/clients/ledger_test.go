@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,5 +155,50 @@ func TestLedgerGetUserBalance_TransportError(t *testing.T) {
 	client := NewLedgerClient(LedgerConfig{BaseURL: srv.URL, APIKey: "test", Timeout: 2 * time.Second})
 	if _, err := client.GetUserBalance(context.Background(), "auth0|abc"); !errors.Is(err, domain.ErrUpstreamUnavailable) {
 		t.Fatalf("err = %v, want ErrUpstreamUnavailable", err)
+	}
+}
+
+func TestLedgerFindOfflineTransaction_PagesOfflineCreditsForTheReference(t *testing.T) {
+	t.Parallel()
+
+	var pages []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("projectID") != "init-1" || q.Get("txnType") != "credit" || q.Get("userID") != "auth0|communitybridge" || q.Get("perPage") != "100" {
+			t.Errorf("query = %v", q)
+		}
+		pages = append(pages, q.Get("page"))
+		w.Header().Set("Content-Type", "application/json")
+		rows := make([]string, 0, 100)
+		ref := "OTHER-REF"
+		if q.Get("page") == "2" {
+			ref = "TEST-REF-001"
+		}
+		for i := 0; i < 100; i++ {
+			rows = append(rows, `{"projectID":"init-1","sourceTxnID":"`+ref+`","amount":100000,"organizationDomain":"example.com","txnType":"credit"}`)
+		}
+		_, _ = w.Write([]byte(`{"totalTransactionCount": 250, "transactions": [` + strings.Join(rows, ",") + `]}`))
+	}))
+	defer srv.Close()
+
+	client := NewLedgerClient(LedgerConfig{BaseURL: srv.URL, APIKey: "test", Timeout: 2 * time.Second}).(*ledgerHTTPClient)
+	txn, err := client.FindOfflineTransaction(context.Background(), "init-1", "TEST-REF-001")
+	if err != nil {
+		t.Fatalf("FindOfflineTransaction: %v", err)
+	}
+	if txn == nil || txn.AmountCents != 100000 || txn.LedgerOrgDomain != "example.com" || txn.LedgerProjectID != "init-1" {
+		t.Fatalf("txn = %+v", txn)
+	}
+	if strings.Join(pages, ",") != "1,2" {
+		t.Errorf("pages = %v, want 1,2", pages)
+	}
+
+	pages = nil
+	missing, err := client.FindOfflineTransaction(context.Background(), "init-1", "TEST-REF-404")
+	if err != nil || missing != nil {
+		t.Fatalf("missing ref: txn=%+v err=%v, want nil, nil", missing, err)
+	}
+	if strings.Join(pages, ",") != "1,2,3" {
+		t.Errorf("pages = %v, want 1,2,3 (stops at the total)", pages)
 	}
 }

@@ -159,6 +159,19 @@ SPDX-License-Identifier: MIT
             button-style="pill"
             @click="openGitHub()"
           />
+          <!-- Approvers only (#464): offline org donation for this initiative. -->
+          <NuxtLink
+            v-if="isApprover && initiative.status?.toLowerCase() === 'published'"
+            :to="offlineDonationLink(initiative.slug)"
+          >
+            <lfx-button
+              label="Record offline donation"
+              type="outline"
+              icon="file-invoice-dollar"
+              icon-position="left"
+              button-style="pill"
+            />
+          </NuxtLink>
           <lfx-tooltip
             content="This initiative is not currently accepting donations"
             :disabled="initiative.acceptFunding !== false"
@@ -243,12 +256,16 @@ import LfxDropdownItem from '~/components/uikit/dropdown/dropdown-item.vue';
 import { useDonateDrawerStore } from '~/components/modules/donate/store/donate-drawer.store';
 import { useShareModalStore } from '~/components/shared/components/share/store/share-modal.store';
 import { useAuth } from '~/composables/useAuth';
+import { useIsApprover } from '~/composables/useIsApprover';
+import { offlineDonationLink } from '~/components/modules/offline-donations/config/offline-donation.config';
 import useScroll from '~/utils/scroll';
 
 const props = defineProps<{
   initiative: InitiativeDetail;
   activeTab: string;
 }>();
+
+const { isApprover } = useIsApprover();
 
 const { stripHtml } = useSanitize();
 const plainDescription = computed(() => stripHtml(props.initiative.description ?? ''));

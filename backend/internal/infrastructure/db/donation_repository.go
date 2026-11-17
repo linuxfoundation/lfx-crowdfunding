@@ -300,9 +300,11 @@ func (r *DonationRepository) ListOrgDonations(ctx context.Context) ([]models.Org
 // subscription that took a payment, each matched to $1 (a b2b_org SFID).
 // active and past_due imply a paid first invoice; canceled needs first_paid_at,
 // since never-paid attempts (incomplete, incomplete_expired) also end canceled.
+// An offline donation (#464) is dated by when LF finance received it.
 const orgLensRows = `
 	SELECT CAST(d.id AS text), 'one_time', d.initiative_id, d.user_id,
-	       d.current_amount_in_cents, '', d.status, d.created_on, d.anonymous
+	       d.current_amount_in_cents, '', d.status,
+	       COALESCE(d.received_on::timestamp AT TIME ZONE 'UTC', d.created_on), d.anonymous
 	FROM donations d
 	WHERE d.b2b_org_sfid = $1 AND d.status = 'succeeded'
 	UNION ALL

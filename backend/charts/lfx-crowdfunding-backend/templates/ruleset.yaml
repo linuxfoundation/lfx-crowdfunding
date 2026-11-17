@@ -190,6 +190,8 @@ spec:
           - path: /crowdfunding/me/payment-account
           - path: /crowdfunding/me/presigned-url
           - path: /crowdfunding/me/org-logos
+          # GET /me/approver: whether to show approver-only UI (#464).
+          - path: /crowdfunding/me/approver
           - path: /crowdfunding/me/initiatives
       execute:
         - authenticator: oidc
@@ -598,6 +600,37 @@ spec:
           - POST
         routes:
           - path: /crowdfunding/initiatives/:id/process-approval/:*
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        {{- if .Values.openfga.enabled }}
+        - authorizer: openfga_check
+          config:
+            values:
+              relation: member
+              object: "team:{{ .Values.app.approversTeamName }}"
+        {{- else }}
+        - authorizer: allow_all
+        {{- end }}
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: {{ .Values.app.audience }}
+              scope: access:me
+
+    # Offline org donations (#464) — record (POST) and list (GET), approvers
+    # only. Same global approvers-team check as process-approval; the handler
+    # also checks ALLOWED_APPROVERS, which is the only check while openfga is off.
+    - id: "rule:lfx:lfx-crowdfunding-backend:offline-donations"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+          - POST
+        routes:
+          - path: /crowdfunding/offline-donations
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}

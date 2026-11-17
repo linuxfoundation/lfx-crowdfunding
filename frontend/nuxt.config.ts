@@ -45,6 +45,7 @@ export default defineNuxtConfig({
     // Auth-gated / transactional pages — exclude from search engines
     '/initiatives/*/process-approval/**': { robots: false },
     '/expense-email/**': { robots: false },
+    '/approvals/**': { robots: false },
   },
   runtimeConfig,
   site,
