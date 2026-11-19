@@ -102,14 +102,18 @@ func TestOrgLogoRepository(t *testing.T) {
 		('22222222-2222-4222-8222-222222222222', 'Acme Legacy', 'https://uploads.example/acme-legacy', 'acme.com')`); err != nil {
 		t.Fatalf("seed legacy domain logos: %v", err)
 	}
-	byDomain, err := repo.LogosByOrgKeys(ctx, []string{"acme.com", "unmatched.org", "Unmatched.org", "unknown.io"})
+	// Mixed-case and whitespace-only keys: Acme.com still gets its b2b_org logo
+	// (not the legacy one), and a blank key never picks up a logo.
+	byDomain, err := repo.LogosByOrgKeys(ctx, []string{"acme.com", "Acme.com", "unmatched.org", "Unmatched.org", "unknown.io", " ", legacyID})
 	if err != nil {
 		t.Fatalf("LogosByOrgKeys domains: %v", err)
 	}
 	wantByDomain := map[string]string{
 		"acme.com":      "https://cdn.example/acme.png",
+		"Acme.com":      "https://cdn.example/acme.png",
 		"unmatched.org": "https://uploads.example/unmatched",
 		"Unmatched.org": "https://uploads.example/unmatched",
+		legacyID:        "https://uploads.example/legacy",
 	}
 	if !maps.Equal(byDomain, wantByDomain) {
 		t.Errorf("logos by domain with legacy fallback = %v, want %v", byDomain, wantByDomain)

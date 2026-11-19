@@ -114,16 +114,30 @@ func (r *OrgLogoRepository) LogosByOrgKeys(ctx context.Context, keys []string) (
 			domains = append(domains, k)
 		}
 	}
-	out, err := r.LogosByDomains(ctx, domains)
+	// Look domains up as given and normalized, so a key's case can't hide its
+	// b2b_org logo and let the legacy fallback below win instead.
+	lookup := make([]string, 0, 2*len(domains))
+	for _, d := range domains {
+		lookup = append(lookup, d)
+		if n := normalizeOrgDomain(d); n != "" && n != d {
+			lookup = append(lookup, n)
+		}
+	}
+	b2b, err := r.LogosByDomains(ctx, lookup)
 	if err != nil {
 		return nil, err
 	}
+	out := map[string]string{}
 	// Domains without a b2b_org logo may belong to a legacy org.
-	legacyDomains := map[string][]string{} // lowercased domain -> keys as given
+	legacyDomains := map[string][]string{} // normalized domain -> keys as given
 	for _, d := range domains {
-		if _, ok := out[d]; !ok && d != "" {
-			l := strings.ToLower(strings.TrimSpace(d))
-			legacyDomains[l] = append(legacyDomains[l], d)
+		n := normalizeOrgDomain(d)
+		if logo, ok := b2b[d]; ok {
+			out[d] = logo
+		} else if logo, ok := b2b[n]; ok && n != "" {
+			out[d] = logo
+		} else if n != "" {
+			legacyDomains[n] = append(legacyDomains[n], d)
 		}
 	}
 	if len(legacyIDs) == 0 && len(legacyDomains) == 0 {
@@ -158,8 +172,10 @@ func (r *OrgLogoRepository) LogosByOrgKeys(ctx context.Context, keys []string) (
 		for _, k := range legacyIDs[id] {
 			out[k] = logoURL
 		}
-		for _, k := range legacyDomains[domain] {
-			out[k] = logoURL
+		if domain != "" {
+			for _, k := range legacyDomains[domain] {
+				out[k] = logoURL
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -192,4 +208,10 @@ func (r *OrgLogoRepository) MatchedSFIDs(ctx context.Context) ([]string, error) 
 		sfids = append(sfids, sfid)
 	}
 	return sfids, rows.Err()
+}
+
+// normalizeOrgDomain lowercases and trims an org domain key; legacy_org_logos
+// stores org_domain in this form.
+func normalizeOrgDomain(d string) string {
+	return strings.ToLower(strings.TrimSpace(d))
 }
