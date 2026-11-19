@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 -->
 <template>
   <pv-avatar
+    ref="avatarRef"
     :icon="icon"
     :image="imageFailed ? undefined : props.src"
     :shape="props.type === 'organization' ? 'square' : 'circle'"
@@ -15,7 +16,7 @@ SPDX-License-Identifier: MIT
       'has-image': props.src && !imageFailed,
     }"
     v-bind="$attrs"
-    @image-error="imageFailed = true"
+    @error="imageFailed = true"
   />
 </template>
 
@@ -37,6 +38,22 @@ const props = withDefaults(
 );
 
 const imageFailed = ref(false);
+const avatarRef = useTemplateRef<{ $el?: Element }>('avatarRef');
+
+// A server-rendered <img> can fail before hydration attaches the error
+// listener. naturalWidth is also 0 for a valid SVG with no intrinsic size,
+// so confirm with decode(), which rejects only for a broken image.
+onMounted(() => {
+  const img = avatarRef.value?.$el?.querySelector?.('img');
+  if (img?.complete && img.naturalWidth === 0) {
+    const src = props.src;
+    img.decode().catch(() => {
+      if (props.src === src) {
+        imageFailed.value = true;
+      }
+    });
+  }
+});
 
 watch(
   () => props.src,
