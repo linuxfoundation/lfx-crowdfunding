@@ -5,7 +5,12 @@
 // Skips init gracefully when credentials are not configured (e.g. local dev).
 import { datadogRum } from '@datadog/browser-rum';
 import { useRuntimeConfig } from 'nuxt/app';
-import { hydrationWarningMessage, isInjectedEvalCspReport, isTranslatedPage } from '~/utils/rum';
+import {
+  hydrationWarningMessage,
+  isInjectedEvalCspReport,
+  isTranslatedPage,
+  isTranslationMismatch,
+} from '~/utils/rum';
 
 export default defineNuxtPlugin(() => {
   const {
@@ -19,6 +24,10 @@ export default defineNuxtPlugin(() => {
     // RUM credentials not configured — skip init (e.g. local dev without DD creds).
     return;
   }
+
+  // Set once a hydration warning shows translator markup, so the generic "Hydration completed
+  // but contains mismatches." error Vue logs right after is tagged too.
+  let translationMismatchSeen = false;
 
   datadogRum.init({
     applicationId,
@@ -41,7 +50,10 @@ export default defineNuxtPlugin(() => {
       if (isInjectedEvalCspReport(event)) return false;
       // Browser translation rewrites the DOM, which shows up as hydration mismatches; tag
       // these errors so queries can exclude them (-@context.translated:true).
-      if (event.type === 'error' && isTranslatedPage(document.documentElement)) {
+      if (
+        event.type === 'error' &&
+        (translationMismatchSeen || isTranslatedPage(document.documentElement))
+      ) {
         event.context = { ...event.context, translated: true };
       }
       return true;
@@ -53,7 +65,10 @@ export default defineNuxtPlugin(() => {
   const warn = console.warn.bind(console);
   console.warn = (...args: unknown[]) => {
     const message = hydrationWarningMessage(args);
-    if (message) datadogRum.addError(new Error(message), { source: 'vue-hydration' });
+    if (message) {
+      if (isTranslationMismatch(message)) translationMismatchSeen = true;
+      datadogRum.addError(new Error(message), { source: 'vue-hydration' });
+    }
     warn(...args);
   };
 });
