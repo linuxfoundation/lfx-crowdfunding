@@ -6,6 +6,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -95,16 +96,20 @@ func (r *OrgLogoRepository) LogosByDomains(ctx context.Context, domains []string
 }
 
 // LogosByOrgKeys maps Ledger org keys to logos. Ledger keys an org by its
-// domain, or by its legacy CF org id when the rows carry no domain: domains get
-// their matched b2b_org's logo (LogosByDomains), legacy ids the logo uploaded
-// to the old org (lfx-self-serve-ops#1647). Results are keyed by the keys as given.
+// domain, or by its legacy CF org id when the rows carry no domain
+// (lfx-self-serve-ops#1647):
+//   - a domain gets its matched b2b_org's logo (LogosByDomains), else the logo
+//     of the legacy org mapped to that domain by hand (legacy_org_logos.org_domain);
+//   - a legacy id gets the logo uploaded to the old org.
+//
+// Results are keyed by the keys as given.
 func (r *OrgLogoRepository) LogosByOrgKeys(ctx context.Context, keys []string) (map[string]string, error) {
 	var domains []string
-	legacyKeys := map[string][]string{} // canonical uuid -> keys as given
+	legacyIDs := map[string][]string{} // canonical uuid -> keys as given
 	for _, k := range keys {
 		if id, err := uuid.Parse(k); err == nil {
 			c := id.String()
-			legacyKeys[c] = append(legacyKeys[c], k)
+			legacyIDs[c] = append(legacyIDs[c], k)
 		} else {
 			domains = append(domains, k)
 		}
@@ -113,32 +118,47 @@ func (r *OrgLogoRepository) LogosByOrgKeys(ctx context.Context, keys []string) (
 	if err != nil {
 		return nil, err
 	}
-	if len(legacyKeys) == 0 {
+	// Domains without a b2b_org logo may belong to a legacy org.
+	legacyDomains := map[string][]string{} // lowercased domain -> keys as given
+	for _, d := range domains {
+		if _, ok := out[d]; !ok && d != "" {
+			l := strings.ToLower(strings.TrimSpace(d))
+			legacyDomains[l] = append(legacyDomains[l], d)
+		}
+	}
+	if len(legacyIDs) == 0 && len(legacyDomains) == 0 {
 		return out, nil
 	}
 
 	ctx, span := orgLogoTracer.Start(ctx, "db.legacy_org_logos.LogosByOrgKeys")
 	defer span.End()
-	span.SetAttributes(attribute.Int("legacy_ids.count", len(legacyKeys)))
+	span.SetAttributes(attribute.Int("legacy_ids.count", len(legacyIDs)), attribute.Int("legacy_domains.count", len(legacyDomains)))
 
-	ids := make([]string, 0, len(legacyKeys))
-	for c := range legacyKeys {
+	ids := make([]string, 0, len(legacyIDs))
+	for c := range legacyIDs {
 		ids = append(ids, c)
 	}
+	lds := make([]string, 0, len(legacyDomains))
+	for d := range legacyDomains {
+		lds = append(lds, d)
+	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT legacy_org_id::text, logo_url FROM legacy_org_logos
-		WHERE legacy_org_id = ANY($1::uuid[])`, ids)
+		SELECT legacy_org_id::text, COALESCE(org_domain, ''), logo_url FROM legacy_org_logos
+		WHERE legacy_org_id = ANY($1::uuid[]) OR org_domain = ANY($2)`, ids, lds)
 	if err != nil {
 		span.RecordError(err)
 		return nil, fmt.Errorf("query legacy org logos: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, logoURL string
-		if err := rows.Scan(&id, &logoURL); err != nil {
+		var id, domain, logoURL string
+		if err := rows.Scan(&id, &domain, &logoURL); err != nil {
 			return nil, fmt.Errorf("scan legacy org logo: %w", err)
 		}
-		for _, k := range legacyKeys[id] {
+		for _, k := range legacyIDs[id] {
+			out[k] = logoURL
+		}
+		for _, k := range legacyDomains[domain] {
 			out[k] = logoURL
 		}
 	}
