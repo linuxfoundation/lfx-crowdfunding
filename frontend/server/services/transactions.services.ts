@@ -14,4 +14,5 @@ export const mapToTransaction = (b: BackendTransaction): Transaction => ({
   donorType: b.donor_type as Transaction['donorType'],
   donorLogoUrl: b.donor_logo_url,
   donorUsername: b.donor_username,
+  comment: b.comment,
 });

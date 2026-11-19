@@ -51,6 +51,8 @@ export interface ExpenseRecord {
   date: string;
   category: string;
   description: string;
+  /** The reason LF gave for a return or payout (#489). */
+  comment?: string;
   amountCents: number;
 }
 

@@ -1,8 +1,8 @@
 ---
 title: Browsing Initiatives
 description: How to find and explore active fundraising campaigns on LFX Crowdfunding.
-tags: [initiatives, browse, search, filter]
-last_updated: 2026-06-17
+tags: [initiatives, browse, search, filter, financials]
+last_updated: 2026-11-19
 display_order: 1
 intercom_collection: LFX Crowdfunding
 ---
@@ -27,7 +27,7 @@ No sign-in is required to browse initiatives. To donate to one, you will need an
 
 5. Review the initiative details. If the initiative is run on behalf of an organization or project, that entity's name and logo appear under the title.
    - **Overview** — the project's mission and how funds will be used
-   - **Financials** — a breakdown of income and expenses
+   - **Financials** — a breakdown of income and expenses. Expenses include reimbursements, payouts from the initiative's fund, and unused funds returned to a donor (shown as "Returned to" the organization), with the Linux Foundation's reason when one was given.
    - **Supporters** — a list of donors
 
 ## After completing

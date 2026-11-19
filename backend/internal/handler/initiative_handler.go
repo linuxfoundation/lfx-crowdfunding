@@ -569,7 +569,8 @@ func (h *InitiativeHandler) writeTransactions(w http.ResponseWriter, r *http.Req
 	case models.TransactionQueryTypeDonations:
 		ledgerTxnType = models.TransactionTypeDonation
 	case models.TransactionQueryTypeExpenses:
-		ledgerTxnType = models.TransactionTypeReimbursement
+		// Returns of unused funds (negative credits) are money out too (#489).
+		ledgerTxnType = models.TransactionTypeOutgoing
 	}
 
 	limit, offset, ok := parsePaginationParams(w, r)

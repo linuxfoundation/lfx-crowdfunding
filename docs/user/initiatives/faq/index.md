@@ -1,8 +1,8 @@
 ---
 title: Initiatives FAQ
 description: Answers to frequently asked questions about creating, managing, and browsing fundraising initiatives on LFX Crowdfunding.
-tags: [initiatives, faq, fundraising, project, event, security audit]
-last_updated: 2026-10-07
+tags: [initiatives, faq, fundraising, project, event, security audit, financials]
+last_updated: 2026-11-19
 display_order: 6
 intercom_collection: LFX Crowdfunding
 ---
@@ -37,6 +37,10 @@ Only **Published** initiatives are visible. If your initiative is in **Submitted
 ## Can I add other people to receive funds?
 
 Yes. You can add beneficiaries during initiative creation or by editing your initiative after publication. Each beneficiary receives access to submit expense reports against initiative funds. See [Reimbursements](../../reimbursements/) for details.
+
+## Why does an initiative show money "Returned to" an organization?
+
+When part of a donation isn't needed, the Linux Foundation can send it back to the donor. For example, at the end of a mentorship program a stipend that wasn't paid out goes back to the organization that funded it. The **Financials** tab lists that amount under **Expense breakdown** as "Returned to" the organization, with the reason, and it's no longer part of the initiative's available balance. The organization's donation still shows the full amount it sent.
 
 ## What happens if my initiative is declined?
 

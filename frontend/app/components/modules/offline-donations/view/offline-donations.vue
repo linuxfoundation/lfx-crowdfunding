@@ -25,10 +25,11 @@ SPDX-License-Identifier: MIT
             variant="accent"
           />
         </NuxtLink>
-        <h1 class="text-2xl font-semibold text-neutral-900">Record an offline donation</h1>
+        <h1 class="text-2xl font-semibold text-neutral-900">Record an offline donation or adjustment</h1>
         <p class="text-sm text-neutral-600">
-          For organization donations LF finance received by invoice or wire. The donation is added to the initiative's
-          Ledger balance and donor list, and to the organization's donations on its LFX organization page.
+          For organization donations LF finance received by invoice or wire, and for money taken back out: unused funds
+          returned to the donor, or a payout from the initiative's fund. Each entry is posted once to the initiative's
+          Ledger balance.
         </p>
       </div>
 
@@ -111,6 +112,11 @@ SPDX-License-Identifier: MIT
         v-if="initiative"
         :initiative-id="initiative.id"
       />
+
+      <ledger-adjustment-list
+        v-if="initiative"
+        :initiative-id="initiative.id"
+      />
     </template>
   </div>
 </template>
@@ -120,6 +126,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { createError, showError } from 'nuxt/app';
 import { useQueryClient } from '@tanstack/vue-query';
 import OfflineDonationForm from '../components/offline-donation-form.vue';
+import LedgerAdjustmentList from '../components/ledger-adjustment-list.vue';
 import OfflineDonationList from '../components/offline-donation-list.vue';
 import { OFFLINE_DONATIONS_PATH } from '../config/offline-donation.config';
 import LfxAvatar from '~/components/uikit/avatar/avatar.vue';
@@ -165,6 +172,7 @@ const selectInitiative = (value: string) => {
 
 const onRecorded = () => {
   queryClient.invalidateQueries({ queryKey: ['offline-donations'] });
+  queryClient.invalidateQueries({ queryKey: ['ledger-adjustments'] });
 };
 </script>
 

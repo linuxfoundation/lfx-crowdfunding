@@ -11,6 +11,7 @@ export interface BackendTransaction {
   donor_type?: string;
   donor_logo_url?: string;
   donor_username?: string;
+  comment?: string;
 }
 
 export interface BackendTransactionList {

@@ -11,5 +11,5 @@ import OfflineDonations from '~/components/modules/offline-donations/view/offlin
 
 definePageMeta({ middleware: 'auth' });
 
-useHead({ title: 'Record an offline donation' });
+useHead({ title: 'Record an offline donation or adjustment' });
 </script>

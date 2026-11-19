@@ -358,8 +358,9 @@ owner check runs after the scope is validated.
 | **`access:me` + auditor on org** | `GET /crowdfunding/organizations/{uid}/donations` | Heimdall `openfga_check` — `auditor` on `b2b_org:{uid}` (403 on deny, 502 on outage), so everyone who can view the company in the Org lens sees its donations; always enforced, even with `openfga.enabled: false`, because rows carry donor emails. No service-side check. `private, no-store`. |
 | **`access:manage`** | `GET /crowdfunding/initiatives/{slug}/owner-info` (Reimbursement Service: initiative owner email + name) | `Middleware` — 403 if `access:manage` absent. No owner check (no user context). |
 
-> **Approval routes.** Initiative approval (`process-approval`) and offline org donations
-> (`/crowdfunding/offline-donations`, #464) are gated by the `ALLOWED_APPROVERS`
+> **Approval routes.** Initiative approval (`process-approval`), offline org donations
+> (`/crowdfunding/offline-donations`, #464) and ledger adjustments (`/crowdfunding/ledger-adjustments`,
+> #489) are gated by the `ALLOWED_APPROVERS`
 > username list at the handler level. Approvers are real users, so this stays under `access:me`;
 > the approver list is an additional handler-level authorization check, independent of scope.
 

@@ -1626,7 +1626,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 	// Ledger keys an org by its domain, else its legacy CF org id.
 	orgKeys := make([]string, 0, len(txns))
 	for _, t := range txns {
-		if t.LedgerOrgName != "" || t.LedgerOrgID != "" {
+		if showsOrg(t) {
 			orgKeys = append(orgKeys, cmp.Or(t.LedgerOrgDomain, t.LedgerOrgID))
 		}
 		hide := maskAnonymous && t.Anonymous
@@ -1651,11 +1651,14 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 			t.DonorName = ""
 			t.DonorUsername = ""
 		}
-		if t.LedgerOrgName != "" {
+		// A payout's org paid for it; the row shows its payee (#489), so it
+		// takes the person path below.
+		orgRow := showsOrg(*t)
+		if orgRow && t.LedgerOrgName != "" {
 			// The org as the donor stated it (#365); no CF row to look up.
 			t.DonorName = t.LedgerOrgName
 			t.DonorLogoURL = cmp.Or(logos[cmp.Or(t.LedgerOrgDomain, t.LedgerOrgID)], generatedAvatarURL(cmp.Or(t.LedgerOrgDomain, t.LedgerOrgName), t.DonorName))
-		} else if t.LedgerOrgID != "" {
+		} else if orgRow && t.LedgerOrgID != "" {
 			// An unnamed Ledger org row; the #408 backfill named every legacy one.
 			if t.DonorName == "" {
 				t.DonorName = anonymousName
@@ -1681,6 +1684,12 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 			}
 		}
 	}
+}
+
+// showsOrg reports whether a transaction is shown as its org: every row with
+// one except a reimbursement, whose org is whose money paid it (#489).
+func showsOrg(t models.Transaction) bool {
+	return t.Type != models.TransactionTypeReimbursement && (t.LedgerOrgName != "" || t.LedgerOrgID != "")
 }
 
 // avatarPalette is the set of background colors used for generated avatars.

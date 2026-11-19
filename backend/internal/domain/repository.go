@@ -95,6 +95,29 @@ type OfflineDonationRepository interface {
 	ListOffline(ctx context.Context, initiativeID string, limit, offset int) ([]models.OfflineDonation, *models.PaginationMeta, error)
 }
 
+// LedgerAdjustmentRepository stores returns and payouts recorded by approvers
+// (#489). A source_txn_id is unique across these and offline donations, since
+// the Ledger keeps one row per sourceTxnID.
+type LedgerAdjustmentRepository interface {
+	// LockReference serializes recording one SourceTxnID (ignoring case), for
+	// adjustments and offline donations alike, until unlock is called.
+	LockReference(ctx context.Context, sourceTxnID string) (unlock func(), err error)
+	// CreateAdjustment inserts a as pending. When an adjustment with the same
+	// SourceTxnID (ignoring case) exists it returns that one and created=false;
+	// when an offline donation has it, it returns ErrSourceTxnIDTaken.
+	CreateAdjustment(ctx context.Context, a *models.LedgerAdjustment) (stored *models.LedgerAdjustment, created bool, err error)
+	// SetAdjustmentB2BOrg fills the SFID of a pending adjustment that has none.
+	SetAdjustmentB2BOrg(ctx context.Context, id, sfid string) error
+	// MarkAdjustmentSucceeded flips a pending adjustment to succeeded; it fails
+	// when no pending row with that id exists.
+	MarkAdjustmentSucceeded(ctx context.Context, id string) error
+	// DeleteAdjustmentPending removes a pending adjustment the Ledger dropped.
+	DeleteAdjustmentPending(ctx context.Context, id string) error
+	// ListAdjustments returns adjustments, newest first; an empty
+	// initiativeID lists all of them.
+	ListAdjustments(ctx context.Context, initiativeID string, limit, offset int) ([]models.LedgerAdjustment, *models.PaginationMeta, error)
+}
+
 // SubscriptionRepository defines persistence operations for subscriptions.
 type SubscriptionRepository interface {
 	GetByID(ctx context.Context, id string) (*models.Subscription, error)

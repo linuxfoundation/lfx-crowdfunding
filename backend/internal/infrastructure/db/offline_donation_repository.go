@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain"
 	"github.com/linuxfoundation/lfx-v2-initiatives-service/internal/domain/models"
 )
@@ -39,6 +40,18 @@ func (r *DonationRepository) CreateOffline(ctx context.Context, d *models.Offlin
 	receivedOn, err := time.Parse(time.DateOnly, d.ReceivedOn)
 	if err != nil {
 		return nil, false, fmt.Errorf("%w: received_on must be YYYY-MM-DD", domain.ErrInvalidInput)
+	}
+	// A ledger adjustment with this reference (#489) means the Ledger already
+	// has a row with it. Callers hold the reference lock, so this can't race.
+	var taken bool
+	if err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM ledger_adjustments WHERE lower(source_txn_id) = lower($1))`,
+		d.SourceTxnID).Scan(&taken); err != nil {
+		span.RecordError(err)
+		return nil, false, fmt.Errorf("create offline donation: check adjustments: %w", err)
+	}
+	if taken {
+		return nil, false, domain.ErrSourceTxnIDTaken
 	}
 	var id string
 	err = r.pool.QueryRow(ctx, `
@@ -77,26 +90,36 @@ func (r *DonationRepository) CreateOffline(ctx context.Context, d *models.Offlin
 // context is done.
 const offlineUnlockTimeout = 5 * time.Second
 
-// LockOfflineReference takes a Postgres advisory lock on sourceTxnID, ignoring
-// case as CreateOffline does, so the create, Ledger post and finalize of one
-// reference run one at a time across replicas. unlock releases it; call it
-// exactly once.
+// LockOfflineReference takes the reference lock (see lockLedgerReference), so
+// the create, Ledger post and finalize of one reference run one at a time
+// across replicas. unlock releases it; call it exactly once.
 func (r *DonationRepository) LockOfflineReference(ctx context.Context, sourceTxnID string) (func(), error) {
 	ctx, span := donationTracer.Start(ctx, "db.donations.LockOfflineReference")
 	defer span.End()
 
-	conn, err := r.pool.Acquire(ctx)
+	unlock, err := lockLedgerReference(ctx, r.pool, sourceTxnID)
 	if err != nil {
 		span.RecordError(err)
-		return nil, fmt.Errorf("lock offline reference: acquire: %w", err)
+		return nil, fmt.Errorf("lock offline reference: %w", err)
+	}
+	return unlock, nil
+}
+
+// lockLedgerReference takes a Postgres advisory lock on a Ledger sourceTxnID,
+// ignoring case. Offline donations and ledger adjustments (#489) share the key,
+// so the cross-table uniqueness checks in CreateOffline and CreateAdjustment
+// can't race. unlock releases it; call it exactly once.
+func lockLedgerReference(ctx context.Context, pool *pgxpool.Pool, sourceTxnID string) (func(), error) {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquire: %w", err)
 	}
 	const key = `hashtextextended('offline-donation:' || lower($1), 0)`
 	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(`+key+`)`, sourceTxnID); err != nil {
-		span.RecordError(err)
 		// The lock may or may not be held: close the session so it's freed.
 		_ = conn.Conn().Close(context.WithoutCancel(ctx))
 		conn.Release()
-		return nil, fmt.Errorf("lock offline reference: %w", err)
+		return nil, err
 	}
 	unlock := func() {
 		uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), offlineUnlockTimeout)

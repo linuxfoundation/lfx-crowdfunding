@@ -202,3 +202,68 @@ func TestLedgerFindOfflineTransaction_PagesOfflineCreditsForTheReference(t *test
 		t.Errorf("pages = %v, want 1,2,3 (stops at the total)", pages)
 	}
 }
+
+// Outgoing rows (#489): a debit's org doesn't make it an org row, a negative
+// credit is a return, and only LF's manual rows carry their comment.
+func TestLedgerGetTransactions_OutgoingRows(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("txnType"); got != "outgoing" {
+			t.Errorf("txnType = %q, want outgoing", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"transactions": [
+			{"txnID": "payout", "userID": "auth0|communitybridge", "sourceAccountID": "manual_from_lf",
+			 "organizationName": "CNCF", "organizationDomain": "cncf.io", "submitterName": "Jane Payee",
+			 "txnType": "debit", "amount": -1000000, "txnComment": " Rewards payout "},
+			{"txnID": "return", "userID": "auth0|communitybridge", "sourceAccountID": "manual_from_lf",
+			 "organizationName": "CNCF", "organizationDomain": "cncf.io",
+			 "txnType": "credit", "amount": -150000, "txnComment": "Mentee failed"},
+			{"txnID": "expensify", "userID": "auth0|someone", "sourceAccountID": "expensify-account",
+			 "submitterName": "Someone", "txnType": "debit", "amount": -5000, "txnComment": "private note"}
+		]}`))
+	}))
+	defer srv.Close()
+
+	client := NewLedgerClient(LedgerConfig{BaseURL: srv.URL, APIKey: "test", Timeout: 2 * time.Second})
+	list, err := client.GetTransactions(context.Background(), TransactionFilter{ProjectID: "p", TxnType: "outgoing", Limit: 10})
+	if err != nil {
+		t.Fatalf("GetTransactions error: %v", err)
+	}
+	payout, ret, expensify := list.Data[0], list.Data[1], list.Data[2]
+	if payout.Type != "reimbursement" || payout.DonorType != "individual" || payout.DonorName != "Jane Payee" || payout.Comment != "Rewards payout" {
+		t.Errorf("payout = %+v", payout)
+	}
+	if ret.Type != "return" || ret.DonorType != "organization" || ret.Comment != "Mentee failed" {
+		t.Errorf("return = %+v", ret)
+	}
+	if expensify.Comment != "" {
+		t.Errorf("expensify comment = %q, want it kept private", expensify.Comment)
+	}
+}
+
+func TestLedgerFindOfflineAdjustment_PagesAllTypes(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Has("txnType") || q.Get("userID") != "auth0|communitybridge" {
+			t.Errorf("query = %v, want no txnType and the offline userID", q)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"totalTransactionCount": 1, "transactions": [
+			{"projectID": "init-1", "sourceTxnID": "TEST-RETURN", "txnType": "credit", "amount": -150000, "organizationDomain": "cncf.io"}
+		]}`))
+	}))
+	defer srv.Close()
+
+	client := NewLedgerClient(LedgerConfig{BaseURL: srv.URL, APIKey: "test", Timeout: 2 * time.Second}).(*ledgerHTTPClient)
+	txn, err := client.FindOfflineAdjustment(context.Background(), "init-1", "TEST-RETURN")
+	if err != nil {
+		t.Fatalf("FindOfflineAdjustment: %v", err)
+	}
+	if txn == nil || txn.Type != "return" || txn.AmountCents != -150000 {
+		t.Fatalf("txn = %+v", txn)
+	}
+}
