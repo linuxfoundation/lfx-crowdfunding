@@ -95,6 +95,41 @@ func TestOrgLogoRepository(t *testing.T) {
 	if !maps.Equal(keyed, want) {
 		t.Errorf("logos by org key = %v, want %v", keyed, want)
 	}
+	// A domain mapped by hand to a legacy org falls back to its logo, but only
+	// when the domain has no b2b_org logo of its own.
+	if _, err := testPool.Exec(ctx, `INSERT INTO crowdfunding.legacy_org_logos (legacy_org_id, name, logo_url, org_domain) VALUES
+		('11111111-1111-4111-8111-111111111111', 'Unmatched Org', 'https://uploads.example/unmatched', 'unmatched.org'),
+		('22222222-2222-4222-8222-222222222222', 'Acme Legacy', 'https://uploads.example/acme-legacy', 'acme.com')`); err != nil {
+		t.Fatalf("seed legacy domain logos: %v", err)
+	}
+	// Mixed-case and whitespace-only keys: Acme.com still gets its b2b_org logo
+	// (not the legacy one), and a blank key never picks up a logo.
+	byDomain, err := repo.LogosByOrgKeys(ctx, []string{"acme.com", "Acme.com", "unmatched.org", "Unmatched.org", "unknown.io", " ", legacyID})
+	if err != nil {
+		t.Fatalf("LogosByOrgKeys domains: %v", err)
+	}
+	wantByDomain := map[string]string{
+		"acme.com":      "https://cdn.example/acme.png",
+		"Acme.com":      "https://cdn.example/acme.png",
+		"unmatched.org": "https://uploads.example/unmatched",
+		"Unmatched.org": "https://uploads.example/unmatched",
+		legacyID:        "https://uploads.example/legacy",
+	}
+	if !maps.Equal(byDomain, wantByDomain) {
+		t.Errorf("logos by domain with legacy fallback = %v, want %v", byDomain, wantByDomain)
+	}
+	// The donate typeahead path stays b2b_org-only.
+	if typeahead, err := repo.LogosByDomains(ctx, []string{"unmatched.org"}); err != nil || len(typeahead) != 0 {
+		t.Errorf("LogosByDomains(unmatched.org) = %v (err %v), want no legacy fallback", typeahead, err)
+	}
+	// org_domain is stored lowercased and unique.
+	if _, err := testPool.Exec(ctx, `UPDATE crowdfunding.legacy_org_logos SET org_domain = 'Mixed.Case' WHERE legacy_org_id = '11111111-1111-4111-8111-111111111111'`); err == nil {
+		t.Error("mixed-case org_domain accepted, want check violation")
+	}
+	if _, err := testPool.Exec(ctx, `UPDATE crowdfunding.legacy_org_logos SET org_domain = 'acme.com' WHERE legacy_org_id = '11111111-1111-4111-8111-111111111111'`); err == nil {
+		t.Error("duplicate org_domain accepted, want unique violation")
+	}
+
 	if empty, err := repo.LogosByOrgKeys(ctx, nil); err != nil || len(empty) != 0 {
 		t.Errorf("no keys = %v (err %v), want empty", empty, err)
 	}
