@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -89,6 +90,60 @@ func (r *OrgLogoRepository) LogosByDomains(ctx context.Context, domains []string
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate org logos: %w", err)
+	}
+	return out, nil
+}
+
+// LogosByOrgKeys maps Ledger org keys to logos. Ledger keys an org by its
+// domain, or by its legacy CF org id when the rows carry no domain: domains get
+// their matched b2b_org's logo (LogosByDomains), legacy ids the logo uploaded
+// to the old org (lfx-self-serve-ops#1647). Results are keyed by the keys as given.
+func (r *OrgLogoRepository) LogosByOrgKeys(ctx context.Context, keys []string) (map[string]string, error) {
+	var domains []string
+	legacyKeys := map[string][]string{} // canonical uuid -> keys as given
+	for _, k := range keys {
+		if id, err := uuid.Parse(k); err == nil {
+			c := id.String()
+			legacyKeys[c] = append(legacyKeys[c], k)
+		} else {
+			domains = append(domains, k)
+		}
+	}
+	out, err := r.LogosByDomains(ctx, domains)
+	if err != nil {
+		return nil, err
+	}
+	if len(legacyKeys) == 0 {
+		return out, nil
+	}
+
+	ctx, span := orgLogoTracer.Start(ctx, "db.legacy_org_logos.LogosByOrgKeys")
+	defer span.End()
+	span.SetAttributes(attribute.Int("legacy_ids.count", len(legacyKeys)))
+
+	ids := make([]string, 0, len(legacyKeys))
+	for c := range legacyKeys {
+		ids = append(ids, c)
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT legacy_org_id::text, logo_url FROM legacy_org_logos
+		WHERE legacy_org_id = ANY($1::uuid[])`, ids)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("query legacy org logos: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, logoURL string
+		if err := rows.Scan(&id, &logoURL); err != nil {
+			return nil, fmt.Errorf("scan legacy org logo: %w", err)
+		}
+		for _, k := range legacyKeys[id] {
+			out[k] = logoURL
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate legacy org logos: %w", err)
 	}
 	return out, nil
 }

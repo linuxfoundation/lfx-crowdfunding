@@ -18,9 +18,11 @@ type ledgerSource interface {
 	GetAllBalances(ctx context.Context) ([]models.LedgerRawBalance, error)
 }
 
-// orgLogoSource maps org domains to their b2b_org logo (#472); domain.OrgLogoRepository.
+// orgLogoSource maps Ledger org keys to logos: domains to their b2b_org logo
+// (#472), legacy CF org ids to the old org's logo (lfx-self-serve-ops#1647);
+// domain.OrgLogoRepository.
 type orgLogoSource interface {
-	LogosByDomains(ctx context.Context, domains []string) (map[string]string, error)
+	LogosByOrgKeys(ctx context.Context, keys []string) (map[string]string, error)
 }
 
 // syncResult carries the per-run counters logged on completion.
@@ -149,7 +151,7 @@ func collectSponsorUserIDs(balances []models.LedgerRawBalance) (userIDs []string
 }
 
 // orgSponsorLogos returns the logo for each org sponsor key that has one. Ledger
-// keys org buckets by domain; legacy CF org UUID keys simply never match.
+// keys org buckets by domain, or by legacy CF org UUID for domainless rows.
 func (s *Syncer) orgSponsorLogos(ctx context.Context, balances []models.LedgerRawBalance) map[string]string {
 	if s.logos == nil {
 		return nil
@@ -164,7 +166,7 @@ func (s *Syncer) orgSponsorLogos(ctx context.Context, balances []models.LedgerRa
 			}
 		}
 	}
-	logos, err := s.logos.LogosByDomains(ctx, keys)
+	logos, err := s.logos.LogosByOrgKeys(ctx, keys)
 	if err != nil {
 		s.logger.WarnContext(ctx, "org sponsor logo lookup failed, using generated avatars", "error", err)
 		return nil

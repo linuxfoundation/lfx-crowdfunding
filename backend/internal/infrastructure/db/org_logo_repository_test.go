@@ -5,7 +5,9 @@ package db
 
 import (
 	"context"
+	"maps"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -22,7 +24,7 @@ func TestOrgLogoRepository(t *testing.T) {
 		t.Skip("skipping DB integration test")
 	}
 	ctx := context.Background()
-	truncate(t, ctx, "crowdfunding.b2b_org_logos", "crowdfunding.donations", "crowdfunding.subscriptions", "crowdfunding.initiatives", "crowdfunding.users")
+	truncate(t, ctx, "crowdfunding.legacy_org_logos", "crowdfunding.b2b_org_logos", "crowdfunding.donations", "crowdfunding.subscriptions", "crowdfunding.initiatives", "crowdfunding.users")
 	repo := NewOrgLogoRepository(testPool)
 
 	user := seedUser(t, ctx, "logo-donor")
@@ -71,6 +73,30 @@ func TestOrgLogoRepository(t *testing.T) {
 
 	if empty, err := repo.LogosByDomains(ctx, nil); err != nil || len(empty) != 0 {
 		t.Errorf("no domains = %v (err %v), want empty", empty, err)
+	}
+
+	// Ledger keys domainless legacy orgs by their old CF org UUID
+	// (lfx-self-serve-ops#1647); those logos come from legacy_org_logos.
+	const legacyID = "5213987d-928d-4f75-831c-ee41a062832b"
+	if _, err := testPool.Exec(ctx, `INSERT INTO crowdfunding.legacy_org_logos (legacy_org_id, name, logo_url)
+		VALUES ($1, 'Legacy BV', 'https://uploads.example/legacy')`, legacyID); err != nil {
+		t.Fatalf("seed legacy logo: %v", err)
+	}
+	upperID := strings.ToUpper(legacyID)
+	keyed, err := repo.LogosByOrgKeys(ctx, []string{"acme.com", "unmatched.org", legacyID, upperID, "00000000-0000-4000-8000-000000000000"})
+	if err != nil {
+		t.Fatalf("LogosByOrgKeys: %v", err)
+	}
+	want := map[string]string{
+		"acme.com": "https://cdn.example/acme.png",
+		legacyID:   "https://uploads.example/legacy",
+		upperID:    "https://uploads.example/legacy",
+	}
+	if !maps.Equal(keyed, want) {
+		t.Errorf("logos by org key = %v, want %v", keyed, want)
+	}
+	if empty, err := repo.LogosByOrgKeys(ctx, nil); err != nil || len(empty) != 0 {
+		t.Errorf("no keys = %v (err %v), want empty", empty, err)
 	}
 
 	sfids, err := repo.MatchedSFIDs(ctx)

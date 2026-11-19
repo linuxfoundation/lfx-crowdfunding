@@ -795,18 +795,21 @@ type fakeOrgLogos struct {
 	asked []string
 }
 
-func (f *fakeOrgLogos) LogosByDomains(_ context.Context, domains []string) (map[string]string, error) {
-	f.asked = append(f.asked, domains...)
+func (f *fakeOrgLogos) LogosByOrgKeys(_ context.Context, keys []string) (map[string]string, error) {
+	f.asked = append(f.asked, keys...)
 	return f.logos, f.err
 }
+
+const legacyOrgID = "5213987d-0000-4000-8000-000000000000"
 
 func orgLogoBalances() []models.LedgerRawBalance {
 	return []models.LedgerRawBalance{
 		{ProjectID: "init-1", TotalCredit: 300, Sponsors: models.LedgerRawSponsors{
 			Orgs: []models.LedgerRawSponsor{{ID: "cncf.io", Name: "CNCF", Total: 200}, {ID: "nologo.org", Name: "No Logo", Total: 100}},
 		}},
-		{ProjectID: "init-2", TotalCredit: 50, Sponsors: models.LedgerRawSponsors{
-			Orgs: []models.LedgerRawSponsor{{ID: "cncf.io", Name: "CNCF", Total: 50}},
+		// A legacy CF org with no domain: Ledger keys it by the old org UUID.
+		{ProjectID: "init-2", TotalCredit: 130, Sponsors: models.LedgerRawSponsors{
+			Orgs: []models.LedgerRawSponsor{{ID: "cncf.io", Name: "CNCF", Total: 50}, {ID: legacyOrgID, Name: "Legacy Org", Total: 80}},
 		}},
 	}
 }
@@ -815,7 +818,10 @@ func TestSyncer_Run_orgSponsorLogos(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockLedgerStatsRepo{initiativeIDs: []string{"init-1", "init-2"}}
-	logos := &fakeOrgLogos{logos: map[string]string{"cncf.io": "https://cdn.example/cncf.png"}}
+	logos := &fakeOrgLogos{logos: map[string]string{
+		"cncf.io":   "https://cdn.example/cncf.png",
+		legacyOrgID: "https://uploads.example/legacy.png",
+	}}
 	s := newSyncer(repo, &mockLedgerSource{balances: orgLogoBalances()}, discardLogger())
 	s.logos = logos
 
@@ -823,8 +829,8 @@ func TestSyncer_Run_orgSponsorLogos(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// Each org key is looked up once across all initiatives.
-	if len(logos.asked) != 2 {
-		t.Errorf("asked = %v, want cncf.io and nologo.org once each", logos.asked)
+	if len(logos.asked) != 3 {
+		t.Errorf("asked = %v, want cncf.io, nologo.org and the legacy id once each", logos.asked)
 	}
 	got := map[string]string{}
 	for _, st := range repo.capturedUpserts {
@@ -833,9 +839,10 @@ func TestSyncer_Run_orgSponsorLogos(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"init-1/cncf.io":    "https://cdn.example/cncf.png",
-		"init-1/nologo.org": "",
-		"init-2/cncf.io":    "https://cdn.example/cncf.png",
+		"init-1/cncf.io":        "https://cdn.example/cncf.png",
+		"init-1/nologo.org":     "",
+		"init-2/cncf.io":        "https://cdn.example/cncf.png",
+		"init-2/" + legacyOrgID: "https://uploads.example/legacy.png",
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("org avatars = %v, want %v", got, want)
