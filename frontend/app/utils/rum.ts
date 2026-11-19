@@ -19,16 +19,39 @@ export function isInjectedEvalCspReport(event: RumEvent): boolean {
 
 const PAGE_LANG = 'en';
 const TRANSLATED_CLASSES = ['translated-ltr', 'translated-rtl'];
+// Microsoft Translator (Edge's built-in translator) leaves <html> alone and marks the nodes it
+// translates with these attributes instead.
+const MS_TRANSLATOR_ATTRIBUTES = ['_msthash', '_msttexthash', '_mstmutation', '_istranslated'];
+const MS_TRANSLATOR_SELECTOR = MS_TRANSLATOR_ATTRIBUTES.map((name) => `[${name}]`).join(',');
 
 /**
  * True when the browser has machine-translated the page. Chrome Translate adds a
  * translated-ltr/-rtl class to <html> and sets its lang to the target language; other
- * translators change lang too. The page itself is always rendered in English.
+ * translators change lang too, except Microsoft Translator, which only marks the translated
+ * nodes. The page itself is always rendered in English.
  */
-export function isTranslatedPage(root: Pick<Element, 'classList' | 'getAttribute'>): boolean {
+export function isTranslatedPage(
+  root: Pick<Element, 'classList' | 'getAttribute' | 'querySelector'>,
+): boolean {
   if (TRANSLATED_CLASSES.some((name) => root.classList.contains(name))) return true;
   const lang = root.getAttribute('lang')?.toLowerCase();
-  return !!lang && lang !== PAGE_LANG && !lang.startsWith(`${PAGE_LANG}-`);
+  if (lang && lang !== PAGE_LANG && !lang.startsWith(`${PAGE_LANG}-`)) return true;
+  return root.querySelector(MS_TRANSLATOR_SELECTOR) !== null;
+}
+
+// A <font> node the server rendered (the app renders none; Chrome Translate and Microsoft
+// Translator wrap translated text in <font>), or a Microsoft Translator attribute on any node.
+const TRANSLATION_IN_WARNING = new RegExp(
+  `rendered on server: <font[\\s>]|\\s(?:${MS_TRANSLATOR_ATTRIBUTES.join('|')})="`,
+);
+
+/**
+ * True when a hydration warning built by hydrationWarningMessage shows that a browser
+ * translator rewrote the server-rendered DOM. Unlike isTranslatedPage, this doesn't depend on
+ * the translator's markers still being in the page when the error is sent.
+ */
+export function isTranslationMismatch(message: string): boolean {
+  return TRANSLATION_IN_WARNING.test(message);
 }
 
 const HYDRATION_WARNING_PREFIX = '[Vue warn]: Hydration';

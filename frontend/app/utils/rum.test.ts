@@ -3,7 +3,12 @@
 
 import { describe, expect, it } from 'vitest';
 import type { RumEvent } from '@datadog/browser-rum';
-import { hydrationWarningMessage, isInjectedEvalCspReport, isTranslatedPage } from './rum';
+import {
+  hydrationWarningMessage,
+  isInjectedEvalCspReport,
+  isTranslatedPage,
+  isTranslationMismatch,
+} from './rum';
 
 const EVAL = "csp_violation: 'eval' blocked by 'script-src' directive";
 
@@ -122,9 +127,14 @@ describe('hydrationWarningMessage', () => {
 });
 
 describe('isTranslatedPage', () => {
-  const root = (lang: string | null, classes: string[] = []) => ({
+  // descendantAttrs: attributes present on some node inside the page (querySelector match).
+  const root = (lang: string | null, classes: string[] = [], descendantAttrs: string[] = []) => ({
     classList: { contains: (name: string) => classes.includes(name) } as DOMTokenList,
     getAttribute: () => lang,
+    querySelector: (selector: string) =>
+      selector.split(',').some((part) => descendantAttrs.some((attr) => part === `[${attr}]`))
+        ? ({} as Element)
+        : null,
   });
 
   it('detects the Chrome Translate class', () => {
@@ -137,9 +147,65 @@ describe('isTranslatedPage', () => {
     expect(isTranslatedPage(root('ar'))).toBe(true);
   });
 
+  it('detects Microsoft Translator markers on translated nodes', () => {
+    expect(isTranslatedPage(root('en', [], ['_msthash']))).toBe(true);
+    expect(isTranslatedPage(root('en', [], ['_msttexthash']))).toBe(true);
+    expect(isTranslatedPage(root('en', [], ['_mstmutation']))).toBe(true);
+    expect(isTranslatedPage(root('en', [], ['_istranslated']))).toBe(true);
+  });
+
   it('treats English as untranslated', () => {
+    expect(isTranslatedPage(root('en', [], ['data-v-app']))).toBe(false);
     expect(isTranslatedPage(root('en'))).toBe(false);
     expect(isTranslatedPage(root('en-US'))).toBe(false);
     expect(isTranslatedPage(root(null))).toBe(false);
+  });
+});
+
+describe('isTranslationMismatch', () => {
+  const node = (nodeName: string, attrs: Record<string, string> = {}) => ({
+    nodeName,
+    attributes: Object.entries(attrs).map(([name, value]) => ({ name, value })),
+  });
+  const nodeMismatch = (serverNode: unknown) =>
+    hydrationWarningMessage([
+      '[Vue warn]: Hydration node mismatch:\n- rendered on server:',
+      serverNode,
+      '',
+      '\n- expected on client:',
+      Symbol('v-txt'),
+    ])!;
+  const textMismatch = (attrs: Record<string, string>) =>
+    hydrationWarningMessage([
+      '[Vue warn]: Hydration text content mismatch on',
+      node('SPAN', attrs),
+      '\n  - rendered on server: Donar\n  - expected on client: Donate',
+    ])!;
+
+  it("detects Chrome Translate's <font> node", () => {
+    const font = node('FONT', { dir: 'auto', style: 'vertical-align: inherit;' });
+    expect(isTranslationMismatch(nodeMismatch(font))).toBe(true);
+  });
+
+  it("detects Microsoft Translator's <font> node", () => {
+    const font = node('FONT', { _mstmutation: '1', _msttexthash: '123', _msthash: '45' });
+    expect(isTranslationMismatch(nodeMismatch(font))).toBe(true);
+  });
+
+  it('detects Microsoft Translator attributes on a text mismatch', () => {
+    expect(
+      isTranslationMismatch(textMismatch({ class: 'a', _msttexthash: '1', _msthash: '2' })),
+    ).toBe(true);
+    expect(isTranslationMismatch(textMismatch({ class: 'a', _istranslated: '1' }))).toBe(true);
+  });
+
+  it('leaves app mismatches untagged', () => {
+    expect(isTranslationMismatch(textMismatch({ class: 'font-semibold text-neutral-900' }))).toBe(
+      false,
+    );
+    expect(isTranslationMismatch(nodeMismatch(node('DIV', { class: 'font-secondary' })))).toBe(
+      false,
+    );
+    expect(isTranslationMismatch(nodeMismatch({ nodeName: '#text' }))).toBe(false);
   });
 });
