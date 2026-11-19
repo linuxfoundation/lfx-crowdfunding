@@ -1611,7 +1611,8 @@ func (s *InitiativeService) syncFGADelete(ctx context.Context, id string) {
 
 // enrichTransactionsFromDB batch-looks up users from the CF DB and merges
 // name + avatar_url onto each transaction. Org rows carry their name from Ledger
-// and the logo of the b2b_org their domain is matched to (#472).
+// and the logo of the b2b_org their domain is matched to (#472), or of the
+// legacy CF org whose id keys a domainless row (lfx-self-serve-ops#1647).
 // Falls back to a deterministic generated avatar when no DB record is found.
 // With maskAnonymous set, rows flagged Anonymous keep only their org (#466):
 // the person, including the ledger's submitter name, shows as "Anonymous".
@@ -1622,10 +1623,11 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 	// Collect unique IDs to look up.
 	userIDs := make([]string, 0, len(txns))
 	seenUsers := map[string]bool{}
-	orgDomains := make([]string, 0, len(txns))
+	// Ledger keys an org by its domain, else its legacy CF org id.
+	orgKeys := make([]string, 0, len(txns))
 	for _, t := range txns {
-		if t.LedgerOrgName != "" {
-			orgDomains = append(orgDomains, t.LedgerOrgDomain)
+		if t.LedgerOrgName != "" || t.LedgerOrgID != "" {
+			orgKeys = append(orgKeys, cmp.Or(t.LedgerOrgDomain, t.LedgerOrgID))
 		}
 		hide := maskAnonymous && t.Anonymous
 		if !hide && t.LedgerUserID != "" && !seenUsers[t.LedgerUserID] {
@@ -1639,7 +1641,7 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 		slog.WarnContext(ctx, "failed to look up donor users", "error", err)
 		users = map[string]models.User{}
 	}
-	logos := orgLogos(ctx, logoRepo, orgDomains)
+	logos := orgLogos(ctx, logoRepo, orgKeys)
 	for i := range txns {
 		t := &txns[i]
 		hide := maskAnonymous && t.Anonymous
@@ -1652,14 +1654,14 @@ func enrichTransactionsFromDB(ctx context.Context, repo domain.InitiativeReposit
 		if t.LedgerOrgName != "" {
 			// The org as the donor stated it (#365); no CF row to look up.
 			t.DonorName = t.LedgerOrgName
-			t.DonorLogoURL = cmp.Or(logos[t.LedgerOrgDomain], generatedAvatarURL(cmp.Or(t.LedgerOrgDomain, t.LedgerOrgName), t.DonorName))
+			t.DonorLogoURL = cmp.Or(logos[cmp.Or(t.LedgerOrgDomain, t.LedgerOrgID)], generatedAvatarURL(cmp.Or(t.LedgerOrgDomain, t.LedgerOrgName), t.DonorName))
 		} else if t.LedgerOrgID != "" {
 			// An unnamed Ledger org row; the #408 backfill named every legacy one.
 			if t.DonorName == "" {
 				t.DonorName = anonymousName
 			}
 			if t.DonorLogoURL == "" {
-				t.DonorLogoURL = generatedAvatarURL(t.LedgerOrgID, t.DonorName)
+				t.DonorLogoURL = cmp.Or(logos[t.LedgerOrgID], generatedAvatarURL(t.LedgerOrgID, t.DonorName))
 			}
 		} else if hide {
 			t.DonorName = anonymousName

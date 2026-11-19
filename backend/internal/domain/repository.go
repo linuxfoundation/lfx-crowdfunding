@@ -150,6 +150,10 @@ type OrgLogoRepository interface {
 	// b2b_org their donations and subscriptions are matched to. A domain whose
 	// rows carry more than one SFID, or whose org has no logo, is absent.
 	LogosByDomains(ctx context.Context, domains []string) (map[string]string, error)
+	// LogosByOrgKeys maps Ledger org keys to logos: a domain key as in
+	// LogosByDomains, a legacy CF org UUID key to the logo uploaded to that
+	// org (lfx-self-serve-ops#1647). Keys without a logo are absent.
+	LogosByOrgKeys(ctx context.Context, keys []string) (map[string]string, error)
 	// MatchedSFIDs returns every b2b_org SFID on a donation or subscription.
 	MatchedSFIDs(ctx context.Context) ([]string, error)
 }
