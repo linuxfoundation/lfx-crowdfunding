@@ -18,10 +18,10 @@ import type {
 
 /** Page size of the recorded donations list; the backend caps it at 100. */
 export const LIST_LIMIT = 50;
-const MAX_LIST_LIMIT = 100;
+export const MAX_LIST_LIMIT = 100;
 
 /** A whole number in [min, max] from a query value, or fallback. */
-const intParam = (v: unknown, fallback: number, min: number, max: number): number => {
+export const intParam = (v: unknown, fallback: number, min: number, max: number): number => {
   const n = typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : NaN;
   return Number.isSafeInteger(n) && n >= min && n <= max ? n : fallback;
 };

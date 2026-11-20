@@ -148,7 +148,7 @@ backend/
 | `GET` | `/crowdfunding/statistics*` | None | Platform-wide funding statistics |
 | `GET` | `/crowdfunding/initiatives` | None | List initiatives (filterable, paginated) |
 | `GET` | `/crowdfunding/initiatives/{id}` | Optional | Initiative detail (optional auth lets approvers view unpublished) |
-| `GET` | `/crowdfunding/initiatives/{id}/transactions` | None | Public donation/expense history |
+| `GET` | `/crowdfunding/initiatives/{id}/transactions` | None | Public donation/expense history; `type=expenses` lists debits plus returns (negative credits) via the Ledger's `txnType=outgoing` |
 | `PATCH` | `/crowdfunding/me` | `access:me` | Profile sync (login trigger) |
 | `GET` | `/crowdfunding/me/initiatives` | `access:me` | Caller's own initiatives |
 | `POST` | `/crowdfunding/me/initiatives` | `access:me` | Create initiative |
@@ -179,6 +179,8 @@ backend/
 | `POST` | `/crowdfunding/initiatives/{id}/process-approval/{action}` | `access:me` (approver list) | Approve or decline initiative |
 | `POST` | `/crowdfunding/offline-donations` | `access:me` (approver list) | Record an offline org donation (invoice/wire): stored in CF and posted once to the Ledger |
 | `GET` | `/crowdfunding/offline-donations?initiative_id=` | `access:me` (approver list) | Recorded offline org donations |
+| `POST` | `/crowdfunding/ledger-adjustments` | `access:me` (approver list) | Record a return of unused funds or a payout (#489): stored in CF and posted once to the Ledger as a negative amount |
+| `GET` | `/crowdfunding/ledger-adjustments?initiative_id=` | `access:me` (approver list) | Recorded returns and payouts |
 | `POST` | `/crowdfunding/stripe/webhook` | Stripe HMAC | Stripe event receiver |
 | `GET` | `/crowdfunding/initiatives/{slug}/owner-info` | `access:manage` | Reimbursement Service: initiative owner info |
 

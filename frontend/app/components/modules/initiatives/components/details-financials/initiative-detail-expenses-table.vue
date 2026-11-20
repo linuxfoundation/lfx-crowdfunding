@@ -40,6 +40,11 @@ SPDX-License-Identifier: MIT
           </td>
           <td class="text-xs text-neutral-900 py-4 px-3 flex flex-col">
             {{ record.description }}
+            <span
+              v-if="record.comment"
+              class="text-xs text-neutral-600 font-normal break-words"
+              >{{ record.comment }}</span
+            >
             <span class="text-xs text-neutral-500 font-normal">{{ record.category }}</span>
           </td>
           <td class="text-xs font-semibold text-neutral-900 text-right py-4 w-[140px]">

@@ -82,12 +82,18 @@ func (h *OfflineDonationHandler) GetApproverStatus(w http.ResponseWriter, r *htt
 }
 
 func (h *OfflineDonationHandler) requireApprover(w http.ResponseWriter, r *http.Request) (*models.Principal, bool) {
+	return requireApprover(w, r, h.approvers)
+}
+
+// requireApprover writes 401/403 and returns ok=false unless the caller is in
+// approvers (ALLOWED_APPROVERS).
+func requireApprover(w http.ResponseWriter, r *http.Request, approvers []string) (*models.Principal, bool) {
 	principal := auth.PrincipalFromContext(r.Context())
 	if principal == nil || principal.Username == "" {
 		Error(w, domain.ErrUnauthorized)
 		return nil, false
 	}
-	if !isApproverIn(h.approvers, principal) {
+	if !isApproverIn(approvers, principal) {
 		Error(w, domain.ErrForbidden)
 		return nil, false
 	}

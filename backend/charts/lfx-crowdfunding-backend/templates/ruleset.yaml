@@ -620,9 +620,10 @@ spec:
               aud: {{ .Values.app.audience }}
               scope: access:me
 
-    # Offline org donations (#464) — record (POST) and list (GET), approvers
-    # only. Same global approvers-team check as process-approval; the handler
-    # also checks ALLOWED_APPROVERS, which is the only check while openfga is off.
+    # Offline org donations (#464) and ledger adjustments, i.e. returns and
+    # payouts (#489) — record (POST) and list (GET), approvers only. Same global
+    # approvers-team check as process-approval; the handler also checks
+    # ALLOWED_APPROVERS, which is the only check while openfga is off.
     - id: "rule:lfx:lfx-crowdfunding-backend:offline-donations"
       allow_encoded_slashes: "off"
       match:
@@ -631,6 +632,7 @@ spec:
           - POST
         routes:
           - path: /crowdfunding/offline-donations
+          - path: /crowdfunding/ledger-adjustments
       execute:
         - authenticator: oidc
         {{- if .Values.app.use_oidc_contextualizer }}

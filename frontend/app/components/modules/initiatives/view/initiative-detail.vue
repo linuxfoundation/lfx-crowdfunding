@@ -127,6 +127,7 @@ import InitiativeDetailSponsors from '../components/details-overview/initiative-
 import InitiativeDetailFinancials from '../components/details-financials/initiative-detail-financials.vue';
 import InitiativeDetailAbout from '../components/details-about/initiative-detail-about.vue';
 import InitiativeDetailAnnouncements from '../components/details-announcements/initiative-detail-announcements.vue';
+import { toExpenseRecord } from '../config/expense-record.config';
 import { PENDING_REVIEW_STATUSES } from '../config/initiative-status.config';
 import { useInitiative } from '~/composables/initiatives/useInitiative';
 import { useInitiativeTransactions } from '~/composables/initiatives/useInitiativeTransactions';
@@ -201,13 +202,7 @@ const donationRecords = computed<DonationRecord[]>(() =>
 );
 
 const expenseRecords = computed<ExpenseRecord[]>(() =>
-  (expenseData.value?.pages.flatMap((p) => p.data) ?? []).map((t) => ({
-    id: t.id,
-    date: formatShortDate(t.date),
-    category: t.category ?? 'Other',
-    description: t.donorName ?? t.category ?? 'Other',
-    amountCents: t.amountCents,
-  })),
+  (expenseData.value?.pages.flatMap((p) => p.data) ?? []).map(toExpenseRecord),
 );
 
 const activeTab = ref('overview');

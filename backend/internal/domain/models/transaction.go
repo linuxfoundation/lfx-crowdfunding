@@ -9,6 +9,12 @@ import "time"
 const (
 	TransactionTypeDonation      = "donation"
 	TransactionTypeReimbursement = "reimbursement"
+	// TransactionTypeReturn is a credit with a negative amount: money taken
+	// back out, e.g. unused funds returned to the donor org (#489).
+	TransactionTypeReturn = "return"
+	// TransactionTypeOutgoing is a Ledger filter, not a row type: every row
+	// that takes money out (reimbursements and returns).
+	TransactionTypeOutgoing = "outgoing"
 
 	TransactionQueryTypeDonations = "donations"
 	TransactionQueryTypeExpenses  = "expenses"
@@ -20,7 +26,7 @@ const (
 // Transaction represents a single donation or disbursement returned by the Ledger service.
 type Transaction struct {
 	ID             string    `json:"id"`
-	Type           string    `json:"type"` // models.TransactionTypeDonation | models.TransactionTypeReimbursement
+	Type           string    `json:"type"` // models.TransactionTypeDonation | models.TransactionTypeReimbursement | models.TransactionTypeReturn
 	AmountCents    int64     `json:"amount_cents"`
 	Date           time.Time `json:"date"`
 	Category       string    `json:"category,omitempty"`
@@ -39,6 +45,9 @@ type Transaction struct {
 	Anonymous      bool   `json:"anonymous,omitempty"`
 	DonationID     string `json:"donation_id,omitempty"`     // caller's own rows only
 	SubscriptionID string `json:"subscription_id,omitempty"` // caller's own rows only
+
+	// Comment is the approver's reason on a return or payout LF recorded (#489).
+	Comment string `json:"comment,omitempty"`
 
 	// Internal: used by the service to look up CF DB records. Not serialised.
 	LedgerUserID    string `json:"-"`

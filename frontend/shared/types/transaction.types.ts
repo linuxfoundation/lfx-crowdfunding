@@ -3,7 +3,8 @@
 
 export interface Transaction {
   id: string;
-  type: 'donation' | 'reimbursement';
+  /** `return`: unused funds sent back to the donor org (#489), listed with expenses. */
+  type: 'donation' | 'reimbursement' | 'return';
   amountCents: number;
   date: string;
   category?: string;
@@ -11,6 +12,8 @@ export interface Transaction {
   donorType?: 'organization' | 'individual';
   donorLogoUrl?: string;
   donorUsername?: string;
+  /** The approver's reason on a return or payout LF recorded (#489). */
+  comment?: string;
 }
 
 export interface TransactionList {

@@ -49,10 +49,13 @@ export const toIsoDate = (d: Date): string =>
 export const emptyOfflineDonationForm = (
   category = DEFAULT_OFFLINE_CATEGORY,
 ): OfflineDonationForm => ({
+  kind: 'donation',
   organization: null,
+  paidTo: '',
   amount: '',
   receivedOn: null,
   category,
+  reason: '',
   sourceTxnId: '',
 });
 

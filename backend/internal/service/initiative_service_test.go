@@ -567,6 +567,27 @@ func TestEnrichTransactionsFromDB_StatedOrgName(t *testing.T) {
 	}
 }
 
+// A payout's org paid for it; the row shows the payee, not the org (#489).
+func TestEnrichTransactionsFromDB_PayoutShowsPayee(t *testing.T) {
+	repo := &mockRepoForEnrich{}
+
+	txns := []models.Transaction{
+		{ID: "t1", Type: models.TransactionTypeReimbursement, DonorName: "Jane Payee",
+			LedgerUserID: "auth0|communitybridge", LedgerOrgName: "CNCF", LedgerOrgDomain: "cncf.io"},
+		{ID: "t2", Type: models.TransactionTypeReturn, LedgerUserID: "auth0|communitybridge",
+			LedgerOrgName: "CNCF", LedgerOrgDomain: "cncf.io"},
+	}
+
+	enrichTransactionsFromDB(context.Background(), repo, nil, txns, true)
+
+	if txns[0].DonorName != "Jane Payee" || txns[0].DonorLogoURL != generatedAvatarURL("auth0|communitybridge", "Jane Payee") {
+		t.Errorf("payout = %q %q, want the payee", txns[0].DonorName, txns[0].DonorLogoURL)
+	}
+	if txns[1].DonorName != "CNCF" {
+		t.Errorf("return = %q, want the org it went back to", txns[1].DonorName)
+	}
+}
+
 func TestEnrichTransactionsFromDB_UserFallback(t *testing.T) {
 	repo := &mockRepoForEnrich{
 		users: map[string]models.User{

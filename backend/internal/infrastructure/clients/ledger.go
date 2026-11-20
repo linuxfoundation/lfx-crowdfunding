@@ -41,7 +41,7 @@ type LedgerBalance struct {
 // TransactionFilter holds query parameters for the Ledger paginate endpoint.
 type TransactionFilter struct {
 	ProjectID        string
-	TxnType          string // models.TransactionTypeDonation | models.TransactionTypeReimbursement — empty = all
+	TxnType          string // models.TransactionTypeDonation | models.TransactionTypeReimbursement | models.TransactionTypeOutgoing — empty = all
 	TxnCategory      string // Ledger txnCategory filter; empty = all categories
 	UserID           string // Auth0 subject (legacy_user_id) — empty = all users
 	SubscriptionOnly bool   // when true, appends subscriptionOnly=true to filter recurring charges only
@@ -179,6 +179,8 @@ type ledgerTransactionRaw struct {
 	TxnDate            int64  `json:"txnDate"`        // unix seconds
 	SubscriptionID     string `json:"subscriptionID"` // non-empty for recurring charges
 	SourceTxnID        string `json:"sourceTxnID"`    // Stripe charge (or PaymentIntent) ID for Stripe rows
+	SourceAccountID    string `json:"sourceAccountID"`
+	TxnComment         string `json:"txnComment"`
 }
 
 type ledgerTransactionsResponse struct {
@@ -255,12 +257,25 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 	txns := make([]models.Transaction, 0, len(resp.Transactions))
 	for _, raw := range resp.Transactions {
 		txnType := models.TransactionTypeDonation
-		if raw.TxnType == "debit" {
+		switch {
+		case raw.TxnType == "debit":
 			txnType = models.TransactionTypeReimbursement
+		case raw.Amount < 0:
+			// A negative credit takes money out: unused funds returned to the
+			// donor (#489), or a grant paid out of a fund.
+			txnType = models.TransactionTypeReturn
 		}
 		donorType := "individual"
-		if raw.OrganizationID != "" || raw.OrganizationName != "" {
+		// A debit's org is whose money paid it, not who received it: the row
+		// shows its payee (#489).
+		if txnType != models.TransactionTypeReimbursement && (raw.OrganizationID != "" || raw.OrganizationName != "") {
 			donorType = "organization"
+		}
+		comment := ""
+		if txnType != models.TransactionTypeDonation && isManualLFRow(raw) {
+			// Approvers' reasons for a return or payout are public on the
+			// Financials tab (#489). Synced Expensify rows keep theirs private.
+			comment = strings.TrimSpace(raw.TxnComment)
 		}
 		txns = append(txns, models.Transaction{
 			ID:              raw.TxnID,
@@ -277,6 +292,8 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 			LedgerOrgDomain: raw.OrganizationDomain,
 			LedgerProjectID: raw.ProjectID,
 
+			Comment: comment,
+
 			LedgerSourceTxnID:    raw.SourceTxnID,
 			LedgerSubscriptionID: raw.SubscriptionID,
 		})
@@ -290,6 +307,13 @@ func (c *ledgerHTTPClient) GetTransactions(ctx context.Context, filter Transacti
 		Limit:      limit,
 		Offset:     offset,
 	}, nil
+}
+
+// isManualLFRow reports whether raw was posted by LF staff for the shared
+// CommunityBridge account (by hand, or by CF for offline donations and
+// adjustments), rather than synced from Stripe or Expensify.
+func isManualLFRow(raw ledgerTransactionRaw) bool {
+	return raw.UserID == domain.LedgerOfflineUserID && raw.SourceAccountID == domain.LedgerOfflineSourceAccountID
 }
 
 // LedgerPlatformBalance holds the platform-wide aggregate returned by GET /balance/platform.
@@ -562,15 +586,17 @@ type LedgerTransaction struct {
 	// OrganizationSFID is the b2b_org Salesforce Account matched from the domain (#411).
 	OrganizationSFID string `json:"organizationSFID,omitempty"`
 	AccountEmail     string `json:"accountEmail"`
-	TxnComment       string `json:"txnComment,omitempty"`
-	SourceType       string `json:"sourceType"`
-	SourceTxnID      string `json:"sourceTxnID"`
-	SourceAccountID  string `json:"sourceAccountID"`
-	TxnType          string `json:"txnType"`
-	TxnCategory      string `json:"txnCategory,omitempty"`
-	Fee              int    `json:"fee"`
-	Amount           int    `json:"amount"`
-	TxnDate          int64  `json:"txnDate"`
+	// SubmitterName is a debit's payee; the Financials tab shows it (#489).
+	SubmitterName   string `json:"submitterName,omitempty"`
+	TxnComment      string `json:"txnComment,omitempty"`
+	SourceType      string `json:"sourceType"`
+	SourceTxnID     string `json:"sourceTxnID"`
+	SourceAccountID string `json:"sourceAccountID"`
+	TxnType         string `json:"txnType"`
+	TxnCategory     string `json:"txnCategory,omitempty"`
+	Fee             int    `json:"fee"`
+	Amount          int    `json:"amount"`
+	TxnDate         int64  `json:"txnDate"`
 }
 
 type ledgerPostTransactionsRequest struct {
@@ -613,10 +639,21 @@ const (
 // auth0|communitybridge) with sourceTxnID, or nil when there is none in the
 // first offlineLookupMaxPages pages.
 func (c *ledgerHTTPClient) FindOfflineTransaction(ctx context.Context, projectID, sourceTxnID string) (*models.Transaction, error) {
+	return c.findOffline(ctx, models.TransactionTypeDonation, projectID, sourceTxnID)
+}
+
+// FindOfflineAdjustment is FindOfflineTransaction for returns and payouts
+// (#489). It can't filter by type: the Ledger's credit filter leaves out
+// negative credits, which is what a return is.
+func (c *ledgerHTTPClient) FindOfflineAdjustment(ctx context.Context, projectID, sourceTxnID string) (*models.Transaction, error) {
+	return c.findOffline(ctx, "", projectID, sourceTxnID)
+}
+
+func (c *ledgerHTTPClient) findOffline(ctx context.Context, txnType, projectID, sourceTxnID string) (*models.Transaction, error) {
 	for page := 0; page < offlineLookupMaxPages; page++ {
 		list, err := c.GetTransactions(ctx, TransactionFilter{
 			ProjectID: projectID,
-			TxnType:   models.TransactionTypeDonation,
+			TxnType:   txnType,
 			UserID:    domain.LedgerOfflineUserID,
 			Limit:     offlineLookupPageSize,
 			Offset:    page * offlineLookupPageSize,

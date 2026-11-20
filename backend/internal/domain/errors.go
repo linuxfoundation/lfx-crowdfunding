@@ -4,7 +4,10 @@
 // Package domain defines shared domain errors and repository contracts.
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors — mapped to HTTP status codes in handler/respond.go.
 var (
@@ -34,4 +37,8 @@ var (
 	// ErrAnnouncementNotFound is returned when an announcement does not exist or
 	// does not belong to the requested initiative.
 	ErrAnnouncementNotFound = errors.New("announcement not found")
+	// ErrSourceTxnIDTaken means a Ledger source reference is already used by
+	// an offline donation or adjustment, or by a Ledger row CF didn't record;
+	// the Ledger would drop a second row with it.
+	ErrSourceTxnIDTaken = fmt.Errorf("%w: source_txn_id is already recorded", ErrConflict)
 )

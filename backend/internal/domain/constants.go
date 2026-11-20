@@ -20,6 +20,7 @@ const (
 	LedgerOfflineSourceType      = "expensify"
 	LedgerOfflineSourceAccountID = "manual_from_lf"
 	LedgerTxnTypeCredit          = "credit"
+	LedgerTxnTypeDebit           = "debit"
 )
 
 // OfflineAccountUsername is the CF users row offline donations belong to

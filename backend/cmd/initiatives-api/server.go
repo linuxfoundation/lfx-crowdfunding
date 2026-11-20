@@ -171,6 +171,16 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		offlineDonationSvc.SetB2BOrgResolver(clients.NewMemberClient(fgaConn))
 	}
 	offlineDonationH := handler.NewOfflineDonationHandler(offlineDonationSvc, cfg.Approval.AllowedApprovers)
+	// Returns and payouts recorded by approvers (#489).
+	adjustmentLedger, ok := ledgerClient.(service.AdjustmentLedgerPoster)
+	if !ok {
+		return nil, fmt.Errorf("ledger client does not support ledger adjustment posts")
+	}
+	adjustmentSvc := service.NewLedgerAdjustmentService(db.NewLedgerAdjustmentRepository(pool), initiativeRepo, userRepo, adjustmentLedger)
+	if fgaConn != nil {
+		adjustmentSvc.SetB2BOrgResolver(clients.NewMemberClient(fgaConn))
+	}
+	adjustmentH := handler.NewLedgerAdjustmentHandler(adjustmentSvc, cfg.Approval.AllowedApprovers)
 	statisticsSvc := service.NewStatisticsService(statisticsRepo, ledgerClient)
 	statisticsSvc.SetDonorPrivacyRepo(donorPrivacyRepo)
 	statisticsSvc.SetOrgLogoRepo(orgLogoRepo)
@@ -377,11 +387,14 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*Server, 
 		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), subjectBinding).
 			Post("/initiatives/{id}/process-approval/{action}", initiativeH.ProcessApproval)
 
-		// Offline org donations (#464) — approvers only, checked like process-approval:
-		// the approvers team at Heimdall and ALLOWED_APPROVERS in the handler.
+		// Offline org donations (#464) and ledger adjustments (#489) — approvers
+		// only, checked like process-approval: the approvers team at Heimdall
+		// and ALLOWED_APPROVERS in the handler.
 		r.With(jwtAuth.Middleware, jwtAuth.RequireScope(auth.ScopeMe), subjectBinding).Group(func(r chi.Router) {
 			r.Get("/offline-donations", offlineDonationH.List)
 			r.Post("/offline-donations", offlineDonationH.Create)
+			r.Get("/ledger-adjustments", adjustmentH.List)
+			r.Post("/ledger-adjustments", adjustmentH.Create)
 		})
 
 		// M2M routes — require a valid bearer token with access:manage scope.

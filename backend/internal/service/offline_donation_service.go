@@ -37,7 +37,7 @@ var dollarAmount = regexp.MustCompile(`^(\d{1,7})(?:\.(\d{1,2}))?$`)
 
 // ErrSourceTxnIDTaken means the Ledger already has a transaction with the
 // given source reference, so it would have dropped this one.
-var ErrSourceTxnIDTaken = fmt.Errorf("%w: source_txn_id is already recorded", domain.ErrConflict)
+var ErrSourceTxnIDTaken = domain.ErrSourceTxnIDTaken
 
 // ErrLedgerRowUnverified means a retry found the reference in the Ledger but
 // couldn't confirm the Ledger row is this donation, so the CF row stays pending.
@@ -232,14 +232,20 @@ func (s *OfflineDonationService) verifyLedgerRow(ctx context.Context, d *models.
 // matchB2BOrg looks the org up by domain on this request, since the SFID goes
 // into the Ledger row. A failure only logs: b2b-org-backfill retries CF rows.
 func (s *OfflineDonationService) matchB2BOrg(ctx context.Context, orgDomain string) models.B2BOrgMatch {
-	if s.b2bOrgResolver == nil {
+	return matchB2BOrgNow(ctx, s.b2bOrgResolver, "offline donation", orgDomain)
+}
+
+// matchB2BOrgNow looks orgDomain up on the request, bounded by
+// b2bOrgLookupTimeout. A nil resolver or a failure is no match.
+func matchB2BOrgNow(ctx context.Context, resolver B2BOrgResolver, what, orgDomain string) models.B2BOrgMatch {
+	if resolver == nil || orgDomain == "" {
 		return models.B2BOrgMatch{}
 	}
 	lookupCtx, cancel := context.WithTimeout(ctx, b2bOrgLookupTimeout)
 	defer cancel()
-	match, err := s.b2bOrgResolver.LookupB2BOrgByWebsite(lookupCtx, orgDomain)
+	match, err := resolver.LookupB2BOrgByWebsite(lookupCtx, orgDomain)
 	if err != nil {
-		slog.WarnContext(ctx, "offline donation: b2b_org lookup failed", "org_domain", orgDomain, "error", err)
+		slog.WarnContext(ctx, what+": b2b_org lookup failed", "org_domain", orgDomain, "error", err)
 		return models.B2BOrgMatch{}
 	}
 	return match
@@ -262,13 +268,9 @@ func (s *OfflineDonationService) validate(in models.OfflineDonationInput) (*mode
 	if err != nil {
 		return nil, err
 	}
-	receivedOn, err := time.Parse(time.DateOnly, strings.TrimSpace(in.ReceivedOn))
+	receivedOn, err := parseLedgerDate("received_on", in.ReceivedOn, s.now())
 	if err != nil {
-		return nil, fmt.Errorf("%w: received_on must be a date (YYYY-MM-DD)", domain.ErrInvalidInput)
-	}
-	// A day of slack so an approver ahead of UTC can enter today's date.
-	if receivedOn.Before(earliestReceivedOn) || receivedOn.After(s.now().UTC().AddDate(0, 0, 1)) {
-		return nil, fmt.Errorf("%w: received_on must be between %s and today", domain.ErrInvalidInput, earliestReceivedOn.Format(time.DateOnly))
+		return nil, err
 	}
 	category, err := boundedText("category", in.Category, 100)
 	if err != nil {
@@ -287,6 +289,19 @@ func (s *OfflineDonationService) validate(in models.OfflineDonationInput) (*mode
 		ReceivedOn:         receivedOn.Format(time.DateOnly),
 		SourceTxnID:        sourceTxnID,
 	}, nil
+}
+
+// parseLedgerDate parses a YYYY-MM-DD date between earliestReceivedOn and
+// today, with a day of slack so an approver ahead of UTC can enter today.
+func parseLedgerDate(field, raw string, now time.Time) (time.Time, error) {
+	d, err := time.Parse(time.DateOnly, strings.TrimSpace(raw))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: %s must be a date (YYYY-MM-DD)", domain.ErrInvalidInput, field)
+	}
+	if d.Before(earliestReceivedOn) || d.After(now.UTC().AddDate(0, 0, 1)) {
+		return time.Time{}, fmt.Errorf("%w: %s must be between %s and today", domain.ErrInvalidInput, field, earliestReceivedOn.Format(time.DateOnly))
+	}
+	return d, nil
 }
 
 // dollarsToCents converts "1300" or "1300.5" to cents without floating point.
