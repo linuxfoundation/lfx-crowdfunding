@@ -13,8 +13,9 @@ export function isExpectedAuthError(error: unknown): boolean {
   return false;
 }
 
-// Logs expected failures as one line: Datadog counts every stderr line toward the error-rate
-// monitor, and a full error object is ~18 lines. Anything else keeps its stack.
+// Logs expected failures as one line to stdout: Datadog counts every stderr line (console.warn
+// included) toward the error-rate monitor, so a burst of these would still alert. Anything else
+// goes to stderr with its stack.
 export function logAuthError(label: string, error: unknown): void {
   if (!isExpectedAuthError(error)) {
     console.error(`${label}:`, error);
@@ -28,5 +29,6 @@ export function logAuthError(label: string, error: unknown): void {
     detail = `${h3Error.statusCode}: ${h3Error.statusMessage || h3Error.message}`;
   }
   // The callback's message can carry query-string text; keep it on one line.
-  console.warn(`${label} (expected) ${detail.replace(/\s+/g, ' ')}`);
+  // eslint-disable-next-line no-console -- stdout on purpose, see above
+  console.info(`${label} (expected) ${detail.replace(/\s+/g, ' ')}`);
 }

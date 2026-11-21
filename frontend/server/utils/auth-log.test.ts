@@ -13,11 +13,11 @@ const oauthError = (error: string, description?: string) =>
   });
 
 describe('auth-log', () => {
-  let warn: ReturnType<typeof vi.spyOn>;
+  let info: ReturnType<typeof vi.spyOn>;
   let error: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    info = vi.spyOn(console, 'info').mockImplementation(() => {});
     error = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -40,7 +40,7 @@ describe('auth-log', () => {
       oauthError('invalid_grant', 'Unknown or invalid refresh token'),
     );
     expect(error).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(
+    expect(info).toHaveBeenCalledWith(
       'Auth refresh error (expected) invalid_grant: Unknown or invalid refresh token',
     );
   });
@@ -51,7 +51,7 @@ describe('auth-log', () => {
       createError({ statusCode: 400, statusMessage: 'Authentication error: access_denied - a\nb' }),
     );
     expect(error).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(
+    expect(info).toHaveBeenCalledWith(
       'Auth callback error (expected) 400: Authentication error: access_denied - a b',
     );
   });
@@ -59,7 +59,7 @@ describe('auth-log', () => {
   it('keeps the full error object for unexpected failures', () => {
     const err = new Error('network down');
     logAuthError('Auth refresh error', err);
-    expect(warn).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith('Auth refresh error:', err);
   });
 });
