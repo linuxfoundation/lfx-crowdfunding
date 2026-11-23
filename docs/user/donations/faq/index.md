@@ -2,7 +2,7 @@
 title: Donations FAQ
 description: Answers to frequently asked questions about making and managing donations on LFX Crowdfunding.
 tags: [donations, faq, payment, recurring, cancel, refund, credit card, invoice, organization, company, anonymous]
-last_updated: 2026-11-10
+last_updated: 2026-11-23
 display_order: 3
 intercom_collection: LFX Crowdfunding
 ---
@@ -19,7 +19,7 @@ Donations can only be paid by credit card, processed securely through Stripe. Pa
 
 ## Do I need an account to donate?
 
-Yes. You must be signed in with an [LF ID](https://openprofile.dev/) account to complete a donation.
+Yes. You must be signed in with an [LF account](https://openprofile.dev/) to complete a donation.
 
 ## Can I donate on behalf of my company or organization?
 

@@ -2,7 +2,7 @@
 title: Managing Your Donations
 description: How to view your donation history, hide or show your name, and manage recurring subscriptions on LFX Crowdfunding.
 tags: [donations, history, subscriptions, recurring, cancel, anonymous]
-last_updated: 2026-11-10
+last_updated: 2026-11-23
 display_order: 2
 intercom_collection: LFX Crowdfunding
 ---
@@ -11,7 +11,7 @@ Managing your donations lets you view your giving history, choose whether your n
 
 ## Before you begin
 
-You must have completed at least one donation. Sign in with your [LF ID](https://openprofile.dev/) before proceeding.
+You must have completed at least one donation. Sign in with your [LF account](https://openprofile.dev/) before proceeding.
 
 ## Steps
 

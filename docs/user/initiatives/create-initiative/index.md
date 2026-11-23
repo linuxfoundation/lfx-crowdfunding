@@ -2,12 +2,12 @@
 title: Create an Initiative
 description: How to create a fundraising initiative for your open source project or event on LFX Crowdfunding.
 tags: [initiatives, create, fundraising, project, event]
-last_updated: 2026-10-13
+last_updated: 2026-11-23
 display_order: 2
 intercom_collection: LFX Crowdfunding
 ---
 
-> **Sign in required** — Creating an initiative requires an [LF ID](https://openprofile.dev/) account.
+> **Sign in required** — Creating an initiative requires an [LF account](https://openprofile.dev/).
 
 ## Eligibility
 

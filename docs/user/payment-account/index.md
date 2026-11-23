@@ -2,7 +2,7 @@
 title: Payment Account
 description: How to manage your saved payment method and billing details on LFX Crowdfunding.
 tags: [payment, card, billing, stripe]
-last_updated: 2026-06-17
+last_updated: 2026-11-23
 display_order: 5
 intercom_collection: LFX Crowdfunding
 ---
@@ -11,7 +11,7 @@ Managing your payment account lets you update or remove the card saved on LFX Cr
 
 ## Before you begin
 
-You must have completed at least one donation — your card is saved automatically on your first payment. Sign in with your [LF ID](https://openprofile.dev/) before proceeding.
+You must have completed at least one donation — your card is saved automatically on your first payment. Sign in with your [LF account](https://openprofile.dev/) before proceeding.
 
 ## Steps
 
