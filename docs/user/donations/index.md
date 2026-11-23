@@ -2,14 +2,14 @@
 title: Donations
 description: Learn how to donate to open source initiatives and manage your giving history on LFX Crowdfunding.
 tags: [donations, giving, payments, recurring, organization, company, anonymous]
-last_updated: 2026-11-10
+last_updated: 2026-11-23
 display_order: 3
 intercom_collection: LFX Crowdfunding
 ---
 
 Donating to an initiative supports open source projects directly. All payments are processed securely through Stripe.
 
-> **Sign in required** — Making a donation requires an [LF ID](https://openprofile.dev/) account. You will be prompted to log in before your payment is processed.
+> **Sign in required** — Making a donation requires an [LF account](https://openprofile.dev/). You will be prompted to log in before your payment is processed.
 
 ## Making a donation
 

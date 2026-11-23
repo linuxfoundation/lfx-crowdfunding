@@ -2,7 +2,7 @@
 title: Initiative Announcements
 description: How initiative owners post announcements and how they appear on the public initiative page.
 tags: [initiatives, announcements, updates]
-last_updated: 2026-07-21
+last_updated: 2026-11-23
 display_order: 4
 intercom_collection: LFX Crowdfunding
 ---
@@ -11,7 +11,7 @@ Announcements let initiative owners share updates with backers directly on the i
 
 ## Before you begin
 
-Your initiative must be approved and published. You must be signed in as the initiative owner with your [LF ID](https://openprofile.dev/).
+Your initiative must be approved and published. You must be signed in as the initiative owner with your [LF account](https://openprofile.dev/).
 
 ## Posting an announcement
 

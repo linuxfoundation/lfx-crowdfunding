@@ -2,7 +2,7 @@
 title: General FAQ
 description: Answers to frequently asked questions about LFX Crowdfunding — what it is, who it is for, and how to get help.
 tags: [faq, general, getting-started, overview]
-last_updated: 2026-06-29
+last_updated: 2026-11-23
 display_order: 2
 intercom_collection: LFX Crowdfunding
 ---
@@ -15,7 +15,7 @@ LFX Crowdfunding is the Linux Foundation's platform for funding open source init
 
 ## Do I need an account to use LFX Crowdfunding?
 
-You can browse initiatives without an account. To donate or create an initiative, you need a free [LF ID](https://openprofile.dev/) account.
+You can browse initiatives without an account. To donate or create an initiative, you need a free [LF account](https://openprofile.dev/).
 
 ## Is LFX Crowdfunding free to use?
 

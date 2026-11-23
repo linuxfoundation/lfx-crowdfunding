@@ -2,7 +2,7 @@
 title: Browsing Initiatives
 description: How to find and explore active fundraising campaigns on LFX Crowdfunding.
 tags: [initiatives, browse, search, filter, financials]
-last_updated: 2026-11-19
+last_updated: 2026-11-23
 display_order: 1
 intercom_collection: LFX Crowdfunding
 ---
@@ -11,7 +11,7 @@ Browsing initiatives lets you find and explore active open source fundraising ca
 
 ## Before you begin
 
-No sign-in is required to browse initiatives. To donate to one, you will need an [LF ID](https://openprofile.dev/) account.
+No sign-in is required to browse initiatives. To donate to one, you will need an [LF account](https://openprofile.dev/).
 
 ## Steps
 

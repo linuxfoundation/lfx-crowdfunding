@@ -2,12 +2,12 @@
 title: Making a Donation
 description: How to make a one-time or monthly donation to an open source initiative on LFX Crowdfunding.
 tags: [donations, one-time, monthly, payment, stripe, organization, anonymous, logo]
-last_updated: 2026-11-12
+last_updated: 2026-11-23
 display_order: 1
 intercom_collection: LFX Crowdfunding
 ---
 
-> **Sign in required** — You must be signed in with your [LF ID](https://openprofile.dev/) to make a donation.
+> **Sign in required** — You must be signed in with your [LF account](https://openprofile.dev/) to make a donation.
 
 ## Starting a donation
 
