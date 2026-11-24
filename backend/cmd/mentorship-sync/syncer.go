@@ -19,6 +19,8 @@ const (
 	normalizedStatusHidden = "hidden"
 	// statusRejected is a Jobspring program_status with no CF equivalent; it maps to declined.
 	statusRejected = "rejected"
+	// statusArchived is a Mentorship program_status with no CF equivalent; it maps to hidden.
+	statusArchived = "archived"
 )
 
 // mentorshipSource is the interface Syncer needs from its data source.
@@ -86,7 +88,7 @@ func (s *Syncer) Run(ctx context.Context) (syncResult, error) {
 		p.Status = strings.ToLower(p.Status)
 		// Map Jobspring values with no CF equivalent onto CF statuses.
 		switch p.Status {
-		case legacyStatusHide:
+		case legacyStatusHide, statusArchived:
 			p.Status = normalizedStatusHidden
 		case statusRejected:
 			p.Status = string(models.StatusDeclined)

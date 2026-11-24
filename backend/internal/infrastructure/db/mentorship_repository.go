@@ -66,10 +66,14 @@ ON CONFLICT (username) DO NOTHING`
 	}
 
 	// 2. Upsert initiative row with all Snowflake-sourced fields.
-	// PROGRAM_ID is used directly as initiatives.id (PK) and jobspring_project_id,
-	// so ON CONFLICT (id) is always valid and needs no separate unique index.
+	// A new program is inserted with PROGRAM_ID as both initiatives.id and
+	// jobspring_project_id, but rows migrated from DynamoDB keep their legacy
+	// initiative id, so existing rows are matched on jobspring_project_id
+	// (unique, initiatives_jobspring_project_id_key) and keep their id.
 	// The conflict update is restricted to mentorship rows: a PROGRAM_ID colliding
 	// with any other initiative type updates nothing and returns no row.
+	// A PROGRAM_ID that is another row's id but nobody's jobspring_project_id
+	// fails the primary key and is reported as an upsert error.
 	// Jobspring does not enforce unique program slugs, so a new program whose
 	// slug is already held by another initiative gets the same "-<id8>" suffix
 	// migration 011 applied, instead of failing the unique index and never syncing.
@@ -109,10 +113,9 @@ INSERT INTO initiatives (
 	NOW(),
 	NOW()
 )
-ON CONFLICT (id) DO UPDATE SET
+ON CONFLICT (jobspring_project_id) DO UPDATE SET
 	-- slug is insert-only: it must stay unique (idx_initiatives_slug), so a
 	-- duplicate renamed by migration 011 is never written back.
-	jobspring_project_id = EXCLUDED.jobspring_project_id,
 	owner_id    = EXCLUDED.owner_id,
 	name        = EXCLUDED.name,
 	status      = EXCLUDED.status,
