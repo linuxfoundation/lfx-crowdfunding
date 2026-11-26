@@ -83,7 +83,8 @@ func TestSyncer_Run_normalisesStatusToLowercase(t *testing.T) {
 		{"Hidden", "hidden"},
 		{"Rejected", "declined"}, // Jobspring status with no CF equivalent
 		{"Declined", "declined"},
-		{"hide", "hidden"}, // Jobspring legacy value
+		{"hide", "hidden"},     // Jobspring legacy value
+		{"Archived", "hidden"}, // Mentorship status with no CF equivalent
 	}
 
 	for _, tc := range cases {

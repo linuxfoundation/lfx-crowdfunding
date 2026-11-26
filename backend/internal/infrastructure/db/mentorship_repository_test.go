@@ -75,6 +75,53 @@ func TestMentorshipRepository_UpsertProgram_OnlyTouchesOwnedRows(t *testing.T) {
 	}
 }
 
+// Rows migrated from DynamoDB keep their legacy initiative id, with the
+// program ID only in jobspring_project_id; the sync must update that row in
+// place rather than insert a second one (lfx-crowdfunding#502).
+func TestMentorshipRepository_UpsertProgram_MatchesMigratedRowByJobspringID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB integration test")
+	}
+	ctx := context.Background()
+	truncate(t, ctx, "crowdfunding.initiatives", "crowdfunding.users")
+
+	owner := seedUser(t, ctx, "legacy-owner")
+	legacy := seedInitiative(t, ctx, owner.ID, "Legacy Program", "legacy-program")
+	programID := uuid.New().String()
+	if _, err := testPool.Exec(ctx,
+		`UPDATE crowdfunding.initiatives SET initiative_type = 'mentorship', jobspring_project_id = $2 WHERE id = $1`,
+		legacy.ID, programID,
+	); err != nil {
+		t.Fatalf("mark legacy row as mentorship: %v", err)
+	}
+
+	repo := NewMentorshipRepository(testPool, nil)
+	id, err := repo.UpsertProgram(ctx, models.MentorshipProgram{
+		JobspringProjectID: programID, Name: "Program Renamed", Status: "published",
+		Slug: "program-renamed", OwnerLFUsername: owner.Username,
+	})
+	if err != nil {
+		t.Fatalf("UpsertProgram() error = %v", err)
+	}
+	if id != legacy.ID {
+		t.Errorf("UpsertProgram() id = %q, want the legacy row id %q", id, legacy.ID)
+	}
+
+	var count int
+	var name, slug, jobspringID string
+	if err := testPool.QueryRow(ctx,
+		`SELECT count(*) OVER (), name, slug, jobspring_project_id FROM crowdfunding.initiatives`,
+	).Scan(&count, &name, &slug, &jobspringID); err != nil {
+		t.Fatalf("select initiatives: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("initiative rows = %d, want 1 (no second row for the program)", count)
+	}
+	if name != "Program Renamed" || slug != "legacy-program" || jobspringID != programID {
+		t.Errorf("row = (%q, %q, %q), want (%q, %q, %q)", name, slug, jobspringID, "Program Renamed", "legacy-program", programID)
+	}
+}
+
 // Jobspring allows two programs with the same slug; the second must still sync
 // (with a suffixed slug) rather than fail the unique index forever.
 func TestMentorshipRepository_UpsertProgram_SuffixesTakenSlug(t *testing.T) {
