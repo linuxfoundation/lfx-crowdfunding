@@ -128,11 +128,16 @@ describe('adjustment display', () => {
   it('describes a new and a resubmitted adjustment', () => {
     expect(adjustmentOutcome(result, 'Kmesh')).toMatchObject({
       title: 'Return recorded',
+      icon: 'circle-check',
+      messageClass: 'text-neutral-600',
       message: expect.stringContaining('Returned to CNCF: $1,500.00 out of Kmesh'),
     });
-    expect(adjustmentOutcome({ ...result, created: false }, 'Kmesh').title).toBe(
-      'Already recorded',
-    );
+    expect(adjustmentOutcome({ ...result, created: false }, 'Kmesh')).toMatchObject({
+      title: 'Already recorded',
+      icon: 'triangle-exclamation',
+      iconClass: 'text-warning-600',
+      messageClass: expect.stringContaining('bg-warning-50'),
+    });
   });
 
   it('labels the form per kind', () => {

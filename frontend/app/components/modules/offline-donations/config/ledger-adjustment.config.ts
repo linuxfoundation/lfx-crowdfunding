@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import {
+  RECORDED_OUTCOME_STYLE,
   formatCents,
   isValidDollarAmount,
   normalizeDollarAmount,
@@ -120,14 +121,12 @@ export const adjustmentOutcome = (
   a.created
     ? {
         title: a.kind === 'return' ? 'Return recorded' : 'Payout recorded',
-        icon: 'circle-check',
-        iconClass: 'text-green-500',
+        ...RECORDED_OUTCOME_STYLE.created,
         message: `${adjustmentSummary(a)}: ${formatCents(a.amountCents)} out of ${initiativeName}. The initiative's balance updates within the hour.`,
       }
     : {
         title: 'Already recorded',
-        icon: 'circle-info',
-        iconClass: 'text-neutral-400',
+        ...RECORDED_OUTCOME_STYLE.alreadyRecorded,
         message: `This ${a.kind} was already recorded on ${formatShortDate(a.createdOn)}${a.recordedBy ? ` by ${a.recordedBy}` : ''}. No new entry was added to the Ledger.`,
       };
 

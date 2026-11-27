@@ -3,7 +3,11 @@ Copyright (c) 2025 The Linux Foundation and each contributor.
 SPDX-License-Identifier: MIT
 -->
 <template>
-  <lfx-card class="p-6 flex flex-col gap-5">
+  <!-- scroll-mt-24 keeps the card clear of the sticky site header when a step change scrolls to it. -->
+  <lfx-card
+    ref="cardRef"
+    class="p-6 flex flex-col gap-5 scroll-mt-24"
+  >
     <!-- Entry -->
     <template v-if="step === 'form'">
       <lfx-field
@@ -243,7 +247,12 @@ SPDX-License-Identifier: MIT
           :class="outcome.iconClass"
         />
         <p class="text-base font-semibold text-neutral-900">{{ outcome.title }}</p>
-        <p class="text-sm text-neutral-600">{{ outcome.message }}</p>
+        <p
+          class="text-sm"
+          :class="outcome.messageClass"
+        >
+          {{ outcome.message }}
+        </p>
         <lfx-button
           label="Record another"
           type="secondary"
@@ -255,7 +264,7 @@ SPDX-License-Identifier: MIT
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue';
 import {
   OFFLINE_ENTRY_KIND_OPTIONS,
   PAID_TO_MAX_LENGTH,
@@ -313,6 +322,19 @@ const submitting = ref(false);
 const submitError = ref<string | null>(null);
 const outcome = ref<RecordedOutcome | null>(null);
 const today = new Date();
+
+// Review and done replace a long form with a short card: without this the page stays
+// scrolled to where the Review button was, below the summary the approver has to check.
+// Only when the card's top is hidden (above the viewport or under the sticky header, i.e.
+// above its scroll-margin), so a short form doesn't jump.
+const cardRef = useTemplateRef<{ $el?: HTMLElement }>('cardRef');
+watch(step, async () => {
+  await nextTick();
+  const el = cardRef.value?.$el;
+  if (el && el.getBoundingClientRect().top < parseFloat(getComputedStyle(el).scrollMarginTop || '0')) {
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+});
 
 const kindOption = computed(() => entryKindOption(form.kind));
 const amountInvalid = computed(() => form.amount.trim() !== '' && !isValidDollarAmount(form.amount));
