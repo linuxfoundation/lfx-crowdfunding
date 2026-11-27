@@ -243,7 +243,12 @@ SPDX-License-Identifier: MIT
           :class="outcome.iconClass"
         />
         <p class="text-base font-semibold text-neutral-900">{{ outcome.title }}</p>
-        <p class="text-sm text-neutral-600">{{ outcome.message }}</p>
+        <p
+          class="text-sm"
+          :class="outcome.messageClass"
+        >
+          {{ outcome.message }}
+        </p>
         <lfx-button
           label="Record another"
           type="secondary"

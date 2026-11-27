@@ -44,4 +44,6 @@ export interface RecordedOutcome {
   message: string;
   icon: string;
   iconClass: string;
+  /** A resubmit gets an amber notice box, so it isn't read as a new entry. */
+  messageClass: string;
 }

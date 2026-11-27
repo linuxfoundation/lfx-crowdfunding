@@ -88,7 +88,8 @@ Crowdfunding checks it first, across donations, returns and payouts, so:
 
 - Case doesn't matter: `Invoice 12` and `invoice 12` are the same reference. The entry keeps the
   case it was first recorded with. Spaces around it are trimmed.
-- Submitting the same entry again is safe: the page says **Already recorded**, with when and by whom,
+- Submitting the same entry again is safe: the page says **Already recorded** in an amber notice (not
+  the green success screen), with when and by whom,
   and no second Ledger row is created. For a donation "the same" means the same reference, initiative,
   organization name and domain, amount, category and date; for a return or payout also the type,
   payee and reason. Two submits at once (two tabs, a double click) are handled one after the other.

@@ -101,6 +101,19 @@ export const nextOfflineDonationsOffset = (
 export const formatCents = (cents: number): string =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
+/** Look of the done step. A resubmit is amber, so it doesn't read as a new entry. */
+export const RECORDED_OUTCOME_STYLE: Record<
+  'created' | 'alreadyRecorded',
+  Pick<RecordedOutcome, 'icon' | 'iconClass' | 'messageClass'>
+> = {
+  created: { icon: 'circle-check', iconClass: 'text-green-500', messageClass: 'text-neutral-600' },
+  alreadyRecorded: {
+    icon: 'triangle-exclamation',
+    iconClass: 'text-warning-600',
+    messageClass: 'p-3 rounded-lg border border-warning-200 bg-warning-50 text-warning-800',
+  },
+};
+
 /** Heading and text of the done step: a new entry, or a resubmit that returned the stored one. */
 export const recordedOutcome = (
   d: OfflineDonationResult,
@@ -109,14 +122,12 @@ export const recordedOutcome = (
   d.created
     ? {
         title: 'Donation recorded',
-        icon: 'circle-check',
-        iconClass: 'text-green-500',
+        ...RECORDED_OUTCOME_STYLE.created,
         message: `${formatCents(d.amountCents)} from ${d.organizationName} to ${initiativeName}. The initiative's totals and donor list update within the hour.`,
       }
     : {
         title: 'Already recorded',
-        icon: 'circle-info',
-        iconClass: 'text-neutral-400',
+        ...RECORDED_OUTCOME_STYLE.alreadyRecorded,
         message: `This donation was already recorded on ${formatShortDate(d.createdOn)}${d.recordedBy ? ` by ${d.recordedBy}` : ''}. No new entry was added to the Ledger.`,
       };
 

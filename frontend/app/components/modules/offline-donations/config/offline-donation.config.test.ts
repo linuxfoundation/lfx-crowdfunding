@@ -150,6 +150,9 @@ describe('recordedOutcome', () => {
   it('says when and by whom a resubmitted donation was recorded', () => {
     expect(recordedOutcome({ ...result, created: false }, 'Example Initiative')).toMatchObject({
       title: 'Already recorded',
+      icon: 'triangle-exclamation',
+      iconClass: 'text-warning-600',
+      messageClass: expect.stringContaining('bg-warning-50'),
       message:
         'This donation was already recorded on Nov 13, 2026 by approver. No new entry was added to the Ledger.',
     });
